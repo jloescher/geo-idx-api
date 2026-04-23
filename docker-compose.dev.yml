@@ -14,8 +14,10 @@ services:
       OCTANE_HOST: 0.0.0.0
       OCTANE_PORT: ${OCTANE_PORT:-8000}
       OCTANE_WATCH: ${OCTANE_WATCH:-false}
-      XDEBUG_MODE: ${XDEBUG_MODE:-develop,debug}
-      XDEBUG_CONFIG: ${XDEBUG_CONFIG:-client_host=host.docker.internal client_port=9003 idekey=VSCODE start_with_request=yes}
+      XDG_CONFIG_HOME: /var/www/html/config
+      XDG_DATA_HOME: /var/www/html/data
+      XDEBUG_MODE: ${XDEBUG_MODE:-off}
+      XDEBUG_CONFIG: ${XDEBUG_CONFIG:-client_host=host.docker.internal client_port=9003 idekey=VSCODE start_with_request=trigger}
       PHP_IDE_CONFIG: ${PHP_IDE_CONFIG:-serverName=idx-api-dev}
     ports:
       - "${OCTANE_PORT:-8000}:8000"
@@ -25,6 +27,7 @@ services:
       default:
         aliases:
           - idx-api
+    restart: unless-stopped
     init: true
     develop:
       watch:
@@ -58,6 +61,7 @@ services:
     platform: ${DOCKER_PLATFORM:-linux/arm64}
     ports:
       - "${IMAGES_PORT:-8080}:8080"
+    restart: unless-stopped
     init: true
 
   cloudflared-dev:
@@ -68,4 +72,5 @@ services:
       - idx-images-dev
     environment:
       TUNNEL_METRICS: 0.0.0.0:20241
+    restart: unless-stopped
     init: true

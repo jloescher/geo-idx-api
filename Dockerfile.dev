@@ -29,12 +29,12 @@ RUN install-php-extensions \
     xdebug \
     && { \
         echo "xdebug.mode=develop,debug"; \
-        echo "xdebug.start_with_request=yes"; \
+        echo "xdebug.start_with_request=trigger"; \
         echo "xdebug.client_host=host.docker.internal"; \
         echo "xdebug.client_port=9003"; \
         echo "xdebug.discover_client_host=0"; \
         echo "xdebug.idekey=VSCODE"; \
-        echo "xdebug.log=/tmp/xdebug.log"; \
+        echo "xdebug.log_level=0"; \
     } > /usr/local/etc/php/conf.d/99-xdebug.ini
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
@@ -70,6 +70,8 @@ COPY . .
 RUN composer install --no-interaction --prefer-dist
 
 RUN mkdir -p storage/logs storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache \
+    config \
+    data \
     && chown -R www-data:www-data /var/www/html
 
 EXPOSE 8000

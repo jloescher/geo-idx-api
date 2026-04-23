@@ -3,7 +3,35 @@
 use App\Ghl\Http\Controllers\GhlApiController;
 use App\Ghl\Http\Middleware\AuthenticateGhlLocation;
 use App\Http\Controllers\Api\BridgeProxyController;
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Validation\ValidationException;
+
+Route::post('/auth/token', function (Request $request): array {
+    $credentials = $request->validate([
+        'email' => ['required', 'email'],
+        'password' => ['required', 'string'],
+        'device_name' => ['required', 'string', 'max:255'],
+    ]);
+
+    $user = User::query()->where('email', $credentials['email'])->first();
+
+    if (! $user || ! Hash::check($credentials['password'], $user->password)) {
+        throw ValidationException::withMessages([
+            'email' => ['The provided credentials are incorrect.'],
+        ]);
+    }
+
+    return [
+        'token' => $user->createToken($credentials['device_name'])->plainTextToken,
+    ];
+});
+
+Route::middleware('auth:sanctum')->group(function (): void {
+    Route::get('/auth/user', fn (Request $request): ?User => $request->user());
+});
 
 Route::prefix('leadconnector')->middleware([AuthenticateGhlLocation::class])->group(function () {
     Route::get('/leads', [GhlApiController::class, 'leads']);
