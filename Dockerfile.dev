@@ -19,6 +19,8 @@ RUN apk add --no-cache \
     zip
 
 RUN install-php-extensions \
+    pcntl \
+    bcmath \
     pdo_pgsql \
     pgsql \
     gd \
@@ -64,9 +66,10 @@ ENV APP_ENV=local \
     CLOUDFLARED_DEV_DOMAIN=idx-api.quantyralabs.cc
 
 COPY composer.json composer.lock ./
-RUN composer install --no-interaction --prefer-dist
+RUN composer install --no-interaction --prefer-dist --no-scripts
 
 COPY . .
+RUN composer install --no-interaction --prefer-dist
 
 RUN mkdir -p storage/logs storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache \
     && chown -R www-data:www-data /var/www/html

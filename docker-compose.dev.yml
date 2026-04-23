@@ -13,7 +13,7 @@ services:
     environment:
       OCTANE_HOST: 0.0.0.0
       OCTANE_PORT: ${OCTANE_PORT:-8000}
-      OCTANE_WATCH: ${OCTANE_WATCH:-true}
+      OCTANE_WATCH: ${OCTANE_WATCH:-false}
       CLOUDFLARED_TUNNEL_URL: ${CLOUDFLARED_TUNNEL_URL:-http://127.0.0.1:8000}
       CLOUDFLARED_DEV_DOMAIN: ${CLOUDFLARED_DEV_DOMAIN:-idx-api.quantyralabs.cc}
       CLOUDFLARED_TOKEN: ${CLOUDFLARED_TOKEN:-}
@@ -22,8 +22,29 @@ services:
       PHP_IDE_CONFIG: ${PHP_IDE_CONFIG:-serverName=idx-api-dev}
     ports:
       - "${OCTANE_PORT:-8000}:8000"
-    volumes:
-      - ./:/var/www/html
     extra_hosts:
       - "host.docker.internal:host-gateway"
     init: true
+    develop:
+      watch:
+        - action: sync+restart
+          path: .
+          target: /var/www/html
+          ignore:
+            - .git/
+            - vendor/
+            - node_modules/
+            - storage/
+            - bootstrap/cache/
+            - .cursor/
+            - .idea/
+            - .vscode/
+            - "*.log"
+        - action: rebuild
+          path: composer.json
+        - action: rebuild
+          path: composer.lock
+        - action: rebuild
+          path: Dockerfile.dev
+        - action: rebuild
+          path: docker-compose.dev.yml

@@ -10,6 +10,8 @@ RUN apk add --no-cache \
     curl
 
 RUN install-php-extensions \
+    pcntl \
+    bcmath \
     pdo_pgsql \
     pgsql \
     gd \
