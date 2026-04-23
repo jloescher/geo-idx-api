@@ -617,7 +617,7 @@ GHL_AUDIT_LOG_PATH=/var/log/geoidx/ghl_audit.log
 
 ## Deployment Checklist
 
-1. Add GHL environment variables to Dokploy; configure **idx-api** image build with **repository root** as context and Dockerfile **`docker/Dockerfile.idx-api`** (see **`docker/README.md`** at repo root).
+1. Add GHL environment variables to Dokploy; configure **idx-api** image build with **project root** as context and Dockerfile **`Dockerfile.idx-api`** (see **`README.md`** at project root).
 2. Deploy idx-api service
 3. Run GHL database migrations: `php artisan migrate --path=database/migrations/ghl`
 4. Seed GHL configuration: `php artisan db:seed --class=GhlConfigSeeder`

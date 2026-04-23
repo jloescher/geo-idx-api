@@ -1,6 +1,5 @@
-# Quantyra IDX-API — build from monorepo ROOT (context: .)
-# Revenue Impact: High-performance Octane + Swoole for MLS proxy
-# All Bridge API calls must flow through this service
+# Quantyra IDX-API Docker image (project root build context)
+# Revenue impact: high-performance Octane + Swoole for MLS proxy
 
 FROM phpswoole/swoole:php8.5-alpine
 
@@ -28,12 +27,13 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
-COPY idx-api/ .
+COPY . .
 
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
 RUN mkdir -p /var/cache/geoidx /var/cache/geoidx/images /var/log/geoidx \
     && chown -R www-data:www-data /var/www/html /var/cache/geoidx /var/log/geoidx
+
 RUN touch /var/log/geoidx/ghl_audit.log && chown www-data:www-data /var/log/geoidx/ghl_audit.log
 
 RUN php artisan key:generate --force || true

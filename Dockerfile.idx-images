@@ -1,9 +1,9 @@
-# Quantyra IDX-Images — build from monorepo ROOT (context: .)
-# Nginx TLS edge → idx-api:8000/images/* (Laravel DomainOrTokenAuth + disk cache).
+# Quantyra IDX-Images edge image (project root build context)
+# Nginx TLS edge -> idx-api:8000/images/* (Laravel DomainOrTokenAuth + disk cache)
 
 FROM nginx:1.27-alpine
 
-COPY docker/nginx.idx-images.conf /etc/nginx/conf.d/default.conf
+COPY nginx.idx-images.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 8080
 

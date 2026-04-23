@@ -1,6 +1,6 @@
 # GHL & IDX — Environment Variables Reference
 
-Variables are set in **`idx-api/.env`** (and duplicated or mirrored in the **root** `.env` for `docker-compose` where noted). Defaults in `idx-api/config/ghl.php` apply when env is missing.
+Variables are set in **`.env`** for this project (and mirrored in host/runtime environment for `docker-compose` where noted). Defaults in `config/ghl.php` apply when env is missing.
 
 ---
 
@@ -83,11 +83,11 @@ Variables are set in **`idx-api/.env`** (and duplicated or mirrored in the **roo
 
 ---
 
-## docker-compose (root)
+## docker-compose (project root)
 
-The `idx-api` service passes through the variables above; set them in the host `.env` consumed by Compose. See repository **`docker-compose.yml`** `idx-api.environment` block.
+The `idx-api` service passes through the variables above; set them in the host `.env` consumed by Compose.
 
-**Build:** images are built from the **repository root** with **`docker/Dockerfile.idx-api`** (and **`docker/Dockerfile.geo-web`** / **`docker/Dockerfile.idx-images`** for other services) — not from `idx-api/Dockerfile` inside the app folder. See **[../docker/README.md](../docker/README.md)**.
+**Build:** images are built from the **project root** with **`Dockerfile.idx-api`** and **`Dockerfile.idx-images`**. See **[README.md](../README.md)**.
 
 ---
 
@@ -101,5 +101,5 @@ The `idx-api` service passes through the variables above; set them in the host `
 
 | File | Role |
 |------|------|
-| `idx-api/.env.example` | Developer template for idx-api. |
-| `.env.example` (root) | Stack-wide template including GHL keys for Dokploy. |
+| `.env.example` | Developer template for this project. |
+| `.env` | Runtime environment values for local/dev/deploy builds. |

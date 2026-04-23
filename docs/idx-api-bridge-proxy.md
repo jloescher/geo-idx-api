@@ -1,6 +1,6 @@
 # IDX-API — Secured Bridge Data Output Proxy
 
-This document describes the **Quantyra idx-api** integration that proxies [Bridge Data Output](https://bridgedataoutput.com) for the **Stellar** dataset, adds **domain / token authentication**, **listings caching**, **teaser gating**, **MLS audit logging**, **automatic rewriting of listing photo URLs in JSON** to the public **idx-images** host, and a secured **`/images/...`** binary proxy. Implementation lives under `idx-api/` only.
+This document describes the **Quantyra idx-api** integration that proxies [Bridge Data Output](https://bridgedataoutput.com) for the **Stellar** dataset, adds **domain / token authentication**, **listings caching**, **teaser gating**, **MLS audit logging**, **automatic rewriting of listing photo URLs in JSON** to the public **idx-images** host, and a secured **`/images/...`** binary proxy. Implementation lives in this repository.
 
 **Upstream API reference** (endpoints, datasets, auth concepts): [bridge-api-documentation.md](bridge-api-documentation.md).
 
@@ -178,7 +178,7 @@ Registered in **`bootstrap/app.php`** `then` routing callback with middleware **
 |--------|------|----------|
 | GET | `/images/{listingKey}/{photoId}` | Proxies Bridge listing photo URL built from **`BRIDGE_LISTING_PHOTO_PATH`**, stores bytes on the Laravel **`images`** disk (**`config/filesystems.php`**), whose root defaults to **`IMAGE_CACHE_PATH`** (NVMe path in production Docker). |
 
-**Host `idx-images.quantyralabs.cc` (Docker `idx-images` service):** **`docker/Dockerfile.idx-images`** builds **nginx only** and **reverse-proxies** `GET /images/*` to **`http://idx-api:8000`** with the same forwarded headers (**`Referer`**, **`Authorization`**, **`X-Domain-Slug`**) so **Laravel enforces the identical domain / Sanctum gate** as on **`idx-api.quantyralabs.cc`**. There is **no** standalone `image-proxy.php` or `?url=` bypass — unauthorized requests are rejected by idx-api (**401 / 403**) before any MLS bytes are returned.
+**Host `idx-images.quantyralabs.cc` (Docker `idx-images` service):** **`Dockerfile.idx-images`** builds **nginx only** and **reverse-proxies** `GET /images/*` to **`http://idx-api:8000`** with the same forwarded headers (**`Referer`**, **`Authorization`**, **`X-Domain-Slug`**) so **Laravel enforces the identical domain / Sanctum gate** as on **`idx-api.quantyralabs.cc`**. There is **no** standalone `image-proxy.php` or `?url=` bypass — unauthorized requests are rejected by idx-api (**401 / 403**) before any MLS bytes are returned.
 
 **Response headers**
 
@@ -326,9 +326,9 @@ Response headers should include **`Cache-Control`** with **`public`**, **`max-ag
 
 ## Docker & operations
 
-- **Dockerfiles** live under **`docker/`** at the **monorepo root** (`docker/Dockerfile.idx-api`, `geo-web`, `idx-images`). Build context is always **`.`** — see **[../docker/README.md](../docker/README.md)** and [GHL deployment & operations](ghl-deployment-and-operations.md).
+- **Dockerfiles** live at the **project root** (`Dockerfile.idx-api`, `Dockerfile.idx-images`). Build context is always **`.`** — see **[README.md](../README.md)** and [GHL deployment & operations](ghl-deployment-and-operations.md).
 - **Build / run** (repo root): `docker compose build` / `docker compose up` using root **`docker-compose.yml`**.
-- **idx-api service** env: root `docker-compose.yml` passes Bridge-related variables and `IMAGE_CACHE_PATH=/var/cache/geoidx/images`; **`docker/Dockerfile.idx-api`** creates that directory. The **`images`** disk in **`idx-api/config/filesystems.php`** uses the same path for the image proxy.
+- **idx-api service** env: root `docker-compose.yml` passes Bridge-related variables and `IMAGE_CACHE_PATH=/var/cache/geoidx/images`; **`Dockerfile.idx-api`** creates that directory. The **`images`** disk in **`config/filesystems.php`** uses the same path for the image proxy.
 - **Queue worker:** for `RefreshDomainListingsCacheJob` to execute, run e.g. `php artisan queue:work` (or Horizon) alongside the app. Schedule driver must run `php artisan schedule:run` (cron) or `schedule:work` in dev.
 
 ---
@@ -365,4 +365,4 @@ Response headers should include **`Cache-Control`** with **`public`**, **`max-ag
 | [ghl-api-routes-reference.md](ghl-api-routes-reference.md) | GHL-specific idx-api routes (orthogonal to Bridge v1). |
 | [ghl-environment-variables.md](ghl-environment-variables.md) | Shared `IDX_*` and deployment env patterns. |
 | [ghl-deployment-and-operations.md](ghl-deployment-and-operations.md) | Docker, queues, scheduling. |
-| [../docker/README.md](../docker/README.md) | Monorepo Dockerfiles and Dokploy three-service layout. |
+| [../README.md](../README.md) | Project Dockerfiles and local build layout. |

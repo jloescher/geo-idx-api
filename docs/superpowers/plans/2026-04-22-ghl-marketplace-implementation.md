@@ -16,7 +16,7 @@
 
 ## Phase A: Database & config
 
-- [ ] Add migrations under `idx-api/database/migrations/ghl/` + `quantyra_leads`.
+- [ ] Add migrations under `database/migrations/ghl/` + `quantyra_leads`.
 - [ ] Add `config/ghl.php` aggregating oauth/sync/webhooks/widgets + `IDX_PLATFORM_URL`.
 - [ ] Extend root `.env.example` with `GHL_*` and `IDX_PLATFORM_URL`.
 
@@ -51,7 +51,7 @@
 - [ ] `routes/console.php`: schedule token refresh hourly.
 - [ ] `GhlConfigSeeder` for `ghl_lead_mappings`.
 - [ ] Feature tests: OAuth URL build, webhook stores event, widget origin rejected, API auth.
-- [ ] Update `docker-compose.yml` (`idx-api` GHL env), `docker/Dockerfile.idx-api` comment if needed.
+- [ ] Update `docker-compose.yml` (`idx-api` GHL env), `Dockerfile.idx-api` comment if needed.
 
 ---
 

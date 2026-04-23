@@ -121,7 +121,7 @@ Middleware chain: validate API key → validate **Origin** (or Referer) against 
 
 ## Migrations & seeding
 
-Migrations live in `idx-api/database/migrations/ghl/` and are registered in `AppServiceProvider` via `loadMigrationsFrom()`.
+Migrations live in `database/migrations/ghl/` and are registered in `AppServiceProvider` via `loadMigrationsFrom()`.
 
 ```bash
 cd idx-api
@@ -137,6 +137,6 @@ Schema overview: [ghl-database-schema.md](ghl-database-schema.md).
 
 - [ghl-api-routes-reference.md](ghl-api-routes-reference.md) — Curl examples and response notes.
 - [ghl-deployment-and-operations.md](ghl-deployment-and-operations.md) — Docker, Dokploy, workers.
-- [../docker/README.md](../docker/README.md) — Monorepo Dockerfiles (`docker/Dockerfile.*`) and Dokploy build context.
+- [../README.md](../README.md) — Project Dockerfiles (`Dockerfile.*`) and build context.
 - [ghl-environment-variables.md](ghl-environment-variables.md) — Env tables.
 - [superpowers/specs/2026-04-22-ghl-marketplace-integration-design.md](superpowers/specs/2026-04-22-ghl-marketplace-integration-design.md) — Full design decisions.

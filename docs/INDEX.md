@@ -1,6 +1,6 @@
 # Quantyra GeoIDX — Documentation Index
 
-Central index for all documentation in this repository. Implementation code lives under `idx-api/`, `geo-web/`, and `mobile/`; **reference and integration guides** live here under `docs/`.
+Central index for all documentation in this project. Implementation code lives in this repository root, and **reference and integration guides** live under `docs/`.
 
 ---
 
@@ -13,7 +13,7 @@ Central index for all documentation in this repository. Implementation code live
 | [GoHighLevel OAuth (vendor)](gohighlevel-oauth-documentation.md) | Curated GHL OAuth 2.0, token refresh, scopes, webhooks (reference from marketplace docs). |
 | [GHL Marketplace integration](ghl-marketplace-integration.md) | Quantyra implementation in **idx-api**: OAuth, onboarding, widgets, API routes, jobs. |
 | [GHL deployment & operations](ghl-deployment-and-operations.md) | Docker, Dokploy, migrations, queues, scheduling. |
-| [Docker builds (monorepo)](../docker/README.md) | Production Dockerfiles under `docker/`; **repository root** build context for Dokploy (`idx-api`, `geo-web`, `idx-images`). |
+| [Docker builds](../README.md) | Production Dockerfiles in this project (`Dockerfile.idx-api`, `Dockerfile.idx-images`) with project-root build context. |
 | [GHL environment variables](ghl-environment-variables.md) | All `GHL_*`, `IDX_*`, and related env vars for idx-api and compose. |
 | [GHL database schema](ghl-database-schema.md) | PostgreSQL tables created for GHL, leads, audit, widgets. |
 | [GHL API & routes reference](ghl-api-routes-reference.md) | HTTP routes, auth, widgets, curl examples. |
@@ -39,13 +39,13 @@ Central index for all documentation in this repository. Implementation code live
 
 ---
 
-## Monorepo layout (read-only summary)
+## Project layout summary
 
 | Path | Role |
 |------|------|
-| `idx-api/` | Laravel 13 + Octane: **secured Bridge MLS proxy** (`/api/v1/*`, images), **GHL Marketplace app**, widgets, webhooks. |
-| `geo-web/` | Public multi-domain IDX sites (not documented in this index beyond repo README). |
-| `mobile/` | Flutter app (teaser mode per Stellar MLS until Exhibit A amendment). |
-| `scripts/` | Build and deploy helpers. |
+| `app/`, `routes/`, `config/`, `database/` | Laravel 13 + Octane: **secured Bridge MLS proxy** (`/api/v1/*`, images), **GHL Marketplace app**, widgets, and webhooks. |
+| `docs/` | Product, integration, deployment, and operations documentation. |
+| `tests/` | Feature and unit test coverage for Bridge and GHL flows. |
+| `Dockerfile.idx-api`, `Dockerfile.idx-images` | Production container images for API and image edge. |
 
-For a full product overview, see the root [README.md](../README.md). **Docker / Dokploy:** all production Dockerfiles live under **`docker/`** with monorepo root build context — see [docker/README.md](../docker/README.md).
+For a full product overview, see the root [README.md](../README.md). **Docker / Dokploy:** build from project root using [`Dockerfile.idx-api`] and [`Dockerfile.idx-images`] as documented in [README.md](../README.md).
