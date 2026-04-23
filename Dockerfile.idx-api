@@ -1,0 +1,51 @@
+# Quantyra IDX-API — build from monorepo ROOT (context: .)
+# Revenue Impact: High-performance Octane + Swoole for MLS proxy
+# All Bridge API calls must flow through this service
+
+FROM phpswoole/swoole:php8.5-alpine
+
+RUN apk add --no-cache \
+    postgresql-dev \
+    libpng-dev \
+    libzip-dev \
+    zip \
+    unzip \
+    git \
+    curl
+
+RUN docker-php-ext-install \
+    pdo_pgsql \
+    pgsql \
+    gd \
+    zip \
+    opcache
+
+RUN echo "opcache.memory_consumption=256" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini \
+    && echo "opcache.max_accelerated_files=10000" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini \
+    && echo "opcache.enable_cli=1" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini
+
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+WORKDIR /var/www/html
+
+COPY idx-api/ .
+
+RUN composer install --no-dev --optimize-autoloader --no-interaction
+
+RUN mkdir -p /var/cache/geoidx /var/cache/geoidx/images /var/log/geoidx \
+    && chown -R www-data:www-data /var/www/html /var/cache/geoidx /var/log/geoidx
+RUN touch /var/log/geoidx/ghl_audit.log && chown www-data:www-data /var/log/geoidx/ghl_audit.log
+
+RUN php artisan key:generate --force || true
+
+RUN php artisan config:cache \
+    && php artisan route:cache \
+    && php artisan view:cache
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD php artisan octane:status || exit 1
+
+USER www-data
+CMD ["php", "artisan", "octane:start", "--server=swoole", "--host=0.0.0.0", "--port=8000"]

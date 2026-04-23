@@ -1,0 +1,15 @@
+{
+    "agents": [
+        "cursor",
+        "opencode"
+    ],
+    "guidelines": true,
+    "mcp": true,
+    "nightwatch_mcp": false,
+    "sail": false,
+    "skills": [
+        "cashier-stripe-development",
+        "laravel-best-practices",
+        "livewire-development"
+    ]
+}
