@@ -61,9 +61,7 @@ ENV APP_ENV=local \
     OCTANE_SERVER=frankenphp \
     OCTANE_HOST=0.0.0.0 \
     OCTANE_PORT=8000 \
-    OCTANE_WATCH=true \
-    CLOUDFLARED_TUNNEL_URL=http://127.0.0.1:8000 \
-    CLOUDFLARED_DEV_DOMAIN=idx-api.quantyralabs.cc
+    OCTANE_WATCH=true
 
 COPY composer.json composer.lock ./
 RUN composer install --no-interaction --prefer-dist --no-scripts
@@ -78,4 +76,4 @@ EXPOSE 8000
 
 USER www-data
 
-CMD ["/bin/sh", "-lc", "php artisan octane:start --server=${OCTANE_SERVER} --host=${OCTANE_HOST} --port=${OCTANE_PORT} $( [ \"${OCTANE_WATCH}\" = \"true\" ] && echo '--watch' ) & if [ -n \"${CLOUDFLARED_TOKEN}\" ]; then cloudflared tunnel --no-autoupdate run --token \"${CLOUDFLARED_TOKEN}\"; elif [ -n \"${CLOUDFLARED_DEV_DOMAIN}\" ]; then cloudflared tunnel --no-autoupdate --url \"${CLOUDFLARED_TUNNEL_URL}\" --hostname \"dev-${CLOUDFLARED_DEV_DOMAIN}\"; else echo 'cloudflared disabled (set CLOUDFLARED_TOKEN or CLOUDFLARED_DEV_DOMAIN)'; wait; fi"]
+CMD ["/bin/sh", "-lc", "php artisan octane:start --server=${OCTANE_SERVER} --host=${OCTANE_HOST} --port=${OCTANE_PORT} $( [ \"${OCTANE_WATCH}\" = \"true\" ] && echo '--watch' )"]

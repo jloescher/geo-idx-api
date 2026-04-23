@@ -14,9 +14,6 @@ services:
       OCTANE_HOST: 0.0.0.0
       OCTANE_PORT: ${OCTANE_PORT:-8000}
       OCTANE_WATCH: ${OCTANE_WATCH:-false}
-      CLOUDFLARED_TUNNEL_URL: ${CLOUDFLARED_TUNNEL_URL:-http://127.0.0.1:8000}
-      CLOUDFLARED_DEV_DOMAIN: ${CLOUDFLARED_DEV_DOMAIN:-idx-api.quantyralabs.cc}
-      CLOUDFLARED_TOKEN: ${CLOUDFLARED_TOKEN:-}
       XDEBUG_MODE: ${XDEBUG_MODE:-develop,debug}
       XDEBUG_CONFIG: ${XDEBUG_CONFIG:-client_host=host.docker.internal client_port=9003 idekey=VSCODE start_with_request=yes}
       PHP_IDE_CONFIG: ${PHP_IDE_CONFIG:-serverName=idx-api-dev}
@@ -24,6 +21,10 @@ services:
       - "${OCTANE_PORT:-8000}:8000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      default:
+        aliases:
+          - idx-api
     init: true
     develop:
       watch:
@@ -48,3 +49,23 @@ services:
           path: Dockerfile.dev
         - action: rebuild
           path: docker-compose.dev.yml
+
+  idx-images-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.idx-images
+    image: ${DEV_IMAGES_NAME:-quantyra/idx-images-dev:local}
+    platform: ${DOCKER_PLATFORM:-linux/arm64}
+    ports:
+      - "${IMAGES_PORT:-8080}:8080"
+    init: true
+
+  cloudflared-dev:
+    image: cloudflare/cloudflared:2026.3.0
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN}
+    depends_on:
+      - idx-api-dev
+      - idx-images-dev
+    environment:
+      TUNNEL_METRICS: 0.0.0.0:20241
+    init: true
