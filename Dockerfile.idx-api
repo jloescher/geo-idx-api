@@ -1,18 +1,15 @@
 # Quantyra IDX-API Docker image (project root build context)
-# Revenue impact: high-performance Octane + Swoole for MLS proxy
+# Revenue impact: high-performance Octane + FrankenPHP for MLS proxy
 
-FROM phpswoole/swoole:php8.5-alpine
+FROM dunglas/frankenphp:php8.5-alpine
 
 RUN apk add --no-cache \
-    postgresql-dev \
-    libpng-dev \
-    libzip-dev \
     zip \
     unzip \
     git \
     curl
 
-RUN docker-php-ext-install \
+RUN install-php-extensions \
     pdo_pgsql \
     pgsql \
     gd \
@@ -48,4 +45,4 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD php artisan octane:status || exit 1
 
 USER www-data
-CMD ["php", "artisan", "octane:start", "--server=swoole", "--host=0.0.0.0", "--port=8000"]
+CMD ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000"]

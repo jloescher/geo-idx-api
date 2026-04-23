@@ -10,7 +10,7 @@ All Dockerfiles build from this project root context. Set **build context = proj
 
 | Service | Dockerfile | Base | Exposed port |
 |---------|------------|------|----------------|
-| **idx-api** | `Dockerfile.idx-api` | `phpswoole/swoole:php8.5-alpine` | `8000` |
+| **idx-api** | `Dockerfile.idx-api` | `dunglas/frankenphp:php8.5-alpine` | `8000` |
 | **idx-images** | `Dockerfile.idx-images` | `nginx:1.27-alpine` | `8080` |
 
 **idx-api image notes**

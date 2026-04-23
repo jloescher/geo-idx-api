@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\ImageProxyController;
 use App\Http\Middleware\DomainOrTokenAuth;
+use App\Http\Middleware\ProtectMonitoringDashboard;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -34,6 +35,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'domain.token' => DomainOrTokenAuth::class,
+            'monitoring.basic-auth' => ProtectMonitoringDashboard::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -1,0 +1,78 @@
+## Development image for Laravel Octane (FrankenPHP) + cloudflared.
+## Build the reusable base once:
+##   docker buildx build --target php-base -f Dockerfile.dev -t quantyra/idx-api-dev-base:php85 --platform linux/arm64,linux/amd64 .
+## Build app image from that base:
+##   docker buildx build -f Dockerfile.dev -t quantyra/idx-api-dev:latest --platform linux/arm64 .
+
+ARG BASE_IMAGE=dunglas/frankenphp:php8.5-alpine
+
+FROM ${BASE_IMAGE} AS php-base
+
+ARG TARGETARCH
+ENV COMPOSER_ALLOW_SUPERUSER=1
+
+RUN apk add --no-cache \
+    bash \
+    curl \
+    git \
+    unzip \
+    zip
+
+RUN install-php-extensions \
+    pdo_pgsql \
+    pgsql \
+    gd \
+    zip \
+    opcache \
+    xdebug \
+    && { \
+        echo "xdebug.mode=develop,debug"; \
+        echo "xdebug.start_with_request=yes"; \
+        echo "xdebug.client_host=host.docker.internal"; \
+        echo "xdebug.client_port=9003"; \
+        echo "xdebug.discover_client_host=0"; \
+        echo "xdebug.idekey=VSCODE"; \
+        echo "xdebug.log=/tmp/xdebug.log"; \
+    } > /usr/local/etc/php/conf.d/99-xdebug.ini
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+RUN case "${TARGETARCH}" in \
+        amd64) CLOUDFLARED_ARCH="amd64" ;; \
+        arm64) CLOUDFLARED_ARCH="arm64" ;; \
+        *) echo "Unsupported TARGETARCH: ${TARGETARCH}" && exit 1 ;; \
+    esac \
+    && curl -L "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${CLOUDFLARED_ARCH}" \
+        -o /usr/local/bin/cloudflared \
+    && chmod +x /usr/local/bin/cloudflared
+
+WORKDIR /var/www/html
+
+FROM php-base AS dev
+
+ENV APP_ENV=local \
+    APP_DEBUG=true \
+    LOG_CHANNEL=stderr \
+    CACHE_STORE=file \
+    SESSION_DRIVER=file \
+    QUEUE_CONNECTION=sync \
+    OCTANE_SERVER=frankenphp \
+    OCTANE_HOST=0.0.0.0 \
+    OCTANE_PORT=8000 \
+    OCTANE_WATCH=true \
+    CLOUDFLARED_TUNNEL_URL=http://127.0.0.1:8000 \
+    CLOUDFLARED_DEV_DOMAIN=idx-api.quantyralabs.cc
+
+COPY composer.json composer.lock ./
+RUN composer install --no-interaction --prefer-dist
+
+COPY . .
+
+RUN mkdir -p storage/logs storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache \
+    && chown -R www-data:www-data /var/www/html
+
+EXPOSE 8000
+
+USER www-data
+
+CMD ["/bin/sh", "-lc", "php artisan octane:start --server=${OCTANE_SERVER} --host=${OCTANE_HOST} --port=${OCTANE_PORT} $( [ \"${OCTANE_WATCH}\" = \"true\" ] && echo '--watch' ) & if [ -n \"${CLOUDFLARED_TOKEN}\" ]; then cloudflared tunnel --no-autoupdate run --token \"${CLOUDFLARED_TOKEN}\"; elif [ -n \"${CLOUDFLARED_DEV_DOMAIN}\" ]; then cloudflared tunnel --no-autoupdate --url \"${CLOUDFLARED_TUNNEL_URL}\" --hostname \"dev-${CLOUDFLARED_DEV_DOMAIN}\"; else echo 'cloudflared disabled (set CLOUDFLARED_TOKEN or CLOUDFLARED_DEV_DOMAIN)'; wait; fi"]
