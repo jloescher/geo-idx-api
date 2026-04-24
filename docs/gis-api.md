@@ -1,0 +1,124 @@
+# GIS Data Proxy API (Florida public government layers)
+
+Quantyra GeoIDX **idx-api** exposes a GIS proxy that returns **public Florida government parcel polygons** as **GeoJSON** (with a `meta` foreign member) optimized for **Leaflet**. **No MLS or Bridge RESO data** is read or merged into this endpoint—only external open-government ArcGIS services.
+
+## Revenue & compliance notes
+
+- **Lead capture / time-on-site:** Parcel overlays increase map dwell time before and after OTP, improving registration completion rates without expanding MLS data processing.
+- **Infra margin:** 15-minute PostgreSQL + Laravel cache mirrors `listings_cache` economics so government ArcGIS instability does not scale linearly with traffic.
+- **Stellar MLS PDA / IDX:** This layer uses **public** cadastral and county GIS only, consistent with enhancing IDX display with non-MLS context.
+
+## Authentication
+
+Same as other `/api/v1/*` Bridge proxy routes:
+
+- **Domain mode:** `X-Domain-Slug` header (or `domain` query / Referer host) for an **active** `domains` row.
+- **Token mode:** Bearer Sanctum token with `idx:access` or `idx:full`.
+
+**Teaser vs full access**
+
+- Domain / `idx:access` → **teaser:** simplified coordinates, limited properties, `meta.teaser=true`.
+- `idx:full` → **full:** richer attributes, `meta.context_layers` hints (URLs only; client-side fetch).
+
+## Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/gis` | Florida GIS parcels for the authenticated domain/token. |
+| GET | `/api/v1/mls/{mlsCode}/gis` | Same payload, MLS-scoped for analytics / future routing (`mlsCode` must be listed in `GIS_FLORIDA_MLS_CODES`). |
+
+## Query parameters
+
+Aligned with typical geo-web listing map queries:
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `bbox` | one-of | Comma-separated **west,south,east,north** (WGS84), e.g. Clearwater pilot: `-82.83,27.95,-82.79,27.98`. |
+| `north`, `south`, `east`, `west` | one-of | Alternative bounding box. |
+| `lat` / `latitude` + `lng` / `lon` / `longitude` + `radius` | one-of | Radius in **meters** (50–500000). Builds a square envelope. |
+| `limit` | no | Max ArcGIS features (capped by `GIS_MAX_FEATURES`, default 500). |
+| `layers` | no | Reserved comma list (default `parcels`). Full access may expose future multi-layer orchestration. |
+
+**BBox span guard:** `GIS_MAX_BBOX_SPAN_DEG` (default `0.35`) rejects abusive world queries with `422`.
+
+## Example requests
+
+**Clearwater / Pinellas (bbox)**
+
+```http
+GET /api/v1/gis?bbox=-82.83,27.95,-82.79,27.98&limit=120
+X-Domain-Slug: your-registered-domain.com
+```
+
+**Tampa / Hillsborough overlap (lat/lng + radius)**
+
+```http
+GET /api/v1/gis?lat=27.9506&lng=-82.4572&radius=800&limit=80
+X-Domain-Slug: your-registered-domain.com
+```
+
+**MLS-scoped (Stellar)**
+
+```http
+GET /api/v1/mls/stellar/gis?bbox=-82.48,27.92,-82.44,27.96&limit=50
+X-Domain-Slug: your-registered-domain.com
+```
+
+## Example response (truncated)
+
+```json
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Polygon", "coordinates": [] },
+      "properties": { "PARCELID": "…" }
+    }
+  ],
+  "meta": {
+    "source_used": "pinellas_enterprise_parcels",
+    "source_tier": "pinellas",
+    "county_hint": "pinellas",
+    "teaser": true,
+    "full_access": false,
+    "mls_code": null,
+    "layers": ["parcels"],
+    "cached": false,
+    "cache_hit": null,
+    "warnings": ["Served from Pinellas County Enterprise GIS parcels."],
+    "degraded": false,
+    "bbox": { "min_lon": -82.83, "min_lat": 27.95, "max_lon": -82.79, "max_lat": 27.98 },
+    "expires_at": "2026-04-24T01:15:00+00:00",
+    "context_layers": [],
+    "leaflet_fallback": null
+  }
+}
+```
+
+When **degraded** (`meta.degraded=true`), `features` is empty and `meta.leaflet_fallback` contains a public OSM raster tile template for Leaflet `L.tileLayer`.
+
+## Failover behavior (server-side)
+
+1. **Primary:** Florida Department of Revenue / FGIO statewide cadastral (`FeatureServer/0`). When `county_hint` is `pinellas` or `hillsborough`, a `CO_NO=` filter is applied to shrink the query.
+2. **Failover 1 — Pinellas:** Only if the bbox intersects the Pinellas envelope in `config/gis.php`.
+3. **Failover 2 — Hillsborough:** Only if the bbox intersects the Hillsborough envelope.
+4. **Graceful degrade:** Empty `FeatureCollection` + `warnings` + OSM tile fallback metadata.
+
+## Caching & durability
+
+| Layer | TTL | Notes |
+|-------|-----|-------|
+| PostgreSQL `gis_cache` | 15 min (`GIS_CACHE_TTL`, default 900s) | Keyed by deterministic `query_hash`. |
+| Laravel `Cache` store | same | In-process / Redis / database per `CACHE_STORE`. |
+| Filesystem `gis_backup` disk | snapshot per hash | Path `GIS_BACKUP_PATH` (default `storage/app/gis_geojson_backup`). Writes may be **queued** (`GIS_QUEUE_BACKUP_WRITES=true`) on the `GIS_QUEUE` connection. |
+
+**HTTP client:** `GIS_HTTP_TIMEOUT` / `GIS_HTTP_CONNECT_TIMEOUT` protect Octane workers.
+
+## Chaining with `/listings`
+
+Geo-web can call `/api/v1/listings` then `/api/v1/gis` with the **same map bbox** (or derived from `lat`/`lng`/`radius`) so markers and parcels stay aligned—no MLS data crosses into GIS responses.
+
+## Configuration reference
+
+See `config/gis.php` for source URLs, county bounding boxes, teaser limits, and Florida MLS allow-list.

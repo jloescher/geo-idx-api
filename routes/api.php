@@ -3,6 +3,7 @@
 use App\Ghl\Http\Controllers\GhlApiController;
 use App\Ghl\Http\Middleware\AuthenticateGhlLocation;
 use App\Http\Controllers\Api\BridgeProxyController;
+use App\Http\Controllers\GisProxyController;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -42,6 +43,9 @@ Route::prefix('leadconnector')->middleware([AuthenticateGhlLocation::class])->gr
 });
 
 Route::prefix('v1')->middleware(['domain.token'])->group(function () {
+    Route::get('/gis', [GisProxyController::class, 'show']);
+    Route::get('/mls/{mlsCode}/gis', [GisProxyController::class, 'showForMls'])->where('mlsCode', '[A-Za-z0-9_\-]+');
+
     Route::get('/listings', [BridgeProxyController::class, 'listings']);
     Route::get('/listings/{listingId}', [BridgeProxyController::class, 'listing'])->where('listingId', '[^/]+');
 

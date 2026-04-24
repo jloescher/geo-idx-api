@@ -58,6 +58,18 @@ return [
             'report' => false,
         ],
 
+        /*
+         * NVMe-friendly raw GeoJSON backup for GIS proxy (see config/gis.php).
+         * Revenue impact: filesystem shadow copies survive brief DB hiccups so maps
+         * keep rendering during maintenance windows (fewer abandoned sessions).
+         */
+        'gis_backup' => [
+            'driver' => 'local',
+            'root' => env('GIS_BACKUP_PATH', storage_path('app/gis_geojson_backup')),
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
