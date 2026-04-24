@@ -86,10 +86,12 @@ X-Domain-Slug: your-registered-domain.com
     "layers": ["parcels"],
     "cached": false,
     "cache_hit": null,
+    "cache_generation": 0,
+    "blob_valid_until": "2026-05-24T00:00:00+00:00",
     "warnings": ["Served from Pinellas County Enterprise GIS parcels."],
     "degraded": false,
     "bbox": { "min_lon": -82.83, "min_lat": 27.95, "max_lon": -82.79, "max_lat": 27.98 },
-    "expires_at": "2026-04-24T01:15:00+00:00",
+    "expires_at": "2026-05-24T00:00:00+00:00",
     "context_layers": [],
     "leaflet_fallback": null
   }
@@ -105,15 +107,25 @@ When **degraded** (`meta.degraded=true`), `features` is empty and `meta.leaflet_
 3. **Failover 2 — Hillsborough:** Only if the bbox intersects the Hillsborough envelope.
 4. **Graceful degrade:** Empty `FeatureCollection` + `warnings` + OSM tile fallback metadata.
 
-## Caching & durability
+## Caching & durability (layered)
 
-| Layer | TTL | Notes |
-|-------|-----|-------|
-| PostgreSQL `gis_cache` | 15 min (`GIS_CACHE_TTL`, default 900s) | Keyed by deterministic `query_hash`. |
-| Laravel `Cache` store | same | In-process / Redis / database per `CACHE_STORE`. |
-| Filesystem `gis_backup` disk | snapshot per hash | Path `GIS_BACKUP_PATH` (default `storage/app/gis_geojson_backup`). Writes may be **queued** (`GIS_QUEUE_BACKUP_WRITES=true`) on the `GIS_QUEUE` connection. |
+| Layer | Policy | Notes |
+|-------|--------|-------|
+| **Laravel `Cache` (edge)** | `GIS_EDGE_CACHE_TTL` (seconds, default 900; falls back to legacy `GIS_CACHE_TTL`) | Full JSON payload keyed by `query_hash`. First read path for hot repeat requests. |
+| **PostgreSQL `gis_cache` (origin)** | Per-source **max age in days** (`GIS_ORIGIN_MAX_DAYS_PRIMARY` default 90 for statewide, `GIS_ORIGIN_MAX_DAYS_COUNTY` default 30 for county layers, degraded 1 day) | `meta.cache_generation` + column `source_generation` must match `gis_source_states.generation` for that `source_used`. |
+| **`gis_source_states`** | Weekly scheduled probe | `php artisan gis:probe-sources` (or `--queued`) fetches each layer `?f=json`, fingerprints `currentVersion` + `editingInfo` + `serviceItemId`; fingerprint change **increments `generation`**, invalidating edge + origin rows for that source. |
+| **Filesystem `gis_backup`** | Snapshot per `query_hash` | `GIS_BACKUP_PATH`; optional `GIS_QUEUE_BACKUP_WRITES` on `GIS_QUEUE`. |
 
-**HTTP client:** `GIS_HTTP_TIMEOUT` / `GIS_HTTP_CONNECT_TIMEOUT` protect Octane workers.
+**Operations**
+
+- `php artisan gis:probe-sources` — run metadata fingerprints now (sync).
+- `php artisan gis:probe-sources --queued` — dispatch `RefreshGisSourceMetadataJob` on the GIS queue.
+- `php artisan gis:clear-cache --source=pinellas_enterprise_parcels` — delete origin rows for one source and bump its generation.
+- `php artisan gis:clear-cache --all` — truncate `gis_cache` and bump **all** source generations.
+
+**Scheduler:** `routes/console.php` dispatches `RefreshGisSourceMetadataJob` **weekly** (Monday 06:30 app timezone). Requires `schedule:run` / `schedule:work` and a **queue worker** when using `--queued` probes or queued backup writes.
+
+**HTTP client:** `GIS_HTTP_TIMEOUT` / `GIS_HTTP_CONNECT_TIMEOUT` for parcel queries; `GIS_METADATA_TIMEOUT` for cheap layer metadata probes.
 
 ## Chaining with `/listings`
 

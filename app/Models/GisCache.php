@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
     'county',
     'expires_at',
     'source_used',
+    'source_generation',
 ])]
 class GisCache extends Model
 {

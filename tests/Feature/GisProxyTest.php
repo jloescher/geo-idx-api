@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\PersistGisGeoJsonBackupJob;
 use App\Models\Domain;
+use App\Models\GisSourceState;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
@@ -48,7 +49,7 @@ class GisProxyTest extends TestCase
         parent::setUp();
 
         config([
-            'gis.cache_ttl_seconds' => 900,
+            'gis.edge_cache_ttl_seconds' => 900,
             'gis.http_timeout_seconds' => 5,
             'gis.http_connect_timeout_seconds' => 2,
             'gis.max_bbox_span_degrees' => 2.0,
@@ -86,7 +87,7 @@ class GisProxyTest extends TestCase
         Http::assertSentCount(2);
     }
 
-    public function test_gis_second_request_uses_postgres_cache_without_new_http(): void
+    public function test_gis_second_request_hits_edge_cache_without_new_http(): void
     {
         Http::fake([
             'services9.arcgis.com/*' => Http::response('bad gateway', 502),
@@ -100,9 +101,30 @@ class GisProxyTest extends TestCase
 
         $this->getJson('/api/v1/gis?bbox='.$bbox, [
             'X-Domain-Slug' => 'searchtampabayhouses.com',
-        ])->assertOk()->assertJsonPath('meta.cache_hit', 'postgres');
+        ])->assertOk()->assertJsonPath('meta.cache_hit', 'laravel_cache');
 
         Http::assertSentCount(2);
+    }
+
+    public function test_generation_bump_forces_refetch_even_when_edge_warm(): void
+    {
+        Http::fake([
+            'services9.arcgis.com/*' => Http::response('bad gateway', 502),
+            'egis.pinellas.gov/*' => Http::response(self::pinellasSampleFc(), 200, ['Content-Type' => 'application/json']),
+        ]);
+
+        $bbox = '-82.83,27.95,-82.79,27.98';
+        $this->getJson('/api/v1/gis?bbox='.$bbox, [
+            'X-Domain-Slug' => 'searchtampabayhouses.com',
+        ])->assertOk();
+
+        GisSourceState::query()->where('source_key', 'pinellas_enterprise_parcels')->increment('generation');
+
+        $this->getJson('/api/v1/gis?bbox='.$bbox, [
+            'X-Domain-Slug' => 'searchtampabayhouses.com',
+        ])->assertOk();
+
+        Http::assertSentCount(4);
     }
 
     public function test_gis_degrades_when_no_sources_succeed(): void

@@ -4,15 +4,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | GIS proxy TTL & transport
+    | Layered cache (edge vs origin)
     |--------------------------------------------------------------------------
     |
-    | Revenue impact: 15-minute parity with listings_cache keeps GIS overlay
-    | traffic off fragile government hosts while map dwell time rises (more
-    | registration completions per Bridge session).
+    | Revenue impact: hot Laravel cache absorbs repeat pans; long-lived Postgres
+    | rows amortize ArcGIS cost; metadata probes + generation bumps limit staleness
+    | without unreliable per-bbox versioning from upstream hosts.
+    |
+    | - edge_cache_ttl_seconds: Laravel Cache::put lifetime for full JSON payloads.
+    | - origin_max_age_days_*: Postgres gis_cache.expires_at absolute ceiling per source.
+    | - Scheduled gis:probe-sources compares cheap layer ?f=json fingerprints.
     |
     */
-    'cache_ttl_seconds' => (int) env('GIS_CACHE_TTL', 900),
+    'edge_cache_ttl_seconds' => (int) env('GIS_EDGE_CACHE_TTL', env('GIS_CACHE_TTL', 900)),
+
+    'default_origin_max_age_days' => (int) env('GIS_ORIGIN_MAX_AGE_DAYS_DEFAULT', 30),
+
+    'origin_max_age_days_by_source' => [
+        'florida_statewide_cadastral' => (int) env('GIS_ORIGIN_MAX_DAYS_PRIMARY', 90),
+        'pinellas_enterprise_parcels' => (int) env('GIS_ORIGIN_MAX_DAYS_COUNTY', 30),
+        'hillsborough_hc_parcels' => (int) env('GIS_ORIGIN_MAX_DAYS_COUNTY', 30),
+        'degraded_osm_hint' => (int) env('GIS_ORIGIN_MAX_DAYS_DEGRADED', 1),
+    ],
+
+    'metadata_timeout_seconds' => (int) env('GIS_METADATA_TIMEOUT', 12),
+
+    'metadata_connect_timeout_seconds' => (int) env('GIS_METADATA_CONNECT_TIMEOUT', 3),
 
     'http_timeout_seconds' => (int) env('GIS_HTTP_TIMEOUT', 18),
 

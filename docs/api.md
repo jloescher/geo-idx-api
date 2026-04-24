@@ -14,5 +14,6 @@ Core resources: listings, agents, offices, RESO Property, members, public parcel
 
 - **Routes:** `GET /api/v1/gis`, `GET /api/v1/mls/{mlsCode}/gis`
 - **Docs:** [`docs/gis-api.md`](gis-api.md) (OpenAPI-style parameters, examples for Pinellas / Tampa bbox, failover, caching, revenue notes).
+- **Caching:** Short **Laravel edge** TTL plus long-lived **Postgres origin** rows (per-source max age in days), invalidated when weekly metadata probes bump `gis_source_states.generation` or when you run `gis:clear-cache`.
 
 Use this alongside `/api/v1/listings` with the same viewport parameters for a single map flow.

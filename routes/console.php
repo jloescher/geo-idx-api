@@ -1,6 +1,7 @@
 <?php
 
 use App\Jobs\RefreshDomainListingsCacheJob;
+use App\Jobs\RefreshGisSourceMetadataJob;
 use App\Models\Domain;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -17,3 +18,7 @@ Schedule::call(function (): void {
         RefreshDomainListingsCacheJob::dispatch($slug);
     });
 })->everyFifteenMinutes()->name('bridge-listings-cache-refresh')->withoutOverlapping();
+
+Schedule::call(function (): void {
+    RefreshGisSourceMetadataJob::dispatch()->onQueue((string) config('gis.queue'));
+})->weeklyOn(1, '6:30')->name('gis-source-metadata-probe')->withoutOverlapping();

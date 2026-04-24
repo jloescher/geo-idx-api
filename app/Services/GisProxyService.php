@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Jobs\PersistGisGeoJsonBackupJob;
 use App\Models\GisCache;
+use App\Models\GisSourceState;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -34,36 +36,40 @@ class GisProxyService
         $limit = $this->resolveLimit($request, $fullAccess);
         $hash = $this->queryHash($envelope, $limit, $fullAccess, $mlsCode, $layers);
 
-        $ttl = (int) config('gis.cache_ttl_seconds');
         $cacheKey = 'gis.response.'.$hash;
+        $edgeTtlSeconds = (int) config('gis.edge_cache_ttl_seconds');
+
+        /** @var array<string, mixed>|null $warm */
+        $warm = Cache::get($cacheKey);
+        if (is_array($warm) && $this->isEdgePayloadValid($warm)) {
+            $warm['meta']['cached'] = true;
+            $warm['meta']['cache_hit'] = 'laravel_cache';
+
+            return $warm;
+        }
 
         /** @var GisCache|null $row */
         $row = GisCache::query()->where('query_hash', $hash)->first();
-        if ($row instanceof GisCache && $row->expires_at->isFuture()) {
+        if ($row instanceof GisCache && $this->isPostgresRowValid($row)) {
             $decoded = json_decode((string) $row->geojson, true);
             if (is_array($decoded)) {
+                $this->mergeOriginMetaIntoPayload($decoded, $row);
                 $decoded['meta']['cached'] = true;
                 $decoded['meta']['cache_hit'] = 'postgres';
                 $decoded['meta']['expires_at'] = $row->expires_at->toIso8601String();
+                Cache::put($cacheKey, $decoded, now()->addSeconds($edgeTtlSeconds));
 
                 return $decoded;
             }
         }
 
-        /** @var array<string, mixed>|null $warm */
-        $warm = Cache::get($cacheKey);
-        if (is_array($warm)) {
-            $warm['meta']['cached'] = true;
-            $warm['meta']['cache_hit'] = 'laravel_cache';
-            if ($row instanceof GisCache) {
-                $warm['meta']['expires_at'] = $row->expires_at?->toIso8601String();
-            }
-
-            return $warm;
-        }
-
         $payload = $this->materializeFromSources($envelope, $limit, $fullAccess, $countyHint, $mlsCode, $layers);
-        $expiresAt = now()->addSeconds($ttl);
+        $sourceKey = (string) ($payload['meta']['source_used'] ?? 'degraded_osm_hint');
+        $generation = $this->currentGeneration($sourceKey);
+        $expiresAt = now()->addDays($this->originMaxAgeDaysFor($sourceKey));
+
+        $payload['meta']['cache_generation'] = $generation;
+        $payload['meta']['blob_valid_until'] = $expiresAt->toIso8601String();
         $payload['meta']['expires_at'] = $expiresAt->toIso8601String();
 
         $encoded = json_encode($payload, JSON_THROW_ON_ERROR);
@@ -74,14 +80,99 @@ class GisProxyService
                 'geojson' => $encoded,
                 'county' => $countyHint,
                 'expires_at' => $expiresAt,
-                'source_used' => (string) $payload['meta']['source_used'],
+                'source_used' => $sourceKey,
+                'source_generation' => $generation,
             ]
         );
 
-        Cache::put($cacheKey, $payload, $expiresAt);
+        Cache::put($cacheKey, $payload, now()->addSeconds($edgeTtlSeconds));
         $this->persistFilesystemBackup($hash, $encoded);
 
         return $payload;
+    }
+
+    /**
+     * Revenue impact: edge hits avoid Postgres round trips during dense map drags,
+     * keeping p95 latency inside conversion-sensitive UX windows.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function isEdgePayloadValid(array $payload): bool
+    {
+        $meta = $payload['meta'] ?? null;
+        if (! is_array($meta)) {
+            return false;
+        }
+        $key = (string) ($meta['source_used'] ?? '');
+        if ($key === '') {
+            return false;
+        }
+        $untilRaw = $meta['blob_valid_until'] ?? null;
+        if (! is_string($untilRaw)) {
+            return false;
+        }
+        try {
+            $until = Carbon::parse($untilRaw);
+        } catch (\Throwable) {
+            return false;
+        }
+        if ($until->isPast()) {
+            return false;
+        }
+        if ($key === 'degraded_osm_hint') {
+            return true;
+        }
+        $gen = (int) ($meta['cache_generation'] ?? -1);
+        if ($gen < 0) {
+            return false;
+        }
+
+        return $gen === $this->currentGeneration($key);
+    }
+
+    private function isPostgresRowValid(GisCache $row): bool
+    {
+        if (! $row->expires_at->isFuture()) {
+            return false;
+        }
+        $key = (string) $row->source_used;
+        if ($key === 'degraded_osm_hint') {
+            return true;
+        }
+
+        return (int) $row->source_generation === $this->currentGeneration($key);
+    }
+
+    /**
+     * @param  array<string, mixed>  $decoded
+     */
+    private function mergeOriginMetaIntoPayload(array &$decoded, GisCache $row): void
+    {
+        if (! isset($decoded['meta']) || ! is_array($decoded['meta'])) {
+            $decoded['meta'] = [];
+        }
+        $decoded['meta']['cache_generation'] = (int) $row->source_generation;
+        $decoded['meta']['blob_valid_until'] = $row->expires_at->toIso8601String();
+    }
+
+    private function currentGeneration(string $sourceKey): int
+    {
+        if ($sourceKey === 'degraded_osm_hint') {
+            return 0;
+        }
+
+        return (int) GisSourceState::query()->where('source_key', $sourceKey)->value('generation');
+    }
+
+    private function originMaxAgeDaysFor(string $sourceKey): int
+    {
+        /** @var array<string, int> $map */
+        $map = (array) config('gis.origin_max_age_days_by_source');
+        if (isset($map[$sourceKey])) {
+            return max(1, (int) $map[$sourceKey]);
+        }
+
+        return max(1, (int) config('gis.default_origin_max_age_days'));
     }
 
     /**
