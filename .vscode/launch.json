@@ -1,0 +1,47 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Docker Dev: Run (Watch)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "${workspaceFolder}/scripts/docker-dev.sh up-watch"
+    },
+    {
+      "name": "Docker Dev: Run",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "${workspaceFolder}/scripts/docker-dev.sh up"
+    },
+    {
+      "name": "Docker Dev: Stop",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "${workspaceFolder}/scripts/docker-dev.sh down"
+    },
+    {
+      "name": "Stripe Dev: Listen",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "${workspaceFolder}/scripts/stripe-dev.sh listen"
+    },
+    {
+      "name": "Stripe Dev: Listen + Sync Webhook Secret",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "${workspaceFolder}/scripts/stripe-dev.sh listen-sync-secret"
+    },
+    {
+      "name": "Stripe Dev: Sync Webhook Secret",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "${workspaceFolder}/scripts/stripe-dev.sh sync-webhook-secret"
+    },
+    {
+      "name": "Stripe Dev: Trigger Checkout Completed",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "${workspaceFolder}/scripts/stripe-dev.sh trigger-checkout-completed"
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Docker Dev: Up",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/docker-dev.sh up",
+      "problemMatcher": [],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Docker Dev: Up + Watch",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/docker-dev.sh up-watch",
+      "problemMatcher": [],
+      "isBackground": true,
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Docker Dev: Down",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/docker-dev.sh down",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Docker Dev: Logs",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/docker-dev.sh logs",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Docker Dev: Rebuild (No Cache)",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/docker-dev.sh rebuild",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Docker Dev: Status",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/docker-dev.sh ps",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Stripe Dev: Listen",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/stripe-dev.sh listen",
+      "problemMatcher": [],
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Stripe Dev: Trigger Checkout Completed",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/stripe-dev.sh trigger-checkout-completed",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    }
+  ]
+}
