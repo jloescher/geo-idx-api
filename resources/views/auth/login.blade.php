@@ -3,38 +3,26 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Subscriber Login</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 2rem; background: #f1f5f9; color: #0f172a; }
-        .wrapper { max-width: 480px; margin: 2rem auto; background: #fff; border-radius: 8px; padding: 1.5rem; }
-        label { display: block; margin-top: 1rem; font-weight: 600; }
-        input[type="email"], input[type="password"] { width: 100%; padding: .6rem; margin-top: .4rem; border: 1px solid #cbd5e1; border-radius: 6px; }
-        button { margin-top: 1rem; background: #0284c7; color: #fff; border: none; padding: .7rem 1rem; border-radius: 6px; cursor: pointer; }
-        .error { color: #dc2626; margin-top: .75rem; }
-    </style>
+    <title>Subscriber login | Quantyra GeoIDX</title>
+    <meta name="robots" content="noindex, nofollow">
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body>
-<div class="wrapper">
-    <h1>Subscriber Login</h1>
-    <form method="POST" action="{{ route('login') }}">
-        @csrf
-        <label for="email">Email</label>
-        <input id="email" type="email" name="email" value="{{ old('email') }}" required autocomplete="email">
+<body class="min-h-screen bg-slate-950 text-slate-100 antialiased">
+    <div class="relative min-h-screen overflow-hidden">
+        <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.22),transparent_50%)]"></div>
 
-        <label for="password">Password</label>
-        <input id="password" type="password" name="password" required autocomplete="current-password">
+        <header class="relative z-10 border-b border-white/10 bg-slate-950/80 backdrop-blur">
+            <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+                <a href="/" class="text-sm font-semibold text-slate-200 hover:text-white">← Back to home</a>
+                <span class="text-sm font-semibold tracking-tight text-slate-100">Quantyra GeoIDX</span>
+            </div>
+        </header>
 
-        <label style="font-weight: 400; margin-top: .8rem;">
-            <input type="checkbox" name="remember" value="1">
-            Remember me
-        </label>
-
-        <button type="submit">Login</button>
-    </form>
-
-    @if ($errors->any())
-        <div class="error">{{ $errors->first() }}</div>
-    @endif
-</div>
+        <main class="relative z-10 mx-auto flex min-h-[calc(100vh-4.5rem)] max-w-6xl items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
+            <div class="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900/90 p-8 shadow-2xl backdrop-blur">
+                <x-auth.login-form :autofocus-email="true" :show-intro="true" />
+            </div>
+        </main>
+    </div>
 </body>
 </html>

@@ -6,7 +6,7 @@
     <title>Quantyra GeoIDX | AI-Powered IDX Growth Engine</title>
     <meta
         name="description"
-        content="Quantyra GeoIDX deploys AI-optimized real estate websites for 58 geo-markets with compliance-safe lead capture and exclusive verified lead delivery."
+        content="Quantyra GeoIDX gives listing agents boundary-aware IDX, county and city geographic context, and verified lead capture—built for the markets you farm."
     >
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @livewireStyles

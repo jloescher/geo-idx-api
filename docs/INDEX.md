@@ -15,6 +15,7 @@ Central index for all documentation in this project. Implementation code lives i
 | [GHL deployment & operations](ghl-deployment-and-operations.md) | Docker, Dokploy, migrations, queues, scheduling. |
 | [Docker builds](../README.md) | Production Dockerfiles in this project (`Dockerfile.idx-api`, `Dockerfile.idx-images`) with project-root build context. |
 | [GHL environment variables](ghl-environment-variables.md) | All `GHL_*`, `IDX_*`, and related env vars for idx-api and compose. |
+| [Stripe & Laravel Cashier](stripe-laravel-cashier.md) | `STRIPE_*`, `CASHIER_*`, webhook URLs, Dashboard vs CLI signing secrets, local forwarding. |
 | [GHL database schema](ghl-database-schema.md) | PostgreSQL tables created for GHL, leads, audit, widgets. |
 | [GHL API & routes reference](ghl-api-routes-reference.md) | HTTP routes, auth, widgets, curl examples. |
 
@@ -43,7 +44,7 @@ Central index for all documentation in this project. Implementation code lives i
 
 | Path | Role |
 |------|------|
-| `app/`, `routes/`, `config/`, `database/` | Laravel 13 + Octane: **secured Bridge MLS proxy** (`/api/v1/*`, images), **GHL Marketplace app**, widgets, and webhooks. |
+| `app/`, `routes/`, `config/`, `database/` | Laravel 13 + Octane: **secured Bridge MLS proxy** (`/api/v1/*`, images), **GHL Marketplace app**, widgets, webhooks, and **Stripe / Cashier** billing (when enabled). |
 | `docs/` | Product, integration, deployment, and operations documentation. |
 | `tests/` | Feature and unit test coverage for Bridge and GHL flows. |
 | `Dockerfile.idx-api`, `Dockerfile.idx-images` | Production container images for API and image edge. |

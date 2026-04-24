@@ -19,6 +19,7 @@ class DomainRoutingTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('Quantyra GeoIDX');
+        $response->assertSee('Subscriber login');
     }
 
     public function test_api_domain_root_redirects_to_matching_sales_host(): void

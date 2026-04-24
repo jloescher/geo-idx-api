@@ -97,6 +97,12 @@ The `idx-api` service passes through the variables above; set them in the host `
 
 ---
 
+## Stripe / Laravel Cashier
+
+`STRIPE_KEY`, `STRIPE_SECRET`, `STRIPE_WEBHOOK_SECRET`, `CASHIER_CURRENCY`, `CASHIER_CURRENCY_LOCALE`, webhook URL (`/stripe/webhook` by default), and Stripe CLI forwarding are documented in **[stripe-laravel-cashier.md](stripe-laravel-cashier.md)**.
+
+---
+
 ## Files to keep in sync
 
 | File | Role |
