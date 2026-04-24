@@ -11,6 +11,10 @@ use Laravel\Cashier\Subscription;
 
 class DashboardController extends Controller
 {
+    public function __construct(
+        private readonly SubscriptionCatalog $catalog,
+    ) {}
+
     /**
      * Revenue Impact: Dashboard clarity improves activation and lowers churn by
      * showing exactly what subscribers can use next (widgets vs API).
@@ -24,14 +28,9 @@ class DashboardController extends Controller
         $subscription?->loadMissing('items');
 
         $priceId = $subscription?->items->first()?->stripe_price;
-        $catalogPlan = collect(config('billing.plans', []))
-            ->first(fn (array $plan): bool => in_array($priceId, [
-                $plan['stripe_price_monthly'] ?? null,
-                $plan['stripe_price_yearly'] ?? null,
-            ], true));
-
-        $planKey = is_array($catalogPlan) ? (string) ($catalogPlan['key'] ?? '') : '';
-        $hasApiAccess = in_array($planKey, ['ultra', 'mega'], true);
+        $planKey = $user !== null ? ($this->catalog->planKeyForUser($user) ?? '') : '';
+        $catalogPlan = $planKey !== '' ? ($this->catalog->plans()[$planKey] ?? null) : null;
+        $hasApiAccess = $user !== null && $this->catalog->userMayCreateIdxProxyApiTokens($user);
         $hasWidgetAccess = in_array($planKey, ['pro', 'smart', 'ultra', 'mega'], true);
         $apiRequestLimit = match ($planKey) {
             'ultra' => 2_000_000,
@@ -71,7 +70,7 @@ class DashboardController extends Controller
 
         return view('dashboard.index', [
             'subscription' => $subscription,
-            'plan' => $catalogPlan,
+            'plan' => is_array($catalogPlan) ? $catalogPlan : [],
             'planKey' => $planKey,
             'priceId' => $priceId,
             'hasApiAccess' => $hasApiAccess,

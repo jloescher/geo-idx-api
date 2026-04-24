@@ -92,6 +92,23 @@ The domain must exist and **`is_active = true`**. Domain-authenticated callers *
 
 Invalid or ability-missing tokens → **403**.
 
+### Subscriber dashboard API keys (Ultra and Mega)
+
+Subscribers on **Ultra** or **Mega** (active, valid default Cashier subscription matching catalog price IDs in `config/billing.php`) can create **personal access tokens** from the **GeoIDX dashboard** (`POST /dashboard/api-tokens`, “Generate API token”). Those tokens are meant for **`Authorization: Bearer …`** calls to **`/api/v1/*`** (same middleware as registered domains).
+
+| Plan | Token abilities | Bridge / GIS behavior |
+|------|-----------------|------------------------|
+| **Ultra** | `idx:access` | Same teaser rules as **domain** identification (e.g. list-shaped responses capped for non–full access). |
+| **Mega** | `idx:full` | Full payloads where the proxy applies `idx:full` (no list teaser cap in the proxy layer). |
+
+**Pro** and **Smart** do not receive this UI gate: they cannot create these keys from the dashboard (plan is widget-focused; upgrade path remains Ultra/Mega for REST API keys).
+
+**Not interchangeable with `POST /api/auth/token`:** the JSON login token endpoint issues Sanctum tokens with **`idx:read`** and **`idx:search`** for other flows. Those abilities do **not** satisfy `DomainOrTokenAuth` for `/api/v1` Bridge or GIS JSON. For server-side full access outside the dashboard, use the internal geo-web token pattern (`idx:full`): run **`php artisan idx-api:issue-geo-web-token`** (see `IssueGeoWebInternalTokenCommand`) or seed once via **`GeoWebInternalTokenSeeder`**.
+
+After generation, the dashboard shows the raw token **once**; store it securely. Revocation: `DELETE /dashboard/api-tokens/{token}` from the dashboard UI.
+
+---
+
 ### Teaser behavior
 
 - Applies to successful JSON responses where the decoder finds a top-level list under **`value`**, **`bundle`**, **`d`**, **`listings`**, or a top-level JSON **array**.

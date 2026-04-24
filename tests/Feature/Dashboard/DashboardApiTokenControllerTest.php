@@ -7,6 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use Laravel\Cashier\Subscription;
 use Laravel\Cashier\SubscriptionItem;
+use Laravel\Sanctum\PersonalAccessToken;
 use Tests\TestCase;
 
 class DashboardApiTokenControllerTest extends TestCase
@@ -90,5 +91,29 @@ class DashboardApiTokenControllerTest extends TestCase
             'tokenable_id' => $user->id,
             'name' => 'Ultra test token',
         ]);
+        $stored = PersonalAccessToken::query()->where('name', 'Ultra test token')->firstOrFail();
+        $this->assertSame(['idx:access'], $stored->abilities);
+    }
+
+    public function test_mega_plan_user_receives_idx_full_token(): void
+    {
+        config([
+            'billing.plans.ultra.stripe_price_monthly' => 'price_ultra_monthly',
+            'billing.plans.mega.stripe_price_monthly' => 'price_mega_monthly',
+            'billing.plans.mega.stripe_price_yearly' => 'price_mega_yearly',
+        ]);
+
+        /** @var User $user */
+        $user = User::factory()->createOne();
+        $this->attachSubscription($user, 'price_mega_monthly');
+        $this->actingAs($user);
+
+        $response = $this->platformRequest('POST', '/dashboard/api-tokens', [
+            'token_name' => 'Mega test token',
+        ]);
+
+        $response->assertRedirect('/dashboard');
+        $stored = PersonalAccessToken::query()->where('name', 'Mega test token')->firstOrFail();
+        $this->assertSame(['idx:full'], $stored->abilities);
     }
 }

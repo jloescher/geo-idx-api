@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Http\Controllers\DashboardController;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Tests\TestCase;
@@ -12,13 +13,8 @@ class DashboardControllerTest extends TestCase
     public function test_dashboard_controller_returns_expected_view_data_without_subscription(): void
     {
         $request = Request::create('/dashboard', 'GET');
-        $request->setUserResolver(static fn (): object => new class
-        {
-            public function subscription(string $name): mixed
-            {
-                return null;
-            }
-        });
+        $user = User::factory()->make();
+        $request->setUserResolver(static fn (): User => $user);
 
         $response = app(DashboardController::class)->__invoke($request);
 

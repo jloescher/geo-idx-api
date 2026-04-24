@@ -76,8 +76,9 @@
     @endif
     @if (session('dashboard_new_api_token'))
         <div class="mt-6 rounded-xl border border-amber-400/40 bg-amber-900/20 px-4 py-3 text-sm text-amber-100">
-            <p class="font-semibold">New API token (shown once):</p>
-            <p class="mt-1 break-all font-mono text-xs">{{ session('dashboard_new_api_token') }}</p>
+            <p class="font-semibold">New API token (shown once)</p>
+            <p class="mt-2 text-xs text-amber-50/90">Send as <span class="font-mono">Authorization: Bearer …</span> to <span class="font-mono">{{ $apiPublicUrl }}/api/v1/*</span>. Ultra keys use teaser payloads (<span class="font-mono">idx:access</span>); Mega keys use full payloads (<span class="font-mono">idx:full</span>).</p>
+            <p class="mt-2 break-all font-mono text-xs">{{ session('dashboard_new_api_token') }}</p>
         </div>
     @endif
 

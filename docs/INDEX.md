@@ -8,14 +8,15 @@ Central index for all documentation in this project. Implementation code lives i
 
 | Document | Description |
 |----------|-------------|
+| [idx-api HTTP API overview](api.md) | `/api/v1` and GIS entrypoints; how dashboard Sanctum keys relate to `domain.token`; link to Stripe test user seeding. |
 | [Bridge / MLS API](bridge-api-documentation.md) | Bridge Data Output API reference (Stellar MLS proxy usage). |
-| [IDX-API Bridge proxy](idx-api-bridge-proxy.md) | Secured Bridge proxy: `/api/v1/*`, `?domain=`, auth, listings cache (15m), JSON photo URL rewrite to **idx-images**, `/images/*` disk + immutable CDN headers, audit, env, Docker. |
+| [IDX-API Bridge proxy](idx-api-bridge-proxy.md) | Secured Bridge proxy: `/api/v1/*`, `?domain=`, auth (domains + Sanctum **`idx:access`/`idx:full`**, Ultra/Mega **dashboard API keys**), listings cache (15m), JSON photo URL rewrite to **idx-images**, `/images/*` disk + immutable CDN headers, audit, env, Docker. |
 | [GoHighLevel OAuth (vendor)](gohighlevel-oauth-documentation.md) | Curated GHL OAuth 2.0, token refresh, scopes, webhooks (reference from marketplace docs). |
 | [GHL Marketplace integration](ghl-marketplace-integration.md) | Quantyra implementation in **idx-api**: OAuth, onboarding, widgets, API routes, jobs. |
 | [GHL deployment & operations](ghl-deployment-and-operations.md) | Docker, Dokploy, migrations, queues, scheduling. |
 | [Docker builds](../README.md) | Production Dockerfiles in this project (`Dockerfile.idx-api`, `Dockerfile.idx-images`) with project-root build context. |
 | [GHL environment variables](ghl-environment-variables.md) | All `GHL_*`, `IDX_*`, and related env vars for idx-api and compose. |
-| [Stripe & Laravel Cashier](stripe-laravel-cashier.md) | `STRIPE_*`, `CASHIER_*`, webhook URLs, Dashboard vs CLI signing secrets, local forwarding. |
+| [Stripe & Laravel Cashier](stripe-laravel-cashier.md) | `STRIPE_*`, `CASHIER_*`, webhook URLs, Dashboard vs CLI signing secrets, local forwarding, **`php artisan billing:seed-test-users`** for Pro/Smart/Ultra/Mega Stripe test subscribers. |
 | [GHL database schema](ghl-database-schema.md) | PostgreSQL tables created for GHL, leads, audit, widgets. |
 | [GHL API & routes reference](ghl-api-routes-reference.md) | HTTP routes, auth, widgets, curl examples. |
 
