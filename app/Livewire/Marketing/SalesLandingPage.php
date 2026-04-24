@@ -2,12 +2,20 @@
 
 namespace App\Livewire\Marketing;
 
+use App\Billing\SubscriptionCatalog;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
 
 class SalesLandingPage extends Component
 {
     public bool $showLoginModal = false;
+
+    public string $billingInterval = 'monthly';
+
+    /** @var array<string, array<string, mixed>> */
+    public array $plans = [];
+
+    public int $teaserLeads = 0;
 
     /**
      * Illustrative hyper-local positioning (no live MLS or map data on this page).
@@ -44,6 +52,19 @@ class SalesLandingPage extends Component
             'answer' => 'Boundary-aware geography helps buyers search the way they think—by town, school area, and county—while keeping your brand centered on the markets you actually serve. On authorized IDX domains, maps and search can respect those geographic frames for clearer, more trustworthy discovery.',
         ],
     ];
+
+    public function mount(SubscriptionCatalog $catalog): void
+    {
+        $this->plans = $catalog->plans();
+        $this->teaserLeads = $catalog->teaserLeadsThisMonth();
+    }
+
+    public function setBillingInterval(string $interval): void
+    {
+        if (in_array($interval, ['monthly', 'annual'], true)) {
+            $this->billingInterval = $interval;
+        }
+    }
 
     public function openLoginModal(): void
     {

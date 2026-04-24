@@ -3,10 +3,10 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Quantyra GeoIDX | AI-Powered IDX Growth Engine</title>
+    <title>Quantyra Labs IDX API | Official Stellar MLS Consultant — $0 Data License</title>
     <meta
         name="description"
-        content="Quantyra GeoIDX gives listing agents boundary-aware IDX, county and city geographic context, and verified lead capture—built for the markets you farm."
+        content="Quantyra Labs IDX API: Official Stellar MLS Consultant, $0 data license fee, Laravel Octane + FrankenPHP MLS proxy, JS embed widgets, LeadConnector app, REST API, and hard OTP lead gating."
     >
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @livewireStyles

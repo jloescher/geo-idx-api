@@ -34,5 +34,8 @@
         <env name="NIGHTWATCH_ENABLED" value="false"/>
         <env name="BRIDGE_API_KEY" value="test-bridge-key"/>
         <env name="BRIDGE_HOST" value="https://bridge.test"/>
+        <env name="IDX_PLATFORM_HOSTS" value="localhost,127.0.0.1"/>
+        <env name="STRIPE_KEY" value="pk_test_placeholder"/>
+        <env name="STRIPE_SECRET" value="sk_test_placeholder"/>
     </php>
 </phpunit>

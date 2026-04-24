@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Billing\SubscriptionCheckoutController;
 use App\Http\Controllers\Marketing\SalesPageController;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -30,6 +31,7 @@ foreach ($platformHosts as $platformHost) {
         Route::middleware('auth')->group(function (): void {
             Route::view('/dashboard', 'dashboard.index')->name('dashboard.index');
             Route::view('/leadconnectorapp', 'leadconnector.app')->name('leadconnector.app');
+            Route::get('/billing/checkout', SubscriptionCheckoutController::class)->name('billing.checkout');
         });
     });
 }

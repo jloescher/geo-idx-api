@@ -5,8 +5,16 @@
 >
     <header class="sticky top-0 z-30 border-b border-white/15 bg-slate-950/90 backdrop-blur">
         <div class="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-            <a href="/" class="text-lg font-semibold tracking-tight">Quantyra GeoIDX</a>
+            <a href="/" class="text-lg font-semibold tracking-tight">Quantyra Labs IDX API</a>
             <div class="flex flex-wrap items-center justify-end gap-2">
+                @if (Route::has('register'))
+                    <a
+                        href="{{ route('register') }}"
+                        class="rounded-full border border-white/25 px-4 py-2 text-sm font-semibold text-slate-100 hover:border-white/40 hover:bg-white/5"
+                    >
+                        Create account
+                    </a>
+                @endif
                 <button
                     type="button"
                     wire:click="openLoginModal"
@@ -14,28 +22,59 @@
                 >
                     Subscriber login
                 </button>
-                <a href="#pricing" class="rounded-full bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-900">See Pricing</a>
+                <a href="#pricing" class="rounded-full bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-900">See pricing</a>
             </div>
         </div>
     </header>
 
-    {{-- Revenue Impact: Hero positions clear value and pushes top-funnel CTA clicks. --}}
+    @if (session('flash_billing_error'))
+        <div class="border-b border-amber-400/40 bg-amber-500/15 px-4 py-3 text-center text-sm text-amber-100">
+            {{ session('flash_billing_error') }}
+        </div>
+    @endif
+
+    @if (request()->query('checkout') === 'success')
+        <div class="border-b border-emerald-400/40 bg-emerald-500/15 px-4 py-3 text-center text-sm text-emerald-50">
+            Thanks — Stripe is finalizing your subscription. Refresh the dashboard in a moment if access is still pending.
+        </div>
+    @elseif (request()->query('checkout') === 'cancelled')
+        <div class="border-b border-slate-600/60 bg-slate-800/80 px-4 py-3 text-center text-sm text-slate-200">
+            Checkout cancelled. Your card was not charged.
+        </div>
+    @endif
+
+    {{-- Revenue Impact: Hero compresses differentiation into one scan + routes to pricing. --}}
     <section class="relative overflow-hidden">
-        <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.25),transparent_45%)]"></div>
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.22),transparent_45%)]"></div>
         <div class="mx-auto max-w-6xl px-4 pb-16 pt-14 sm:px-6 lg:px-8 lg:pb-20 lg:pt-20">
             <div class="grid items-center gap-10 lg:grid-cols-2">
                 <div class="space-y-6">
-                    <p class="inline-flex rounded-full border border-cyan-400/40 bg-cyan-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-cyan-300">
-                        IDX + geographic intelligence for listing agents
-                    </p>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="inline-flex rounded-full border border-blue-400/50 bg-blue-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-blue-200">
+                            Official Stellar MLS Consultant
+                        </span>
+                        <span class="inline-flex rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-emerald-200">
+                            $0 data license fee
+                        </span>
+                    </div>
                     <h1 class="text-4xl font-black leading-tight tracking-tight sm:text-5xl">
-                        Win Your Farm Area With IDX Buyers Actually Trust
+                        Quantyra Labs IDX API
                     </h1>
+                    <p class="text-lg font-semibold text-blue-100/90">
+                        Official Stellar MLS Consultant • $0 Data License Fee
+                    </p>
                     <p class="text-base leading-7 text-slate-200 sm:text-lg">
-                        Quantyra GeoIDX helps you turn local search intent into signed representation—without renting leads from portals. Your IDX experience is built around <strong class="font-semibold text-slate-100">real geography</strong>: county lines, city limits, and neighborhood context layered on fast maps, so buyers understand <em>where</em> they are searching before they ever ask you a question. Live MLS data is delivered through a centralized, compliance-aware IDX API; visitors see a short preview, then complete email + phone OTP verification. Verified inquiries route to <strong class="font-semibold text-slate-100">you</strong>—the subscribed agent or lender covering that market.
+                        Live MLS Data Proxy + Image Proxy + JS Embed Widgets + LeadConnector App<br>
+                        Build high-conversion IDX websites or embed directly into GoHighLevel / custom sites.<br>
+                        <span class="font-semibold text-slate-50">Deeper SEO. Blazing speed. Hard lead gating included.</span>
                     </p>
                     <div class="flex flex-wrap gap-3">
-                        <a href="#demo" class="rounded-full bg-emerald-400 px-5 py-3 text-sm font-semibold text-slate-900">Book Demo</a>
+                        <a href="#pricing" class="rounded-full bg-orange-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-orange-900/30 hover:bg-orange-400">
+                            Add to cart — see plans
+                        </a>
+                        <a href="#widgets" class="rounded-full border border-white/30 px-5 py-3 text-sm font-semibold text-slate-100 hover:border-white/45 hover:bg-white/5">
+                            Widget embeds
+                        </a>
                         <button
                             type="button"
                             wire:click="openLoginModal"
@@ -43,124 +82,235 @@
                         >
                             Subscriber login
                         </button>
-                        <a href="#pricing" class="rounded-full border border-cyan-300/50 px-5 py-3 text-sm font-semibold text-cyan-200">See Pricing</a>
-                    </div>
-                    <p class="text-sm text-slate-200">
-                        Manage embeds, lead routing, billing, and your subscriber dashboard after signing in.
-                    </p>
-                    <div class="flex flex-wrap gap-2 text-xs font-medium text-slate-200">
-                        <span class="rounded-full border border-white/20 px-3 py-1">Stellar MLS–compliant IDX</span>
-                        <span class="rounded-full border border-white/20 px-3 py-1">County &amp; city boundary context</span>
-                        <span class="rounded-full border border-white/20 px-3 py-1">Tampa Bay &amp; Gulf Coast focus</span>
                     </div>
                 </div>
                 <div class="rounded-3xl border border-white/10 bg-gradient-to-br from-slate-800 to-slate-900 p-5 shadow-2xl">
-                    <div class="h-72 rounded-2xl bg-[url('https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=1200&q=80')] bg-cover bg-center"></div>
-                    <p class="mt-4 text-sm text-slate-200">
-                        Mobile-first search and map layouts built for agents who prospect by geography—not generic national templates.
+                    <div class="rounded-2xl border border-white/10 bg-slate-950/60 p-5 text-sm text-slate-200">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-blue-300">Stack preview</p>
+                        <ul class="mt-3 list-inside list-disc space-y-2">
+                            <li>Laravel 13 + Octane + FrankenPHP edge</li>
+                            <li>PostgreSQL freshness cache (~15 minutes)</li>
+                            <li>Leaflet + OpenStreetMap maps</li>
+                            <li>TextGrid phone + email OTP hard gating</li>
+                        </ul>
+                    </div>
+                    <p class="mt-4 text-xs text-slate-400">
+                        Illustrative only — no live MLS rows on this marketing host.
                     </p>
                 </div>
             </div>
         </div>
     </section>
 
-    {{-- Revenue Impact: Problem framing increases urgency and conversion intent. --}}
-    <section class="mx-auto max-w-6xl px-4 py-14 sm:px-6 lg:px-8">
-        <h2 class="text-3xl font-bold tracking-tight">Why Agents Still Lose Deals They Should Win</h2>
-        <div class="mt-8 grid gap-4 md:grid-cols-3">
-            <article class="rounded-2xl border border-white/10 p-6">
-                <h3 class="text-lg font-semibold">Portal “Leads” Are Not Your Pipeline</h3>
-                <p class="mt-2 text-sm text-slate-200">You compete on speed against dozens of agents for the same name—often before you know whether they are serious about your price band or geography.</p>
-            </article>
-            <article class="rounded-2xl border border-white/10 p-6">
-                <h3 class="text-lg font-semibold">IDX That Ignores Geography Confuses Buyers</h3>
-                <p class="mt-2 text-sm text-slate-200">When search and maps do not reflect county lines, city limits, and the micro-markets you farm, buyers bounce—or worse, they call you for areas you do not serve.</p>
-            </article>
-            <article class="rounded-2xl border border-white/10 p-6">
-                <h3 class="text-lg font-semibold">Unverified Inquiries Waste Follow-Up</h3>
-                <p class="mt-2 text-sm text-slate-200">Traditional forms fill your CRM with junk. You need verified contact data tied to real listing interest before you invest showing time.</p>
-            </article>
-        </div>
-    </section>
-
-    {{-- Revenue Impact: Solution section ties product architecture to margin expansion. --}}
-    <section class="border-y border-white/10 py-14">
-        <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-            <h2 class="text-3xl font-bold tracking-tight">Built For Agents Who Sell Place, Not Just Price</h2>
-            <p class="mt-4 max-w-3xl text-slate-200">
-                Quantyra GeoIDX pairs a compliance-first IDX feed with <strong class="font-semibold text-slate-100">geographic storytelling</strong>: county and municipal boundaries, coastal vs. inland context, and the hyper-local vocabulary buyers already use when they talk about “school side,” “beach side,” or “inside the beltway.” AI-assisted pages and structured data help you rank for the neighborhoods you actually farm—while keeping MLS display rules intact on authorized IDX properties.
-            </p>
-            <div class="mt-6 rounded-2xl border border-emerald-300/30 bg-emerald-500/10 p-5 text-sm text-emerald-100">
-                <strong class="font-semibold text-emerald-50">Geographic intelligence layer:</strong> visualize and filter inventory with county and city boundary context so prospects understand jurisdiction, commute envelopes, and municipal services before they tour.
+    {{-- Revenue Impact: Compliance proof reduces enterprise/legal friction on sales calls. --}}
+    <section class="border-y border-white/10 bg-slate-900/40 py-12">
+        <div class="mx-auto flex max-w-6xl flex-col gap-6 px-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+            <div class="flex items-start gap-4">
+                <div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-blue-400/40 bg-blue-500/20 text-lg font-black text-blue-100">
+                    S
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-white">Official Stellar MLS Consultant</h2>
+                    <p class="mt-2 max-w-2xl text-sm text-slate-200">
+                        Participant Data Access Agreement (signed 4/17/2026): Quantyra Labs LLC acts as Consultant;
+                        Firm on file: <span class="font-semibold text-white">Realty Of America, LLC</span>;
+                        IDX display permitted on authorized domains (example: <span class="font-mono text-blue-200">searchtampabayhouses.com</span>).
+                        <span class="font-semibold text-emerald-200">$0 annual Stellar MLS data license fee</span> for qualifying IDX use under the agreement.
+                    </p>
+                </div>
+            </div>
+            <div class="rounded-2xl border border-white/15 bg-slate-950/80 px-5 py-4 text-xs leading-relaxed text-slate-300">
+                Proof points: Consultant = Quantyra Labs LLC • Firm = Realty Of America, LLC • Agreement date 4/17/2026 •
+                Consultant badge reserved for authorized marketing + onboarding materials tied to the signed program.
             </div>
         </div>
     </section>
 
-    {{-- Revenue Impact: Process clarity reduces friction and improves CTA confidence. --}}
+    {{-- Revenue Impact: Comparison grid accelerates “why switch from Realtyna / BuyingBuddy / AeroIDX”. --}}
     <section class="mx-auto max-w-6xl px-4 py-14 sm:px-6 lg:px-8">
-        <h2 class="text-3xl font-bold tracking-tight">How It Works</h2>
-        <div class="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <article class="rounded-2xl border border-white/10 p-5">
-                <p class="text-xs font-semibold uppercase tracking-wide text-cyan-300">Step 1</p>
-                <h3 class="mt-2 font-semibold">Local SEO &amp; AI Content</h3>
-                <p class="mt-2 text-sm text-slate-200">Publish neighborhood- and corridor-specific narratives that mirror how buyers describe where they want to live.</p>
-            </article>
-            <article class="rounded-2xl border border-white/10 p-5">
-                <p class="text-xs font-semibold uppercase tracking-wide text-cyan-300">Step 2</p>
-                <h3 class="mt-2 font-semibold">Boundary-Aware IDX &amp; Maps</h3>
-                <p class="mt-2 text-sm text-slate-200">Layer county polygons, city limits, and custom farm boundaries atop MLS-backed search on your authorized IDX sites.</p>
-            </article>
-            <article class="rounded-2xl border border-white/10 p-5">
-                <p class="text-xs font-semibold uppercase tracking-wide text-cyan-300">Step 3</p>
-                <h3 class="mt-2 font-semibold">OTP Lead Gating</h3>
-                <p class="mt-2 text-sm text-slate-200">Let shoppers preview a handful of listings, then require verified email + phone before unlocking deeper detail—so your time goes to serious buyers.</p>
-            </article>
-            <article class="rounded-2xl border border-white/10 p-5">
-                <p class="text-xs font-semibold uppercase tracking-wide text-cyan-300">Step 4</p>
-                <h3 class="mt-2 font-semibold">Exclusive Agent Routing</h3>
-                <p class="mt-2 text-sm text-slate-200">Qualified conversations land in your dashboard, embeds, or connected CRM—owned by the subscribed agent covering that geography.</p>
-            </article>
+        <h2 class="text-3xl font-bold tracking-tight">Why teams switch from Realtyna, BuyingBuddy, AeroIDX…</h2>
+        <p class="mt-3 max-w-3xl text-sm text-slate-300">
+            Quantyra Labs IDX API is engineered for conversion: verified leads, faster edge delivery, and a single Laravel surface for REST + widgets + GHL.
+        </p>
+        <div class="mt-8 overflow-x-auto rounded-2xl border border-white/10">
+            <table class="min-w-full divide-y divide-white/10 text-left text-sm">
+                <thead class="bg-white/5 text-xs font-semibold uppercase tracking-wide text-slate-300">
+                    <tr>
+                        <th class="px-4 py-3">Capability</th>
+                        <th class="px-4 py-3 text-emerald-300">Quantyra Labs IDX API</th>
+                        <th class="px-4 py-3">Typical legacy IDX</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/10 text-slate-200">
+                    <tr>
+                        <td class="px-4 py-3 font-medium text-white">Stellar MLS data fee posture</td>
+                        <td class="px-4 py-3 text-emerald-200">$0 data license fee (signed Consultant)</td>
+                        <td class="px-4 py-3">Often bundled + opaque pass-throughs</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3 font-medium text-white">Edge performance</td>
+                        <td class="px-4 py-3 text-emerald-200">Octane + FrankenPHP, sub-100ms proxy targets</td>
+                        <td class="px-4 py-3">Monolithic PHP / cold boots</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3 font-medium text-white">Lead gating</td>
+                        <td class="px-4 py-3 text-emerald-200">Hard gating: 3 listings → email + phone OTP (TextGrid)</td>
+                        <td class="px-4 py-3">Soft forms / easy to fake emails</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3 font-medium text-white">Go-to-market surfaces</td>
+                        <td class="px-4 py-3 text-emerald-200">JS widgets + LeadConnector embedded app + REST</td>
+                        <td class="px-4 py-3">Often iframe-only or API bolt-ons</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <ul class="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm text-slate-200">
+            <li class="flex gap-2"><span class="text-emerald-400">✓</span> <span><strong class="text-white">$0 Stellar MLS data fee</strong> (we are the official signed Consultant)</span></li>
+            <li class="flex gap-2"><span class="text-emerald-400">✓</span> <span>Centralized Laravel Octane + FrankenPHP proxy API (sub-100ms responses)</span></li>
+            <li class="flex gap-2"><span class="text-emerald-400">✓</span> <span>Built-in <strong class="text-white">JS Embed Widgets</strong> (search bar, Leaflet map, listing cards, gallery, lead forms with teaser gating)</span></li>
+            <li class="flex gap-2"><span class="text-emerald-400">✓</span> <span>Official <strong class="text-white">LeadConnector / GoHighLevel</strong> embedded app</span></li>
+            <li class="flex gap-2"><span class="text-emerald-400">✓</span> <span>Full REST API for custom websites (perfect for deeper programmatic SEO)</span></li>
+            <li class="flex gap-2"><span class="text-emerald-400">✓</span> <span>Hard lead gating (3 listings → email + phone OTP via TextGrid)</span></li>
+            <li class="flex gap-2"><span class="text-emerald-400">✓</span> <span>Image proxy served from NVMe SSDs (no hotlinking)</span></li>
+            <li class="flex gap-2"><span class="text-emerald-400">✓</span> <span>Leaflet + OpenStreetMap interactive maps</span></li>
+            <li class="flex gap-2"><span class="text-emerald-400">✓</span> <span>PostgreSQL 15-minute freshness cache</span></li>
+        </ul>
+    </section>
+
+    {{-- Revenue Impact: Embed demos shorten “time to first widget” in trials. --}}
+    <section id="widgets" class="border-y border-white/10 py-14">
+        <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+            <h2 class="text-3xl font-bold tracking-tight">JS embed widgets (search + map + cards)</h2>
+            <p class="mt-3 max-w-3xl text-sm text-slate-300">
+                Drop-in script tags for authorized domains — teaser galleries, OTP-gated detail, and map-first discovery.
+            </p>
+            <div class="mt-8 grid gap-6 lg:grid-cols-2">
+                <div class="rounded-2xl border border-white/10 bg-slate-900/60 p-5">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-cyan-300">Example loader</p>
+                    <pre class="mt-3 overflow-x-auto rounded-xl bg-slate-950 p-4 text-xs leading-relaxed text-slate-200"><code>&lt;script
+  src="{{ rtrim(config('app.url'), '/') }}/widgets/idx-loader.js"
+  data-quantyra-site-key="YOUR_SITE_KEY"
+  data-quantyra-widget="search-bar"
+  async
+&gt;&lt;/script&gt;</code></pre>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-slate-900/60 p-5">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-cyan-300">API docs teaser</p>
+                    <p class="mt-3 text-sm text-slate-200">
+                        Authenticate with Sanctum-issued tokens or domain allow-lists, then pull normalized listing JSON, media references, and geography helpers for programmatic SEO pages.
+                    </p>
+                    <a
+                        href="#pricing"
+                        class="mt-5 inline-flex rounded-full border border-blue-400/50 px-4 py-2 text-sm font-semibold text-blue-100 hover:bg-blue-500/10"
+                    >
+                        Unlock API keys on Ultra+
+                    </a>
+                </div>
+            </div>
         </div>
     </section>
 
-    {{-- Revenue Impact: Feature proof points support premium pricing and conversion. --}}
-    <section class="border-y border-white/10 py-14">
-        <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-            <h2 class="text-3xl font-bold tracking-tight">Everything You Need To Monetize Local Expertise</h2>
-            <div class="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <article class="rounded-2xl border border-white/10 p-5">
-                    <h3 class="font-semibold">AI Blog + Programmatic SEO</h3>
-                    <p class="mt-2 text-sm text-slate-200">Ship authoritative neighborhood guides, corridor comparisons, and relocation content that reinforces your geographic authority.</p>
-                </article>
-                <article class="rounded-2xl border border-white/10 p-5">
-                    <h3 class="font-semibold">County &amp; City Boundary Maps</h3>
-                    <p class="mt-2 text-sm text-slate-200">Highlight municipal services, school attribution, and commute envelopes with Leaflet/OpenStreetMap-ready layers on authorized IDX experiences.</p>
-                </article>
-                <article class="rounded-2xl border border-white/10 p-5">
-                    <h3 class="font-semibold">OTP Lead Forms</h3>
-                    <p class="mt-2 text-sm text-slate-200">Stop chasing ghosts—collect verified phone + email from buyers who already engaged with your listings.</p>
-                </article>
-                <article class="rounded-2xl border border-white/10 p-5">
-                    <h3 class="font-semibold">Agent Command Center</h3>
-                    <p class="mt-2 text-sm text-slate-200">Track embed performance, manage subscription billing, and coordinate LeadConnector workflows from one dashboard.</p>
-                </article>
-                <article class="rounded-2xl border border-white/10 p-5">
-                    <h3 class="font-semibold">15-Minute MLS Cache</h3>
-                    <p class="mt-2 text-sm text-slate-200">Keep IDX pages snappy while honoring refresh rules through the centralized API.</p>
-                </article>
-                <article class="rounded-2xl border border-white/10 p-5">
-                    <h3 class="font-semibold">Farm-Area Packaging</h3>
-                    <p class="mt-2 text-sm text-slate-200">Bundle the cities, ZIP clusters, and county segments you already prospect—without forcing a one-size national IDX template on your brand.</p>
-                </article>
+    {{-- Revenue Impact: Realtyna-style pricing grid maximizes plan comparison + cart clicks. --}}
+    <section id="pricing" class="bg-slate-100 py-14 text-slate-900">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div class="text-center">
+                <h2 class="text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">IDX API subscriptions</h2>
+                <p class="mx-auto mt-3 max-w-2xl text-sm text-slate-600">
+                    14-day free trial + money-back guarantee • Overage billing $0.001 per extra API call •
+                    Add-ons: extra domains $19/mo • priority support $49/mo
+                </p>
+            </div>
+
+            <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+                <span class="text-sm font-semibold text-slate-700">Billing</span>
+                <div class="inline-flex rounded-full border border-slate-300 bg-white p-1 shadow-sm">
+                    <button
+                        type="button"
+                        wire:click="setBillingInterval('monthly')"
+                        @class([
+                            'rounded-full px-4 py-2 text-sm font-semibold transition',
+                            'bg-slate-900 text-white' => $billingInterval === 'monthly',
+                            'text-slate-600 hover:text-slate-900' => $billingInterval !== 'monthly',
+                        ])
+                    >
+                        Monthly
+                    </button>
+                    <button
+                        type="button"
+                        wire:click="setBillingInterval('annual')"
+                        @class([
+                            'rounded-full px-4 py-2 text-sm font-semibold transition',
+                            'bg-slate-900 text-white' => $billingInterval === 'annual',
+                            'text-slate-600 hover:text-slate-900' => $billingInterval !== 'annual',
+                        ])
+                    >
+                        Annual (20% off)
+                    </button>
+                </div>
+            </div>
+
+            <div class="mt-6 rounded-xl bg-blue-600 px-4 py-3 text-center text-sm font-bold uppercase tracking-wide text-white shadow-md">
+                Annual Subscriptions with 20% Discount
+            </div>
+
+            <div class="mt-8 grid gap-6 lg:grid-cols-4">
+                @foreach ($plans as $plan)
+                    <article class="flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
+                        <div class="border-b border-slate-100 px-5 py-4">
+                            <h3 class="text-lg font-black text-slate-900">{{ $plan['label'] }}</h3>
+                            <p class="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">{{ $plan['best_for'] }}</p>
+                            <div class="mt-4">
+                                @if ($billingInterval === 'monthly')
+                                    <p class="text-3xl font-black text-slate-900">{{ $plan['monthly_display'] }}<span class="text-base font-semibold text-slate-500">/mo</span></p>
+                                    <p class="mt-1 text-xs text-slate-500">Billed monthly</p>
+                                @else
+                                    <p class="text-3xl font-black text-slate-900">{{ $plan['annual_display'] }}<span class="text-base font-semibold text-slate-500">/yr</span></p>
+                                    <p class="mt-1 text-xs font-semibold text-emerald-700">{{ $plan['annual_note'] }}</p>
+                                @endif
+                            </div>
+                            <p class="mt-4 rounded-lg bg-blue-50 px-3 py-2 text-center text-xs font-semibold text-blue-900">
+                                Your market already generated {{ number_format($teaserLeads) }} leads this month
+                            </p>
+                        </div>
+                        <ul class="flex-1 space-y-2 px-5 py-4 text-sm text-slate-700">
+                            @foreach ($plan['features'] as $feature)
+                                <li class="flex gap-2">
+                                    <span class="mt-0.5 text-emerald-600" aria-hidden="true">
+                                        <svg class="size-4 shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-7.995 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.42l3.293 3.3 7.288-7.3a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                    </span>
+                                    <span>{{ $feature }}</span>
+                                </li>
+                            @endforeach
+                        </ul>
+                        <div class="px-5 pb-5">
+                            <a
+                                href="{{ route('billing.checkout', ['plan' => $plan['key'], 'interval' => $billingInterval]) }}"
+                                class="flex w-full items-center justify-center rounded-md bg-orange-600 px-4 py-3 text-sm font-bold uppercase tracking-wide text-white shadow hover:bg-orange-500"
+                            >
+                                Add to cart
+                            </a>
+                            <p class="mt-2 text-center text-[11px] text-slate-500">
+                                Secured by Stripe Checkout • 14-day trial
+                            </p>
+                        </div>
+                    </article>
+                @endforeach
+            </div>
+
+            <div class="mx-auto mt-10 max-w-3xl rounded-xl border border-slate-200 bg-white px-5 py-4 text-center text-xs text-slate-600">
+                <strong class="text-slate-900">Overage:</strong> $0.001 per additional API call beyond plan buckets.
+                <span class="mx-2">•</span>
+                <strong class="text-slate-900">Add-ons:</strong> Extra domains $19/mo · Priority support $49/mo
             </div>
         </div>
     </section>
 
     {{-- Revenue Impact: Pilot-market previews increase trust without compliance risk. --}}
     <section class="mx-auto max-w-6xl px-4 py-14 sm:px-6 lg:px-8">
-        <h2 class="text-3xl font-bold tracking-tight">How Geographic Packaging Looks For Agents</h2>
+        <h2 class="text-3xl font-bold tracking-tight">How geographic packaging looks for agents</h2>
         <p class="mt-3 text-sm text-slate-200">
-            Illustrative positioning only—no live MLS listings, boundary files, or map tiles are loaded on this marketing page.
+            Illustrative positioning only — no live MLS listings, boundary files, or map tiles are loaded on this marketing page.
         </p>
         <div class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             @foreach ($illustrativeMarkets as $row)
@@ -170,66 +320,6 @@
                     <p class="mt-1 text-xs leading-relaxed text-slate-200">{{ $row['geography'] }}</p>
                 </article>
             @endforeach
-        </div>
-    </section>
-
-    {{-- Revenue Impact: Social proof reduces perceived risk and increases sign-up intent. --}}
-    <section class="border-y border-white/10 py-14">
-        <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-            <h2 class="text-3xl font-bold tracking-tight">Social Proof</h2>
-            <div class="mt-8 grid gap-4 md:grid-cols-3">
-                <blockquote class="rounded-2xl border border-white/10 p-5 text-sm text-slate-200">
-                    “Placeholder: Buyers finally stopped asking ‘Is that still Tampa?’ once county lines were obvious on the map.”
-                </blockquote>
-                <blockquote class="rounded-2xl border border-white/10 p-5 text-sm text-slate-200">
-                    “Placeholder: My listing appointments doubled after OTP verification—we talk to people who already proved they are serious.”
-                </blockquote>
-                <blockquote class="rounded-2xl border border-white/10 p-5 text-sm text-slate-200">
-                    “Placeholder: I reclaimed weekends because the IDX experience sells the geography before I repeat the same script.”
-                </blockquote>
-            </div>
-        </div>
-    </section>
-
-    {{-- Revenue Impact: Pricing teaser filters intent and drives high-value demo calls. --}}
-    <section id="pricing" class="mx-auto max-w-6xl px-4 py-14 sm:px-6 lg:px-8">
-        <h2 class="text-3xl font-bold tracking-tight">Invest In The Geography You Already Own</h2>
-        <p class="mt-3 max-w-3xl text-sm text-slate-200">
-            Final packaging is tailored to your county, city, and farm strategy—book a demo for agent, team, or brokerage pricing.
-        </p>
-        <div class="mt-8 grid gap-4 md:grid-cols-3">
-            <article class="rounded-2xl border border-white/10 p-6">
-                <h3 class="text-lg font-semibold">Solo Listing Agent</h3>
-                <p class="mt-2 text-sm text-slate-200">Launch IDX, boundary-aware maps, and OTP capture for the corridor you already dominate.</p>
-            </article>
-            <article class="rounded-2xl border border-emerald-300/40 bg-emerald-500/10 p-6">
-                <h3 class="text-lg font-semibold">Top Producer / Small Team</h3>
-                <p class="mt-2 text-sm text-slate-100">Coordinate multiple farm pockets, embeds, and lead routing without stitching five vendor tools together.</p>
-            </article>
-            <article class="rounded-2xl border border-white/10 p-6">
-                <h3 class="text-lg font-semibold">Brokerage &amp; ISA Programs</h3>
-                <p class="mt-2 text-sm text-slate-200">Enterprise controls, compliance guardrails, and rollout support for multi-office geographic coverage.</p>
-            </article>
-        </div>
-    </section>
-
-    {{-- Revenue Impact: Final CTA captures bottom-funnel intent and books demos. --}}
-    <section id="demo" class="border-y border-white/10 py-14">
-        <div class="mx-auto flex max-w-4xl flex-col items-center px-4 text-center sm:px-6 lg:px-8">
-            <h2 class="text-3xl font-bold tracking-tight">Ready To Turn Geographic Authority Into Signed Buyers?</h2>
-            <p class="mt-4 text-slate-200">Book a walkthrough, see boundary-aware IDX in action on authorized domains, and map the farm areas you want to monetize next.</p>
-            <div class="mt-6 flex flex-wrap justify-center gap-3">
-                <button
-                    id="get-started"
-                    type="button"
-                    wire:click="openLoginModal"
-                    class="rounded-full bg-emerald-400 px-5 py-3 text-sm font-semibold text-slate-900 hover:bg-emerald-300"
-                >
-                    Subscriber login
-                </button>
-                <a href="#demo" class="rounded-full border border-white/30 px-5 py-3 text-sm font-semibold">Book Demo</a>
-                <a href="#pricing" class="rounded-full border border-cyan-300/40 px-5 py-3 text-sm font-semibold text-cyan-200">See Pricing</a>
-            </div>
         </div>
     </section>
 
@@ -285,6 +375,12 @@
                         <a href="{{ route('login') }}" class="font-medium text-emerald-300 underline decoration-emerald-400/50 hover:text-emerald-200">
                             Open full login
                         </a>
+                        @if (Route::has('register'))
+                            <span class="mx-1">·</span>
+                            <a href="{{ route('register') }}" class="font-medium text-emerald-300 underline decoration-emerald-400/50 hover:text-emerald-200">
+                                Create account
+                            </a>
+                        @endif
                     </p>
                 </div>
             </div>
@@ -294,7 +390,7 @@
     <footer class="border-t border-white/10 py-8">
         <div class="mx-auto flex max-w-6xl flex-col gap-4 px-4 text-xs text-slate-300 sm:px-6 lg:px-8 md:flex-row md:items-center md:justify-between">
             <p>
-                Compliance: This is a marketing page only. No live Stellar MLS listing data is displayed here. IDX data appears exclusively on authorized domains per signed Stellar MLS IDX agreement.
+                Compliance: This is a marketing page only. No live Stellar MLS listing data is displayed here. IDX data appears exclusively on authorized domains per signed Stellar MLS Participant Data Access Agreement (Consultant: Quantyra Labs LLC; Firm: Realty Of America, LLC).
             </p>
             <div class="flex flex-wrap gap-4">
                 <button type="button" wire:click="openLoginModal" class="text-left hover:text-white">Subscriber login</button>
