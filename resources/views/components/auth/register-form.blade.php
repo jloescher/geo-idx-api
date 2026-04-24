@@ -6,7 +6,7 @@
         </p>
     </div>
 
-    <form method="POST" action="{{ route('register') }}" class="space-y-5">
+    <form method="POST" action="{{ route('register', [], false) }}" class="space-y-5">
         @csrf
 
         <div>

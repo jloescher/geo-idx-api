@@ -23,7 +23,7 @@
                 <x-auth.register-form />
                 <p class="mt-6 border-t border-white/10 pt-4 text-center text-xs text-slate-300">
                     Already subscribed?
-                    <a href="{{ route('login') }}" class="font-medium text-emerald-300 underline decoration-emerald-400/50 hover:text-emerald-200">
+                    <a href="{{ route('login', [], false) }}" class="font-medium text-emerald-300 underline decoration-emerald-400/50 hover:text-emerald-200">
                         Sign in
                     </a>
                 </p>

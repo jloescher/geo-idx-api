@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Billing\SubscriptionCheckoutController;
+use App\Http\Controllers\DashboardApiTokenController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Marketing\SalesPageController;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,10 +16,14 @@ $parseHostList = static function (string $value): array {
         ->all();
 };
 
-$platformHosts = $parseHostList((string) env(
-    'IDX_PLATFORM_HOSTS',
-    'idx.quantyralabs.cc,dev-idx.quantyralabs.cc,staging-idx.quantyralabs.cc'
-));
+$platformHosts = array_values(array_unique([
+    ...$parseHostList((string) env(
+        'IDX_PLATFORM_HOSTS',
+        'idx.quantyralabs.cc,dev-idx.quantyralabs.cc,staging-idx.quantyralabs.cc'
+    )),
+    'localhost',
+    '127.0.0.1',
+]));
 
 $apiHosts = $parseHostList((string) env(
     'IDX_API_HOSTS',
@@ -29,7 +35,9 @@ foreach ($platformHosts as $platformHost) {
         Route::get('/', SalesPageController::class)->name('marketing.sales');
 
         Route::middleware('auth')->group(function (): void {
-            Route::view('/dashboard', 'dashboard.index')->name('dashboard.index');
+            Route::get('/dashboard', DashboardController::class)->name('dashboard.index');
+            Route::post('/dashboard/api-tokens', [DashboardApiTokenController::class, 'store'])->name('dashboard.api-tokens.store');
+            Route::delete('/dashboard/api-tokens/{token}', [DashboardApiTokenController::class, 'destroy'])->name('dashboard.api-tokens.destroy');
             Route::view('/leadconnectorapp', 'leadconnector.app')->name('leadconnector.app');
             Route::get('/billing/checkout', SubscriptionCheckoutController::class)->name('billing.checkout');
         });

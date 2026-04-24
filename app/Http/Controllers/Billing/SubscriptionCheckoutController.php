@@ -31,16 +31,16 @@ class SubscriptionCheckoutController extends Controller
 
         if (! is_string($priceId) || $priceId === '') {
             return redirect()
-                ->route('marketing.sales')
-                ->withFragment('pricing')
+                ->to('/#pricing')
                 ->with('flash_billing_error', 'Billing is not configured for this plan yet. Add Stripe Price IDs to the server environment.');
         }
 
         $user = $request->user();
         $trialDays = (int) config('billing.trial_days', 14);
 
-        $successUrl = route('marketing.sales', [], true).'?checkout=success&session_id={CHECKOUT_SESSION_ID}';
-        $cancelUrl = route('marketing.sales', [], true).'?checkout=cancelled#pricing';
+        $origin = $request->getSchemeAndHttpHost();
+        $successUrl = $origin.route('marketing.sales', [], false).'?checkout=success&session_id={CHECKOUT_SESSION_ID}';
+        $cancelUrl = $origin.route('marketing.sales', [], false).'?checkout=cancelled#pricing';
 
         try {
             return $user

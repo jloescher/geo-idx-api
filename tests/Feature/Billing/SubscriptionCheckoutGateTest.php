@@ -43,7 +43,7 @@ class SubscriptionCheckoutGateTest extends TestCase
             'interval' => 'monthly',
         ]);
 
-        $response->assertRedirect(route('marketing.sales', [], true).'#pricing');
+        $response->assertRedirect('/#pricing');
         $response->assertSessionHas('flash_billing_error');
     }
 

@@ -7,21 +7,39 @@
         <div class="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4 lg:px-8">
             <a href="/" class="text-base font-semibold tracking-tight text-white sm:text-lg">GeoIDX by Quantyra Labs</a>
             <nav class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end" aria-label="Account and pricing">
-                @if (Route::has('register'))
-                    <a
-                        href="{{ route('register') }}"
+                @guest
+                    @if (Route::has('register'))
+                        <a
+                            href="{{ route('register', [], false) }}"
+                            class="inline-flex min-h-11 min-w-0 items-center justify-center rounded-full border border-white/30 px-4 py-2.5 text-sm font-semibold text-white hover:border-white/50 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                        >
+                            Create account
+                        </a>
+                    @endif
+                    <button
+                        type="button"
+                        wire:click="openLoginModal"
                         class="inline-flex min-h-11 min-w-0 items-center justify-center rounded-full border border-white/30 px-4 py-2.5 text-sm font-semibold text-white hover:border-white/50 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                     >
-                        Create account
+                        Subscriber login
+                    </button>
+                @else
+                    <a
+                        href="{{ route('dashboard.index', [], false) }}"
+                        class="inline-flex min-h-11 min-w-0 items-center justify-center rounded-full border border-white/30 px-4 py-2.5 text-sm font-semibold text-white hover:border-white/50 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                    >
+                        Dashboard
                     </a>
-                @endif
-                <button
-                    type="button"
-                    wire:click="openLoginModal"
-                    class="inline-flex min-h-11 min-w-0 items-center justify-center rounded-full border border-white/30 px-4 py-2.5 text-sm font-semibold text-white hover:border-white/50 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-                >
-                    Subscriber login
-                </button>
+                    <form method="POST" action="{{ route('logout', [], false) }}">
+                        @csrf
+                        <button
+                            type="submit"
+                            class="inline-flex min-h-11 min-w-0 items-center justify-center rounded-full border border-white/30 px-4 py-2.5 text-sm font-semibold text-white hover:border-white/50 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                        >
+                            Subscriber logout
+                        </button>
+                    </form>
+                @endguest
                 <a
                     href="#pricing"
                     class="inline-flex min-h-11 min-w-0 items-center justify-center rounded-full bg-emerald-400 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
@@ -156,13 +174,25 @@
                 >
                     View pricing
                 </a>
-                <button
-                    type="button"
-                    wire:click="openLoginModal"
-                    class="inline-flex min-h-12 items-center justify-center rounded-full border border-white/30 px-8 py-3 font-semibold text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-                >
-                    Subscriber login
-                </button>
+                @guest
+                    <button
+                        type="button"
+                        wire:click="openLoginModal"
+                        class="inline-flex min-h-12 items-center justify-center rounded-full border border-white/30 px-8 py-3 font-semibold text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+                    >
+                        Subscriber login
+                    </button>
+                @else
+                    <form method="POST" action="{{ route('logout', [], false) }}">
+                        @csrf
+                        <button
+                            type="submit"
+                            class="inline-flex min-h-12 items-center justify-center rounded-full border border-white/30 px-8 py-3 font-semibold text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+                        >
+                            Subscriber logout
+                        </button>
+                    </form>
+                @endguest
             </div>
         </div>
     </section>
@@ -288,7 +318,7 @@
                         </ul>
                         <div class="px-5 pb-5">
                             <a
-                                href="{{ route('billing.checkout', ['plan' => $plan['key'], 'interval' => $billingInterval]) }}"
+                                href="{{ route('billing.checkout', ['plan' => $plan['key'], 'interval' => $billingInterval], false) }}"
                                 class="flex min-h-11 w-full items-center justify-center rounded-md bg-orange-700 px-4 py-3 text-sm font-bold uppercase tracking-wide text-white shadow hover:bg-orange-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                                 aria-label="Add {{ $plan['label'] }} plan to cart, {{ $billingInterval }} billing, checkout with Stripe"
                             >
@@ -377,6 +407,7 @@
 
     </main>
 
+    @guest
     @if ($showLoginModal)
         <div
             class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
@@ -404,12 +435,12 @@
 
                     <p class="mt-6 border-t border-white/10 pt-4 text-center text-xs text-slate-300">
                         Prefer a dedicated page?
-                        <a href="{{ route('login') }}" class="font-medium text-emerald-300 underline decoration-emerald-400/50 hover:text-emerald-200">
+                        <a href="{{ route('login', [], false) }}" class="font-medium text-emerald-300 underline decoration-emerald-400/50 hover:text-emerald-200">
                             Open full login
                         </a>
                         @if (Route::has('register'))
                             <span class="mx-1">·</span>
-                            <a href="{{ route('register') }}" class="font-medium text-emerald-300 underline decoration-emerald-400/50 hover:text-emerald-200">
+                            <a href="{{ route('register', [], false) }}" class="font-medium text-emerald-300 underline decoration-emerald-400/50 hover:text-emerald-200">
                                 Create account
                             </a>
                         @endif
@@ -418,6 +449,7 @@
             </div>
         </div>
     @endif
+    @endguest
 
     <footer class="border-t border-white/10 py-8">
         <div class="mx-auto flex max-w-6xl flex-col gap-4 px-4 text-xs text-slate-200 sm:px-6 lg:px-8 md:flex-row md:items-center md:justify-between">
@@ -425,13 +457,25 @@
                 Compliance: This is a marketing page only. No live MLS listing data is displayed here. GeoIDX data is delivered only on approved domains under the signed Stellar MLS consultant agreement and applicable subscriber terms.
             </p>
             <nav class="flex flex-wrap gap-4" aria-label="Footer">
-                <button
-                    type="button"
-                    wire:click="openLoginModal"
-                    class="min-h-11 text-left text-slate-200 underline decoration-white/30 underline-offset-2 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-                >
-                    Subscriber login
-                </button>
+                @guest
+                    <button
+                        type="button"
+                        wire:click="openLoginModal"
+                        class="min-h-11 text-left text-slate-200 underline decoration-white/30 underline-offset-2 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                    >
+                        Subscriber login
+                    </button>
+                @else
+                    <form method="POST" action="{{ route('logout', [], false) }}">
+                        @csrf
+                        <button
+                            type="submit"
+                            class="min-h-11 text-left text-slate-200 underline decoration-white/30 underline-offset-2 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                        >
+                            Subscriber logout
+                        </button>
+                    </form>
+                @endguest
                 <a href="#" class="min-h-11 inline-flex items-center text-slate-200 underline decoration-white/30 underline-offset-2 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50" aria-label="Privacy policy (coming soon)">Privacy</a>
                 <a href="#" class="min-h-11 inline-flex items-center text-slate-200 underline decoration-white/30 underline-offset-2 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50" aria-label="Terms of service (coming soon)">Terms</a>
             </nav>

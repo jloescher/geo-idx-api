@@ -24,7 +24,7 @@
                 @if (Route::has('register'))
                     <p class="mt-6 border-t border-white/10 pt-4 text-center text-xs text-slate-300">
                         New to Quantyra IDX?
-                        <a href="{{ route('register') }}" class="font-medium text-emerald-300 underline decoration-emerald-400/50 hover:text-emerald-200">
+                        <a href="{{ route('register', [], false) }}" class="font-medium text-emerald-300 underline decoration-emerald-400/50 hover:text-emerald-200">
                             Create account
                         </a>
                     </p>
