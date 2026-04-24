@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Create account | Quantyra Labs IDX API</title>
+    <title>Create account | GeoIDX by Quantyra Labs</title>
     <meta name="robots" content="noindex, nofollow">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
@@ -14,7 +14,7 @@
         <header class="relative z-10 border-b border-white/10 bg-slate-950/80 backdrop-blur">
             <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
                 <a href="/" class="text-sm font-semibold text-slate-200 hover:text-white">← Back to home</a>
-                <span class="text-sm font-semibold tracking-tight text-slate-100">Quantyra Labs IDX API</span>
+                <span class="text-sm font-semibold tracking-tight text-slate-100">GeoIDX by Quantyra Labs</span>
             </div>
         </header>
 

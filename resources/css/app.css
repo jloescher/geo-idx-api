@@ -9,3 +9,14 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+/* Sales pricing band: explicit surface so contrast checks never inherit page chrome (WCAG 1.4.3). */
+@layer components {
+    .idx-pricing-band {
+        position: relative;
+        z-index: 10;
+        isolation: isolate;
+        background-color: #f1f5f9;
+        color: #0f172a;
+    }
+}

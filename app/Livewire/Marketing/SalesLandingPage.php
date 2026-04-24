@@ -18,26 +18,12 @@ class SalesLandingPage extends Component
     public int $teaserLeads = 0;
 
     /**
-     * Illustrative hyper-local positioning (no live MLS or map data on this page).
-     *
-     * @var array<int, array<string, string>>
-     */
-    public array $illustrativeMarkets = [
-        ['label' => 'Beach & intracoastal corridor', 'geography' => 'Pinellas County shoreline + municipal limits'],
-        ['label' => 'Urban core listings', 'geography' => 'City of St. Petersburg + neighborhood overlays'],
-        ['label' => 'Suburban move-up belt', 'geography' => 'Hillsborough County + selected city boundaries'],
-        ['label' => 'Waterfront & canal niche', 'geography' => 'City of Clearwater + coastal zoning context'],
-        ['label' => 'First-time buyer towns', 'geography' => 'County line to city limits for school-centric search'],
-        ['label' => '55+ & lifestyle communities', 'geography' => 'City + census-style sub-areas (illustrative)'],
-    ];
-
-    /**
      * @var array<int, array<string, string>>
      */
     public array $faqs = [
         [
             'question' => 'Does this page show live MLS listings?',
-            'answer' => 'No. This marketing page uses static and mock visuals only. Live IDX data is shown only on authorized domains under the Stellar MLS agreement.',
+            'answer' => 'No. GeoIDX marketing pages use static and mock visuals only. Live IDX data is shown only on domains you authorize and that are permitted under the MLS policies that apply to your subscription.',
         ],
         [
             'question' => 'How are leads protected and routed?',

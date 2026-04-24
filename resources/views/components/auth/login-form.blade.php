@@ -8,7 +8,7 @@
         <div>
             <h2 class="text-xl font-bold tracking-tight text-slate-100">Subscriber login</h2>
             <p class="mt-1 text-sm text-slate-200">
-                Sign in to manage your Quantyra Labs IDX API subscription, widgets, and dashboard.
+                Sign in to manage your GeoIDX subscription, widgets, and dashboard.
             </p>
         </div>
     @endif

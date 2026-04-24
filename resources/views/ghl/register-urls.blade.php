@@ -9,7 +9,7 @@
 <body>
 {{-- Revenue Impact: MLS URL gate → compliant widget revenue without broker liability. --}}
 <h1>Register your IDX domains</h1>
-<p>Stellar MLS compliance: list every HTTPS origin that will embed Quantyra widgets or display MLS data.</p>
+<p>MLS compliance: list every HTTPS origin that will embed Quantyra widgets or display MLS data under your participant agreements.</p>
 <form method="post" action="{{ route('leadconnector.register-urls.store') }}">
     @csrf
     <label for="primary_url">Primary website URL (https)</label>
@@ -30,7 +30,7 @@
         <input id="manual_location_id" name="manual_location_id" value="{{ old('manual_location_id') }}">
     @endif
 
-    <label><input type="checkbox" name="mls_agreement" value="1" required> I confirm these domains comply with Stellar MLS IDX display rules.</label>
+    <label><input type="checkbox" name="mls_agreement" value="1" required> I confirm these domains comply with applicable MLS IDX display rules for the feeds I enable.</label>
 
     @if ($errors->any())
         <ul style="color:#b91c1c">
