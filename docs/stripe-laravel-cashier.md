@@ -75,7 +75,7 @@ Use the checked-in scripts so everyone runs the same flow:
 ./scripts/docker-dev.sh down
 
 # Start Stripe webhook forwarding (uses STRIPE_SECRET from .env)
-composer stripe:test
+# VS Code: Run Task -> "Stripe Dev: Listen"
 ```
 
 The Stripe helper resolves the webhook forward URL to:

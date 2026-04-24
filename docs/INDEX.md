@@ -55,4 +55,4 @@ For a full product overview, see the root [README.md](../README.md). **Docker / 
 
 - Docker dev up/watch: `./scripts/docker-dev.sh up-watch`
 - Docker dev down: `./scripts/docker-dev.sh down`
-- Stripe webhook forwarding: `composer stripe:test` (or `./scripts/stripe-dev.sh listen`)
+- Stripe webhook forwarding: VS Code task `Stripe Dev: Listen` (or `./scripts/stripe-dev.sh listen`)
