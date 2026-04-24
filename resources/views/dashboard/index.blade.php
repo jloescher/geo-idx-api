@@ -19,7 +19,7 @@
 <main
     x-data="{
         toast: '',
-        previewWidget: null,
+        previewWidget: '',
         done: JSON.parse(localStorage.getItem('dashboardChecklistV1') || '{}'),
         copyEmbed(slug) {
             const code = `<script src='{{ $appUrl }}/widgets/idx-loader.js' data-quantyra-site-key='YOUR_SITE_KEY' data-quantyra-widget='${slug}' async></script>`;
@@ -282,15 +282,23 @@
     <div
         x-show="toast"
         x-transition
+        style="display: none;"
         class="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow"
         x-text="toast"
     ></div>
 
-    <div x-show="previewWidget" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4">
+    <div
+        x-show="previewWidget !== ''"
+        x-transition
+        x-cloak
+        style="display: none;"
+        @click.self="previewWidget = ''"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"
+    >
         <div class="w-full max-w-2xl rounded-2xl border border-white/10 bg-slate-900 p-6">
             <div class="flex items-center justify-between">
                 <h3 class="text-lg font-semibold text-white">Widget Preview</h3>
-                <button type="button" @click="previewWidget = null" class="rounded-md border border-white/20 px-3 py-1 text-sm text-slate-200 hover:bg-white/10">Close</button>
+                <button type="button" @click="previewWidget = ''" class="rounded-md border border-white/20 px-3 py-1 text-sm text-slate-200 hover:bg-white/10">Close</button>
             </div>
             <p class="mt-2 text-sm text-slate-300">Live demo placeholder for <span class="font-semibold text-cyan-200" x-text="previewWidget"></span>. Connect this to sandbox data for interactive preview.</p>
             <div class="mt-4 rounded-xl border border-dashed border-cyan-400/40 bg-slate-950 p-8 text-center text-sm text-slate-400">

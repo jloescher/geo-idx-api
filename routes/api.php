@@ -26,7 +26,7 @@ Route::post('/auth/token', function (Request $request): array {
     }
 
     return [
-        'token' => $user->createToken($credentials['device_name'])->plainTextToken,
+        'token' => $user->createToken($credentials['device_name'], ['idx:read', 'idx:search'])->plainTextToken,
     ];
 });
 
