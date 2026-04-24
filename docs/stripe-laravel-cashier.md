@@ -63,6 +63,40 @@ Keep **`stripe listen`** running in a terminal while you need webhooks; without 
 
 ---
 
+## Local development commands (project standard)
+
+Use the checked-in scripts so everyone runs the same flow:
+
+```bash
+# Start Docker dev services (API, image proxy, tunnel)
+./scripts/docker-dev.sh up-watch
+
+# Stop Docker dev services
+./scripts/docker-dev.sh down
+
+# Start Stripe webhook forwarding (uses STRIPE_SECRET from .env)
+composer stripe:test
+```
+
+The Stripe helper resolves the webhook forward URL to:
+
+1. `IDX_PLATFORM_URL` (preferred), otherwise
+2. `APP_URL`
+
+and appends `/stripe/webhook`.
+
+You can also run the helper directly:
+
+```bash
+# Listen + forward webhooks
+./scripts/stripe-dev.sh listen
+
+# Fire a test checkout completion event
+./scripts/stripe-dev.sh trigger-checkout-completed
+```
+
+---
+
 ## Webhook URL (Cashier default)
 
 With the default Cashier path (`CASHIER_PATH` unset or `stripe`), the webhook route is:

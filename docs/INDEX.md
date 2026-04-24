@@ -50,3 +50,9 @@ Central index for all documentation in this project. Implementation code lives i
 | `Dockerfile.idx-api`, `Dockerfile.idx-images` | Production container images for API and image edge. |
 
 For a full product overview, see the root [README.md](../README.md). **Docker / Dokploy:** build from project root using [`Dockerfile.idx-api`] and [`Dockerfile.idx-images`] as documented in [README.md](../README.md).
+
+## Dev run commands
+
+- Docker dev up/watch: `./scripts/docker-dev.sh up-watch`
+- Docker dev down: `./scripts/docker-dev.sh down`
+- Stripe webhook forwarding: `composer stripe:test` (or `./scripts/stripe-dev.sh listen`)
