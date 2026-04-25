@@ -68,145 +68,89 @@
             </div>
         @endif
 
-    {{-- Revenue Impact: Light hero band lifts headline contrast + centers conversion on GeoIDX brand. --}}
-    <section class="border-b border-slate-200 bg-slate-50 px-4 pb-14 pt-12 sm:px-6 sm:pb-16 sm:pt-16 lg:px-8" aria-labelledby="hero-heading">
-        <div class="mx-auto max-w-5xl text-center">
-            <h1 id="hero-heading" class="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl md:text-6xl">
-                GeoIDX by Quantyra Labs
-            </h1>
-            <p class="mx-auto mt-4 max-w-3xl text-xl text-slate-700 sm:text-2xl md:text-3xl">
-                Multi-MLS IDX platform<br>
-                Live MLS Data Proxy + Image Proxy + JS Embed Widgets + LeadConnector App
-            </p>
-            <p class="mx-auto mt-6 max-w-2xl text-lg text-slate-600 sm:text-xl">
-                The fastest, most lead-generating IDX solution for Stellar MLS. Drop-in JS widgets or full REST API.
-            </p>
-            <div class="mt-10 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center sm:gap-4">
-                <a
-                    href="#pricing"
-                    class="inline-flex min-h-12 items-center justify-center rounded-full bg-orange-600 px-8 py-4 text-lg font-semibold text-white shadow-md hover:bg-orange-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 sm:px-10"
-                >
-                    Get Started for $39/mo
-                </a>
-                <a
-                    href="#demo"
-                    class="inline-flex min-h-12 items-center justify-center rounded-full border-2 border-slate-300 bg-white px-8 py-4 text-lg font-semibold text-slate-800 shadow-sm hover:border-slate-400 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 sm:px-10"
-                >
-                    Watch 47-second Demo
-                </a>
-            </div>
-            <p class="mt-6 text-center text-sm text-slate-500">14-day free trial • Cancel anytime • No contracts</p>
-        </div>
-    </section>
-
-    {{-- Revenue Impact: Trust bar answers procurement objections in one scan. --}}
-    <div class="border-b border-slate-200 bg-white py-4">
-        <div class="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-center gap-x-10 gap-y-4 px-4 text-sm text-slate-800 sm:gap-x-12 sm:px-6">
-            <div class="flex items-center gap-2">
-                <span class="text-emerald-600" aria-hidden="true">✓</span>
-                <strong>Official Stellar MLS Consultant</strong> (agreement signed Apr&nbsp;17,&nbsp;2026)
-            </div>
-            <div class="flex items-center gap-2">
-                <span class="text-emerald-600" aria-hidden="true">✓</span>
-                <strong>$0 Data License Fee</strong> through our Stellar consultant program
-            </div>
-            <div class="flex items-center gap-2">
-                <span class="text-emerald-600" aria-hidden="true">✓</span>
-                <strong>Unlimited JS Widget usage</strong> on Pro &amp; Smart
-            </div>
-            <div class="flex items-center gap-2">
-                <span class="text-emerald-600" aria-hidden="true">✓</span>
-                <strong>Hard lead gating + OTP verification</strong> built in
-            </div>
-            <div class="flex items-center gap-2">
-                <span class="text-emerald-600" aria-hidden="true">✓</span>
-                <strong>LeadConnector / GoHighLevel embedded app</strong>
-            </div>
-        </div>
-    </div>
-
-    {{-- Revenue Impact: Competitive cards beat long comparison tables on mobile scroll depth. --}}
-    <section class="border-b border-slate-200 bg-slate-50 px-4 py-14 sm:px-6 lg:px-8" aria-labelledby="why-geo-heading">
-        <h2 id="why-geo-heading" class="mx-auto mb-10 max-w-screen-2xl text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-            Why serious agents, developers &amp; brokerages choose GeoIDX
-        </h2>
-        <div class="mx-auto grid max-w-screen-2xl gap-8 md:grid-cols-2 lg:grid-cols-3">
-            <div class="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-                <h3 class="mb-3 text-xl font-semibold text-slate-900">Official Stellar Coverage. Real Compliance.</h3>
-                <p class="text-slate-600">GeoIDX runs under a signed Stellar MLS consultant agreement with policy-ready controls and transparent subscriber economics.</p>
-            </div>
-            <div class="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-                <h3 class="mb-3 text-xl font-semibold text-slate-900">JS Widgets That Actually Convert</h3>
-                <p class="text-slate-600">One-line embed: search bar, interactive map, listing gallery, lead forms. Teaser mode shows only 3 listings → hard gate → email + phone OTP. Leads flow straight into your CRM.</p>
-            </div>
-            <div class="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-                <h3 class="mb-3 text-xl font-semibold text-slate-900">Unlimited Widgets on Lower Tiers</h3>
-                <p class="text-slate-600">Pro and Smart include completely unlimited JS Widget usage so agents can deploy as many lead funnels as needed without monthly API call caps.</p>
-            </div>
-            <div class="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-                <h3 class="mb-3 text-xl font-semibold text-slate-900">LeadConnector / GHL Embedded App</h3>
-                <p class="text-slate-600">One-click install. Verified buyer &amp; seller leads land directly in your GoHighLevel funnels with full journey data.</p>
-            </div>
-            <div class="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-                <h3 class="mb-3 text-xl font-semibold text-slate-900">Blazing Fast &amp; Future-Proof</h3>
-                <p class="text-slate-600">Low-latency data and image proxy architecture keeps search and listing experiences responsive while lead forms stay conversion-focused.</p>
-            </div>
-            <div class="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-                <h3 class="mb-3 text-xl font-semibold text-slate-900">Revenue-First Lead Gating</h3>
-                <p class="text-slate-600">
-                    Lead capture forms are woven into search, maps, and listing views so visitors convert when interest is highest—not after a frustrating wall of text.
+    {{-- Revenue Impact: Hero clarifies demo-to-live policy and accelerates qualified starts. --}}
+    <section class="border-b border-slate-800 bg-slate-950 px-4 pb-14 pt-12 sm:px-6 sm:pb-16 sm:pt-16 lg:px-8" aria-labelledby="hero-heading">
+        <div class="mx-auto grid max-w-6xl gap-10 lg:grid-cols-2 lg:items-center">
+            <div>
+                <p class="inline-flex rounded-full border border-cyan-300/40 bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-cyan-200">
+                    Multi-MLS widgets for GHL teams
                 </p>
-            </div>
-        </div>
-    </section>
-
-    {{-- Revenue Impact: Demo anchor holds hero secondary CTA; embed replaces placeholder when asset ships. --}}
-    <section id="demo" class="scroll-mt-24 border-b border-white/10 bg-slate-900/60 py-14" aria-labelledby="demo-heading">
-        <div class="mx-auto max-w-3xl px-4 text-center sm:px-6">
-            <h2 id="demo-heading" class="text-2xl font-bold tracking-tight text-white sm:text-3xl">47-second product walkthrough</h2>
-            <p class="mt-4 text-base text-slate-300 sm:text-lg">
-                Hosted demo video embeds here. Until the cut is live, jump straight to plans or sign in to explore widgets in your sandbox.
-            </p>
-            <div class="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:justify-center">
-                <a
-                    href="#pricing"
-                    class="inline-flex min-h-12 items-center justify-center rounded-full bg-orange-500 px-8 py-3 font-semibold text-white hover:bg-orange-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-                >
-                    View pricing
-                </a>
-                @guest
-                    <button
-                        type="button"
-                        wire:click="openLoginModal"
-                        class="inline-flex min-h-12 items-center justify-center rounded-full border border-white/30 px-8 py-3 font-semibold text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+                <h1 id="hero-heading" class="mt-5 text-4xl font-bold tracking-tight text-white sm:text-5xl md:text-6xl">
+                    Geography-first IDX widgets that convert faster.
+                </h1>
+                <p class="mt-5 max-w-2xl text-lg text-slate-200 sm:text-xl">
+                    Launch embeddable search, map, and lead-capture widgets in a demo sandbox, then activate paid live data when your funnels are ready.
+                </p>
+                <p class="mt-4 text-sm font-medium text-amber-200">
+                    14-day trial includes demo data only. Paid plan activation is required for live data.
+                </p>
+                <div class="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-4">
+                    <a
+                        href="{{ route('register', [], false) }}"
+                        class="inline-flex min-h-12 items-center justify-center rounded-full bg-cyan-400 px-7 py-3 text-base font-semibold text-slate-950 shadow-md hover:bg-cyan-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                        data-event-name="demo_trial_started"
                     >
-                        Subscriber login
-                    </button>
-                @else
-                    <form method="POST" action="{{ route('logout', [], false) }}">
-                        @csrf
-                        <button
-                            type="submit"
-                            class="inline-flex min-h-12 items-center justify-center rounded-full border border-white/30 px-8 py-3 font-semibold text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-                        >
-                            Subscriber logout
-                        </button>
-                    </form>
-                @endguest
+                        Start Demo Trial
+                    </a>
+                    <a
+                        href="#pricing"
+                        class="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 px-7 py-3 text-base font-semibold text-white hover:border-white/40 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                        data-event-name="live_data_activation_clicked"
+                    >
+                        Activate Live Data
+                    </a>
+                </div>
+            </div>
+
+            <div class="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl">
+                <p class="text-xs font-semibold uppercase tracking-wide text-cyan-300">Conversion stack preview</p>
+                <div class="mt-4 grid gap-3">
+                    <div class="rounded-xl border border-white/10 bg-slate-950/60 p-4">
+                        <p class="text-sm font-semibold text-white">Geography-aware search</p>
+                        <p class="mt-1 text-sm text-slate-300">Map and boundary context that aligns discovery with local buyer intent.</p>
+                    </div>
+                    <div class="rounded-xl border border-white/10 bg-slate-950/60 p-4">
+                        <p class="text-sm font-semibold text-white">GHL-ready lead capture</p>
+                        <p class="mt-1 text-sm text-slate-300">Teaser flow, verification, and routing patterns designed for funnel-first operations.</p>
+                    </div>
+                    <div class="rounded-xl border border-white/10 bg-slate-950/60 p-4">
+                        <p class="text-sm font-semibold text-white">Market-intel overlays</p>
+                        <p class="mt-1 text-sm text-slate-300">Context panels that help prospects evaluate movement and timing with confidence.</p>
+                    </div>
+                </div>
             </div>
         </div>
     </section>
 
-    {{-- Revenue Impact: Embed demos shorten “time to first widget” in trials. --}}
-    <section id="widgets" class="scroll-mt-24 border-y border-white/10 py-14">
+    {{-- Revenue Impact: Proof chips lower trust friction before pricing scroll. --}}
+    <section class="border-b border-slate-800 bg-slate-900/70 px-4 py-6 sm:px-6 lg:px-8">
+        <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-3">
+            @foreach ($proofChips as $chip)
+                <div class="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200">
+                    {{ $chip['label'] }}
+                </div>
+            @endforeach
+        </div>
+    </section>
+
+    <section class="border-b border-slate-800 bg-slate-950 px-4 py-14 sm:px-6 lg:px-8" aria-labelledby="why-geo-heading">
+        <h2 id="why-geo-heading" class="mx-auto max-w-4xl text-center text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+            Built for geography-led discovery and funnel-ready conversion.
+        </h2>
+        <p class="mx-auto mt-4 max-w-3xl text-center text-sm text-slate-300 sm:text-base">
+            GeoIDX keeps low-tier entry simple for GHL teams while preserving a clear path to paid live data activation when your campaigns are ready.
+        </p>
+    </section>
+
+    <section id="widgets" class="scroll-mt-24 border-y border-slate-800 bg-slate-900/40 py-14">
         <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-            <h2 class="text-3xl font-bold tracking-tight">JS embed widgets (search + map + cards)</h2>
+            <h2 class="text-3xl font-bold tracking-tight text-white">Embeddable JS widgets for GHL-first teams</h2>
             <p class="mt-3 max-w-3xl text-sm text-slate-300">
-                Drop-in script tags for authorized domains — teaser galleries, OTP-gated detail, and map-first discovery.
+                Deploy search, map, and lead-capture surfaces in minutes, validate performance in your demo sandbox, then switch to paid live data when ready.
             </p>
             <div class="mt-8 grid gap-6 lg:grid-cols-2">
                 <div class="rounded-2xl border border-white/10 bg-slate-900/60 p-5">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-cyan-300">Example loader</p>
+                    <p class="text-xs font-semibold uppercase tracking-wide text-cyan-300">Widget loader example</p>
                     <pre
                         class="mt-3 overflow-x-auto rounded-xl bg-slate-950 p-4 text-xs leading-relaxed text-slate-200"
                         tabindex="0"
@@ -219,37 +163,64 @@
 &gt;&lt;/script&gt;</code></pre>
                 </div>
                 <div class="rounded-2xl border border-white/10 bg-slate-900/60 p-5">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-cyan-300">API docs teaser</p>
+                    <p class="text-xs font-semibold uppercase tracking-wide text-cyan-300">Live activation path</p>
                     <p class="mt-3 text-sm text-slate-200">
-                        Authenticate with API tokens or domain allow-lists, then pull normalized listing payloads, media references, and geography helpers for programmatic SEO pages.
+                        Start with demo data during trial to tune UX and funnel events. Activate a paid plan when you want live data on production domains.
                     </p>
                     <a
                         href="#pricing"
-                        class="mt-5 inline-flex rounded-full border border-blue-400/50 px-4 py-2 text-sm font-semibold text-blue-100 hover:bg-blue-500/10"
+                        class="mt-5 inline-flex rounded-full border border-cyan-400/50 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/10"
                     >
-                        Unlock API keys on Ultra+
+                        Compare plans
                     </a>
                 </div>
             </div>
         </div>
     </section>
 
-    {{-- Revenue Impact: Realtyna-style pricing grid maximizes plan comparison + cart clicks. --}}
+    <section class="border-b border-slate-800 bg-slate-950 px-4 py-14 sm:px-6 lg:px-8" aria-labelledby="geography-heading">
+        <div class="mx-auto max-w-6xl">
+            <h2 id="geography-heading" class="text-3xl font-bold tracking-tight text-white">Geography intelligence that improves lead quality</h2>
+            <div class="mt-8 grid gap-6 md:grid-cols-3">
+                @foreach ($geographyHighlights as $highlight)
+                    <article class="rounded-2xl border border-white/10 bg-slate-900/70 p-6">
+                        <h3 class="text-lg font-semibold text-white">{{ $highlight['title'] }}</h3>
+                        <p class="mt-3 text-sm leading-relaxed text-slate-300">{{ $highlight['description'] }}</p>
+                    </article>
+                @endforeach
+            </div>
+        </div>
+    </section>
+
+    <section class="border-b border-slate-800 bg-slate-900/50 px-4 py-14 sm:px-6 lg:px-8" aria-labelledby="market-intel-heading">
+        <div class="mx-auto max-w-6xl">
+            <h2 id="market-intel-heading" class="text-3xl font-bold tracking-tight text-white">Market-intelligence overlays as conversion proof points</h2>
+            <div class="mt-8 grid gap-6 md:grid-cols-3">
+                @foreach ($marketIntelHighlights as $highlight)
+                    <article class="rounded-2xl border border-white/10 bg-slate-950/60 p-6">
+                        <h3 class="text-lg font-semibold text-white">{{ $highlight['title'] }}</h3>
+                        <p class="mt-3 text-sm leading-relaxed text-slate-300">{{ $highlight['description'] }}</p>
+                    </article>
+                @endforeach
+            </div>
+        </div>
+    </section>
+
+    {{-- Revenue Impact: Pricing section clarifies demo-to-live activation and drives qualified checkout. --}}
     <section id="pricing" class="idx-pricing-band scroll-mt-24 py-14" aria-labelledby="pricing-heading">
         <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div class="text-center">
                 <div class="mt-2">
-                    <span class="inline-flex items-center gap-2 rounded-3xl bg-blue-100 px-5 py-2 text-sm font-medium text-blue-800 sm:px-6">
-                        <span class="text-2xl" role="img" aria-label="Savings">💰</span>
-                        Annual Subscriptions with <span class="font-bold text-orange-600">20% Discount</span>
+                    <span class="inline-flex items-center gap-2 rounded-3xl bg-cyan-100 px-5 py-2 text-sm font-medium text-cyan-800 sm:px-6">
+                        Annual subscriptions include <span class="font-bold text-cyan-950">20% savings</span>
                     </span>
                 </div>
                 <h2 id="pricing-heading" class="mt-6 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">Simple, Transparent Pricing</h2>
                 <p class="mx-auto mt-3 max-w-xl text-lg text-slate-700 sm:text-xl">
-                    Choose the plan that matches your volume and tech needs. Pro &amp; Smart plans include completely unlimited JS Widget usage. No monthly API call limits.
+                    Pro and Smart are built for GHL-first widget funnels. Start with demo data, then activate paid live data when your campaigns are production-ready.
                 </p>
                 <p class="mx-auto mt-4 max-w-2xl text-sm text-slate-600">
-                    14-day free trial + money-back guarantee • Overage billing (Ultra &amp; Mega only): $0.001 per extra API call • Soft rate limits (60-100 req/sec/domain) + fair-usage policy on all plans
+                    14-day trial includes demo data only • Live data requires paid activation • Overage billing (Ultra &amp; Mega only): $0.001 per extra API call
                 </p>
             </div>
 
@@ -285,13 +256,29 @@
                         Annual (20% off)
                     </button>
                 </div>
+                <a
+                    href="#comparison-heading"
+                    class="text-xs font-semibold uppercase tracking-wide text-slate-700 underline decoration-slate-400 underline-offset-2 hover:text-slate-900"
+                    data-event-name="plan_upgrade_clicked"
+                >
+                    Compare Pro vs Smart
+                </a>
             </div>
 
             <div class="mt-8 grid gap-6 lg:grid-cols-4">
                 @foreach ($plans as $plan)
-                    <article class="flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <article @class([
+                        'flex flex-col rounded-xl border bg-white shadow-sm',
+                        'border-cyan-300 ring-2 ring-cyan-200' => $plan['key'] === 'smart',
+                        'border-slate-200' => $plan['key'] !== 'smart',
+                    ])>
                         <div class="border-b border-slate-100 px-5 py-4">
-                            <h3 class="text-lg font-black text-slate-900">{{ $plan['label'] }}</h3>
+                            <div class="flex items-center justify-between gap-3">
+                                <h3 class="text-lg font-black text-slate-900">{{ $plan['label'] }}</h3>
+                                @if ($plan['key'] === 'smart')
+                                    <span class="rounded-full bg-cyan-600 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white">Most popular</span>
+                                @endif
+                            </div>
                             <p class="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">{{ $plan['best_for'] }}</p>
                             <div class="mt-4">
                                 @if ($billingInterval === 'monthly')
@@ -317,16 +304,38 @@
                             @endforeach
                         </ul>
                         <div class="px-5 pb-5">
-                            <a
-                                href="{{ route('billing.checkout', ['plan' => $plan['key'], 'interval' => $billingInterval], false) }}"
-                                class="flex min-h-11 w-full items-center justify-center rounded-md bg-orange-700 px-4 py-3 text-sm font-bold uppercase tracking-wide text-white shadow hover:bg-orange-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                                aria-label="Add {{ $plan['label'] }} plan to cart, {{ $billingInterval }} billing, checkout with Stripe"
-                            >
-                                Add to cart
-                            </a>
-                            <p class="mt-2 text-center text-xs text-slate-600">
-                                Secured by Stripe Checkout • 14-day trial
-                            </p>
+                            @if (in_array($plan['key'], ['pro', 'smart'], true))
+                                <a
+                                    href="{{ route('register', [], false) }}"
+                                    class="flex min-h-11 w-full items-center justify-center rounded-md bg-cyan-600 px-4 py-3 text-sm font-bold uppercase tracking-wide text-white shadow hover:bg-cyan-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                                    data-event-name="demo_trial_started"
+                                >
+                                    Start Demo Trial
+                                </a>
+                                <a
+                                    href="{{ route('billing.checkout', ['plan' => $plan['key'], 'interval' => $billingInterval], false) }}"
+                                    class="mt-2 flex min-h-11 w-full items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-3 text-sm font-bold uppercase tracking-wide text-slate-800 shadow-sm hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                                    aria-label="Activate live data on {{ $plan['label'] }} plan with {{ $billingInterval }} billing"
+                                    data-event-name="live_data_activation_clicked"
+                                >
+                                    Activate Live Data
+                                </a>
+                                <p class="mt-2 text-center text-xs text-slate-600">
+                                    Demo data during trial • Paid plan unlocks live data
+                                </p>
+                            @else
+                                <a
+                                    href="{{ route('billing.checkout', ['plan' => $plan['key'], 'interval' => $billingInterval], false) }}"
+                                    class="flex min-h-11 w-full items-center justify-center rounded-md bg-slate-900 px-4 py-3 text-sm font-bold uppercase tracking-wide text-white shadow hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                                    aria-label="Activate {{ $plan['label'] }} plan, {{ $billingInterval }} billing, checkout with Stripe"
+                                    data-event-name="subscription_checkout_initiated"
+                                >
+                                    Activate {{ $plan['label'] }}
+                                </a>
+                                <p class="mt-2 text-center text-xs text-slate-600">
+                                    Secured by Stripe Checkout • 14-day demo-data trial
+                                </p>
+                            @endif
                         </div>
                     </article>
                 @endforeach
@@ -336,6 +345,49 @@
                 <strong class="text-slate-900">Overage (Ultra &amp; Mega only):</strong> $0.001 per additional API call.
                 <span class="mx-2">•</span>
                 <strong class="text-slate-900">Policy controls:</strong> Soft rate limits (60-100 req/sec/domain) + fair-usage protection
+            </div>
+        </div>
+    </section>
+
+    <section class="border-b border-slate-800 bg-slate-950 px-4 py-14 sm:px-6 lg:px-8" aria-labelledby="comparison-heading">
+        <div class="mx-auto max-w-5xl">
+            <h2 id="comparison-heading" class="text-3xl font-bold tracking-tight text-white">Pro vs Smart for GHL widget operations</h2>
+            <p class="mt-3 text-sm text-slate-300">
+                Choose Pro for lean single-operator funnels or Smart for team-level growth. Both start with demo data in trial and require paid activation for live data.
+            </p>
+            <div class="mt-8 overflow-hidden rounded-2xl border border-white/10">
+                <table class="min-w-full divide-y divide-white/10">
+                    <thead class="bg-white/5">
+                        <tr class="text-left text-xs uppercase tracking-wide text-slate-300">
+                            <th scope="col" class="px-4 py-3">Capability</th>
+                            <th scope="col" class="px-4 py-3">Pro</th>
+                            <th scope="col" class="px-4 py-3">Smart</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-white/10 bg-slate-900/40 text-sm text-slate-200">
+                        @foreach ($comparisonRows as $row)
+                            <tr>
+                                <th scope="row" class="px-4 py-3 font-semibold text-white">{{ $row['category'] }}</th>
+                                <td class="px-4 py-3">{{ $row['pro'] }}</td>
+                                <td class="px-4 py-3">{{ $row['smart'] }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <section class="border-b border-slate-800 bg-slate-900/50 px-4 py-14 sm:px-6 lg:px-8" aria-labelledby="workflow-heading">
+        <div class="mx-auto max-w-6xl">
+            <h2 id="workflow-heading" class="text-3xl font-bold tracking-tight text-white">How the demo-to-live journey works</h2>
+            <div class="mt-8 grid gap-5 md:grid-cols-3">
+                @foreach ($workflowSteps as $step)
+                    <article class="rounded-2xl border border-white/10 bg-slate-950/60 p-6">
+                        <h3 class="text-lg font-semibold text-white">{{ $step['title'] }}</h3>
+                        <p class="mt-3 text-sm leading-relaxed text-slate-300">{{ $step['description'] }}</p>
+                    </article>
+                @endforeach
             </div>
         </div>
     </section>
@@ -371,22 +423,22 @@
         </div>
     </section>
 
-    {{-- Revenue Impact: MLS compliance story closes enterprise deals + lowers legal anxiety. --}}
+    {{-- Revenue Impact: Compliance narrative lowers procurement friction without source disclosures. --}}
     <section class="mx-auto mt-12 max-w-screen-2xl scroll-mt-24 rounded-3xl bg-slate-100 px-4 py-12 sm:px-6 lg:px-8" aria-labelledby="compliance-heading">
         <div class="flex flex-col items-center gap-10 md:flex-row md:items-start md:gap-12">
             <div class="min-w-0 flex-1">
-                <h2 id="compliance-heading" class="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Official Stellar MLS Consultant badge &amp; compliance proof</h2>
+                <h2 id="compliance-heading" class="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Compliance-first delivery for production deployments</h2>
                 <p class="mt-4 text-base leading-relaxed text-slate-700 sm:text-lg">
-                    Quantyra Labs LLC is an <strong class="font-medium text-slate-900">Official Stellar MLS Consultant</strong> under a signed agreement effective April 17, 2026. GeoIDX enforces required disclaimers, approved-domain controls, and audit logging so subscriber deployments stay inside Stellar policy.
+                    GeoIDX enforces policy-ready controls, approved-domain requirements, and audit visibility to keep production deployments aligned with applicable IDX standards.
                 </p>
                 <p class="mt-6 text-base font-medium text-emerald-700">
-                    ✓ Signed consultant agreement on file • ✓ IDX only on approved domains • ✓ Policy-ready attribution, disclaimers, and audit trail
+                    ✓ Approved-domain controls • ✓ Policy-ready disclaimers and attribution • ✓ Auditable deployment activity
                 </p>
             </div>
             <div class="flex w-full max-w-md flex-1 flex-col items-center justify-center rounded-2xl border border-emerald-200 bg-white p-8 text-center text-sm text-slate-600 shadow-sm">
-                <span class="inline-flex rounded-full bg-emerald-100 px-4 py-1 text-xs font-semibold tracking-wide text-emerald-800">Official Stellar MLS Consultant</span>
-                <p class="mt-4 text-base font-semibold text-slate-900">Agreement Signed: April 17, 2026</p>
-                <p class="mt-2 text-xs text-slate-500">Quantyra Labs LLC • Consultant of record for compliant Stellar IDX delivery.</p>
+                <span class="inline-flex rounded-full bg-emerald-100 px-4 py-1 text-xs font-semibold tracking-wide text-emerald-800">Production-ready controls</span>
+                <p class="mt-4 text-base font-semibold text-slate-900">Purpose-built for compliant rollout</p>
+                <p class="mt-2 text-xs text-slate-500">Designed for approved domains, clear disclosures, and accountable operations.</p>
             </div>
         </div>
     </section>
@@ -454,7 +506,7 @@
     <footer class="border-t border-white/10 py-8">
         <div class="mx-auto flex max-w-6xl flex-col gap-4 px-4 text-xs text-slate-200 sm:px-6 lg:px-8 md:flex-row md:items-center md:justify-between">
             <p>
-                Compliance: This is a marketing page only. No live MLS listing data is displayed here. GeoIDX data is delivered only on approved domains under the signed Stellar MLS consultant agreement and applicable subscriber terms.
+                Compliance: This is a marketing page only. No live listing data is displayed here. Live data is available only on approved domains after paid activation and under applicable subscriber terms.
             </p>
             <nav class="flex flex-wrap gap-4" aria-label="Footer">
                 @guest

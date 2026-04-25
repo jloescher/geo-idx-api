@@ -3,10 +3,10 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>GeoIDX by Quantyra Labs | Multi-MLS IDX API, Widgets &amp; Lead Gating</title>
+    <title>GeoIDX by Quantyra Labs | Multi-MLS Widgets, Geography Intelligence &amp; GHL Funnels</title>
     <meta
         name="description"
-        content="GeoIDX by Quantyra Labs: Official Stellar MLS Consultant with $0 data license fee, live MLS data and image proxy, unlimited JS widgets on Pro and Smart, and REST API tiers for high-volume teams."
+        content="GeoIDX by Quantyra Labs delivers multi-MLS widget experiences, geography-first discovery, and GHL-ready lead capture flows with a demo-data trial and paid live activation."
     >
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @livewireStyles
