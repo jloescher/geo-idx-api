@@ -97,6 +97,21 @@ The `idx-api` service passes through the variables above; set them in the host `
 
 ---
 
+## Password hashing
+
+`HASHING_DRIVER` controls the password hashing algorithm (default `argon2id`). See `config/hashing.php`.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HASHING_DRIVER` | `argon2id` | Hashing algorithm: `bcrypt`, `argon`, or `argon2id`. |
+| `BCRYPT_ROUNDS` | `12` | Rounds for bcrypt (used when driver is `bcrypt`). |
+| `HASHING_VERIFY` | `true` | Whether to verify hashes after creation for timing-attack protection. |
+| `ARGON_MEMORY` | `65536` | Memory cost in KiB for argon2id. |
+| `ARGON_THREADS` | `1` | Thread count for argon2id. |
+| `ARGON_TIME` | `4` | Time cost for argon2id. |
+
+---
+
 ## Stripe / Laravel Cashier
 
 `STRIPE_KEY`, `STRIPE_SECRET`, `STRIPE_WEBHOOK_SECRET`, `CASHIER_CURRENCY`, `CASHIER_CURRENCY_LOCALE`, webhook URL (`/stripe/webhook` by default), and Stripe CLI forwarding are documented in **[stripe-laravel-cashier.md](stripe-laravel-cashier.md)**.

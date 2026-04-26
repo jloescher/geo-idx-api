@@ -59,6 +59,7 @@ Route::prefix('v1')->middleware(['domain.token'])->group(function () {
     Route::get('/openhouses/{openhouseId}', [BridgeProxyController::class, 'openHouse'])->where('openhouseId', '[^/]+');
 
     Route::get('/properties', [BridgeProxyController::class, 'properties']);
+    Route::post('/properties', [BridgeProxyController::class, 'properties']);
     Route::get('/properties/{listingKey}', [BridgeProxyController::class, 'property'])->where('listingKey', '[^/]+');
 
     Route::get('/members', [BridgeProxyController::class, 'members']);
@@ -81,18 +82,5 @@ Route::prefix('v1')->middleware(['domain.token'])->group(function () {
         Route::get('/transactions', [BridgeProxyController::class, 'pubTransactions']);
     });
 
-    Route::get('/zestimates', [BridgeProxyController::class, 'zestimates']);
-
-    Route::prefix('zgecon')->group(function () {
-        Route::get('/marketreport', [BridgeProxyController::class, 'zgeconMarketReport']);
-        Route::get('/marketreport/replication', [BridgeProxyController::class, 'zgeconMarketReportReplication']);
-        Route::get('/region', [BridgeProxyController::class, 'zgeconRegion']);
-        Route::get('/cut', [BridgeProxyController::class, 'zgeconCut']);
-        Route::get('/type', [BridgeProxyController::class, 'zgeconType']);
-    });
-
-    Route::prefix('reviews')->group(function () {
-        Route::get('/reviews', [BridgeProxyController::class, 'reviews']);
-        Route::get('/reviewees', [BridgeProxyController::class, 'reviewees']);
-    });
+    Route::post('/search', [BridgeProxyController::class, 'search']);
 });

@@ -55,6 +55,15 @@ return [
         '/api/v2/{dataset}/listings/{listingKey}/photos/{photoId}'
     ),
 
+    /*
+     * Available MLS datasets (comma-separated). Each dataset maps to a Bridge Data Output
+     * data source. The first value is the default.
+     */
+    'datasets' => array_values(array_filter(array_map(
+        trim(...),
+        explode(',', (string) env('BRIDGE_DATASETS', 'stellar'))
+    ))),
+
     'images_public_base' => $idx['images_public_url'],
 
     /*

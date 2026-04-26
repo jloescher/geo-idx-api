@@ -12,7 +12,7 @@ class BridgeHttpService
      * Revenue impact: a single HTTP wrapper keeps Bridge credentials off edge devices
      * and centralizes timeouts so slow MLS responses do not tie up checkout flows.
      */
-    public function getJsonFromUrl(string $url, Request $incoming, array $query = []): Response
+    public function getJsonFromUrl(string $url, Request $incoming, array $query = [], array $stripQueryKeys = []): Response
     {
         $token = config('bridge.server_token');
         if (! is_string($token) || $token === '') {
@@ -20,7 +20,7 @@ class BridgeHttpService
         }
 
         $mergedQuery = array_merge($incoming->query(), $query);
-        foreach (['domain', 'teaser'] as $internal) {
+        foreach (array_merge(['domain', 'teaser'], $stripQueryKeys) as $internal) {
             unset($mergedQuery[$internal]);
         }
 
@@ -46,22 +46,56 @@ class BridgeHttpService
      */
     public function resoCollectionUrl(string $resource): string
     {
+        return $this->resoCollectionUrls($resource)[0];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function resoCollectionUrls(string $resource): array
+    {
         $resource = ltrim($resource, '/');
         $dataset = (string) config('bridge.dataset');
+        $prefix = trim((string) config('bridge.path_prefix', ''), '/');
         $resoRoot = trim((string) config('bridge.reso_root', ''), '/');
+        $paths = [];
 
-        if ($resoRoot === '') {
-            return $this->joinUrl($dataset.'/'.$resource);
+        if ($prefix !== '') {
+            if ($resoRoot !== '') {
+                $paths[] = $prefix.'/'.$resoRoot.'/'.$dataset.'/'.$resource;
+            }
+
+            $paths[] = $prefix.'/OData/'.$dataset.'/'.$resource;
         }
 
-        return $this->joinUrl($resoRoot.'/'.$dataset.'/'.$resource);
+        if ($resoRoot !== '') {
+            $paths[] = $resoRoot.'/'.$dataset.'/'.$resource;
+        }
+
+        $paths[] = $dataset.'/'.$resource;
+
+        return array_values(array_unique(array_map(
+            fn (string $path): string => $this->joinUrl($path),
+            $paths
+        )));
     }
 
     public function resoEntityUrl(string $resource, string $key): string
     {
+        return $this->resoEntityUrls($resource, $key)[0];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function resoEntityUrls(string $resource, string $key): array
+    {
         $safeKey = str_replace("'", "''", $key);
 
-        return $this->resoCollectionUrl($resource)."('{$safeKey}')";
+        return array_map(
+            fn (string $url): string => $url."('{$safeKey}')",
+            $this->resoCollectionUrls($resource),
+        );
     }
 
     public function listingPhotoUrl(string $listingKey, string $photoId): string

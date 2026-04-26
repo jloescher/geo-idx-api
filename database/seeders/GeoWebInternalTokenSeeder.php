@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 class GeoWebInternalTokenSeeder extends Seeder
@@ -14,7 +15,7 @@ class GeoWebInternalTokenSeeder extends Seeder
             ['email' => 'geo-web-internal@quantyralabs.internal'],
             [
                 'name' => 'Geo Web Internal',
-                'password' => bcrypt(Str::random(64)),
+                'password' => Hash::make(Str::random(64)),
             ],
         );
 

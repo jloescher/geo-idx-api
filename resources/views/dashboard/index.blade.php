@@ -35,6 +35,8 @@
             return Object.values(this.done).filter(Boolean).length;
         }
     }"
+    @token-created.window="toast = 'API token created successfully!'; setTimeout(() => toast = '', 2200)"
+    @token-revoked.window="toast = 'API token revoked.'; setTimeout(() => toast = '', 2200)"
     class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"
 >
     {{-- Revenue Impact: Premium header establishes trust and steers upgrades early. --}}
@@ -72,13 +74,6 @@
     @if (session('dashboard_status'))
         <div class="mt-6 rounded-xl border border-emerald-400/30 bg-emerald-900/20 px-4 py-3 text-sm text-emerald-100">
             {{ session('dashboard_status') }}
-        </div>
-    @endif
-    @if (session('dashboard_new_api_token'))
-        <div class="mt-6 rounded-xl border border-amber-400/40 bg-amber-900/20 px-4 py-3 text-sm text-amber-100">
-            <p class="font-semibold">New API token (shown once)</p>
-            <p class="mt-2 text-xs text-amber-50/90">Send as <span class="font-mono">Authorization: Bearer …</span> to <span class="font-mono">{{ $apiPublicUrl }}/api/v1/*</span>. Ultra keys use teaser payloads (<span class="font-mono">idx:access</span>); Mega keys use full payloads (<span class="font-mono">idx:full</span>).</p>
-            <p class="mt-2 break-all font-mono text-xs">{{ session('dashboard_new_api_token') }}</p>
         </div>
     @endif
 
@@ -218,32 +213,9 @@
                     <p class="mt-1 text-xs text-slate-400">Overage requests: {{ number_format($apiOverageCount) }}</p>
                 </div>
             </div>
-            <div class="mt-6 border-t border-white/10 pt-6">
-                <h3 class="text-base font-semibold text-white">API Keys</h3>
-                <form method="POST" action="{{ route('dashboard.api-tokens.store', [], false) }}" class="mt-4 flex flex-col gap-3 sm:flex-row">
-                    @csrf
-                    <input type="text" name="token_name" required maxlength="60" placeholder="Token name (e.g. IDX Production Key)" class="min-h-11 w-full rounded-lg border border-white/15 bg-slate-950 px-3 py-2 text-sm text-slate-100">
-                    <button type="submit" class="min-h-11 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Generate API token</button>
-                </form>
-                <div class="mt-4 space-y-3">
-                    @forelse ($apiTokens as $token)
-                        <div class="flex flex-col gap-3 rounded-lg border border-white/10 bg-slate-950/70 p-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div class="min-w-0">
-                                <p class="truncate text-sm font-semibold text-slate-100">{{ $token->name }}</p>
-                                <p class="text-xs text-slate-400">Last used: {{ $token->last_used_at?->diffForHumans() ?? 'Never' }} · Created: {{ $token->created_at?->toDayDateTimeString() }}</p>
-                            </div>
-                            <form method="POST" action="{{ route('dashboard.api-tokens.destroy', ['token' => $token->id], false) }}">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="min-h-10 rounded-md border border-rose-400/40 px-3 py-2 text-xs font-semibold text-rose-200 hover:bg-rose-500/10">Revoke</button>
-                            </form>
-                        </div>
-                    @empty
-                        <p class="text-sm text-slate-400">No API keys created yet.</p>
-                    @endforelse
-                </div>
-            </div>
         </section>
+
+        <livewire:dashboard.api-token-manager />
     @endif
 
     {{-- Revenue Impact: Progress checklist drives setup completion and activation. --}}

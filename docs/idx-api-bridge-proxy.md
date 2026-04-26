@@ -178,15 +178,6 @@ Built from `BRIDGE_HOST`, optional `BRIDGE_PATH_PREFIX`, `BRIDGE_DATASET`, and o
 | GET | `/api/v1/pub/parcels/{parcelId}/transactions` | |
 | GET | `/api/v1/pub/assessments` | `/pub/assessments` |
 | GET | `/api/v1/pub/transactions` | `/pub/transactions` |
-| GET | `/api/v1/zestimates` | `/zestimates_v2/zestimates` |
-| GET | `/api/v1/zgecon/marketreport` | `/zgecon/marketreport` |
-| GET | `/api/v1/zgecon/marketreport/replication` | |
-| GET | `/api/v1/zgecon/region` | |
-| GET | `/api/v1/zgecon/cut` | |
-| GET | `/api/v1/zgecon/type` | |
-| GET | `/api/v1/reviews/reviews` | `/reviews/Reviews` |
-| GET | `/api/v1/reviews/reviewees` | `/reviews/Reviewees` |
-
 ### Image proxy (no `/api` prefix)
 
 Registered in **`bootstrap/app.php`** `then` routing callback with middleware **`api`** + **`domain.token`**.
@@ -235,7 +226,7 @@ Migrations live under `idx-api/database/migrations/` (`2026_04_22_120000` … `1
 
 ## Environment variables
 
-Set in **`idx-api/.env`** and/or root **`.env`** for Docker Compose. See also [GHL environment variables](ghl-environment-variables.md) for shared `IDX_*` URLs.
+Set in **`idx-api/.env`** and/or root **`.env`** for Docker Compose. See also [GHL environment variables](ghl-environment-variables.md) for shared `IDX_*` URLs and core app settings (password hashing driver, etc.).
 
 | Variable | Required | Description |
 |----------|----------|-------------|

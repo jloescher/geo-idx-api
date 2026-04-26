@@ -5,6 +5,7 @@ namespace Tests\Feature\Bridge;
 use App\Models\Domain;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -171,5 +172,66 @@ class BridgeProxySecurityTest extends TestCase
         $response->assertOk();
         $payload = $response->json();
         $this->assertCount(10, $payload['value']);
+    }
+
+    public function test_properties_translates_city_and_limit_to_odata_params(): void
+    {
+        Http::fake([
+            'https://bridge.test/stellar/Property*' => Http::response(
+                json_encode(['value' => [['ListingKey' => 'stellar:1']]], JSON_THROW_ON_ERROR),
+                200,
+                ['Content-Type' => 'application/json']
+            ),
+        ]);
+
+        $user = User::factory()->create();
+        $plain = $user->createToken('integration', ['idx:full'])->plainTextToken;
+
+        $this->getJson('/api/v1/properties?city=largo&limit=10', [
+            'Authorization' => 'Bearer '.$plain,
+        ])->assertOk();
+
+        Http::assertSent(function (Request $request): bool {
+            $query = $request->data();
+
+            return str_contains($request->url(), '/stellar/Property')
+                && isset($query['$filter'])
+                && $query['$filter'] === "contains(tolower(City),'largo')"
+                && isset($query['$top'])
+                && (int) $query['$top'] === 10
+                && ! isset($query['city'])
+                && ! isset($query['limit']);
+        });
+    }
+
+    public function test_properties_accepts_json_body_for_city_and_limit(): void
+    {
+        Http::fake([
+            'https://bridge.test/stellar/Property*' => Http::response(
+                json_encode(['value' => [['ListingKey' => 'stellar:1']]], JSON_THROW_ON_ERROR),
+                200,
+                ['Content-Type' => 'application/json']
+            ),
+        ]);
+
+        $user = User::factory()->create();
+        $plain = $user->createToken('integration', ['idx:full'])->plainTextToken;
+
+        $this->postJson('/api/v1/properties', [
+            'city' => 'largo',
+            'limit' => 10,
+        ], [
+            'Authorization' => 'Bearer '.$plain,
+        ])->assertOk();
+
+        Http::assertSent(function (Request $request): bool {
+            $query = $request->data();
+
+            return str_contains($request->url(), '/stellar/Property')
+                && isset($query['$filter'])
+                && $query['$filter'] === "contains(tolower(City),'largo')"
+                && isset($query['$top'])
+                && (int) $query['$top'] === 10;
+        });
     }
 }

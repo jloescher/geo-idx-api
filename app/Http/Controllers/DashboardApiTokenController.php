@@ -33,8 +33,7 @@ class DashboardApiTokenController extends Controller
 
         $token = $user->createToken($validated['token_name'], $abilities);
 
-        return redirect()
-            ->route('dashboard.index')
+        return redirect('/dashboard')
             ->with('dashboard_new_api_token', $token->plainTextToken);
     }
 
@@ -48,8 +47,7 @@ class DashboardApiTokenController extends Controller
 
         $token->delete();
 
-        return redirect()
-            ->route('dashboard.index')
+        return redirect('/dashboard')
             ->with('dashboard_status', 'API token revoked.');
     }
 }

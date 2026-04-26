@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\User;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 class IssueGeoWebInternalTokenCommand extends Command
@@ -18,7 +19,7 @@ class IssueGeoWebInternalTokenCommand extends Command
             ['email' => 'geo-web-internal@quantyralabs.internal'],
             [
                 'name' => 'Geo Web Internal',
-                'password' => bcrypt(Str::random(64)),
+                'password' => Hash::make(Str::random(64)),
             ],
         );
 

@@ -1,0 +1,849 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Quantyra GeoIDX API",
+    "description": "API collection for testing Quantyra IDX API endpoints including MLS data proxy, GIS parcel data, and GoHighLevel Lead Connector.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://dev-idx-api.quantyralabs.cc",
+      "description": "Development environment"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Sanctum API token obtained via POST /api/auth/token. Ultra keys use idx:access (teaser payloads), Mega keys use idx:full (full payloads)."
+      }
+    },
+    "schemas": {
+      "AuthRequest": {
+        "type": "object",
+        "required": ["email", "password", "device_name"],
+        "properties": {
+          "email": { "type": "string", "format": "email", "example": "test@example.com" },
+          "password": { "type": "string", "example": "password" },
+          "device_name": { "type": "string", "example": "yaak-testing" }
+        }
+      },
+      "AuthResponse": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "example": "1|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "email": { "type": "string" },
+          "email_verified_at": { "type": "string", "nullable": true },
+          "created_at": { "type": "string" },
+          "updated_at": { "type": "string" }
+        }
+      },
+      "ListingsResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": { "type": "object" }
+          },
+          "links": { "type": "object" },
+          "meta": { "type": "object" }
+        }
+      },
+      "GisResponse": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "example": "FeatureCollection" },
+          "features": {
+            "type": "array",
+            "items": { "type": "object" }
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/auth/token": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Login - Get API Token",
+        "description": "Authenticate and obtain a Sanctum bearer token. Use the returned token in the Authorization header for subsequent requests.\n\n**Test credentials:**\n- Email: test@example.com\n- Password: password\n\n**Stripe test accounts:** idx-seed-pro@, idx-seed-smart@, idx-seed-ultra@, idx-seed-mega@ (all @quantyralabs.test, password: password)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AuthRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token generated successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/user": {
+      "get": {
+        "tags": ["Authentication"],
+        "summary": "Get Current User",
+        "description": "Returns the authenticated user's details.",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Authenticated user",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/User" }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/listings": {
+      "get": {
+        "tags": ["MLS Data - Listings"],
+        "summary": "Get Listings",
+        "description": "Get MLS listings with pagination. Supports both Bearer token and domain-based authentication.",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Listings retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ListingsResponse" }
+              }
+            }
+          },
+          "401": { "description": "Unauthenticated" },
+          "403": { "description": "Forbidden" }
+        }
+      }
+    },
+    "/api/v1/listings/{listingId}": {
+      "get": {
+        "tags": ["MLS Data - Listings"],
+        "summary": "Get Listing by ID",
+        "description": "Get a specific MLS listing by its ID.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "listingId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "The listing identifier"
+          }
+        ],
+        "responses": {
+          "200": { "description": "Listing details" },
+          "401": { "description": "Unauthenticated" },
+          "404": { "description": "Listing not found" }
+        }
+      }
+    },
+    "/api/v1/properties": {
+      "get": {
+        "tags": ["MLS Data - Listings"],
+        "summary": "Search Properties",
+        "description": "Search properties with query parameters. For structured payloads, use POST /api/v1/properties.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "city",
+            "in": "query",
+            "schema": { "type": "string" },
+            "example": "Orlando"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 10 }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Search results" },
+          "401": { "description": "Unauthenticated" }
+        }
+      },
+      "post": {
+        "tags": ["MLS Data - Listings"],
+        "summary": "Search Properties (JSON body)",
+        "description": "Compatibility endpoint that accepts JSON body and translates convenience fields to RESO OData. Currently supports `city` and `limit`.",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "city": { "type": "string", "example": "Largo" },
+                  "limit": { "type": "integer", "minimum": 1, "maximum": 200, "example": 10 }
+                }
+              },
+              "examples": {
+                "single_city": {
+                  "summary": "Single city search",
+                  "value": {
+                    "city": "Largo",
+                    "limit": 10
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Search results" },
+          "400": { "description": "Invalid request parameters" },
+          "401": { "description": "Unauthenticated" }
+        }
+      }
+    },
+    "/api/v1/properties/{listingKey}": {
+      "get": {
+        "tags": ["MLS Data - Listings"],
+        "summary": "Get Property by Key",
+        "description": "Get a specific property by its listing key.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "listingKey",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Property details" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/agents": {
+      "get": {
+        "tags": ["MLS Data - Agents & Offices"],
+        "summary": "Get Agents",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": {
+          "200": { "description": "Agent list" },
+          "401": { "description": "Unauthenticated" }
+        }
+      }
+    },
+    "/api/v1/agents/{agentId}": {
+      "get": {
+        "tags": ["MLS Data - Agents & Offices"],
+        "summary": "Get Agent by ID",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "agentId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Agent details" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/offices": {
+      "get": {
+        "tags": ["MLS Data - Agents & Offices"],
+        "summary": "Get Offices",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": {
+          "200": { "description": "Office list" }
+        }
+      }
+    },
+    "/api/v1/offices/{officeId}": {
+      "get": {
+        "tags": ["MLS Data - Agents & Offices"],
+        "summary": "Get Office by ID",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "officeId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Office details" } }
+      }
+    },
+    "/api/v1/reso-offices": {
+      "get": {
+        "tags": ["MLS Data - Agents & Offices"],
+        "summary": "Get RESO Offices",
+        "description": "Get offices in RESO OData format.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": { "200": { "description": "RESO office list" } }
+      }
+    },
+    "/api/v1/reso-offices/{officeKey}": {
+      "get": {
+        "tags": ["MLS Data - Agents & Offices"],
+        "summary": "Get RESO Office by Key",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "officeKey", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "RESO office details" } }
+      }
+    },
+    "/api/v1/openhouses": {
+      "get": {
+        "tags": ["MLS Data - Open Houses"],
+        "summary": "Get Open Houses",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": { "200": { "description": "Open house list" } }
+      }
+    },
+    "/api/v1/openhouses/{openhouseId}": {
+      "get": {
+        "tags": ["MLS Data - Open Houses"],
+        "summary": "Get Open House by ID",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "openhouseId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Open house details" } }
+      }
+    },
+    "/api/v1/reso-openhouses": {
+      "get": {
+        "tags": ["MLS Data - Open Houses"],
+        "summary": "Get RESO Open Houses",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": { "200": { "description": "RESO open house list" } }
+      }
+    },
+    "/api/v1/reso-openhouses/{openHouseKey}": {
+      "get": {
+        "tags": ["MLS Data - Open Houses"],
+        "summary": "Get RESO Open House by Key",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "openHouseKey", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "RESO open house details" } }
+      }
+    },
+    "/api/v1/members": {
+      "get": {
+        "tags": ["MLS Data - Members & Lookup"],
+        "summary": "Get Members",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": { "200": { "description": "Member list" } }
+      }
+    },
+    "/api/v1/members/{memberKey}": {
+      "get": {
+        "tags": ["MLS Data - Members & Lookup"],
+        "summary": "Get Member by Key",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "memberKey", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Member details" } }
+      }
+    },
+    "/api/v1/lookup": {
+      "get": {
+        "tags": ["MLS Data - Members & Lookup"],
+        "summary": "Lookup",
+        "description": "Bridge lookup endpoint.",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Lookup results" } }
+      }
+    },
+    "/api/v1/pub/parcels": {
+      "get": {
+        "tags": ["MLS Data - Public Data"],
+        "summary": "Get Public Parcels",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": { "200": { "description": "Parcel list" } }
+      }
+    },
+    "/api/v1/pub/parcels/{parcelId}": {
+      "get": {
+        "tags": ["MLS Data - Public Data"],
+        "summary": "Get Public Parcel by ID",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "parcelId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Parcel details" } }
+      }
+    },
+    "/api/v1/pub/parcels/{parcelId}/assessments": {
+      "get": {
+        "tags": ["MLS Data - Public Data"],
+        "summary": "Get Parcel Assessments",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "parcelId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Assessment records" } }
+      }
+    },
+    "/api/v1/pub/parcels/{parcelId}/transactions": {
+      "get": {
+        "tags": ["MLS Data - Public Data"],
+        "summary": "Get Parcel Transactions",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "parcelId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Transaction records" } }
+      }
+    },
+    "/api/v1/pub/assessments": {
+      "get": {
+        "tags": ["MLS Data - Public Data"],
+        "summary": "Get Public Assessments",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": { "200": { "description": "Assessment list" } }
+      }
+    },
+    "/api/v1/pub/transactions": {
+      "get": {
+        "tags": ["MLS Data - Public Data"],
+        "summary": "Get Public Transactions",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": { "200": { "description": "Transaction list" } }
+      }
+    },
+    "/api/v1/search": {
+      "post": {
+        "tags": ["MLS Data - Search"],
+        "summary": "Structured MLS Search",
+        "description": "Searches Bridge RESO Property data through the proxy with request-level caching (15 minute TTL), teaser gating for non-full access keys, and domain dataset restrictions.\n\nUse `?dataset=` to select a dataset when enabled for the domain/site.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "dataset",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "example": "stellar" },
+            "description": "Optional MLS dataset override. Must be globally configured and enabled for the requesting domain/site."
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "min_price": { "type": "number", "example": 250000 },
+                  "max_price": { "type": "number", "example": 600000 },
+                  "min_beds": { "type": "integer", "example": 3 },
+                  "max_beds": { "type": "integer", "example": 5 },
+                  "city": { "type": "string", "example": "Tampa" },
+                  "statuses": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "example": ["Active"]
+                  },
+                  "low_risk_floodzone": { "type": "boolean", "example": true },
+                  "sort": { "type": "string", "example": "list_price" },
+                  "sort_dir": { "type": "string", "example": "desc" },
+                  "page": {
+                    "type": "object",
+                    "properties": {
+                      "limit": { "type": "integer", "example": 24 },
+                      "skip": { "type": "integer", "example": 0 }
+                    }
+                  },
+                  "focus_areas": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": ["city", "county", "state", "postal_code", "elementary_school", "middle_school", "high_school", "subdivision"]
+                        },
+                        "name": { "type": "string" }
+                      },
+                      "required": ["type", "name"]
+                    }
+                  }
+                }
+              },
+              "examples": {
+                "baseline_active": {
+                  "summary": "Baseline active listings (no geo)",
+                  "value": {
+                    "active_only": true,
+                    "statuses": ["Active"],
+                    "page": { "limit": 24, "skip": 0 }
+                  }
+                },
+                "multiple_cities": {
+                  "summary": "Multiple city OR search",
+                  "value": {
+                    "focus_areas": [
+                      { "type": "city", "name": "Largo" },
+                      { "type": "city", "name": "Clearwater" },
+                      { "type": "city", "name": "St. Petersburg" }
+                    ],
+                    "page": { "limit": 24, "skip": 0 }
+                  }
+                },
+                "county_or_city_outside_county": {
+                  "summary": "County OR city outside county",
+                  "value": {
+                    "focus_areas": [
+                      { "type": "county", "name": "Pinellas" },
+                      { "type": "city", "name": "Tampa" }
+                    ],
+                    "statuses": ["Active"],
+                    "page": { "limit": 24, "skip": 0 }
+                  }
+                },
+                "mixed_state_county_city": {
+                  "summary": "State/county/city combined OR",
+                  "value": {
+                    "focus_areas": [
+                      { "type": "state", "name": "FL" },
+                      { "type": "county", "name": "Hillsborough" },
+                      { "type": "city", "name": "Orlando" }
+                    ],
+                    "min_price": 250000,
+                    "max_price": 750000,
+                    "page": { "limit": 24, "skip": 0 }
+                  }
+                },
+                "county_state_postal_mix": {
+                  "summary": "County + state + postal code mix",
+                  "value": {
+                    "focus_areas": [
+                      { "type": "county", "name": "Pinellas" },
+                      { "type": "state", "name": "FL" },
+                      { "type": "postal_code", "name": "33701" }
+                    ],
+                    "statuses": ["Active", "Pending"],
+                    "page": { "limit": 24, "skip": 0 }
+                  }
+                },
+                "price_beds_baths_sqft": {
+                  "summary": "Price + beds/baths + square footage",
+                  "value": {
+                    "min_price": 300000,
+                    "max_price": 900000,
+                    "min_beds": 3,
+                    "max_beds": 5,
+                    "min_baths": 2,
+                    "max_baths": 4,
+                    "min_sqft": 1600,
+                    "max_sqft": 4200,
+                    "page": { "limit": 24, "skip": 0 }
+                  }
+                },
+                "property_types_and_statuses": {
+                  "summary": "Property types/subtypes with multiple statuses",
+                  "value": {
+                    "property_types": ["Residential"],
+                    "property_sub_types": ["Single Family Residence", "Townhouse"],
+                    "statuses": ["Active", "Pending", "Coming Soon"],
+                    "page": { "limit": 24, "skip": 0 }
+                  }
+                },
+                "boolean_features": {
+                  "summary": "Boolean feature toggles",
+                  "value": {
+                    "waterfront": true,
+                    "pool_private": true,
+                    "dock": true,
+                    "new_construction": true,
+                    "has_photos": true,
+                    "garage": true,
+                    "association": true,
+                    "spa": false,
+                    "fireplace": true,
+                    "active_adult_community": false,
+                    "page": { "limit": 24, "skip": 0 }
+                  }
+                },
+                "monthly_fees_stories_year_dom": {
+                  "summary": "HOA fees + stories + year built + DOM",
+                  "value": {
+                    "min_monthly_fees": 100,
+                    "max_monthly_fees": 700,
+                    "min_stories": 1,
+                    "max_stories": 2,
+                    "min_year_built": 1990,
+                    "max_year_built": 2025,
+                    "min_days_on_market": 1,
+                    "max_days_on_market": 45,
+                    "page": { "limit": 24, "skip": 0 }
+                  }
+                },
+                "flood_zone_and_price_reduction": {
+                  "summary": "Flood zone + recent price reduction",
+                  "value": {
+                    "low_risk_floodzone": true,
+                    "price_reduced_within_days": 30,
+                    "statuses": ["Active"],
+                    "page": { "limit": 24, "skip": 0 }
+                  }
+                },
+                "for_lease_with_special_conditions": {
+                  "summary": "For lease + special listing conditions",
+                  "value": {
+                    "for_lease": true,
+                    "special_listing_conditions": ["Short Sale", "REO"],
+                    "statuses": ["Active"],
+                    "page": { "limit": 24, "skip": 0 }
+                  }
+                },
+                "geo_distance_radius": {
+                  "summary": "Distance search around a point",
+                  "value": {
+                    "geo": {
+                      "distance": {
+                        "lat": 27.9506,
+                        "lng": -82.4572,
+                        "radius_miles": 8
+                      }
+                    },
+                    "sort": "distance",
+                    "sort_dir": "asc",
+                    "page": { "limit": 24, "skip": 0 }
+                  }
+                },
+                "geo_bounding_box": {
+                  "summary": "Bounding box search",
+                  "value": {
+                    "geo": {
+                      "bbox": {
+                        "west": -82.60,
+                        "south": 27.86,
+                        "east": -82.32,
+                        "north": 28.05
+                      }
+                    },
+                    "statuses": ["Active"],
+                    "page": { "limit": 24, "skip": 0 }
+                  }
+                },
+                "sorting_variants": {
+                  "summary": "Sort by list price descending",
+                  "value": {
+                    "statuses": ["Active"],
+                    "sort": "list_price",
+                    "sort_dir": "desc",
+                    "page": { "limit": 24, "skip": 0 }
+                  }
+                },
+                "pagination_followup": {
+                  "summary": "Second page request",
+                  "value": {
+                    "statuses": ["Active"],
+                    "sort": "on_market_date",
+                    "sort_dir": "desc",
+                    "page": { "limit": 24, "skip": 24 }
+                  }
+                },
+                "dataset_override": {
+                  "summary": "Use query dataset with focused payload",
+                  "description": "Send request as POST /api/v1/search?dataset=stellar",
+                  "value": {
+                    "focus_areas": [
+                      { "type": "city", "name": "Largo" }
+                    ],
+                    "statuses": ["Active"],
+                    "page": { "limit": 24, "skip": 0 }
+                  }
+                },
+                "combined_real_world": {
+                  "summary": "Real-world combined search",
+                  "value": {
+                    "focus_areas": [
+                      { "type": "county", "name": "Pinellas" },
+                      { "type": "city", "name": "Tampa" }
+                    ],
+                    "min_price": 350000,
+                    "max_price": 1200000,
+                    "min_beds": 3,
+                    "min_baths": 2,
+                    "property_types": ["Residential"],
+                    "waterfront": true,
+                    "has_photos": true,
+                    "low_risk_floodzone": true,
+                    "sort": "list_price",
+                    "sort_dir": "desc",
+                    "page": { "limit": 24, "skip": 0 }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Search results" },
+          "400": { "description": "Invalid request or unavailable dataset" },
+          "401": { "description": "Unauthenticated" },
+          "403": { "description": "Dataset not enabled for site or token/domain not permitted" }
+        }
+      }
+    },
+    "/api/v1/gis": {
+      "get": {
+        "tags": ["GIS Parcel Proxy"],
+        "summary": "Get GIS Data (General)",
+        "description": "Get GIS parcel geometry data for a bounding box. Returns GeoJSON FeatureCollection.\n\n**Example bbox (Tampa Bay):** `-82.8,27.9,-82.6,28.0`",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "bbox",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Bounding box as minLon,minLat,maxLon,maxLat (max span: 0.35 degrees)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "GeoJSON FeatureCollection",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GisResponse" }
+              }
+            }
+          },
+          "400": { "description": "Invalid bbox" }
+        }
+      }
+    },
+    "/api/v1/mls/{mlsCode}/gis": {
+      "get": {
+        "tags": ["GIS Parcel Proxy"],
+        "summary": "Get GIS Data (MLS-scoped)",
+        "description": "Get GIS parcel data scoped to a specific MLS dataset.\n\n**Default MLS dataset:** stellar",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "mlsCode",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "example": "stellar" }
+          },
+          {
+            "name": "bbox",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Bounding box as minLon,minLat,maxLon,maxLat"
+          }
+        ],
+        "responses": {
+          "200": { "description": "GeoJSON FeatureCollection" },
+          "400": { "description": "Invalid bbox" }
+        }
+      }
+    },
+    "/api/leadconnector/leads": {
+      "get": {
+        "tags": ["GoHighLevel Lead Connector"],
+        "summary": "Get Leads",
+        "description": "Get leads from GoHighLevel. Requires GHL location authentication middleware.",
+        "responses": {
+          "200": { "description": "Lead list" },
+          "401": { "description": "GHL auth required" }
+        }
+      }
+    },
+    "/api/leadconnector/leads/{id}": {
+      "get": {
+        "tags": ["GoHighLevel Lead Connector"],
+        "summary": "Get Lead by ID",
+        "responses": {
+          "200": { "description": "Lead details" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/leadconnector/subscriptions": {
+      "get": {
+        "tags": ["GoHighLevel Lead Connector"],
+        "summary": "Get Subscriptions",
+        "responses": { "200": { "description": "Subscription list" } }
+      }
+    },
+    "/api/leadconnector/stats": {
+      "get": {
+        "tags": ["GoHighLevel Lead Connector"],
+        "summary": "Get Stats",
+        "responses": { "200": { "description": "Statistics" } }
+      }
+    },
+    "/api/leadconnector/config": {
+      "get": {
+        "tags": ["GoHighLevel Lead Connector"],
+        "summary": "Get Config",
+        "responses": { "200": { "description": "Configuration" } }
+      }
+    }
+  }
+}

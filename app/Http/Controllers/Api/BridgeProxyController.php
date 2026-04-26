@@ -3,11 +3,19 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Search\SearchRequest;
+use App\Http\Responses\Search\ListingResult;
+use App\Http\Responses\Search\SearchResult;
+use App\Http\Responses\Search\SearchStats;
 use App\Services\Bridge\BridgeHttpService;
 use App\Services\Bridge\BridgeImageUrlRewriter;
 use App\Services\Bridge\BridgeProxyAuditLogger;
+use App\Services\Bridge\BridgeSearchClient;
+use App\Services\Bridge\BridgeSearchTranslator;
 use App\Services\Bridge\BridgeTeaser;
 use App\Services\Bridge\ListingsCacheService;
+use App\Services\Bridge\MlsDatasetResolver;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
@@ -19,7 +27,98 @@ class BridgeProxyController extends Controller
         private readonly ListingsCacheService $listingsCache,
         private readonly BridgeProxyAuditLogger $audit,
         private readonly BridgeImageUrlRewriter $imageUrlRewriter,
+        private readonly BridgeSearchClient $searchClient,
+        private readonly BridgeSearchTranslator $searchTranslator,
+        private readonly MlsDatasetResolver $resolver,
     ) {}
+
+    /**
+     * Revenue impact: shared search cache cuts duplicate Bridge OData spend while
+     * teaser gating still applies only on the outbound JSON payload.
+     */
+    public function search(SearchRequest $request): JsonResponse
+    {
+        $fullAccess = (bool) $request->attributes->get('bridge.full_access', false);
+        $domainSlug = $request->attributes->get('bridge.domain_slug');
+        $tokenName = $request->attributes->get('bridge.token_name');
+        $userId = $request->attributes->get('bridge.user_id');
+
+        $dataset = $this->resolver->resolveDataset($request);
+        $translated = $this->searchTranslator->translate($request, $dataset);
+        $bridgeTop = $translated['top'];
+
+        $partitionKey = $this->searchCachePartitionKey($request);
+        $fingerprint = $this->searchFingerprint($dataset, $request->validated());
+
+        if ($partitionKey !== null) {
+            $bridgeResult = $this->listingsCache->rememberSearchResult(
+                $partitionKey,
+                $fingerprint,
+                fn (): array => $this->searchClient->search(
+                    dataset: $dataset,
+                    filter: $translated['filter'],
+                    orderby: $translated['orderby'],
+                    top: $bridgeTop,
+                    skip: $translated['skip'],
+                    select: $translated['select'],
+                    unselect: $translated['unselect'],
+                ),
+            );
+        } else {
+            $bridgeResult = $this->searchClient->search(
+                dataset: $dataset,
+                filter: $translated['filter'],
+                orderby: $translated['orderby'],
+                top: $bridgeTop,
+                skip: $translated['skip'],
+                select: $translated['select'],
+                unselect: $translated['unselect'],
+            );
+        }
+
+        $results = array_map(
+            fn (array $record) => $this->searchClient->mapToListingResult($record, $dataset),
+            $bridgeResult['value'],
+        );
+
+        if ($translated['needsFloodZonePostFilter']) {
+            $filteredRaw = $this->searchTranslator->filterLowRiskFloodZone($bridgeResult['value'], $dataset);
+            $results = array_map(
+                fn (array $record) => $this->searchClient->mapToListingResult($record, $dataset),
+                $filteredRaw,
+            );
+        }
+
+        $countAfterFilter = count($results);
+        $teaserCap = $fullAccess ? PHP_INT_MAX : 3;
+        if ($countAfterFilter > $teaserCap) {
+            $results = array_slice($results, 0, $teaserCap);
+        }
+
+        $stats = $this->computeSearchStats($results);
+
+        $hasMore = $fullAccess && $countAfterFilter >= $bridgeTop && $bridgeTop < 200;
+        $nextSkip = $hasMore ? $translated['skip'] + $bridgeTop : null;
+
+        $this->audit->log(
+            $request,
+            'search.listings',
+            count($results),
+            $domainSlug,
+            $tokenName,
+            $userId,
+        );
+
+        $searchResult = new SearchResult(
+            totalCount: count($results),
+            results: $results,
+            hasMore: $hasMore,
+            nextSkip: $nextSkip,
+            stats: $stats,
+        );
+
+        return response()->json($searchResult->toArray());
+    }
 
     /**
      * Revenue impact: collection caching + teaser gating reduce Bridge costs while
@@ -104,13 +203,24 @@ class BridgeProxyController extends Controller
      */
     public function properties(Request $request): SymfonyResponse
     {
-        return $this->proxyResoCollection($request, 'reso.property.collection', 'Property');
+        [$query, $stripKeys] = $this->buildResoCompatibilityQuery($request);
+        $response = $this->proxyResoWithFallback(
+            $request,
+            $this->bridge->resoCollectionUrls('Property'),
+            $query,
+            $stripKeys,
+        );
+
+        if (! $response->successful()) {
+            return $this->auditAndPassthrough($request, 'reso.property.collection', $response);
+        }
+
+        return $this->finalizeJson($request, 'reso.property.collection', $response->body());
     }
 
     public function property(Request $request, string $listingKey): SymfonyResponse
     {
-        $url = $this->bridge->resoEntityUrl('Property', $listingKey);
-        $response = $this->bridge->getJsonFromUrl($url, $request);
+        $response = $this->proxyResoWithFallback($request, $this->bridge->resoEntityUrls('Property', $listingKey));
 
         if (! $response->successful()) {
             return $this->auditAndPassthrough($request, 'reso.property.detail', $response);
@@ -126,8 +236,7 @@ class BridgeProxyController extends Controller
 
     public function member(Request $request, string $memberKey): SymfonyResponse
     {
-        $url = $this->bridge->resoEntityUrl('Member', $memberKey);
-        $response = $this->bridge->getJsonFromUrl($url, $request);
+        $response = $this->proxyResoWithFallback($request, $this->bridge->resoEntityUrls('Member', $memberKey));
 
         if (! $response->successful()) {
             return $this->auditAndPassthrough($request, 'reso.member.detail', $response);
@@ -143,8 +252,7 @@ class BridgeProxyController extends Controller
 
     public function resoOffice(Request $request, string $officeKey): SymfonyResponse
     {
-        $url = $this->bridge->resoEntityUrl('Office', $officeKey);
-        $response = $this->bridge->getJsonFromUrl($url, $request);
+        $response = $this->proxyResoWithFallback($request, $this->bridge->resoEntityUrls('Office', $officeKey));
 
         if (! $response->successful()) {
             return $this->auditAndPassthrough($request, 'reso.office.detail', $response);
@@ -160,8 +268,7 @@ class BridgeProxyController extends Controller
 
     public function resoOpenHouse(Request $request, string $openHouseKey): SymfonyResponse
     {
-        $url = $this->bridge->resoEntityUrl('OpenHouse', $openHouseKey);
-        $response = $this->bridge->getJsonFromUrl($url, $request);
+        $response = $this->proxyResoWithFallback($request, $this->bridge->resoEntityUrls('OpenHouse', $openHouseKey));
 
         if (! $response->successful()) {
             return $this->auditAndPassthrough($request, 'reso.openhouse.detail', $response);
@@ -205,46 +312,6 @@ class BridgeProxyController extends Controller
         return $this->proxyDoc($request, 'pub.transactions.collection', 'pub/transactions');
     }
 
-    public function zestimates(Request $request): SymfonyResponse
-    {
-        return $this->proxyDoc($request, 'zestimates.collection', 'zestimates_v2/zestimates');
-    }
-
-    public function zgeconMarketReport(Request $request): SymfonyResponse
-    {
-        return $this->proxyDoc($request, 'zgecon.marketreport', 'zgecon/marketreport');
-    }
-
-    public function zgeconMarketReportReplication(Request $request): SymfonyResponse
-    {
-        return $this->proxyDoc($request, 'zgecon.marketreport.replication', 'zgecon/marketreport/replication');
-    }
-
-    public function zgeconRegion(Request $request): SymfonyResponse
-    {
-        return $this->proxyDoc($request, 'zgecon.region', 'zgecon/region');
-    }
-
-    public function zgeconCut(Request $request): SymfonyResponse
-    {
-        return $this->proxyDoc($request, 'zgecon.cut', 'zgecon/cut');
-    }
-
-    public function zgeconType(Request $request): SymfonyResponse
-    {
-        return $this->proxyDoc($request, 'zgecon.type', 'zgecon/type');
-    }
-
-    public function reviews(Request $request): SymfonyResponse
-    {
-        return $this->proxyDoc($request, 'reviews.collection', 'reviews/Reviews');
-    }
-
-    public function reviewees(Request $request): SymfonyResponse
-    {
-        return $this->proxyDoc($request, 'reviews.reviewees', 'reviews/Reviewees');
-    }
-
     private function proxyWeb(Request $request, string $auditType, string $path): SymfonyResponse
     {
         $url = $this->bridge->webUrl($path);
@@ -259,14 +326,92 @@ class BridgeProxyController extends Controller
 
     private function proxyResoCollection(Request $request, string $auditType, string $resource): SymfonyResponse
     {
-        $url = $this->bridge->resoCollectionUrl($resource);
-        $response = $this->bridge->getJsonFromUrl($url, $request);
+        $response = $this->proxyResoWithFallback($request, $this->bridge->resoCollectionUrls($resource));
 
         if (! $response->successful()) {
             return $this->auditAndPassthrough($request, $auditType, $response);
         }
 
         return $this->finalizeJson($request, $auditType, $response->body());
+    }
+
+    /**
+     * @param  list<string>  $urls
+     */
+    private function proxyResoWithFallback(
+        Request $request,
+        array $urls,
+        array $query = [],
+        array $stripQueryKeys = [],
+    ): \Illuminate\Http\Client\Response {
+        $lastResponse = $this->bridge->getJsonFromUrl($urls[0], $request, $query, $stripQueryKeys);
+        if ($lastResponse->successful()) {
+            return $lastResponse;
+        }
+
+        foreach (array_slice($urls, 1) as $url) {
+            if ($lastResponse->status() !== 404) {
+                break;
+            }
+
+            $candidate = $this->bridge->getJsonFromUrl($url, $request, $query, $stripQueryKeys);
+            if ($candidate->successful()) {
+                return $candidate;
+            }
+
+            $lastResponse = $candidate;
+        }
+
+        return $lastResponse;
+    }
+
+    /**
+     * Accept legacy convenience params on /properties and translate to OData.
+     *
+     * @return array{0: array<string, scalar>, 1: list<string>}
+     */
+    private function buildResoCompatibilityQuery(Request $request): array
+    {
+        $query = [];
+        $stripKeys = [];
+
+        if (! $this->hasResoInput($request, '$filter') && $this->hasResoInput($request, 'city')) {
+            $city = mb_strtolower(trim((string) $this->resoInput($request, 'city')));
+            if ($city !== '') {
+                $escaped = str_replace("'", "''", $city);
+                $query['$filter'] = "contains(tolower(City),'{$escaped}')";
+                $stripKeys[] = 'city';
+            }
+        }
+
+        if (! $this->hasResoInput($request, '$top') && $this->hasResoInput($request, 'limit')) {
+            $limit = (int) $this->resoInput($request, 'limit');
+            if ($limit > 0) {
+                $query['$top'] = min(200, $limit);
+                $stripKeys[] = 'limit';
+            }
+        }
+
+        return [$query, $stripKeys];
+    }
+
+    private function hasResoInput(Request $request, string $key): bool
+    {
+        $value = $this->resoInput($request, $key);
+        if (is_string($value)) {
+            return trim($value) !== '';
+        }
+
+        return $value !== null;
+    }
+
+    private function resoInput(Request $request, string $key): mixed
+    {
+        if ($request->query->has($key)) {
+            return $request->query($key);
+        }
+
+        return $request->input($key);
     }
 
     private function proxyDoc(Request $request, string $auditType, string $path): SymfonyResponse
@@ -334,5 +479,89 @@ class BridgeProxyController extends Controller
         return response($response->body(), $response->status(), array_filter([
             'Content-Type' => $response->header('Content-Type') ?: 'application/json',
         ]));
+    }
+
+    private function searchCachePartitionKey(Request $request): ?string
+    {
+        $slug = $request->attributes->get('bridge.domain_slug');
+        if (is_string($slug) && $slug !== '') {
+            return $slug;
+        }
+
+        $userId = $request->attributes->get('bridge.user_id');
+        if ($userId !== null && (is_int($userId) || (is_string($userId) && $userId !== ''))) {
+            return 'user:'.(string) $userId;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function searchFingerprint(string $dataset, array $validated): string
+    {
+        $normalized = $validated;
+        $this->ksortRecursive($normalized);
+
+        return hash('sha256', $dataset.'|'.json_encode($normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+
+    private function ksortRecursive(array &$array): void
+    {
+        ksort($array);
+        foreach ($array as &$value) {
+            if (is_array($value)) {
+                $this->ksortRecursive($value);
+            }
+        }
+    }
+
+    /**
+     * @param  list<ListingResult>  $results
+     */
+    private function computeSearchStats(array $results): ?SearchStats
+    {
+        if ($results === []) {
+            return null;
+        }
+
+        $count = count($results);
+        $domValues = [];
+        $priceValues = [];
+
+        foreach ($results as $result) {
+            if ($result->daysOnMarket !== null) {
+                $domValues[] = $result->daysOnMarket;
+            }
+            if ($result->listPrice !== null) {
+                $priceValues[] = $result->listPrice;
+            }
+        }
+
+        return new SearchStats(
+            resultCount: $count,
+            avgDom: $domValues !== [] ? array_sum($domValues) / count($domValues) : null,
+            avgPrice: $priceValues !== [] ? array_sum($priceValues) / count($priceValues) : null,
+            medianPrice: $this->medianPrice($priceValues),
+        );
+    }
+
+    /**
+     * @param  list<float>  $values
+     */
+    private function medianPrice(array $values): ?float
+    {
+        if ($values === []) {
+            return null;
+        }
+
+        sort($values);
+        $count = count($values);
+        $mid = intdiv($count, 2);
+
+        return $count % 2 === 0
+            ? ($values[$mid - 1] + $values[$mid]) / 2
+            : $values[$mid];
     }
 }
