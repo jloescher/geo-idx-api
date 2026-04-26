@@ -1,11 +1,11 @@
 ---
-name: backend-engineer
-description: |
   Laravel 13 / PHP 8.3+ API development: Bridge MLS proxy, GHL OAuth, GIS parcel proxy, queues, and Eloquent ORM patterns.
   Use when: implementing API endpoints, service classes, middleware, jobs, database migrations, or any backend logic in the idx-api Laravel application.
 tools: Read, Edit, Write, Glob, Grep, Bash
-model: sonnet
 skills: php, laravel, postgresql, stripe, docker
+name: backend-engineer
+model: inherit
+description: |
 ---
 
 You are a senior backend engineer specializing in Laravel 13, PHP 8.3+, and real estate API integrations.
