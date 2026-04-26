@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Services\Bridge\BridgeHttpService;
 use App\Services\Bridge\BridgeProxyAuditLogger;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
 
 class ImageProxyController extends Controller
@@ -22,18 +21,6 @@ class ImageProxyController extends Controller
      */
     public function show(Request $request, string $listingKey, string $photoId): Response
     {
-        $disk = Storage::disk('images');
-        $relativePath = $listingKey.'/'.$photoId;
-
-        $originTtl = (int) config('bridge.image_cache_ttl_seconds');
-
-        if ($disk->exists($relativePath)) {
-            $lastModified = $disk->lastModified($relativePath);
-            if (is_int($lastModified) && $lastModified > (time() - $originTtl)) {
-                return $this->cachedFileResponse($request, $listingKey, $photoId, $disk->path($relativePath));
-            }
-        }
-
         $url = $this->bridge->listingPhotoUrl($listingKey, $photoId);
         $response = $this->bridge->getBinaryFromUrl($url, $request);
 
@@ -50,25 +37,23 @@ class ImageProxyController extends Controller
             return response('Image not found.', $response->status());
         }
 
-        $disk->put($relativePath, $response->body());
-
-        return $this->cachedFileResponse(
+        return $this->originImageResponse(
             $request,
             $listingKey,
             $photoId,
-            $disk->path($relativePath),
+            $response->body(),
             $response->header('Content-Type')
         );
     }
 
-    private function cachedFileResponse(
+    private function originImageResponse(
         Request $request,
         string $listingKey,
         string $photoId,
-        string $absolutePath,
+        string $body,
         ?string $contentType = null,
     ): Response {
-        $mime = $contentType ?: (mime_content_type($absolutePath) ?: 'application/octet-stream');
+        $mime = $contentType ?: 'application/octet-stream';
 
         $this->audit->log(
             $request,
@@ -81,7 +66,7 @@ class ImageProxyController extends Controller
 
         $public = rtrim((string) config('bridge.images_public_base'), '/').'/images/'.$listingKey.'/'.$photoId;
 
-        return response()->file($absolutePath, [
+        return response($body, 200, [
             'Content-Type' => $mime,
             'Cache-Control' => 'public, max-age=31536000, immutable',
             'X-IDX-Proxied-Public-Url' => $public,

@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\RefreshCryptoPricingJob;
 use App\Jobs\RefreshDomainListingsCacheJob;
 use App\Jobs\RefreshGisSourceMetadataJob;
 use App\Models\Domain;
@@ -12,6 +13,10 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('ghl:refresh-tokens')->hourly()->withoutOverlapping();
+Schedule::call(function (): void {
+    RefreshCryptoPricingJob::dispatch()
+        ->onQueue((string) config('coingecko.queue'));
+})->everyTenMinutes()->name('coingecko-price-refresh')->withoutOverlapping();
 
 Schedule::call(function (): void {
     Domain::query()->active()->pluck('domain_slug')->each(function (string $slug): void {

@@ -13,6 +13,7 @@ use App\Services\Bridge\BridgeProxyAuditLogger;
 use App\Services\Bridge\BridgeSearchClient;
 use App\Services\Bridge\BridgeSearchTranslator;
 use App\Services\Bridge\BridgeTeaser;
+use App\Services\Bridge\ListingPriceConversionService;
 use App\Services\Bridge\ListingsCacheService;
 use App\Services\Bridge\MlsDatasetResolver;
 use Illuminate\Http\JsonResponse;
@@ -30,6 +31,7 @@ class BridgeProxyController extends Controller
         private readonly BridgeSearchClient $searchClient,
         private readonly BridgeSearchTranslator $searchTranslator,
         private readonly MlsDatasetResolver $resolver,
+        private readonly ListingPriceConversionService $listingPricing,
     ) {}
 
     /**
@@ -550,6 +552,14 @@ class BridgeProxyController extends Controller
             $body = $this->imageUrlRewriter->rewriteJson($body);
         } catch (\Throwable) {
             // passthrough
+        }
+
+        if (in_array($auditType, ['listings.collection', 'listings.detail'], true)) {
+            try {
+                $body = $this->listingPricing->enrichJson($body);
+            } catch (\Throwable) {
+                // passthrough
+            }
         }
 
         $listingCount = BridgeTeaser::countListings($body);

@@ -53,6 +53,47 @@ services:
         - action: rebuild
           path: docker-compose.dev.yml
 
+  idx-queue-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: dev-worker
+      args:
+        BASE_IMAGE: ${DEV_BASE_IMAGE:-dunglas/frankenphp:php8.5-alpine}
+    image: ${DEV_IMAGE_NAME:-quantyra/idx-api-dev:local}
+    platform: ${DOCKER_PLATFORM:-linux/arm64}
+    env_file:
+      - .env
+    environment:
+      XDG_CONFIG_HOME: /var/www/html/config
+      XDG_DATA_HOME: /var/www/html/data
+      XDEBUG_MODE: ${XDEBUG_MODE:-off}
+      WORKER_QUEUES: ${WORKER_QUEUES:-default}
+    depends_on:
+      - idx-api-dev
+    restart: unless-stopped
+    init: true
+
+  idx-scheduler-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: dev-scheduler
+      args:
+        BASE_IMAGE: ${DEV_BASE_IMAGE:-dunglas/frankenphp:php8.5-alpine}
+    image: ${DEV_IMAGE_NAME:-quantyra/idx-api-dev:local}
+    platform: ${DOCKER_PLATFORM:-linux/arm64}
+    env_file:
+      - .env
+    environment:
+      XDG_CONFIG_HOME: /var/www/html/config
+      XDG_DATA_HOME: /var/www/html/data
+      XDEBUG_MODE: ${XDEBUG_MODE:-off}
+    depends_on:
+      - idx-api-dev
+    restart: unless-stopped
+    init: true
+
   idx-images-dev:
     build:
       context: .

@@ -49,4 +49,27 @@ class ImageProxyResponseTest extends TestCase
         $this->assertStringContainsString('immutable', $cc);
         $this->assertStringContainsString('idx-images', $response->headers->get('X-IDX-Proxied-Public-Url', ''));
     }
+
+    public function test_image_proxy_does_not_persist_image_to_local_disk_cache(): void
+    {
+        Domain::query()->create([
+            'domain_slug' => 'searchtampabayhouses.com',
+            'is_active' => true,
+        ]);
+
+        Http::fake([
+            'https://bridge.test/*' => Http::response('fake-bytes', 200, ['Content-Type' => 'image/jpeg']),
+        ]);
+
+        $this->get('/images/LK1/1', [
+            'X-Domain-Slug' => 'searchtampabayhouses.com',
+        ])->assertOk();
+
+        $this->get('/images/LK1/1', [
+            'X-Domain-Slug' => 'searchtampabayhouses.com',
+        ])->assertOk();
+
+        Http::assertSentCount(2);
+        $this->assertFalse(Storage::disk('images')->exists('LK1/1'));
+    }
 }

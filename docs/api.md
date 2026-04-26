@@ -8,6 +8,17 @@ All routes in `routes/api.php` under the `v1` prefix use the `domain.token` midd
 
 Core resources: listings, agents, offices, RESO Property, members, public parcels bridge, **structured search**, etc. See [`docs/idx-api-bridge-proxy.md`](idx-api-bridge-proxy.md) and [`docs/bridge-api-documentation.md`](bridge-api-documentation.md).
 
+### New: Listing pricing enrichment (`GET /api/v1/listings`, `GET /api/v1/listings/{listingId}`)
+
+Listings responses now include:
+- a top-level `pricing` object (`status`, `as_of`, and quote matrix), and
+- `pricing_converted` on each listing item with fiat + digital asset conversions derived from `ListPrice`.
+
+Refresh pipeline details:
+- CoinGecko quotes are refreshed every 10 minutes by scheduled dispatch of `RefreshCryptoPricingJob`.
+- The job updates both PostgreSQL (`crypto_price_snapshots`) and Laravel cache (`coingecko.pricing.matrix`).
+- Read path does not call CoinGecko; listing enrichment uses cache/DB only.
+
 ### New: Structured Search endpoint (`POST /api/v1/search`)
 
 The search endpoint accepts JSON payloads with filter criteria, translates them to Bridge RESO OData queries, and returns paginated results with computed statistics.

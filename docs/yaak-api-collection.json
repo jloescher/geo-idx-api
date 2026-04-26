@@ -49,9 +49,46 @@
       "ListingsResponse": {
         "type": "object",
         "properties": {
-          "data": {
+          "pricing": {
+            "type": "object",
+            "description": "Global quote matrix used for listing-level conversion output.",
+            "properties": {
+              "status": { "type": "string", "example": "ok" },
+              "as_of": { "type": "string", "format": "date-time", "nullable": true },
+              "quotes": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          },
+          "value": {
             "type": "array",
-            "items": { "type": "object" }
+            "items": {
+              "type": "object",
+              "properties": {
+                "ListPrice": { "type": "number", "nullable": true },
+                "pricing_converted": {
+                  "type": "object",
+                  "properties": {
+                    "base_currency": { "type": "string", "example": "usd" },
+                    "fiat": {
+                      "type": "object",
+                      "additionalProperties": { "type": "number" }
+                    },
+                    "digital_assets": {
+                      "type": "object",
+                      "additionalProperties": { "type": "number" }
+                    }
+                  }
+                }
+              },
+              "additionalProperties": true
+            }
           },
           "links": { "type": "object" },
           "meta": { "type": "object" }
@@ -139,7 +176,7 @@
       "get": {
         "tags": ["MLS Data - Listings"],
         "summary": "Get Listings",
-        "description": "Get MLS listings with pagination. Supports both Bearer token and domain-based authentication.",
+        "description": "Get MLS listings with pagination. Supports both Bearer token and domain-based authentication. Responses include a top-level `pricing` quote block and per-listing `pricing_converted` values derived from `ListPrice`.",
         "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
@@ -159,7 +196,7 @@
       "get": {
         "tags": ["MLS Data - Listings"],
         "summary": "Get Listing by ID",
-        "description": "Get a specific MLS listing by its ID.",
+        "description": "Get a specific MLS listing by its ID. Listing payload includes pricing enrichment fields when `ListPrice` is available.",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           {

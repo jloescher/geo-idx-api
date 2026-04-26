@@ -1,5 +1,6 @@
 # Quantyra IDX-Images edge image (project root build context)
 # Nginx TLS edge -> idx-api:8000/images/* (Laravel DomainOrTokenAuth + disk cache)
+# Note: queue workers and scheduler run in idx-api containers, not idx-images.
 
 FROM nginx:1.27-alpine
 

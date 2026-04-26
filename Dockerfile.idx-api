@@ -1,7 +1,7 @@
 # Quantyra IDX-API Docker image (project root build context)
 # Revenue impact: high-performance Octane + FrankenPHP for MLS proxy
 
-FROM dunglas/frankenphp:php8.5-alpine
+FROM dunglas/frankenphp:php8.5-alpine AS app-base
 
 RUN apk add --no-cache \
     zip \
@@ -48,3 +48,11 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
 
 USER www-data
 CMD ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000"]
+
+FROM app-base AS queue-worker
+USER www-data
+CMD ["php", "artisan", "queue:work", "--queue=default", "--sleep=1", "--tries=3", "--timeout=120"]
+
+FROM app-base AS scheduler
+USER www-data
+CMD ["php", "artisan", "schedule:work"]

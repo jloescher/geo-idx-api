@@ -6,6 +6,7 @@ use App\Models\Domain;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -24,6 +25,9 @@ class BridgeProxySecurityTest extends TestCase
             'bridge.path_prefix' => '',
             'bridge.reso_root' => '',
             'bridge.images_public_base' => 'https://idx-images.test',
+            'coingecko.cache_key' => 'coingecko.pricing.matrix',
+            'coingecko.asset_ids' => ['btc', 'eth', 'sol', 'xrp', 'ada'],
+            'coingecko.vs_currencies' => ['usd', 'cad', 'eur', 'gbp', 'mxn'],
         ]);
     }
 
@@ -211,6 +215,81 @@ class BridgeProxySecurityTest extends TestCase
         $response->assertOk();
         $payload = $response->json();
         $this->assertCount(10, $payload['value']);
+    }
+
+    public function test_listings_include_global_pricing_and_per_listing_conversions(): void
+    {
+        Domain::query()->create([
+            'domain_slug' => 'searchtampabayhouses.com',
+            'is_active' => true,
+        ]);
+
+        Cache::put('coingecko.pricing.matrix', [
+            'quotes' => [
+                'btc' => ['usd' => 100000.0, 'cad' => 136000.0, 'eur' => 92000.0, 'gbp' => 78000.0, 'mxn' => 1700000.0],
+                'eth' => ['usd' => 4000.0, 'cad' => 5440.0, 'eur' => 3680.0, 'gbp' => 3120.0, 'mxn' => 68000.0],
+                'sol' => ['usd' => 200.0, 'cad' => 272.0, 'eur' => 184.0, 'gbp' => 156.0, 'mxn' => 3400.0],
+                'xrp' => ['usd' => 2.0, 'cad' => 2.72, 'eur' => 1.84, 'gbp' => 1.56, 'mxn' => 34.0],
+                'ada' => ['usd' => 1.0, 'cad' => 1.36, 'eur' => 0.92, 'gbp' => 0.78, 'mxn' => 17.0],
+            ],
+            'as_of' => now()->toIso8601String(),
+            'status' => 'ok',
+        ], now()->addMinutes(20));
+
+        Http::fake([
+            'https://bridge.test/stellar/listings*' => Http::response(
+                json_encode(['value' => [['ListingKey' => 'LIST1', 'ListPrice' => 500000]]], JSON_THROW_ON_ERROR),
+                200,
+                ['Content-Type' => 'application/json']
+            ),
+        ]);
+
+        $user = User::factory()->create();
+        $plain = $user->createToken('integration', ['idx:full'])->plainTextToken;
+
+        $response = $this->getJson('/api/v1/listings', [
+            'Authorization' => 'Bearer '.$plain,
+        ]);
+
+        $response->assertOk();
+        $payload = $response->json();
+        $this->assertSame(100000, $payload['pricing']['quotes']['btc']['usd']);
+        $this->assertEquals(500000.0, $payload['value'][0]['pricing_converted']['fiat']['usd']);
+        $this->assertEquals(5.0, $payload['value'][0]['pricing_converted']['digital_assets']['btc']);
+    }
+
+    public function test_listings_pricing_enrichment_uses_cached_quotes_without_coingecko_http_calls(): void
+    {
+        Domain::query()->create([
+            'domain_slug' => 'searchtampabayhouses.com',
+            'is_active' => true,
+        ]);
+
+        Cache::put('coingecko.pricing.matrix', [
+            'quotes' => [
+                'btc' => ['usd' => 100000.0, 'cad' => 136000.0, 'eur' => 92000.0, 'gbp' => 78000.0, 'mxn' => 1700000.0],
+            ],
+            'as_of' => now()->toIso8601String(),
+            'status' => 'ok',
+        ], now()->addMinutes(20));
+
+        Http::fake([
+            'https://bridge.test/stellar/listings*' => Http::response(
+                json_encode(['value' => [['ListingKey' => 'LIST1', 'ListPrice' => 500000]]], JSON_THROW_ON_ERROR),
+                200,
+                ['Content-Type' => 'application/json']
+            ),
+            'https://api.coingecko.com/*' => Http::response([], 500),
+        ]);
+
+        $user = User::factory()->create();
+        $plain = $user->createToken('integration', ['idx:full'])->plainTextToken;
+
+        $this->getJson('/api/v1/listings', [
+            'Authorization' => 'Bearer '.$plain,
+        ])->assertOk();
+
+        Http::assertSentCount(1);
     }
 
     public function test_properties_translates_city_and_limit_to_odata_params(): void

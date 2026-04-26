@@ -55,9 +55,9 @@ FROM php-base AS dev
 ENV APP_ENV=local \
     APP_DEBUG=true \
     LOG_CHANNEL=stderr \
-    CACHE_STORE=file \
-    SESSION_DRIVER=file \
-    QUEUE_CONNECTION=sync \
+    CACHE_STORE=database \
+    SESSION_DRIVER=database \
+    QUEUE_CONNECTION=database \
     OCTANE_SERVER=frankenphp \
     OCTANE_HOST=0.0.0.0 \
     OCTANE_PORT=8000 \
@@ -79,3 +79,9 @@ EXPOSE 8000
 USER www-data
 
 CMD ["/bin/sh", "-lc", "php artisan octane:start --server=${OCTANE_SERVER} --host=${OCTANE_HOST} --port=${OCTANE_PORT} $( [ \"${OCTANE_WATCH}\" = \"true\" ] && echo '--watch' )"]
+
+FROM dev AS dev-worker
+CMD ["/bin/sh", "-lc", "php artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=120"]
+
+FROM dev AS dev-scheduler
+CMD ["/bin/sh", "-lc", "php artisan schedule:work"]
