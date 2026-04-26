@@ -204,18 +204,59 @@ class BridgeProxyController extends Controller
     public function properties(Request $request): SymfonyResponse
     {
         [$query, $stripKeys] = $this->buildResoCompatibilityQuery($request);
-        $response = $this->proxyResoWithFallback(
-            $request,
-            $this->bridge->resoCollectionUrls('Property'),
-            $query,
-            $stripKeys,
-        );
+        $partitionKey = $this->searchCachePartitionKey($request);
+        $fingerprint = $this->propertiesFingerprint($request, $query);
 
-        if (! $response->successful()) {
-            return $this->auditAndPassthrough($request, 'reso.property.collection', $response);
+        $body = null;
+        if ($partitionKey !== null) {
+            try {
+                $body = $this->listingsCache->rememberJsonPayload($partitionKey, $fingerprint, function () use ($request, $query, $stripKeys): string {
+                    $response = $this->proxyResoWithFallback(
+                        $request,
+                        $this->bridge->resoCollectionUrls('Property'),
+                        $query,
+                        $stripKeys,
+                    );
+
+                    if (! $response->successful()) {
+                        throw new \RuntimeException('Bridge response failed');
+                    }
+
+                    return $response->body();
+                });
+            } catch (\Throwable) {
+                $body = null;
+            }
+        } else {
+            $response = $this->proxyResoWithFallback(
+                $request,
+                $this->bridge->resoCollectionUrls('Property'),
+                $query,
+                $stripKeys,
+            );
+
+            if (! $response->successful()) {
+                return $this->auditAndPassthrough($request, 'reso.property.collection', $response);
+            }
+
+            $body = $response->body();
+        }
+        if (! is_string($body) || $body === '') {
+            $response = $this->proxyResoWithFallback(
+                $request,
+                $this->bridge->resoCollectionUrls('Property'),
+                $query,
+                $stripKeys,
+            );
+            if (! $response->successful()) {
+                return $this->auditAndPassthrough($request, 'reso.property.collection', $response);
+            }
+            $body = $response->body();
         }
 
-        return $this->finalizeJson($request, 'reso.property.collection', $response->body());
+        $body = $this->rewritePropertyODataLinks($body, $request);
+
+        return $this->finalizeJson($request, 'reso.property.collection', $body);
     }
 
     public function property(Request $request, string $listingKey): SymfonyResponse
@@ -392,6 +433,14 @@ class BridgeProxyController extends Controller
             }
         }
 
+        if (! $this->hasResoInput($request, '$next') && $this->hasResoInput($request, 'cursor')) {
+            $cursor = trim((string) $this->resoInput($request, 'cursor'));
+            if ($cursor !== '') {
+                $query['$next'] = $cursor;
+                $stripKeys[] = 'cursor';
+            }
+        }
+
         return [$query, $stripKeys];
     }
 
@@ -412,6 +461,60 @@ class BridgeProxyController extends Controller
         }
 
         return $request->input($key);
+    }
+
+    /**
+     * Rewrites upstream OData links so clients paginate through idx-api while
+     * preserving bearer-token auth and cacheable cursor requests.
+     */
+    private function rewritePropertyODataLinks(string $body, Request $request): string
+    {
+        try {
+            $payload = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return $body;
+        }
+
+        if (! is_array($payload)) {
+            return $body;
+        }
+
+        if (isset($payload['@odata.nextLink']) && is_string($payload['@odata.nextLink'])) {
+            $next = $payload['@odata.nextLink'];
+            $parsed = parse_url($next);
+            parse_str((string) ($parsed['query'] ?? ''), $nextQuery);
+            if (isset($nextQuery['$next']) && is_string($nextQuery['$next']) && $nextQuery['$next'] !== '') {
+                $payload['@odata.nextLink'] = $request->getSchemeAndHttpHost()
+                    .'/api/v1/properties?cursor='.rawurlencode($nextQuery['$next']);
+            }
+        }
+
+        if (isset($payload['@odata.id']) && is_string($payload['@odata.id'])) {
+            if (preg_match("/Property\\('([^']+)'\\)/", $payload['@odata.id'], $m) === 1) {
+                $payload['@odata.id'] = $request->getSchemeAndHttpHost()
+                    .'/api/v1/properties/'.rawurlencode($m[1]);
+            }
+        }
+
+        try {
+            return json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        } catch (\JsonException) {
+            return $body;
+        }
+    }
+
+    /**
+     * @param  array<string, scalar>  $query
+     */
+    private function propertiesFingerprint(Request $request, array $query): string
+    {
+        $payload = [
+            'dataset' => (string) config('bridge.dataset'),
+            'query' => $query,
+        ];
+        $this->ksortRecursive($payload);
+
+        return hash('sha256', 'properties.collection|'.json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     }
 
     private function proxyDoc(Request $request, string $auditType, string $path): SymfonyResponse

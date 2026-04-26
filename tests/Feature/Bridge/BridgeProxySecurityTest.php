@@ -147,6 +147,45 @@ class BridgeProxySecurityTest extends TestCase
         $this->assertStringContainsString('LIST1', $mediaUrl);
     }
 
+    public function test_listings_rewrites_cloudfront_media_urls_to_idx_images(): void
+    {
+        Domain::query()->create([
+            'domain_slug' => 'searchtampabayhouses.com',
+            'is_active' => true,
+        ]);
+
+        $payload = [
+            'value' => [[
+                'ListingKey' => 'LISTCF',
+                'Media' => [
+                    [
+                        'MediaURL' => 'https://dvvjkgh94f2v6.cloudfront.net/735d922b/570651153/83dcefb7.jpeg',
+                        'MediaKey' => 'LISTCF-m1',
+                        'Order' => 1,
+                    ],
+                ],
+            ]],
+        ];
+
+        Http::fake([
+            'https://bridge.test/stellar/listings*' => Http::response(
+                json_encode($payload, JSON_THROW_ON_ERROR),
+                200,
+                ['Content-Type' => 'application/json']
+            ),
+        ]);
+
+        $response = $this->getJson('/api/v1/listings', [
+            'X-Domain-Slug' => 'searchtampabayhouses.com',
+        ]);
+
+        $response->assertOk();
+        $mediaUrl = $response->json('value.0.Media.0.MediaURL');
+        $this->assertIsString($mediaUrl);
+        $this->assertStringStartsWith('https://idx-images.test/images/', $mediaUrl);
+        $this->assertStringContainsString('LISTCF', $mediaUrl);
+    }
+
     public function test_listings_full_for_idx_full_token(): void
     {
         Domain::query()->create([
@@ -232,6 +271,55 @@ class BridgeProxySecurityTest extends TestCase
                 && $query['$filter'] === "contains(tolower(City),'largo')"
                 && isset($query['$top'])
                 && (int) $query['$top'] === 10;
+        });
+    }
+
+    public function test_properties_rewrites_odata_links_and_supports_cursor_pagination(): void
+    {
+        Http::fake([
+            'https://bridge.test/stellar/Property*' => Http::response(
+                json_encode([
+                    'value' => [['ListingKey' => 'stellar:1']],
+                    '@odata.id' => "https://api.bridgedataoutput.com/api/v2/OData/stellar/Property('stellar:1')",
+                    '@odata.nextLink' => 'https://api.bridgedataoutput.com/api/v2/OData/stellar/Property?%24top=10&$next=TOKEN123',
+                ], JSON_THROW_ON_ERROR),
+                200,
+                ['Content-Type' => 'application/json']
+            ),
+        ]);
+
+        $user = User::factory()->create();
+        $plain = $user->createToken('integration', ['idx:full'])->plainTextToken;
+
+        $response = $this->getJson('/api/v1/properties?city=largo&limit=10', [
+            'Authorization' => 'Bearer '.$plain,
+        ])->assertOk();
+
+        $payload = $response->json();
+        $nextLink = $payload['@odata.nextLink'] ?? null;
+        $this->assertIsString($nextLink);
+        $this->assertStringContainsString('/api/v1/properties?cursor=TOKEN123', $nextLink);
+        $this->assertSame(urlencode('stellar:1'), basename((string) ($payload['@odata.id'] ?? '')));
+
+        Http::fake([
+            'https://bridge.test/stellar/Property*' => Http::response(
+                json_encode(['value' => [['ListingKey' => 'stellar:2']]], JSON_THROW_ON_ERROR),
+                200,
+                ['Content-Type' => 'application/json']
+            ),
+        ]);
+
+        $this->getJson('/api/v1/properties?cursor=TOKEN123', [
+            'Authorization' => 'Bearer '.$plain,
+        ])->assertOk();
+
+        Http::assertSent(function (Request $request): bool {
+            $query = $request->data();
+
+            return str_contains($request->url(), '/stellar/Property')
+                && isset($query['$next'])
+                && $query['$next'] === 'TOKEN123'
+                && ! isset($query['cursor']);
         });
     }
 }

@@ -90,6 +90,47 @@ class ListingsCacheService
     }
 
     /**
+     * Cache opaque JSON response bodies by partition + fingerprint.
+     *
+     * @param  callable(): string  $supplier
+     */
+    public function rememberJsonPayload(string $partitionKey, string $fingerprint, callable $supplier): string
+    {
+        $ttlSeconds = (int) config('bridge.listings_cache_ttl_seconds');
+
+        $row = DB::table('bridge_search_cache')
+            ->where('partition_key', $partitionKey)
+            ->where('fingerprint', $fingerprint)
+            ->first();
+
+        $lastUpdated = $row !== null && $row->last_updated !== null
+            ? Carbon::parse($row->last_updated)
+            : null;
+
+        if ($row !== null && $this->isFresh($lastUpdated, $ttlSeconds)) {
+            $decoded = @gzdecode((string) $row->compressed_data);
+            if (is_string($decoded) && $decoded !== '') {
+                return $decoded;
+            }
+        }
+
+        $payload = $supplier();
+
+        DB::table('bridge_search_cache')->updateOrInsert(
+            [
+                'partition_key' => $partitionKey,
+                'fingerprint' => $fingerprint,
+            ],
+            [
+                'compressed_data' => gzencode($payload, 9),
+                'last_updated' => now(),
+            ],
+        );
+
+        return $payload;
+    }
+
+    /**
      * @param  array<string, mixed>  $parsed
      * @return array{value: list<array<string, mixed>>, count: int, nextLink: ?string}
      */

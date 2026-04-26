@@ -125,7 +125,12 @@ final class BridgeImageUrlRewriter
                 }
 
                 $rewritten = $this->rewriteStringUrl($value, $lk);
-                if ($rewritten === $value && $lk !== null && $photoId !== null && $this->shouldRewriteHost($value)) {
+                if (
+                    $rewritten === $value
+                    && $lk !== null
+                    && $photoId !== null
+                    && ($this->shouldRewriteHost($value) || $this->isCloudFrontHost($value))
+                ) {
                     $rewritten = $this->publicPhotoUrl($lk, $photoId);
                 }
                 $item[$key] = $rewritten;
@@ -152,6 +157,11 @@ final class BridgeImageUrlRewriter
     {
         if (! str_contains($value, 'http') && ! str_contains($value, '/listings/')) {
             return $value;
+        }
+
+        $normalizedIdxImages = $this->normalizeIdxImagesUrl($value);
+        if ($normalizedIdxImages !== null) {
+            return $normalizedIdxImages;
         }
 
         $pattern = '~https?://[^/\s"]+/.+?/listings/([^/"\s?#]+)/photos/([^/"\s?#]+)~i';
@@ -185,6 +195,24 @@ final class BridgeImageUrlRewriter
         return $out;
     }
 
+    private function normalizeIdxImagesUrl(string $url): ?string
+    {
+        $host = (string) parse_url($url, PHP_URL_HOST);
+        $path = (string) parse_url($url, PHP_URL_PATH);
+
+        if ($host === '' || $path === '') {
+            return null;
+        }
+        if (! $this->isIdxImagesHost($host)) {
+            return null;
+        }
+        if (preg_match('~^/images/([^/]+)/([^/?#]+)$~', $path, $m) !== 1) {
+            return null;
+        }
+
+        return $this->publicPhotoUrl(rawurldecode($m[1]), rawurldecode($m[2]));
+    }
+
     private function shouldRewriteHost(string $url): bool
     {
         $host = (string) parse_url($url, PHP_URL_HOST);
@@ -202,6 +230,27 @@ final class BridgeImageUrlRewriter
         }
 
         return false;
+    }
+
+    private function isCloudFrontHost(string $url): bool
+    {
+        $host = (string) parse_url($url, PHP_URL_HOST);
+        if ($host === '') {
+            return false;
+        }
+
+        return str_ends_with(strtolower($host), '.cloudfront.net');
+    }
+
+    private function isIdxImagesHost(string $host): bool
+    {
+        $host = strtolower($host);
+        $configured = (string) parse_url((string) config('bridge.images_public_base'), PHP_URL_HOST);
+        if ($configured !== '' && $host === strtolower($configured)) {
+            return true;
+        }
+
+        return str_ends_with($host, 'idx-images.quantyralabs.cc');
     }
 
     /**
