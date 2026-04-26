@@ -7,9 +7,8 @@ Bridge Data Output provides a comprehensive API platform for accessing real esta
 - **RESO Web API** - Standard real estate data following RESO standards
 - **Bridge Web API** - Bridge's proprietary API format
 - **Public Data** - Public parcel, assessment, and transaction data
-- **Zestimates** - Zillow's home valuation estimates
-- **Zillow Group Econ Data** - Economic and market data
-- **Zillow Agent Reviews** - Agent review data
+
+Note: **Zestimates**, **Zillow Group Econ Data**, and **Zillow Agent Reviews** endpoints are documented by Bridge but **not available** through the Quantyra idx-api proxy.
 
 Base URL: `https://bridgedataoutput.com`
 
@@ -17,9 +16,15 @@ Base URL: `https://bridgedataoutput.com`
 
 ## Dataset Configuration
 
-**Current Dataset:** `stellar`
+**Default Dataset:** `stellar`
 
-The API endpoints documented below use the `stellar` dataset. Additional datasets may be added in the future.
+The API endpoints documented below use the `stellar` dataset by default. The idx-api proxy supports **multiple MLS datasets** (e.g., `stellar`, `miami`) with per-domain access control via `allowed_mls_datasets`.
+
+When making requests:
+- Pass `?mls_dataset=<dataset>` query parameter
+- For search: include `"mls_dataset": "<dataset>"` in the JSON body
+- If omitted, the domain's default `mls_dataset` is used
+- Returns **403** if the requested dataset is not in the domain's allowed list
 
 ---
 
@@ -274,97 +279,6 @@ Retrieves a collection of transaction records.
 
 **Response:** Collection of transaction records
 
----
-
-## Zestimates
-
-Zillow's home valuation estimates.
-
-### Zestimates
-
-#### GET /zestimates_v2/zestimates
-
-Retrieves Zestimate valuations.
-
-**Response:** Collection of Zestimate records
-
----
-
-## Zillow Group Econ Data
-
-Economic and market data from Zillow Group.
-
-### Market Report
-
-#### GET /zgecon/marketreport
-
-Retrieves market report data.
-
-**Response:** Market report data
-
----
-
-#### GET /zgecon/marketreport/replication
-
-Retrieves market report replication data.
-
-**Response:** Market report replication data
-
----
-
-### Region
-
-#### GET /zgecon/region
-
-Retrieves region data for economic analysis.
-
-**Response:** Collection of region records
-
----
-
-### Cut
-
-#### GET /zgecon/cut
-
-Retrieves data cut information.
-
-**Response:** Data cut information
-
----
-
-### Type
-
-#### GET /zgecon/type
-
-Retrieves economic data types.
-
-**Response:** Collection of data type records
-
----
-
-## Zillow Agent Reviews
-
-Agent review data from Zillow.
-
-### Review
-
-#### GET /reviews/Reviews
-
-Retrieves a collection of agent reviews.
-
-**Response:** Collection of review records
-
----
-
-### Reviewee
-
-#### GET /reviews/Reviewees
-
-Retrieves a collection of reviewees (agents being reviewed).
-
-**Response:** Collection of reviewee records
-
----
 
 ## Authentication
 
@@ -381,8 +295,16 @@ Please refer to the Bridge Data Output terms of service and API documentation fo
 
 ## Notes
 
-- All endpoints use the GET HTTP method
-- **Current dataset:** `stellar` (additional datasets may be added in the future)
-- RESO Web API endpoints follow OData conventions
+- All endpoints use the GET HTTP method (POST for structured search via idx-api proxy)
+- **Supported datasets:** `stellar`, `miami`, and others (configured per-domain in the proxy)
+- RESO Web API endpoints follow OData conventions with automatic cursor pagination support
 - Bridge Web API provides a simplified, RESTful interface
 - Public Data endpoints are accessible without dataset-specific credentials
+
+## Related documentation
+
+| Document | Topic |
+|----------|--------|
+| [idx-api-bridge-proxy.md](idx-api-bridge-proxy.md) | Secured proxy implementation, caching, auth, image rewriting, search endpoint, dataset gates. |
+| [api.md](api.md) | idx-api HTTP API overview, obtaining Bearer tokens. |
+| [gis-api.md](gis-api.md) | GIS parcel/geometry proxy (public data, not MLS). |

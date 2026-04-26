@@ -1,6 +1,6 @@
 # IDX-API — Secured Bridge Data Output Proxy
 
-This document describes the **Quantyra idx-api** integration that proxies [Bridge Data Output](https://bridgedataoutput.com) for the **Stellar** dataset, adds **domain / token authentication**, **listings caching**, **teaser gating**, **MLS audit logging**, **automatic rewriting of listing photo URLs in JSON** to the public **idx-images** host, and a secured **`/images/...`** binary proxy. Implementation lives in this repository.
+This document describes the **Quantyra idx-api** integration that proxies [Bridge Data Output](https://bridgedataoutput.com) for multiple **MLS datasets** (Stellar, Miami, etc.), adds **domain / token authentication**, **listings and search caching**, **teaser gating**, **MLS audit logging**, **automatic rewriting of image URLs in JSON** (including CloudFront origins) to the public **idx-images** host, **OData cursor pagination support**, and a secured **`/images/...`** binary proxy. Implementation lives in this repository.
 
 **Upstream API reference** (endpoints, datasets, auth concepts): [bridge-api-documentation.md](bridge-api-documentation.md).
 
@@ -13,11 +13,11 @@ This document describes the **Quantyra idx-api** integration that proxies [Bridg
 | Goal | How it is met |
 |------|----------------|
 | Single MLS egress | All Bridge calls go through Laravel `Http` using `BRIDGE_API_KEY` (server-side only). |
-| Stellar MLS–style domain control | Requests must identify an **active** row in `domains` (via header, **`?domain=`** query, or `Referer` host) **or** present a valid **Sanctum personal access token** with IDX abilities. |
-| Cost & latency control | Domain-scoped **`GET /api/v1/listings`** responses are cached in PostgreSQL (`listings_cache`) for **15 minutes** (configurable), gzip-compressed — **skipped** when **`filters`** is present so filtered feeds are never wrong. |
-| Lead / revenue gating | Non–`idx:full` clients receive **teaser** JSON (first list slice capped at **3** items) where applicable. |
+| Multi-dataset MLS control | Requests identify an **active** row in `domains` (via header, **`?domain=`** query, or `Referer` host) **or** present a valid **Sanctum personal access token** with IDX abilities. Dataset access is validated against `domains.allowed_mls_datasets` (defaults to `domains.mls_dataset`). |
+| Cost & latency control | Domain-scoped **`GET /api/v1/listings`** and **`POST /api/v1/search`** responses are cached in PostgreSQL (`listings_cache`, `bridge_search_cache`) for **15 minutes** (configurable), gzip-compressed — **skipped** when **`filters`** is present for collection endpoints so filtered feeds are never wrong. Search requests cache full payloads before teaser gating. |
+| Lead / revenue gating | Non–`idx:full` clients receive **teaser** JSON (first list slice capped at **3** items for listings, **40** features for GIS) where applicable. Teaser is applied **after** cache retrieval. |
 | Auditability | Every proxied JSON request and image hit writes a row to **`bridge_proxy_audit_logs`**. |
-| Image CDN pattern | JSON responses rewrite Bridge **`…/listings/{key}/photos/{id}…`** URLs to **`{IDX_IMAGES_PUBLIC_URL}/images/{listingKey}/{photoId}`**; binary **`GET /images/...`** is served from the **`images`** filesystem disk with **long-lived immutable** cache headers for Cloudflare edge caching (see [Image proxy](#image-proxy) and [JSON image URL rewriting](#json-image-url-rewriting)). |
+| Image CDN pattern | JSON responses rewrite Bridge **`…/listings/{key}/photos/{id}…`** and CloudFront URLs to **`{IDX_IMAGES_PUBLIC_URL}/images/{listingKey}/{photoId}`**; environment-specific normalization ensures consistent URLs across dev/staging/prod; binary **`GET /images/...`** is served from the **`images`** filesystem disk with **long-lived immutable** cache headers for Cloudflare edge caching (see [Image proxy](#image-proxy) and [JSON image URL rewriting](#json-image-url-rewriting)). |
 
 ---
 
@@ -125,6 +125,8 @@ Service: **`App\Services\Bridge\BridgeImageUrlRewriter`** (used by **`BridgeProx
 | Behavior | Detail |
 |----------|--------|
 | **Target URLs** | HTTPS URLs on configured Bridge hosts whose path contains **`/listings/{ListingKey}/photos/{PhotoId}`** (lazy match between host and `/listings/`). |
+| **CloudFront URLs** | URLs from CloudFront (`*.cloudfront.net`) are also rewritten to `idx-images` format. |
+| **Environment normalization** | Any URL already pointing to an `idx-images` host is normalized to the current environment's `IDX_IMAGES_PUBLIC_URL`. This ensures URLs from cached responses (potentially from different environments) resolve correctly. |
 | **Output shape** | `{IDX_IMAGES_PUBLIC_URL}/images/{listingKey}/{photoId}` with path segments **URL-encoded** as needed. Default public base: **`https://idx-images.quantyralabs.cc`**. |
 | **`Media[]` objects** | When **`MediaURL`** (and similar keys) appear under a parent with **`ListingKey`**, URLs are rewritten; if the URL is Bridge-hosted but not path-parseable, **`Order`** / **`MediaKey`** / **`Id`** may be used with the parent listing key. |
 | **Extra hosts** | Optional comma-separated **`BRIDGE_IMAGE_REWRITE_HOSTS`** extends which hostnames are treated as rewritable Bridge image origins (beyond `bridgedataoutput.com`, `api.bridgedataoutput.com`, and the host of **`BRIDGE_HOST`**). |
@@ -156,17 +158,18 @@ Laravel’s `routes/api.php` is prefixed with **`/api`**. All routes below use m
 
 Built from `BRIDGE_HOST`, optional `BRIDGE_PATH_PREFIX`, `BRIDGE_DATASET`, and optional `BRIDGE_RESO_ROOT` (see [Environment variables](#environment-variables)).
 
-| Method | Path | Resource |
-|--------|------|----------|
-| GET | `/api/v1/properties` | `Property` collection |
-| GET | `/api/v1/properties/{listingKey}` | `Property` by key |
-| GET | `/api/v1/members` | `Member` collection |
-| GET | `/api/v1/members/{memberKey}` | `Member` by key |
-| GET | `/api/v1/reso-offices` | `Office` collection |
-| GET | `/api/v1/reso-offices/{officeKey}` | `Office` by key |
-| GET | `/api/v1/reso-openhouses` | `OpenHouse` collection |
-| GET | `/api/v1/reso-openhouses/{openHouseKey}` | `OpenHouse` by key |
-| GET | `/api/v1/lookup` | `Lookup` collection |
+| Method | Path | Resource | Notes |
+|--------|------|----------|-------|
+| GET, POST | `/api/v1/properties` | `Property` collection | POST accepts JSON body with `city`, `limit`, `cursor`, etc. Query params auto-translated to OData `$filter`, `$top`. |
+| GET | `/api/v1/properties/{listingKey}` | `Property` by key | |
+| GET | `/api/v1/members` | `Member` collection | |
+| GET | `/api/v1/members/{memberKey}` | `Member` by key | |
+| GET | `/api/v1/reso-offices` | `Office` collection | |
+| GET | `/api/v1/reso-offices/{officeKey}` | `Office` by key | |
+| GET | `/api/v1/reso-openhouses` | `OpenHouse` collection | |
+| GET | `/api/v1/reso-openhouses/{openHouseKey}` | `OpenHouse` by key | |
+| GET | `/api/v1/lookup` | `Lookup` collection | |
+| POST | `/api/v1/search` | Structured search | Accepts `SearchRequest` JSON; translates to Bridge RESO OData with multi-dataset support, returns paginated results with stats. See [Search endpoint](#search-endpoint-post-apiv1search). |
 
 #### Public & ancillary paths (doc-style paths on `BRIDGE_HOST`)
 
@@ -178,6 +181,8 @@ Built from `BRIDGE_HOST`, optional `BRIDGE_PATH_PREFIX`, `BRIDGE_DATASET`, and o
 | GET | `/api/v1/pub/parcels/{parcelId}/transactions` | |
 | GET | `/api/v1/pub/assessments` | `/pub/assessments` |
 | GET | `/api/v1/pub/transactions` | `/pub/transactions` |
+
+Note: Zillow Zestimates (`/api/v1/zestimates/*`) and Reviews (`/api/v1/reviews/*`) endpoints are not available.
 ### Image proxy (no `/api` prefix)
 
 Registered in **`bootstrap/app.php`** `then` routing callback with middleware **`api`** + **`domain.token`**.
@@ -205,12 +210,122 @@ Registered in **`bootstrap/app.php`** `then` routing callback with middleware **
 
 | Table | Purpose |
 |-------|---------|
-| `domains` | `domain_slug` (unique), `is_active`. Seeds include approved hostnames (e.g. `searchtampabayhouses.com`). |
+| `domains` | `domain_slug` (unique), `is_active`, `mls_dataset` (default), `allowed_mls_datasets` (JSON array of permitted datasets). Seeds include approved hostnames (e.g. `searchtampabayhouses.com`). |
 | `listings_cache` | **PK** `domain_slug`; `compressed_data` (gzip); `last_updated`; `etag`. One logical row per domain for the listings collection cache. |
+| `bridge_search_cache` | **PK** (`partition_key`, `fingerprint`); `compressed_data` (gzip); `last_updated`. Caches `POST /api/v1/search` and `GET/POST /api/v1/properties` responses by request fingerprint. |
 | `bridge_proxy_audit_logs` | `logged_at`, `domain_slug`, `token_name`, `request_type`, `listing_count`, `ip_address`, `user_id` (nullable FK to `users`). |
 | `personal_access_tokens` | Laravel Sanctum; used for **`geo-web-internal`** and other PATs. |
 
 Migrations live under `idx-api/database/migrations/` (`2026_04_22_120000` … `120300`).
+
+---
+
+## Search endpoint (`POST /api/v1/search`)
+
+The structured search endpoint accepts JSON payloads with filter criteria, translates them to Bridge RESO OData queries, caches results, and returns paginated listings with computed statistics.
+
+### Request body (SearchRequest)
+
+```json
+{
+  "mls_dataset": "stellar",
+  "focus_areas": [
+    {"cities": ["Tampa", "St. Petersburg"], "state_or_province": "FL"},
+    {"counties_or_parishes": ["Hillsborough"], "state_or_province": "FL"}
+  ],
+  "price_min": 300000,
+  "price_max": 750000,
+  "bedrooms_min": 3,
+  "bathrooms_min": 2,
+  "property_types": ["Residential"],
+  "status": ["Active", "Pending"],
+  "waterfront": true,
+  "pool": true,
+  "garage_spaces_min": 2,
+  "year_built_min": 2010,
+  "sqft_min": 1500,
+  "lot_size_min": 5000,
+  "sort_by": "price_desc",
+  "limit": 20,
+  "page": 1
+}
+```
+
+### Filter to OData mapping
+
+| Search Filter | Bridge OData Field |
+|---------------|-------------------|
+| `cities` | `City` (case-insensitive `contains`) |
+| `counties_or_parishes` | `CountyOrParish` |
+| `state_or_province` | `StateOrProvince` |
+| `price_min/max` | `ListPrice` |
+| `bedrooms_min` | `BedroomsTotal` |
+| `bathrooms_min` (full) | `BathroomsFull` |
+| `bathrooms_min` (total) | `BathroomsTotal` |
+| `property_types` | `PropertyType` |
+| `status` / `statuses` | `StandardStatus` |
+| `waterfront` | `WaterfrontYN` |
+| `pool` | `PoolPrivateYN` |
+| `garage_spaces_min` | `GarageSpaces` |
+| `year_built_min` | `YearBuilt` |
+| `sqft_min` | `LivingArea` |
+| `lot_size_min` | `LotSizeSquareFeet` |
+| `flood_zones` | `FloodZone` (post-filtered if unsupported upstream) |
+
+### Dataset restrictions
+
+The `MlsDatasetResolver` service validates dataset access:
+
+1. If `mls_dataset` is provided in the request, it must be in the domain's `allowed_mls_datasets` array
+2. If omitted, the domain's `mls_dataset` default is used
+3. If the default is not allowed, the first allowed dataset is used as fallback
+4. Returns **403** if no valid dataset can be resolved
+
+---
+
+## OData pagination & cursor support
+
+RESO collection endpoints (`/api/v1/properties`, search results) support OData cursor pagination via the `@odata.nextLink` response field.
+
+### Requesting paginated results
+
+**Using query params (GET):**
+```bash
+curl -H "X-Domain-Slug: example.com" \
+  'https://idx-api.quantyralabs.cc/api/v1/properties?city=largo&limit=10'
+```
+
+**Using JSON body (POST):**
+```bash
+curl -X POST -H "X-Domain-Slug: example.com" \
+  -H "Content-Type: application/json" \
+  -d '{"city": "Largo", "limit": 10}' \
+  'https://idx-api.quantyralabs.cc/api/v1/properties'
+```
+
+### Following cursors
+
+Responses include `@odata.nextLink` when more results are available:
+
+```json
+{
+  "@odata.context": "...",
+  "value": [...],
+  "@odata.nextLink": "https://idx-api.quantyralabs.cc/api/v1/properties?cursor=eyJ0b3AiOjEwLCJza2lwIjoxMH0"
+}
+```
+
+Follow the cursor to retrieve the next page:
+```bash
+curl -H "X-Domain-Slug: example.com" \
+  'https://idx-api.quantyralabs.cc/api/v1/properties?cursor=eyJ0b3AiOjEwLCJza2lwIjoxMH0'
+```
+
+**Features:**
+- Cursor values are opaque tokens encoding OData `$top`/`$skip` state
+- Cursored results are cached separately with the same 15-minute TTL
+- `@odata.id` values in entities are rewritten to proxy URLs
+- All pagination is subject to domain/token authentication and teaser gating
 
 ---
 
@@ -219,6 +334,7 @@ Migrations live under `idx-api/database/migrations/` (`2026_04_22_120000` … `1
 | Mechanism | Detail |
 |-----------|--------|
 | **Listings DB cache** | **Only** `GET /api/v1/listings` when the caller authenticated as a **domain** (not token-only), and the request does **not** include a **`filters`** query (filtered queries always hit Bridge). TTL **`LISTINGS_CACHE_TTL`** seconds (default **900** = 15 minutes). |
+| **Search cache** | `POST /api/v1/search` results cached by fingerprint (dataset + normalized search params) per domain/token. Also caches `GET/POST /api/v1/properties` when no `?filters=` present. TTL **`LISTINGS_CACHE_TTL`** (default **900** = 15 minutes). |
 | **Image filesystem cache** | Files on the **`images`** disk under `IMAGE_CACHE_PATH`; TTL **`IMAGE_CACHE_TTL`** (default 86400s) controls when idx-api **re-fetches** from Bridge — not the CDN `Cache-Control` on the HTTP response. |
 | **Scheduled refresh** | `routes/console.php` schedules a callback every **15 minutes** that dispatches **`RefreshDomainListingsCacheJob`** once per **active** domain (database queue). Requires a **queue worker** in each environment where refreshes must run. |
 
@@ -234,14 +350,14 @@ Set in **`idx-api/.env`** and/or root **`.env`** for Docker Compose. See also [G
 | `BRIDGE_HOST` | No | Default in app config matches Bridge doc base; many accounts use `https://api.bridgedataoutput.com`. |
 | `BRIDGE_DATASET` | No | Default `stellar`. |
 | `BRIDGE_PATH_PREFIX` | No | e.g. `api/v2` → `{BRIDGE_HOST}/{prefix}/{dataset}/listings`. Empty string uses doc-style `{host}/{dataset}/listings`. |
-| `BRIDGE_RESO_ROOT` | No | e.g. `reso/odata` → `{host}/reso/odata/{dataset}/Property`. Empty uses `{host}/{dataset}/Property`. |
+| `BRIDGE_RESO_ROOT` | No | e.g. `reso/odata` → `{host}/reso/odata/{dataset}/Property`. Empty uses `{host}/{dataset}/Property`. The system tries multiple URL patterns automatically if 404 is received. |
 | `BRIDGE_LISTING_PHOTO_PATH` | No | Path template for photos; supports `{dataset}`, `{listingKey}`, `{photoId}`. |
 | `BRIDGE_IMAGE_REWRITE_HOSTS` | No | Comma-separated extra hostnames whose `…/listings/…/photos/…` URLs should be rewritten in JSON (in addition to defaults derived from **`BRIDGE_HOST`** and common Bridge domains). |
 | `BRIDGE_TIMEOUT` | No | HTTP timeout seconds. |
 | `LISTINGS_CACHE_TTL` | No | Seconds (default **900**). |
 | `IMAGE_CACHE_PATH` | No | Root for the **`images`** filesystem disk and image proxy storage (Docker: `/var/cache/geoidx/images`). |
 | `IMAGE_CACHE_TTL` | No | Seconds before idx-api **re-fetches** a file from Bridge (on-disk freshness). |
-| `IDX_IMAGES_PUBLIC_URL` | No | Public hostname for marketing / headers (default `https://idx-images.quantyralabs.cc`). |
+| `IDX_IMAGES_PUBLIC_URL` | No | Public hostname for marketing / headers (default `https://idx-images.quantyralabs.cc`). Used for both image URL rewriting and environment normalization. |
 | `IDX_API_INTERNAL_TOKEN` | Ops / geo-web | Plaintext PAT for server-to-server calls; **issue via Artisan** (below). Not read automatically by idx-api logic—store where geo-web or scripts need it. |
 
 **Dokploy defaults** in root `docker-compose.yml` set `BRIDGE_HOST`, `BRIDGE_PATH_PREFIX`, and `BRIDGE_RESO_ROOT` for common Bridge routing; override if Bridge returns 404.
@@ -330,6 +446,40 @@ curl -sS -D - -o /tmp/photo.jpg \
 
 Response headers should include **`Cache-Control`** with **`public`**, **`max-age=31536000`**, and **`immutable`** (directive order may vary by Symfony).
 
+### Search with filters (POST)
+
+```bash
+curl -sS -X POST \
+  -H 'X-Domain-Slug: searchtampabayhouses.com' \
+  -H 'Content-Type: application/json' \
+  -d '{"cities": ["Tampa", "St. Petersburg"], "price_min": 300000, "limit": 20}' \
+  'https://idx-api.quantyralabs.cc/api/v1/search'
+```
+
+### Properties with JSON body (POST)
+
+```bash
+curl -sS -X POST \
+  -H 'X-Domain-Slug: searchtampabayhouses.com' \
+  -H 'Content-Type: application/json' \
+  -d '{"city": "Largo", "limit": 10}' \
+  'https://idx-api.quantyralabs.cc/api/v1/properties'
+```
+
+### Follow OData cursor pagination
+
+```bash
+# Initial request
+curl -sS \
+  -H 'X-Domain-Slug: searchtampabayhouses.com' \
+  'https://idx-api.quantyralabs.cc/api/v1/properties?city=largo&limit=10' | jq '.["@odata.nextLink"]'
+
+# Follow cursor
+curl -sS \
+  -H 'X-Domain-Slug: searchtampabayhouses.com' \
+  'https://idx-api.quantyralabs.cc/api/v1/properties?cursor=eyJ0b3AiOjEwLCJza2lwIjoxMH0'
+```
+
 ---
 
 ## Docker & operations
@@ -354,14 +504,18 @@ Response headers should include **`Cache-Control`** with **`public`**, **`max-ag
 
 | Symptom | Check |
 |---------|--------|
-| Bridge **404** on listings | `BRIDGE_HOST`, `BRIDGE_PATH_PREFIX`, and `BRIDGE_DATASET` against your Bridge account (Explorer / support). |
-| RESO **404** | `BRIDGE_RESO_ROOT` (often `reso/odata`) and dataset spelling. |
+| Bridge **404** on listings | `BRIDGE_HOST`, `BRIDGE_PATH_PREFIX`, and `BRIDGE_DATASET` against your Bridge account (Explorer / support). The system automatically tries multiple RESO URL patterns if 404 is received. |
+| RESO **404** "Dataset not found" | Dataset may not be enabled for your Bridge account or `BRIDGE_RESO_ROOT` may be incorrect. |
+| RESO **400** "Invalid parameter" | Query params like `city` or `limit` must be sent via JSON body (POST) or translated to OData (`$filter`, `$top`). The `/properties` endpoint handles this translation automatically. |
 | **401** on `/api/v1/*` | Missing `X-Domain-Slug` / `Referer` and missing Bearer token. |
 | **403** domain | Row missing or `is_active = false` in `domains`. |
 | **403** token | Wrong token or missing `idx:access` / `idx:full`. |
-| Cache never hits | Listings cache is **domain-only**; Bearer-only calls always hit Bridge. With **`?filters=`**, listings cache is **skipped** by design. |
+| **403** "Dataset not allowed" | The requested `mls_dataset` is not in the domain's `allowed_mls_datasets`. Check the domain configuration. |
+| Cache never hits | Listings cache is **domain-only**; Bearer-only calls always hit Bridge. With **`?filters=`**, listings cache is **skipped** by design. Search cache requires `partition_key` (domain slug or user ID). |
+| `@odata.nextLink` returns wrong host | The proxy rewrites `nextLink` URLs to the current host. Verify request `Host` header or `APP_URL`. |
 | Images empty | Photo URL template vs Bridge listing key format; verify `BRIDGE_LISTING_PHOTO_PATH`. |
-| Photo URLs still show `api.bridgedataoutput.com` | Check **`BRIDGE_IMAGE_REWRITE_HOSTS`** and that URLs match **`/listings/{key}/photos/{id}`**; non-matching CDN patterns may need a code extension. |
+| Photo URLs still show `api.bridgedataoutput.com` or CloudFront | Check **`BRIDGE_IMAGE_REWRITE_HOSTS`** and that URLs match **`/listings/{key}/photos/{id}`**; non-matching CDN patterns may need a code extension. CloudFront URLs are automatically rewritten. |
+| Image URLs from cache point to wrong environment | URLs containing `idx-images` are normalized to `IDX_IMAGES_PUBLIC_URL` during JSON rewriting. Verify this env var matches your deployment. |
 
 ---
 

@@ -6,7 +6,21 @@ This document summarizes **versioned JSON APIs** exposed by the Laravel idx-api 
 
 All routes in `routes/api.php` under the `v1` prefix use the `domain.token` middleware (domain header / referer host **or** Sanctum bearer with `idx:access` / `idx:full`).
 
-Core resources: listings, agents, offices, RESO Property, members, public parcels bridge, etc. See [`docs/idx-api-bridge-proxy.md`](idx-api-bridge-proxy.md) and [`docs/bridge-api-documentation.md`](bridge-api-documentation.md).
+Core resources: listings, agents, offices, RESO Property, members, public parcels bridge, **structured search**, etc. See [`docs/idx-api-bridge-proxy.md`](idx-api-bridge-proxy.md) and [`docs/bridge-api-documentation.md`](bridge-api-documentation.md).
+
+### New: Structured Search endpoint (`POST /api/v1/search`)
+
+The search endpoint accepts JSON payloads with filter criteria, translates them to Bridge RESO OData queries, and returns paginated results with computed statistics.
+
+**Features:**
+- Multi-dataset support (validated against domain's `allowed_mls_datasets`)
+- Structured filters: location (cities, counties, states), price range, beds/baths, property types, features (pool, waterfront), etc.
+- OData cursor pagination via `@odata.nextLink`
+- 15-minute result caching (same cache mechanism as listings)
+- Teaser gating for non-full-access plans
+- Image URL rewriting to `idx-images` host
+
+See [IDX-API Bridge proxy — Search endpoint](idx-api-bridge-proxy.md#search-endpoint-post-apiv1search) for full request/response format and filter mapping.
 
 ### How to obtain a Bearer token for `/api/v1`
 
