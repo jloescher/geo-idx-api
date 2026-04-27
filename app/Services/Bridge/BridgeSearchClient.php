@@ -267,7 +267,7 @@ final readonly class BridgeSearchClient
             return null;
         }
 
-        $cdnHost = config('idx_urls.images_public_url', 'https://idx-images.quantyralabs.cc');
+        $cdnHost = config('idx_urls.images_public_url', rtrim((string) config('app.url'), '/'));
         // Build idx-images URL pattern
         $listingSlug = Str::afterLast($listingKey, ':');
         $keySlug = basename($mediaKey);

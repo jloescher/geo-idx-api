@@ -13,8 +13,8 @@
 @if(session('error'))
     <p style="color:#b91c1c">{{ session('error') }}</p>
 @endif
-<p><strong>IDX App</strong> (GHL + dashboard): <a href="{{ config('ghl.urls.idx_platform') }}">{{ config('ghl.urls.idx_platform') }}</a></p>
-<p><strong>IDX API</strong> (endpoints + JS widgets): {{ config('ghl.urls.api_public') }}</p>
+<p><strong>IDX App</strong> (GHL + dashboard): <a href="{{ $idxPlatformUrl }}">{{ $idxPlatformUrl }}</a></p>
+<p><strong>IDX API</strong> (endpoints + JS widgets): {{ $idxApiPublicUrl }}</p>
 <p><a class="btn" href="{{ route('leadconnector.oauth.authorize') }}">Connect with GoHighLevel (Location)</a></p>
 <p><a class="btn" href="{{ route('leadconnector.oauth.authorize', ['user_type' => 'Company']) }}">Connect as Agency (Company)</a></p>
 </body>

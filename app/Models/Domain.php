@@ -5,8 +5,23 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['domain_slug', 'is_active', 'mls_dataset', 'allowed_mls_datasets'])]
+#[Fillable([
+    'user_id',
+    'domain_slug',
+    'is_active',
+    'mls_dataset',
+    'allowed_mls_datasets',
+    'verification_status',
+    'verification_method',
+    'txt_verification_name',
+    'txt_verification_value',
+    'txt_verified_at',
+    'ghl_verified_at',
+    'verification_checked_at',
+    'verification_metadata',
+])]
 class Domain extends Model
 {
     /**
@@ -18,7 +33,16 @@ class Domain extends Model
         return [
             'is_active' => 'boolean',
             'allowed_mls_datasets' => 'array',
+            'verification_metadata' => 'array',
+            'txt_verified_at' => 'datetime',
+            'ghl_verified_at' => 'datetime',
+            'verification_checked_at' => 'datetime',
         ];
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     /**
@@ -61,5 +85,10 @@ class Domain extends Model
         ), static fn (string $v): bool => $v !== ''));
 
         return $normalized === [] ? null : $normalized;
+    }
+
+    public function isVerifiedForWidgetAccess(): bool
+    {
+        return in_array((string) $this->verification_status, ['verified', 'verified_ghl'], true);
     }
 }

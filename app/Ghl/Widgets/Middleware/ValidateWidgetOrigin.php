@@ -2,6 +2,8 @@
 
 namespace App\Ghl\Widgets\Middleware;
 
+use App\Ghl\Widgets\Support\OriginMatcher;
+use App\Ghl\Widgets\Support\TrustedWidgetPreviewOrigins;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -19,29 +21,22 @@ class ValidateWidgetOrigin
         }
 
         $origin = (string) $request->headers->get('Origin', '');
-        if ($origin === '') {
-            // Same-origin server fetches may omit Origin; allow Referer match for SSR edge cases.
-            $origin = (string) $request->headers->get('Referer', '');
-        }
+        $referer = (string) $request->headers->get('Referer', '');
 
-        if ($origin === '') {
+        if ($origin === '' && $referer === '') {
             return response('Missing Origin', 403);
         }
 
-        $normalized = rtrim($origin, '/');
-        $allowed = $row->allowedOrigins();
-        $ok = false;
-        foreach ($allowed as $a) {
-            $b = rtrim((string) $a, '/');
-            if ($b !== '' && str_starts_with($normalized, $b)) {
-                $ok = true;
-                break;
-            }
-        }
+        $validatedOrigin = OriginMatcher::allowedOrigin($origin, $row->allowedOrigins())
+            ?? OriginMatcher::allowedOrigin($referer, $row->allowedOrigins())
+            ?? TrustedWidgetPreviewOrigins::originIfTrusted($origin)
+            ?? TrustedWidgetPreviewOrigins::originIfTrusted($referer);
 
-        if (! $ok) {
+        if ($validatedOrigin === null) {
             return response('Origin not registered for MLS compliance', 403);
         }
+
+        $request->attributes->set('validated_widget_origin', $validatedOrigin);
 
         return $next($request);
     }

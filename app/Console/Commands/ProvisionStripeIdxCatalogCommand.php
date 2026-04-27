@@ -27,6 +27,17 @@ class ProvisionStripeIdxCatalogCommand extends Command
         'IDX_MEGA' => ['label' => 'Quantyra Labs IDX — Mega', 'monthly_cents' => 44900, 'yearly_cents' => 431000],
     ];
 
+    /**
+     * @var array<string, array{label: string, monthly_cents: int, feature: string}>
+     */
+    private array $addonDefinitions = [
+        'IDX_ADDON_EXTRA_DOMAIN' => [
+            'label' => 'Quantyra Labs IDX — Extra Domain',
+            'monthly_cents' => 3900,
+            'feature' => 'Additional approved domain for JS embed widgets',
+        ],
+    ];
+
     public function handle(): int
     {
         $secret = config('cashier.secret');
@@ -87,6 +98,37 @@ class ProvisionStripeIdxCatalogCommand extends Command
 
                 $this->info("Provisioned {$def['label']}: monthly {$monthly->id}, yearly {$yearly->id}");
             }
+
+            foreach ($this->addonDefinitions as $envPrefix => $def) {
+                $product = $stripe->products->create([
+                    'name' => $def['label'],
+                    'marketing_features' => [
+                        ['name' => $def['feature']],
+                    ],
+                    'metadata' => [
+                        'quantyra_catalog' => 'idx_api',
+                        'type' => 'addon',
+                        'addon_key' => strtolower(str_replace('IDX_ADDON_', '', $envPrefix)),
+                    ],
+                ]);
+
+                $monthly = $stripe->prices->create([
+                    'product' => $product->id,
+                    'currency' => $currency,
+                    'unit_amount' => $def['monthly_cents'],
+                    'recurring' => ['interval' => 'month'],
+                    'metadata' => ['billing_interval' => 'monthly', 'type' => 'addon'],
+                ]);
+
+                $lines[] = match ($envPrefix) {
+                    'IDX_ADDON_EXTRA_DOMAIN' => [
+                        "STRIPE_PRICE_IDX_ADDON_EXTRA_DOMAIN={$monthly->id}",
+                    ],
+                    default => [],
+                };
+
+                $this->info("Provisioned {$def['label']}: monthly {$monthly->id}");
+            }
         } catch (ApiErrorException $e) {
             $this->error('Stripe API error: '.$e->getMessage());
 
@@ -102,7 +144,7 @@ class ProvisionStripeIdxCatalogCommand extends Command
         }
 
         $this->newLine();
-        $this->warn('Optional metered overage + add-on prices: create manually in Stripe or extend this command.');
+        $this->warn('Optional metered overage price still needs to be created manually in Stripe.');
 
         return self::SUCCESS;
     }

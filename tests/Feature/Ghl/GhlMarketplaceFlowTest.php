@@ -29,6 +29,12 @@ class GhlMarketplaceFlowTest extends TestCase
         $this->get('/leadconnector/install')->assertOk();
     }
 
+    public function test_install_landing_shows_environment_matched_platform_url_for_idx_api_host(): void
+    {
+        $this->get('https://dev-idx-api.quantyralabs.cc/leadconnector/install')->assertOk()
+            ->assertSee('https://dev-idx.quantyralabs.cc', false);
+    }
+
     public function test_oauth_authorize_redirects_to_marketplace(): void
     {
         $response = $this->get('/oauth/leadconnector/authorize');
@@ -89,6 +95,48 @@ class GhlMarketplaceFlowTest extends TestCase
         $this->get('/widget/search/'.$row->widget_api_key, [
             'Origin' => 'https://allowed.example',
         ])->assertOk();
+    }
+
+    public function test_widget_search_rejects_prefix_origin_spoof(): void
+    {
+        $token = $this->createToken('co-z', 'loc-z');
+        $row = GhlRegisteredUrl::query()->create([
+            'ghl_oauth_token_id' => $token->id,
+            'ghl_location_id' => 'loc-z',
+            'ghl_company_id' => 'co-z',
+            'primary_url' => 'https://allowed.example',
+            'widget_api_key' => 'qh_testkey3234567890123456789012ef',
+            'integration_type' => 'external_website',
+            'mls_agreement_acknowledged' => true,
+            'urls_validated' => true,
+        ]);
+
+        $this->get('/widget/search/'.$row->widget_api_key, [
+            'Origin' => 'https://allowed.example.evil.tld',
+        ])->assertForbidden();
+    }
+
+    public function test_widget_validation_endpoint_accepts_registered_hostname(): void
+    {
+        $token = $this->createToken('co-v', 'loc-v');
+        $row = GhlRegisteredUrl::query()->create([
+            'ghl_oauth_token_id' => $token->id,
+            'ghl_location_id' => 'loc-v',
+            'ghl_company_id' => 'co-v',
+            'primary_url' => 'https://allowed.example',
+            'widget_api_key' => 'qh_testkey4234567890123456789012gh',
+            'integration_type' => 'external_website',
+            'mls_agreement_acknowledged' => true,
+            'urls_validated' => true,
+        ]);
+
+        $this->postJson('/api/widgets/validate', [
+            'token' => $row->widget_api_key,
+            'hostname' => 'allowed.example',
+            'requireFooter' => true,
+        ])->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('requiresFooter', true);
     }
 
     private function createToken(string $companyId, string $locationId): GhlOAuthToken

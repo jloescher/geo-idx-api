@@ -6,7 +6,7 @@ services:
       target: dev
       args:
         BASE_IMAGE: ${DEV_BASE_IMAGE:-dunglas/frankenphp:php8.5-alpine}
-    image: ${DEV_IMAGE_NAME:-quantyra/idx-api-dev:local}
+    image: ${DEV_IMAGE_NAME_API:-quantyra/idx-api-dev-api:local}
     platform: ${DOCKER_PLATFORM:-linux/arm64}
     env_file:
       - .env
@@ -27,6 +27,13 @@ services:
       default:
         aliases:
           - idx-api
+    healthcheck:
+      # Cloudflared returns 502 when the origin refuses TCP; wait until Octane binds before other services rely on the API.
+      test: ["CMD-SHELL", "curl -sf --connect-timeout 3 http://127.0.0.1:8000/up >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
     restart: unless-stopped
     init: true
     develop:
@@ -60,7 +67,7 @@ services:
       target: dev-worker
       args:
         BASE_IMAGE: ${DEV_BASE_IMAGE:-dunglas/frankenphp:php8.5-alpine}
-    image: ${DEV_IMAGE_NAME:-quantyra/idx-api-dev:local}
+    image: ${DEV_IMAGE_NAME_QUEUE:-quantyra/idx-api-dev-queue:local}
     platform: ${DOCKER_PLATFORM:-linux/arm64}
     env_file:
       - .env
@@ -81,7 +88,7 @@ services:
       target: dev-scheduler
       args:
         BASE_IMAGE: ${DEV_BASE_IMAGE:-dunglas/frankenphp:php8.5-alpine}
-    image: ${DEV_IMAGE_NAME:-quantyra/idx-api-dev:local}
+    image: ${DEV_IMAGE_NAME_SCHEDULER:-quantyra/idx-api-dev-scheduler:local}
     platform: ${DOCKER_PLATFORM:-linux/arm64}
     env_file:
       - .env
@@ -109,8 +116,10 @@ services:
     image: cloudflare/cloudflared:2026.3.0
     command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN}
     depends_on:
-      - idx-api-dev
-      - idx-images-dev
+      idx-api-dev:
+        condition: service_healthy
+      idx-images-dev:
+        condition: service_started
     environment:
       TUNNEL_METRICS: 0.0.0.0:20241
     restart: unless-stopped

@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Billing;
 
 use App\Billing\SubscriptionCatalog;
+use App\Ghl\Widgets\Models\GhlRegisteredUrl;
 use App\Http\Controllers\Controller;
+use App\Models\Domain;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Laravel\Cashier\Checkout;
@@ -36,7 +38,30 @@ class SubscriptionCheckoutController extends Controller
         }
 
         $user = $request->user();
-        $trialDays = (int) config('billing.trial_days', 14);
+        if ((string) $user->mls_membership_status !== 'active') {
+            return redirect()
+                ->to('/dashboard')
+                ->withErrors([
+                    'billing' => 'Complete MLS verification (MLS ID + email) before starting your paid subscription.',
+                ]);
+        }
+
+        $hasVerifiedDomain = Domain::query()
+            ->where('user_id', $user->id)
+            ->where('is_active', true)
+            ->whereIn('verification_status', ['verified', 'verified_ghl'])
+            ->exists();
+        $hasGhlProof = GhlRegisteredUrl::query()
+            ->where('quantyra_user_id', $user->id)
+            ->where('widget_access_enabled', true)
+            ->exists();
+        if (! $hasVerifiedDomain && ! $hasGhlProof) {
+            return redirect()
+                ->to('/dashboard')
+                ->withErrors([
+                    'billing' => 'Verify a domain by DNS TXT record or connect LeadConnector/GHL before checkout.',
+                ]);
+        }
 
         $origin = $request->getSchemeAndHttpHost();
         $successUrl = $origin.route('marketing.sales', [], false).'?checkout=success&session_id={CHECKOUT_SESSION_ID}';
@@ -45,7 +70,6 @@ class SubscriptionCheckoutController extends Controller
         try {
             return $user
                 ->newSubscription('default', $priceId)
-                ->trialDays($trialDays)
                 ->allowPromotionCodes()
                 ->checkout([
                     'success_url' => $successUrl,

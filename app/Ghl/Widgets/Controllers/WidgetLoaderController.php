@@ -2,6 +2,7 @@
 
 namespace App\Ghl\Widgets\Controllers;
 
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\Response;
 
 /**
@@ -9,34 +10,22 @@ use Illuminate\Http\Response;
  */
 class WidgetLoaderController
 {
+    public function __construct(
+        private readonly Filesystem $filesystem,
+    ) {}
+
     public function __invoke(): Response
     {
-        $base = json_encode(rtrim((string) config('ghl.urls.api_public'), '/'), JSON_THROW_ON_ERROR);
+        $productionPath = public_path('js/widgets/prod/loader.js');
+        $developmentPath = base_path('dist/widgets/loader.js');
 
-        $js = <<<JS
-(function () {
-  var s = document.currentScript;
-  if (!s) { return; }
-  var apiKey = s.getAttribute('data-api-key') || '';
-  var loc = s.getAttribute('data-location-id') || '';
-  var widget = s.getAttribute('data-widget') || 'search';
-  if (!apiKey) { console.error('Quantyra GeoIDX: data-api-key is required'); return; }
-  var base = {$base};
-  var url = base + '/widget/' + widget + '/' + encodeURIComponent(apiKey) + '?location_id=' + encodeURIComponent(loc);
-  fetch(url, { credentials: 'omit', mode: 'cors' })
-    .then(function (r) { return r.text(); })
-    .then(function (html) {
-      var wrap = document.createElement('div');
-      wrap.setAttribute('data-quantyra-widget', widget);
-      wrap.innerHTML = html;
-      (s.parentNode || document.body).insertBefore(wrap, s.nextSibling);
-    })
-    .catch(function (e) { console.error('Quantyra widget load failed', e); });
-})();
-JS;
+        $scriptBody = $this->filesystem->exists($productionPath)
+            ? $this->filesystem->get($productionPath)
+            : ($this->filesystem->exists($developmentPath) ? $this->filesystem->get($developmentPath) : 'console.error("Widget loader build not found. Run npm run build:widgets.");');
 
-        return response($js, 200, [
+        return response($scriptBody, 200, [
             'Content-Type' => 'application/javascript; charset=UTF-8',
+            'Cache-Control' => 'public, max-age=86400, s-maxage=86400',
         ]);
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Ghl\OAuth\Controllers;
 
 use App\Ghl\OAuth\Services\OAuthService;
+use App\Ghl\OAuth\Support\OAuthStateToken;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -14,7 +15,7 @@ class AuthorizeController
     public function __invoke(Request $request, OAuthService $oauth): RedirectResponse
     {
         $userType = (string) $request->query('user_type', config('ghl.oauth.default_user_type'));
-        $state = $oauth->randomState();
+        $state = OAuthStateToken::encode($userType);
         session([
             'ghl_oauth_state' => $state,
             'ghl_oauth_user_type' => $userType,

@@ -3,6 +3,7 @@
 namespace App\Ghl\Widgets\Models;
 
 use App\Ghl\OAuth\Models\GhlOAuthToken;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -25,6 +26,7 @@ class GhlRegisteredUrl extends Model
         'mls_agreement_acknowledged',
         'mls_compliance_verified',
         'stellar_mls_approved',
+        'quantyra_user_id',
     ];
 
     protected function casts(): array
@@ -43,6 +45,11 @@ class GhlRegisteredUrl extends Model
     public function oauthToken(): BelongsTo
     {
         return $this->belongsTo(GhlOAuthToken::class, 'ghl_oauth_token_id');
+    }
+
+    public function quantyraUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'quantyra_user_id');
     }
 
     public function widgetConfig(): HasOne

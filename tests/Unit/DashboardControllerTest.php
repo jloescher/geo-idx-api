@@ -25,5 +25,9 @@ class DashboardControllerTest extends TestCase
         $this->assertNull($response->getData()['subscription']);
         $this->assertSame(0, $response->getData()['apiOverageCount']);
         $this->assertIsIterable($response->getData()['apiTokens']);
+        $this->assertFalse($response->getData()['leadsMetricAvailable']);
+        $this->assertNull($response->getData()['leadsThisMonth']);
+        $this->assertFalse($response->getData()['canPurchaseExtraDomainSlots']);
+        $this->assertIsArray($response->getData()['widgetPaletteForm']);
     }
 }

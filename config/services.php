@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'mls_membership' => [
+        'endpoint' => env('MLS_MEMBERSHIP_VERIFY_ENDPOINT'),
+    ],
+
 ];

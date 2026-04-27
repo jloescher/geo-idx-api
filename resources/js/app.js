@@ -1,3 +1,7 @@
+import { createDashboardAlpineState } from './dashboard/widget-shell.js';
+
+window.__createDashboardAlpineState = createDashboardAlpineState;
+
 const analyticsRoot = document;
 
 analyticsRoot.addEventListener('click', (event) => {

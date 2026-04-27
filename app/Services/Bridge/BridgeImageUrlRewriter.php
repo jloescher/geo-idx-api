@@ -250,7 +250,12 @@ final class BridgeImageUrlRewriter
             return true;
         }
 
-        return str_ends_with($host, 'idx-images.quantyralabs.cc');
+        $idxImagesHost = (string) parse_url((string) config('idx_urls.images_public_url'), PHP_URL_HOST);
+        if ($idxImagesHost !== '' && $host === strtolower($idxImagesHost)) {
+            return true;
+        }
+
+        return false;
     }
 
     /**

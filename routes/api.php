@@ -3,6 +3,7 @@
 use App\Ghl\Http\Controllers\GhlApiController;
 use App\Ghl\Http\Middleware\AuthenticateGhlLocation;
 use App\Http\Controllers\Api\BridgeProxyController;
+use App\Http\Controllers\Api\WidgetValidationController;
 use App\Http\Controllers\GisProxyController;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -41,6 +42,9 @@ Route::prefix('leadconnector')->middleware([AuthenticateGhlLocation::class])->gr
     Route::get('/stats', [GhlApiController::class, 'stats']);
     Route::get('/config', [GhlApiController::class, 'config']);
 });
+
+Route::match(['post', 'options'], '/widgets/validate', WidgetValidationController::class)
+    ->middleware('throttle:120,1');
 
 Route::prefix('v1')->middleware(['domain.token'])->group(function () {
     Route::get('/gis', [GisProxyController::class, 'show']);

@@ -1,3 +1,108 @@
+<?php
+
+use App\Billing\SubscriptionCatalog;
+use App\Models\User;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Support\Str;
+use Laravel\Sanctum\PersonalAccessToken;
+use Livewire\Volt\Component;
+
+new class extends Component {
+    use AuthorizesRequests;
+
+    public string $tokenName = '';
+
+    public ?string $newToken = null;
+
+    /** @var list<array{id: int, name: string, abilities: list<string>, last_used_at: ?string, created_at: ?string}> */
+    public array $tokens = [];
+
+    public function mount(SubscriptionCatalog $catalog): void
+    {
+        /** @var User $user */
+        $user = auth()->user();
+        abort_unless($this->userMayCreateTokens($catalog, $user), 403);
+
+        $this->loadTokens($user);
+    }
+
+    public function createToken(): void
+    {
+        $validated = $this->validate([
+            'tokenName' => ['required', 'string', 'max:60'],
+        ]);
+
+        /** @var User $user */
+        $user = auth()->user();
+
+        $abilities = app(SubscriptionCatalog::class)->idxProxyAbilitiesForUser($user);
+        abort_if($abilities === null, 403);
+
+        $token = $user->createToken(Str::of($validated['tokenName'])->trim()->value(), $abilities);
+
+        $this->newToken = $token->plainTextToken;
+        $this->tokenName = '';
+
+        $this->loadTokens($user);
+        $this->dispatch('token-created');
+    }
+
+    public function revokeToken(int $tokenId): void
+    {
+        /** @var User $user */
+        $user = auth()->user();
+
+        $token = PersonalAccessToken::find($tokenId);
+
+        abort_if(
+            $token === null
+            || $token->tokenable_id !== $user->id
+            || $token->tokenable_type !== $user::class,
+            403,
+        );
+
+        $token->delete();
+        $this->loadTokens($user);
+        $this->dispatch('token-revoked');
+    }
+
+    /** @return array{abilitiesLabels: array<string, string>} */
+    public function with(): array
+    {
+        /** @var User $user */
+        $user = auth()->user();
+
+        $abilitiesLabels = match (app(SubscriptionCatalog::class)->planKeyForUser($user)) {
+            'mega' => ['idx:full' => 'Full API access'],
+            'ultra' => ['idx:access' => 'API access (teaser)'],
+            default => [],
+        };
+
+        return ['abilitiesLabels' => $abilitiesLabels];
+    }
+
+    private function userMayCreateTokens(SubscriptionCatalog $catalog, User $user): bool
+    {
+        return $catalog->userMayCreateIdxProxyApiTokens($user);
+    }
+
+    private function loadTokens(User $user): void
+    {
+        $this->tokens = $user->tokens()
+            ->orderByDesc('id')
+            ->limit(8)
+            ->get()
+            ->map(fn (PersonalAccessToken $token) => [
+                'id' => $token->id,
+                'name' => $token->name,
+                'abilities' => $token->abilities ?? [],
+                'last_used_at' => $token->last_used_at?->toDayDateTimeString(),
+                'created_at' => $token->created_at?->toDayDateTimeString(),
+            ])
+            ->all();
+    }
+}; ?>
+
 <div class="mt-8 rounded-2xl border border-white/10 bg-slate-900/70 p-6">
     <h2 class="text-xl font-semibold text-white">API Keys</h2>
     <p class="mt-1 text-sm text-slate-300">Manage tokens for the Bridge and GIS JSON API. Send as <span class="font-mono text-xs">Authorization: Bearer …</span> to API endpoints.</p>

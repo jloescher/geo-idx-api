@@ -4,18 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Search\SearchRequest;
-use App\Http\Responses\Search\ListingResult;
-use App\Http\Responses\Search\SearchResult;
-use App\Http\Responses\Search\SearchStats;
 use App\Services\Bridge\BridgeHttpService;
 use App\Services\Bridge\BridgeImageUrlRewriter;
 use App\Services\Bridge\BridgeProxyAuditLogger;
-use App\Services\Bridge\BridgeSearchClient;
-use App\Services\Bridge\BridgeSearchTranslator;
+use App\Services\Bridge\BridgeSearchAction;
 use App\Services\Bridge\BridgeTeaser;
 use App\Services\Bridge\ListingPriceConversionService;
 use App\Services\Bridge\ListingsCacheService;
-use App\Services\Bridge\MlsDatasetResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -28,10 +23,8 @@ class BridgeProxyController extends Controller
         private readonly ListingsCacheService $listingsCache,
         private readonly BridgeProxyAuditLogger $audit,
         private readonly BridgeImageUrlRewriter $imageUrlRewriter,
-        private readonly BridgeSearchClient $searchClient,
-        private readonly BridgeSearchTranslator $searchTranslator,
-        private readonly MlsDatasetResolver $resolver,
         private readonly ListingPriceConversionService $listingPricing,
+        private readonly BridgeSearchAction $bridgeSearchAction,
     ) {}
 
     /**
@@ -40,86 +33,7 @@ class BridgeProxyController extends Controller
      */
     public function search(SearchRequest $request): JsonResponse
     {
-        $fullAccess = (bool) $request->attributes->get('bridge.full_access', false);
-        $domainSlug = $request->attributes->get('bridge.domain_slug');
-        $tokenName = $request->attributes->get('bridge.token_name');
-        $userId = $request->attributes->get('bridge.user_id');
-
-        $dataset = $this->resolver->resolveDataset($request);
-        $translated = $this->searchTranslator->translate($request, $dataset);
-        $bridgeTop = $translated['top'];
-
-        $partitionKey = $this->searchCachePartitionKey($request);
-        $fingerprint = $this->searchFingerprint($dataset, $request->validated());
-
-        if ($partitionKey !== null) {
-            $bridgeResult = $this->listingsCache->rememberSearchResult(
-                $partitionKey,
-                $fingerprint,
-                fn (): array => $this->searchClient->search(
-                    dataset: $dataset,
-                    filter: $translated['filter'],
-                    orderby: $translated['orderby'],
-                    top: $bridgeTop,
-                    skip: $translated['skip'],
-                    select: $translated['select'],
-                    unselect: $translated['unselect'],
-                ),
-            );
-        } else {
-            $bridgeResult = $this->searchClient->search(
-                dataset: $dataset,
-                filter: $translated['filter'],
-                orderby: $translated['orderby'],
-                top: $bridgeTop,
-                skip: $translated['skip'],
-                select: $translated['select'],
-                unselect: $translated['unselect'],
-            );
-        }
-
-        $results = array_map(
-            fn (array $record) => $this->searchClient->mapToListingResult($record, $dataset),
-            $bridgeResult['value'],
-        );
-
-        if ($translated['needsFloodZonePostFilter']) {
-            $filteredRaw = $this->searchTranslator->filterLowRiskFloodZone($bridgeResult['value'], $dataset);
-            $results = array_map(
-                fn (array $record) => $this->searchClient->mapToListingResult($record, $dataset),
-                $filteredRaw,
-            );
-        }
-
-        $countAfterFilter = count($results);
-        $teaserCap = $fullAccess ? PHP_INT_MAX : 3;
-        if ($countAfterFilter > $teaserCap) {
-            $results = array_slice($results, 0, $teaserCap);
-        }
-
-        $stats = $this->computeSearchStats($results);
-
-        $hasMore = $fullAccess && $countAfterFilter >= $bridgeTop && $bridgeTop < 200;
-        $nextSkip = $hasMore ? $translated['skip'] + $bridgeTop : null;
-
-        $this->audit->log(
-            $request,
-            'search.listings',
-            count($results),
-            $domainSlug,
-            $tokenName,
-            $userId,
-        );
-
-        $searchResult = new SearchResult(
-            totalCount: count($results),
-            results: $results,
-            hasMore: $hasMore,
-            nextSkip: $nextSkip,
-            stats: $stats,
-        );
-
-        return response()->json($searchResult->toArray());
+        return ($this->bridgeSearchAction)($request);
     }
 
     /**
@@ -609,17 +523,6 @@ class BridgeProxyController extends Controller
         return null;
     }
 
-    /**
-     * @param  array<string, mixed>  $validated
-     */
-    private function searchFingerprint(string $dataset, array $validated): string
-    {
-        $normalized = $validated;
-        $this->ksortRecursive($normalized);
-
-        return hash('sha256', $dataset.'|'.json_encode($normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-    }
-
     private function ksortRecursive(array &$array): void
     {
         ksort($array);
@@ -628,53 +531,5 @@ class BridgeProxyController extends Controller
                 $this->ksortRecursive($value);
             }
         }
-    }
-
-    /**
-     * @param  list<ListingResult>  $results
-     */
-    private function computeSearchStats(array $results): ?SearchStats
-    {
-        if ($results === []) {
-            return null;
-        }
-
-        $count = count($results);
-        $domValues = [];
-        $priceValues = [];
-
-        foreach ($results as $result) {
-            if ($result->daysOnMarket !== null) {
-                $domValues[] = $result->daysOnMarket;
-            }
-            if ($result->listPrice !== null) {
-                $priceValues[] = $result->listPrice;
-            }
-        }
-
-        return new SearchStats(
-            resultCount: $count,
-            avgDom: $domValues !== [] ? array_sum($domValues) / count($domValues) : null,
-            avgPrice: $priceValues !== [] ? array_sum($priceValues) / count($priceValues) : null,
-            medianPrice: $this->medianPrice($priceValues),
-        );
-    }
-
-    /**
-     * @param  list<float>  $values
-     */
-    private function medianPrice(array $values): ?float
-    {
-        if ($values === []) {
-            return null;
-        }
-
-        sort($values);
-        $count = count($values);
-        $mid = intdiv($count, 2);
-
-        return $count % 2 === 0
-            ? ($values[$mid - 1] + $values[$mid]) / 2
-            : $values[$mid];
     }
 }

@@ -75,16 +75,16 @@ Use the authorization code to obtain an access token via the token endpoint.
 ```bash
 curl -X POST "https://services.leadconnectorhq.com/oauth/token" \
   -H "Accept: application/json" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "client_id": "665c6bb13d4e5364bdec0e2f-mawqjyjd",
-    "client_secret": "74032272-7f45-4e07-8717-5e1ddbfe3de0",
-    "grant_type": "authorization_code",
-    "code": "363fe3f086e2db02bb9c34722902d21f76c9b217",
-    "user_type": "Company",
-    "redirect_uri": "https://myapp.com/oauth/callback/highlevel"
-  }'
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode "client_id=665c6bb13d4e5364bdec0e2f-mawqjyjd" \
+  --data-urlencode "client_secret=74032272-7f45-4e07-8717-5e1ddbfe3de0" \
+  --data-urlencode "grant_type=authorization_code" \
+  --data-urlencode "code=363fe3f086e2db02bb9c34722902d21f76c9b217" \
+  --data-urlencode "user_type=Company" \
+  --data-urlencode "redirect_uri=https://myapp.com/oauth/callback/highlevel"
 ```
+
+The live token endpoint rejects `Content-Type: application/json` for this grant; use form encoding (same as the refresh flow).
 
 **Request Parameters:**
 

@@ -3,6 +3,7 @@
 namespace App\Ghl\OAuth\Controllers;
 
 use App\Ghl\OAuth\Services\OAuthService;
+use App\Ghl\OAuth\Support\OAuthStateToken;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -19,14 +20,13 @@ class CallbackController
         }
 
         $code = (string) $request->query('code', '');
-        $state = (string) $request->query('state', '');
-        $sessionState = (string) session('ghl_oauth_state', '');
+        $resolved = OAuthStateToken::tryResolveFromRequest($request);
 
-        if ($code === '' || $state === '' || ! hash_equals($sessionState, $state)) {
+        if ($code === '' || $resolved === null) {
             abort(403, 'Invalid OAuth state');
         }
 
-        $userType = (string) session('ghl_oauth_user_type', config('ghl.oauth.default_user_type'));
+        $userType = $resolved['user_type'];
         session()->forget(['ghl_oauth_state', 'ghl_oauth_user_type']);
 
         $data = $oauth->exchangeAuthorizationCode($code, $userType);

@@ -19,7 +19,8 @@ return [
             'stripe_price_yearly' => env('STRIPE_PRICE_IDX_PRO_YEARLY'),
             'features' => [
                 'Unlimited JS Widget usage',
-                '3 domains / widgets',
+                '1 domain included',
+                'Additional domains: $39/mo each',
                 'No monthly API call limits advertised',
                 'Basic LeadConnector / GoHighLevel app',
                 'Teaser gating (3 listings preview)',
@@ -95,7 +96,7 @@ return [
     'addons' => [
         'extra_domain' => [
             'label' => 'Extra domain',
-            'monthly_display' => '$19/mo',
+            'monthly_display' => '$39/mo',
             'stripe_price_monthly' => env('STRIPE_PRICE_IDX_ADDON_EXTRA_DOMAIN'),
         ],
         'priority_support' => [
@@ -105,7 +106,7 @@ return [
         ],
     ],
 
-    'trial_days' => 14,
+    'trial_days' => 0,
 
     'teaser_leads_cache_ttl' => 900,
 ];

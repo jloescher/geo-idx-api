@@ -2,7 +2,11 @@
 
 namespace App\Actions\Fortify;
 
+use App\Models\Domain;
 use App\Models\User;
+use App\Services\DomainOwnershipVerifier;
+use App\Services\MlsMembershipVerificationService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -31,13 +35,46 @@ class CreateNewUser implements CreatesNewUsers
                 'max:255',
                 Rule::unique(User::class),
             ],
+            'domain_slug' => [
+                'required',
+                'string',
+                'max:255',
+                'regex:/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/',
+                Rule::unique('domains', 'domain_slug'),
+            ],
+            'dataset' => ['required', 'string', 'in:stellar'],
+            'mls_id' => ['required', 'string', 'min:4', 'max:80'],
+            'mls_email' => ['required', 'email', 'max:255'],
             'password' => $this->passwordRules(),
         ])->validate();
 
-        return User::create([
-            'name' => $input['name'],
-            'email' => $input['email'],
-            'password' => Hash::make($input['password']),
-        ]);
+        /** @var User $user */
+        $user = DB::transaction(function () use ($input): User {
+            $user = User::create([
+                'name' => $input['name'],
+                'email' => $input['email'],
+                'password' => Hash::make($input['password']),
+                'mls_id' => trim((string) $input['mls_id']),
+                'mls_email' => trim((string) $input['mls_email']),
+                'assigned_mls_datasets' => ['stellar'],
+                'mls_membership_status' => 'pending',
+            ]);
+
+            $domain = Domain::query()->create([
+                'user_id' => $user->id,
+                'domain_slug' => mb_strtolower(trim((string) $input['domain_slug'])),
+                'is_active' => true,
+                'mls_dataset' => 'stellar',
+                'allowed_mls_datasets' => ['stellar'],
+                'verification_status' => 'pending',
+            ]);
+
+            app(DomainOwnershipVerifier::class)->issueTxtChallenge($domain);
+            app(MlsMembershipVerificationService::class)->verify($user, 'stellar');
+
+            return $user;
+        });
+
+        return $user;
     }
 }

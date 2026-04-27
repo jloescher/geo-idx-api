@@ -9,7 +9,11 @@
     "sail": false,
     "skills": [
         "cashier-stripe-development",
+        "fortify-development",
         "laravel-best-practices",
-        "livewire-development"
+        "pulse-development",
+        "livewire-development",
+        "volt-development",
+        "tailwindcss-development"
     ]
 }

@@ -138,6 +138,15 @@ php artisan billing:seed-test-users
 | `STRIPE_SECRET` | Must be set (Cashier / Stripe SDK). |
 | Monthly price IDs | All of **`STRIPE_PRICE_IDX_PRO_MONTHLY`**, **`STRIPE_PRICE_IDX_SMART_MONTHLY`**, **`STRIPE_PRICE_IDX_ULTRA_MONTHLY`**, **`STRIPE_PRICE_IDX_MEGA_MONTHLY`** must be non-empty in `.env` (they map through `config/billing.php`). |
 
+### Catalog provisioning notes
+
+`php artisan billing:provision-stripe-catalog` now provisions:
+
+- Plan products and prices (Pro/Smart/Ultra/Mega monthly + yearly)
+- Add-on product and price for **Extra Domain** (`STRIPE_PRICE_IDX_ADDON_EXTRA_DOMAIN`)
+
+The metered overage price (`STRIPE_PRICE_IDX_API_OVERAGE_METERED`) is still created manually in Stripe.
+
 ### Created users
 
 | Plan | Email |

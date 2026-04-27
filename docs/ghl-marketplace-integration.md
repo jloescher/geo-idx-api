@@ -37,7 +37,7 @@ Public HTTP paths use the **`leadconnector`** prefix (whitelabel); implementatio
 |------|--------|-------------|
 | Installation landing | `GET /leadconnector/install` | Blade UI; links to authorize. |
 | Authorize | `GET /oauth/leadconnector/authorize` | Builds state in session, redirects to GHL `chooselocation` with `client_id`, `redirect_uri`, `scope`, `state`. Optional query: `user_type=Company` or `Location` (default from `GHL_DEFAULT_USER_TYPE`). |
-| Callback | `GET /oauth/leadconnector/callback` | Validates `state`, exchanges `code` at `POST https://services.leadconnectorhq.com/oauth/token` (JSON body per vendor doc), persists tokens, sets session `ghl_pending_oauth_token_id`. |
+| Callback | `GET /oauth/leadconnector/callback` | Validates `state`, exchanges `code` at `POST https://services.leadconnectorhq.com/oauth/token` (`application/x-www-form-urlencoded`, `Accept: application/json`), persists tokens, sets session `ghl_pending_oauth_token_id`. |
 | Token refresh (admin) | `POST /oauth/leadconnector/refresh` | Header `X-Quantyra-Admin-Token` must match `GHL_ADMIN_REFRESH_TOKEN`; body `token_id` for server-side refresh job path. |
 
 ### Token storage

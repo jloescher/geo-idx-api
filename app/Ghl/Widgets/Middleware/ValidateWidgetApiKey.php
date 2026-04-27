@@ -2,7 +2,11 @@
 
 namespace App\Ghl\Widgets\Middleware;
 
+use App\Billing\SubscriptionCatalog;
 use App\Ghl\Widgets\Models\GhlRegisteredUrl;
+use App\Models\Domain;
+use App\Models\User;
+use App\Widgets\DirectSiteWidgetContext;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -24,12 +28,31 @@ class ValidateWidgetApiKey
         }
 
         $row = GhlRegisteredUrl::query()->where('widget_api_key', $apiKey)->first();
-        if (! $row || ! $row->widget_access_enabled) {
-            return response('Invalid widget API key', 401);
+        if ($row !== null && $row->widget_access_enabled) {
+            $request->attributes->set('ghl_registered_url', $row);
+
+            return $next($request);
         }
 
-        $request->attributes->set('ghl_registered_url', $row);
+        $user = User::query()->where('widget_embed_site_key', $apiKey)->first();
+        if ($user !== null) {
+            $catalog = app(SubscriptionCatalog::class);
+            $hasPaidSubscription = (bool) $user->subscription('default')?->valid();
+            $mlsActive = (string) $user->mls_membership_status === 'active';
+            $hasVerifiedDomain = Domain::query()
+                ->where('user_id', $user->id)
+                ->where('is_active', true)
+                ->whereIn('verification_status', ['verified', 'verified_ghl'])
+                ->exists();
+            if (! $hasPaidSubscription || ! $mlsActive || ! $hasVerifiedDomain || ! in_array($catalog->planKeyForUser($user) ?? '', ['pro', 'smart', 'ultra', 'mega'], true)) {
+                return response('Subscriber access requirements not met for widget runtime', 403);
+            }
 
-        return $next($request);
+            $request->attributes->set('ghl_registered_url', new DirectSiteWidgetContext($user));
+
+            return $next($request);
+        }
+
+        return response('Invalid widget API key', 401);
     }
 }

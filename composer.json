@@ -15,7 +15,8 @@
         "laravel/sanctum": "^4.3",
         "laravel/telescope": "^5.20",
         "laravel/tinker": "^3.0",
-        "livewire/livewire": "^3"
+        "livewire/livewire": "^4",
+        "livewire/volt": "^1.10"
     },
     "require-dev": {
         "barryvdh/laravel-debugbar": "^4.2",

@@ -2,7 +2,7 @@
 
 namespace App\Ghl\Widgets\Controllers;
 
-use App\Ghl\Widgets\Models\GhlWidgetConfig;
+use App\Ghl\Widgets\Services\WidgetEmbedConfigService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -12,6 +12,10 @@ use Illuminate\Http\Response;
  */
 class WidgetSurfaceController
 {
+    public function __construct(
+        private readonly WidgetEmbedConfigService $widgetEmbedConfig,
+    ) {}
+
     public function search(Request $request, string $apiKey): Response
     {
         return $this->shell('search', $request);
@@ -27,18 +31,9 @@ class WidgetSurfaceController
         return $this->shell('showcase', $request);
     }
 
-    public function config(Request $request, string $apiKey): JsonResponse
+    public function config(Request $request, string $_apiKey): JsonResponse
     {
-        $row = $request->attributes->get('ghl_registered_url');
-        $cfg = GhlWidgetConfig::query()->where('ghl_location_id', $row->ghl_location_id)->first();
-
-        return response()->json([
-            'location_id' => $row->ghl_location_id,
-            'theme' => $cfg?->widget_theme ?? 'light',
-            'primary_color' => $cfg?->primary_color,
-            'idx_platform' => config('ghl.urls.idx_platform'),
-            'images_cdn' => config('ghl.urls.images'),
-        ]);
+        return response()->json($this->widgetEmbedConfig->mergedConfig($request));
     }
 
     private function shell(string $kind, Request $request): Response

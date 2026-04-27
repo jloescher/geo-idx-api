@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Dashboard;
 
-use App\Livewire\Dashboard\ApiTokenManager;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Cashier\Subscription;
@@ -46,7 +45,7 @@ class ApiTokenManagerTest extends TestCase
         $this->attachSubscription($user, 'price_smart_monthly');
         $this->actingAs($user);
 
-        Livewire::test(ApiTokenManager::class)
+        Livewire::test('dashboard.api-token-manager')
             ->assertStatus(403);
     }
 
@@ -62,7 +61,7 @@ class ApiTokenManagerTest extends TestCase
         $this->attachSubscription($user, 'price_ultra_monthly');
         $this->actingAs($user);
 
-        Livewire::test(ApiTokenManager::class)
+        Livewire::test('dashboard.api-token-manager')
             ->assertSee('API Keys')
             ->assertSet('tokens', []);
     }
@@ -79,7 +78,7 @@ class ApiTokenManagerTest extends TestCase
         $this->attachSubscription($user, 'price_ultra_monthly');
         $this->actingAs($user);
 
-        $component = Livewire::test(ApiTokenManager::class)
+        $component = Livewire::test('dashboard.api-token-manager')
             ->set('tokenName', 'My Ultra Token')
             ->call('createToken')
             ->assertSet('tokenName', '')
@@ -113,7 +112,7 @@ class ApiTokenManagerTest extends TestCase
         $this->attachSubscription($user, 'price_mega_monthly');
         $this->actingAs($user);
 
-        Livewire::test(ApiTokenManager::class)
+        Livewire::test('dashboard.api-token-manager')
             ->set('tokenName', 'Mega Token')
             ->call('createToken');
 
@@ -137,7 +136,7 @@ class ApiTokenManagerTest extends TestCase
 
         $token = $user->createToken('To Revoke', ['idx:access']);
 
-        Livewire::test(ApiTokenManager::class)
+        Livewire::test('dashboard.api-token-manager')
             ->call('revokeToken', $token->accessToken->id)
             ->assertDispatched('token-revoked');
 
@@ -165,7 +164,7 @@ class ApiTokenManagerTest extends TestCase
 
         $this->actingAs($userB);
 
-        Livewire::test(ApiTokenManager::class)
+        Livewire::test('dashboard.api-token-manager')
             ->call('revokeToken', $token->accessToken->id)
             ->assertStatus(403);
     }
@@ -181,12 +180,12 @@ class ApiTokenManagerTest extends TestCase
         $this->attachSubscription($user, 'price_ultra_monthly');
         $this->actingAs($user);
 
-        Livewire::test(ApiTokenManager::class)
+        Livewire::test('dashboard.api-token-manager')
             ->set('tokenName', '')
             ->call('createToken')
             ->assertHasErrors(['tokenName' => 'required']);
 
-        Livewire::test(ApiTokenManager::class)
+        Livewire::test('dashboard.api-token-manager')
             ->set('tokenName', str_repeat('a', 61))
             ->call('createToken')
             ->assertHasErrors(['tokenName' => 'max']);
@@ -207,7 +206,7 @@ class ApiTokenManagerTest extends TestCase
         $user->createToken('First Token', ['idx:access']);
         $user->createToken('Second Token', ['idx:access']);
 
-        Livewire::test(ApiTokenManager::class)
+        Livewire::test('dashboard.api-token-manager')
             ->assertSee('First Token')
             ->assertSee('Second Token');
     }

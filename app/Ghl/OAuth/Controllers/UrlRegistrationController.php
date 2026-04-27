@@ -65,6 +65,7 @@ class UrlRegistrationController
             'integration_type' => $validated['integration_type'],
             'mls_agreement_acknowledged' => true,
             'urls_validated' => true,
+            'quantyra_user_id' => $request->user()?->id,
         ]);
 
         GhlWidgetConfig::query()->create([

@@ -32,7 +32,7 @@ class OAuthService
      */
     public function exchangeAuthorizationCode(string $code, string $userType): array
     {
-        $response = Http::asJson()
+        $response = Http::asForm()
             ->acceptJson()
             ->timeout((int) config('ghl.api.timeout'))
             ->post(config('ghl.oauth.token_url'), [

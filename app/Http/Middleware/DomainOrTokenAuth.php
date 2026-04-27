@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Domain;
+use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -38,9 +39,19 @@ class DomainOrTokenAuth
             abort(403, 'Token is missing required IDX abilities.');
         }
 
+        $user = User::query()->find($accessToken->tokenable_id);
+        $requiresMlsGate = $user !== null && (
+            trim((string) $user->mls_id) !== ''
+            || trim((string) $user->mls_email) !== ''
+        );
+        if ($user === null || ($requiresMlsGate && (string) $user->mls_membership_status !== 'active')) {
+            abort(403, 'MLS membership verification is required for API access.');
+        }
+
         $request->attributes->set('bridge.auth', 'token');
         $request->attributes->set('bridge.token_name', $accessToken->name);
         $request->attributes->set('bridge.user_id', $accessToken->tokenable_id);
+        $request->attributes->set('bridge.allowed_datasets', $user->assignedDatasets());
         $request->attributes->set('bridge.full_access', $accessToken->can('idx:full'));
 
         return $next($request);

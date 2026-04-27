@@ -65,9 +65,29 @@ final class SubscriptionCatalog
         }
 
         $subscription->loadMissing('items');
-        $priceId = (string) ($subscription->items->first()?->stripe_price ?? $subscription->stripe_price ?? '');
 
-        return $this->planKeyForPriceId($priceId !== '' ? $priceId : null);
+        /** @var list<string> $priceIds */
+        $priceIds = [];
+        $appendPriceId = static function (string $rawId) use (&$priceIds): void {
+            $id = trim($rawId);
+            if ($id !== '' && ! in_array($id, $priceIds, true)) {
+                $priceIds[] = $id;
+            }
+        };
+
+        $appendPriceId((string) ($subscription->stripe_price ?? ''));
+        foreach ($subscription->items as $item) {
+            $appendPriceId((string) ($item->stripe_price ?? ''));
+        }
+
+        foreach ($priceIds as $priceId) {
+            $key = $this->planKeyForPriceId($priceId);
+            if (is_string($key) && $key !== '') {
+                return $key;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -101,6 +121,47 @@ final class SubscriptionCatalog
             'ultra' => ['idx:access'],
             default => null,
         };
+    }
+
+    public function domainLimitForPlan(?string $planKey): ?int
+    {
+        return match ($planKey) {
+            'pro' => 1,
+            'smart' => 5,
+            'ultra', 'mega' => null,
+            default => 0,
+        };
+    }
+
+    public function domainLimitForUser(User $user): ?int
+    {
+        /** @var Subscription|null $subscription */
+        $subscription = $user->subscription('default');
+        if ($subscription === null || ! $subscription->valid()) {
+            return 0;
+        }
+
+        $planKey = $this->planKeyForUser($user);
+        $baseLimit = $this->domainLimitForPlan($planKey);
+        if ($baseLimit === null) {
+            return null;
+        }
+
+        if ($planKey !== 'pro') {
+            return $baseLimit;
+        }
+
+        $subscription->loadMissing('items');
+        $extraDomainPriceId = (string) config('billing.addons.extra_domain.stripe_price_monthly', '');
+        if ($extraDomainPriceId === '') {
+            return $baseLimit;
+        }
+
+        $extraDomainQty = (int) ($subscription->items
+            ->where('stripe_price', $extraDomainPriceId)
+            ->sum('quantity'));
+
+        return $baseLimit + max(0, $extraDomainQty);
     }
 
     /**

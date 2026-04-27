@@ -17,6 +17,7 @@ $defaultScopes = implode(' ', [
     'forms.readonly',
     'links.write',
     'campaigns.readonly',
+    'brand-boards/design-kit.readonly',
 ]);
 
 return [
@@ -42,6 +43,14 @@ return [
         'version' => env('GHL_API_VERSION', '2021-07-28'),
         'timeout' => (int) env('GHL_API_TIMEOUT', 30),
         'max_retries' => (int) env('GHL_API_MAX_RETRIES', 3),
+    ],
+
+    /**
+     * HighLevel GET /brand-boards/:locationId needs scope brand-boards/design-kit.readonly.
+     * Re-authorize marketplace installs after adding this scope to the app.
+     */
+    'brand_boards' => [
+        'cache_ttl_seconds' => (int) env('GHL_BRAND_BOARD_CACHE_TTL', 3600),
     ],
 
     'webhooks' => [

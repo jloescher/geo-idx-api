@@ -36,7 +36,9 @@ class WidgetLeadIngestController
             'quantyra_domain' => $data['quantyra_domain'] ?? null,
         ]);
 
-        SyncLeadToGhlJob::dispatch($lead->id);
+        if (! str_starts_with((string) $row->ghl_location_id, 'direct-')) {
+            SyncLeadToGhlJob::dispatch($lead->id);
+        }
 
         return response()->json(['id' => $lead->id], 201);
     }

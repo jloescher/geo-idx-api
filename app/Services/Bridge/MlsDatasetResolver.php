@@ -19,6 +19,10 @@ final class MlsDatasetResolver
     {
         $domain = $request->attributes->get('bridge.domain');
         $allowed = $this->datasetsEnabledForDomain($domain);
+        $allowedForUser = $request->attributes->get('bridge.allowed_datasets');
+        if (is_array($allowedForUser) && $allowedForUser !== []) {
+            $allowed = array_values(array_intersect($allowed, $allowedForUser));
+        }
 
         if ($allowed === []) {
             throw new HttpException(503, 'No MLS dataset is enabled for this site.');

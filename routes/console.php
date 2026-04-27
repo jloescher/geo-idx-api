@@ -27,3 +27,13 @@ Schedule::call(function (): void {
 Schedule::call(function (): void {
     RefreshGisSourceMetadataJob::dispatch()->onQueue((string) config('gis.queue'));
 })->weeklyOn(1, '6:30')->name('gis-source-metadata-probe')->withoutOverlapping();
+
+Schedule::command('mls:reverify-memberships')
+    ->monthlyOn(1, '03:00')
+    ->name('mls-membership-reverify')
+    ->withoutOverlapping();
+
+Schedule::command('leads:send-alerts')
+    ->everyFifteenMinutes()
+    ->name('leads-alert-digests')
+    ->withoutOverlapping();
