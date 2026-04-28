@@ -80,6 +80,7 @@ return [
                 'Unlimited API calls',
                 'Unlimited domains',
                 'Full REST API access',
+                'Comps engine access',
                 'Overage: $0.001 per additional API call',
                 'Fair-usage + soft rate limits (backend protection)',
                 'Custom branding & revenue-share lead program',

@@ -14,7 +14,7 @@ new class extends Component {
         ['label' => 'Built for multiple MLS environments'],
         ['label' => 'Geography-first search experiences'],
         ['label' => 'Embedded JS widgets for GHL funnels'],
-        ['label' => 'Demo sandbox trial before paid live activation'],
+        ['label' => 'API-first activation for production rollout'],
     ];
     /** @var array<int, array<string, string>> */
     public array $geographyHighlights = [
@@ -30,7 +30,7 @@ new class extends Component {
     ];
     /** @var array<int, array<string, string>> */
     public array $workflowSteps = [
-        ['title' => 'Start in demo sandbox', 'description' => 'Launch your 14-day demo-data trial to test widget placement, forms, and messaging.'],
+        ['title' => 'Start with API plan activation', 'description' => 'Activate the plan that matches your call volume and environments, then launch widgets and integrations from day one.'],
         ['title' => 'Embed and route leads', 'description' => 'Install JS widgets on approved domains and connect submissions to your GHL workflows.'],
         ['title' => 'Activate paid live data', 'description' => 'Move to a paid plan when ready to unlock live data on your production funnels.'],
     ];
@@ -40,12 +40,12 @@ new class extends Component {
         ['category' => 'Widget and domain scope', 'pro' => '1 domain included (+$39/mo each additional domain)', 'smart' => 'Up to 5 domains with broader campaign coverage'],
         ['category' => 'Geography intelligence', 'pro' => 'Core geography-aware discovery', 'smart' => 'Advanced geography-led search and lead capture'],
         ['category' => 'Market-intelligence overlays', 'pro' => 'Core market context blocks', 'smart' => 'Extended market-intel overlays for team workflows'],
-        ['category' => 'Trial and live data policy', 'pro' => '14-day demo-data trial, paid live activation', 'smart' => '14-day demo-data trial, paid live activation'],
+        ['category' => 'Activation policy', 'pro' => 'API-first paid activation with immediate access', 'smart' => 'API-first paid activation with immediate access'],
     ];
     /** @var array<int, array<string, string>> */
     public array $faqs = [
-        ['question' => 'Does this page show live MLS listings?', 'answer' => 'No. GeoIDX marketing pages use static and demo visuals only. Live data is available only after paid activation on approved domains.'],
-        ['question' => 'What does the 14-day trial include?', 'answer' => 'The trial includes demo data so you can test widget placement, forms, and workflow routing. Live data is unlocked only after paid plan activation.'],
+        ['question' => 'Does this page show live MLS listings?', 'answer' => 'No. GeoIDX marketing pages use static marketing visuals only. Live data is available only after paid activation on approved domains.'],
+        ['question' => 'How does plan activation work?', 'answer' => 'Plans are API-first and activate on paid checkout, giving your team immediate access to configured plan capabilities.'],
         ['question' => 'How are leads protected and routed?', 'answer' => 'Visitors can preview teaser experiences, then complete verification steps. Qualified leads are routed into your configured workflow paths.'],
         ['question' => 'Can I use this with GoHighLevel or LeadConnector?', 'answer' => 'Yes. GeoIDX is built for GHL-style embedded widget funnels and supports both self-serve and team deployment patterns.'],
         ['question' => 'How does geography intelligence improve conversion?', 'answer' => 'Geography-aware experiences help buyers discover inventory by relevant local boundaries, increasing listing relevance and improving lead quality before handoff.'],
@@ -145,7 +145,7 @@ new class extends Component {
             </div>
         @endif
 
-    {{-- Revenue Impact: Hero clarifies demo-to-live policy and accelerates qualified starts. --}}
+    {{-- Revenue Impact: Hero clarifies paid activation policy and accelerates qualified starts. --}}
     <section class="border-b border-slate-800 bg-slate-950 px-4 pb-14 pt-12 sm:px-6 sm:pb-16 sm:pt-16 lg:px-8" aria-labelledby="hero-heading">
         <div class="mx-auto grid max-w-6xl gap-10 lg:grid-cols-2 lg:items-center">
             <div>
@@ -156,25 +156,25 @@ new class extends Component {
                     Geography-first IDX widgets that convert faster.
                 </h1>
                 <p class="mt-5 max-w-2xl text-lg text-slate-200 sm:text-xl">
-                    Launch embeddable search, map, and lead-capture widgets in a demo sandbox, then activate paid live data when your funnels are ready.
+                    Launch embeddable search, map, and lead-capture widgets with API-first activation for production-ready funnels.
                 </p>
                 <p class="mt-4 text-sm font-medium text-amber-200">
-                    14-day trial includes demo data only. Paid plan activation is required for live data.
+                    API plans are paid and activate immediately for production use.
                 </p>
                 <div class="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-4">
                     <a
                         href="{{ route('register', [], false) }}"
                         class="inline-flex min-h-12 items-center justify-center rounded-full bg-cyan-400 px-7 py-3 text-base font-semibold text-slate-950 shadow-md hover:bg-cyan-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-                        data-event-name="demo_trial_started"
+                        data-event-name="api_plan_started"
                     >
-                        Start Demo Trial
+                        View API Plans
                     </a>
                     <a
                         href="#pricing"
                         class="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 px-7 py-3 text-base font-semibold text-white hover:border-white/40 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                         data-event-name="live_data_activation_clicked"
                     >
-                        Activate Live Data
+                        Start API Plan
                     </a>
                 </div>
             </div>
@@ -223,7 +223,7 @@ new class extends Component {
         <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
             <h2 class="text-3xl font-bold tracking-tight text-white">Embeddable JS widgets for GHL-first teams</h2>
             <p class="mt-3 max-w-3xl text-sm text-slate-300">
-                Deploy search, map, and lead-capture surfaces in minutes, validate performance in your demo sandbox, then switch to paid live data when ready.
+                Deploy search, map, and lead-capture surfaces in minutes with API-first activation and production-ready access.
             </p>
             <div class="mt-8 grid gap-6 lg:grid-cols-2">
                 <div class="rounded-2xl border border-white/10 bg-slate-900/60 p-5">
@@ -242,7 +242,7 @@ new class extends Component {
                 <div class="rounded-2xl border border-white/10 bg-slate-900/60 p-5">
                     <p class="text-xs font-semibold uppercase tracking-wide text-cyan-300">Live activation path</p>
                     <p class="mt-3 text-sm text-slate-200">
-                        Start with demo data during trial to tune UX and funnel events. Activate a paid plan when you want live data on production domains.
+                        Start with your API plan first, then deploy widgets, lead capture, and automation with production-ready access.
                     </p>
                     <a
                         href="#pricing"
@@ -283,7 +283,7 @@ new class extends Component {
         </div>
     </section>
 
-    {{-- Revenue Impact: Pricing section clarifies demo-to-live activation and drives qualified checkout. --}}
+    {{-- Revenue Impact: Pricing section clarifies API-first activation and drives qualified checkout. --}}
     <section id="pricing" class="idx-pricing-band scroll-mt-24 py-14" aria-labelledby="pricing-heading">
         <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div class="text-center">
@@ -294,10 +294,10 @@ new class extends Component {
                 </div>
                 <h2 id="pricing-heading" class="mt-6 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">Simple, Transparent Pricing</h2>
                 <p class="mx-auto mt-3 max-w-xl text-lg text-slate-700 sm:text-xl">
-                    Pro and Smart are built for GHL-first widget funnels. Start with demo data, then activate paid live data when your campaigns are production-ready.
+                    Pro and Smart are built for GHL-first widget funnels with API-first plan activation for production rollout.
                 </p>
                 <p class="mx-auto mt-4 max-w-2xl text-sm text-slate-600">
-                    14-day trial includes demo data only • Live data requires paid activation • Overage billing (Ultra &amp; Mega only): $0.001 per extra API call
+                    API plans activate immediately • Overage billing (Ultra &amp; Mega only): $0.001 per extra API call
                 </p>
             </div>
 
@@ -385,9 +385,9 @@ new class extends Component {
                                 <a
                                     href="{{ route('register', [], false) }}"
                                     class="flex min-h-11 w-full items-center justify-center rounded-md bg-cyan-600 px-4 py-3 text-sm font-bold uppercase tracking-wide text-white shadow hover:bg-cyan-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                                    data-event-name="demo_trial_started"
+                                    data-event-name="api_plan_started"
                                 >
-                                    Start Demo Trial
+                                    View API Plans
                                 </a>
                                 <a
                                     href="{{ route('billing.checkout', ['plan' => $plan['key'], 'interval' => $billingInterval], false) }}"
@@ -395,10 +395,10 @@ new class extends Component {
                                     aria-label="Activate live data on {{ $plan['label'] }} plan with {{ $billingInterval }} billing"
                                     data-event-name="live_data_activation_clicked"
                                 >
-                                    Activate Live Data
+                                    Start API Plan
                                 </a>
                                 <p class="mt-2 text-center text-xs text-slate-600">
-                                    Demo data during trial • Paid plan unlocks live data
+                                    API-first activation • Immediate production access
                                 </p>
                             @else
                                 <a
@@ -410,7 +410,7 @@ new class extends Component {
                                     Activate {{ $plan['label'] }}
                                 </a>
                                 <p class="mt-2 text-center text-xs text-slate-600">
-                                    Secured by Stripe Checkout • 14-day demo-data trial
+                                    Secured by Stripe Checkout • Immediate plan activation
                                 </p>
                             @endif
                         </div>
@@ -430,7 +430,7 @@ new class extends Component {
         <div class="mx-auto max-w-5xl">
             <h2 id="comparison-heading" class="text-3xl font-bold tracking-tight text-white">Pro vs Smart for GHL widget operations</h2>
             <p class="mt-3 text-sm text-slate-300">
-                Choose Pro for lean single-operator funnels or Smart for team-level growth. Both start with demo data in trial and require paid activation for live data.
+                Choose Pro for lean single-operator funnels or Smart for team-level growth. Both are API-first paid plans designed for immediate production launch.
             </p>
             <div class="mt-8 overflow-hidden rounded-2xl border border-white/10">
                 <table class="min-w-full divide-y divide-white/10">
@@ -457,7 +457,7 @@ new class extends Component {
 
     <section class="border-b border-slate-800 bg-slate-900/50 px-4 py-14 sm:px-6 lg:px-8" aria-labelledby="workflow-heading">
         <div class="mx-auto max-w-6xl">
-            <h2 id="workflow-heading" class="text-3xl font-bold tracking-tight text-white">How the demo-to-live journey works</h2>
+            <h2 id="workflow-heading" class="text-3xl font-bold tracking-tight text-white">How API-first activation works</h2>
             <div class="mt-8 grid gap-5 md:grid-cols-3">
                 @foreach ($workflowSteps as $step)
                     <article class="rounded-2xl border border-white/10 bg-slate-950/60 p-6">
@@ -524,7 +524,7 @@ new class extends Component {
     <section class="mx-auto mt-12 max-w-6xl px-4 pb-6 sm:px-6 lg:px-8" aria-labelledby="final-cta-heading">
         <div class="rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-800 px-6 py-16 text-center text-white sm:px-10 sm:py-20">
             <h2 id="final-cta-heading" class="text-3xl font-bold tracking-tight sm:text-4xl">Ready to dominate your market with GeoIDX?</h2>
-            <p class="mt-4 text-xl sm:text-2xl">Start your 14-day free trial today. No credit card required.</p>
+            <p class="mt-4 text-xl sm:text-2xl">Activate your API plan today and launch production-ready flows.</p>
             <a
                 href="#pricing"
                 class="mt-8 inline-flex min-h-14 items-center justify-center rounded-2xl bg-white px-10 py-4 text-lg font-semibold text-indigo-800 transition-colors hover:bg-amber-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-800 sm:px-14 sm:text-xl"
