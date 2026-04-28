@@ -52,6 +52,9 @@ You can request metadata that will return the fields and lookup values that have
 
 Request metadata
 https://api.bridgedataoutput.com/api/v2/OData/dataset_id/$metadata?access_token=access_token
+
+For an offline copy of the Stellar MLS `Property` resource metadata (checked into this repo), see **`stellar_metadata.xml`** in this directory.
+
 Operators
 You can constrain the result set of a resource by passing additional operators with your request. Valid operators include:
 

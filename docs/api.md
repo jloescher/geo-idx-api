@@ -8,6 +8,16 @@ All routes in `routes/api.php` under the `v1` prefix use the `domain.token` midd
 
 Core resources: listings, agents, offices, RESO Property, members, public parcels bridge, **structured search**, etc. See [`docs/idx-api-bridge-proxy.md`](idx-api-bridge-proxy.md) and [`docs/bridge-api-documentation.md`](bridge-api-documentation.md).
 
+### New: Comparables & investor analysis (`POST /api/v1/comps/run`)
+
+Comps endpoint supports standard sale-comps modes (`A`–`E`) and investor modes (`rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`) using Bridge OData data sources.
+
+- Uses the same `domain.token` middleware and dataset resolution path as other `/api/v1` routes
+- `idx:full` is required for investor modes
+- Includes garage/parking, view, subdivision, and MLS area matching extensions
+
+See [`docs/comps-api.md`](comps-api.md) for request/response details and mode behavior.
+
 ### New: Listing pricing enrichment (`GET /api/v1/listings`, `GET /api/v1/listings/{listingId}`)
 
 Listings responses now include:

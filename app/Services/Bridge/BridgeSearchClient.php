@@ -3,6 +3,7 @@
 namespace App\Services\Bridge;
 
 use App\Http\Responses\Search\ListingResult;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -63,6 +64,54 @@ final readonly class BridgeSearchClient
             'count' => count($value),
             'nextLink' => $nextLink,
         ];
+    }
+
+    /**
+     * Fetch a single Property entity for comparables (subject resolution).
+     * Tries OData entity URL first, then legacy {@see BridgeHttpService::resoEntityUrls} paths.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function getPropertyForComps(Request $incoming, string $dataset, string $listingKey): ?array
+    {
+        $escaped = str_replace("'", "''", $listingKey);
+        $select = $this->compsPropertySelectList($dataset);
+        $urls = array_values(array_unique(array_filter([
+            $this->buildResoUrl($dataset)."('{$escaped}')",
+            ...$this->bridge->resoEntityUrls('Property', $listingKey),
+        ])));
+
+        foreach ($urls as $url) {
+            $response = $this->bridge->getJsonFromUrl($url, $incoming, ['$select' => $select]);
+            if (! $response->successful()) {
+                continue;
+            }
+            $data = $response->json();
+            if (is_array($data) && isset($data['ListingKey']) && is_string($data['ListingKey'])) {
+                return $data;
+            }
+        }
+
+        return null;
+    }
+
+    public function compsPropertySelectList(string $dataset): string
+    {
+        $u = strtoupper($dataset);
+
+        return implode(',', [
+            'ListingKey', 'StandardStatus', 'ListPrice', 'ClosePrice', 'OriginalListPrice',
+            'PreviousListPrice', 'CloseDate', 'OnMarketDate', 'BedroomsTotal', 'BathroomsTotalDecimal',
+            'LivingArea', 'LotSizeAcres', 'YearBuilt', 'StoriesTotal', 'City', 'StateOrProvince',
+            'PostalCode', 'CountyOrParish', 'PropertyType', 'PropertySubType', 'WaterfrontYN',
+            'PoolPrivateYN', 'GarageYN', 'GarageSpaces', 'CarportSpaces', 'CoveredSpaces',
+            'OpenParkingSpaces', 'AssociationYN', 'SeniorCommunityYN',
+            'Coordinates', 'Latitude', 'Longitude', 'StreetNumber', 'StreetName', 'StreetDirPrefix', 'StreetSuffix',
+            'StreetDirSuffix', 'UnitNumber', 'DaysOnMarket', 'CumulativeDaysOnMarket', 'PublicRemarks',
+            'SubdivisionName', 'MLSAreaMajor', 'ViewYN', 'LeaseAmountFrequency', 'LeaseTerm',
+            'Furnished', 'PetsAllowed', 'OwnerPays', 'TenantPays',
+            "{$u}_FloodZoneCode", "{$u}_TotalMonthlyFees",
+        ]);
     }
 
     /**

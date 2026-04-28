@@ -171,6 +171,7 @@ Built from `BRIDGE_HOST`, optional `BRIDGE_PATH_PREFIX`, `BRIDGE_DATASET`, and o
 | GET | `/api/v1/reso-openhouses/{openHouseKey}` | `OpenHouse` by key | |
 | GET | `/api/v1/lookup` | `Lookup` collection | |
 | POST | `/api/v1/search` | Structured search | Accepts `SearchRequest` JSON; translates to Bridge RESO OData with multi-dataset support, returns paginated results with stats. See [Search endpoint](#search-endpoint-post-apiv1search). |
+| POST | `/api/v1/comps/run` | Bridge comps + investor analysis | Supports modes `A`–`E`, `rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`; investor modes require `idx:full`. See [Comps API](comps-api.md). |
 
 #### Public & ancillary paths (doc-style paths on `BRIDGE_HOST`)
 

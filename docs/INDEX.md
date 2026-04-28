@@ -11,6 +11,7 @@ Central index for all documentation in this project. Implementation code lives i
 | [idx-api HTTP API overview](api.md) | `/api/v1` and GIS entrypoints; how dashboard Sanctum keys relate to `domain.token`; link to Stripe test user seeding. |
 | [Bridge / MLS API](bridge-api-documentation.md) | Bridge Data Output API reference (Stellar MLS proxy usage). |
 | [IDX-API Bridge proxy](idx-api-bridge-proxy.md) | Secured Bridge proxy: `/api/v1/*`, `?domain=`, auth (domains + Sanctum **`idx:access`/`idx:full`**, Ultra/Mega **dashboard API keys**), listings cache (15m), **search cache**, listing pricing enrichment (`pricing` + `pricing_converted`), queued CoinGecko quote refresh, JSON photo URL rewrite to **idx-images**, CloudFront URL normalization, OData cursor pagination, `/images/*` streaming proxy + immutable CDN headers, audit, env, Docker. |
+| [Comps API](comps-api.md) | `POST /api/v1/comps/run` for A–E comps plus investor modes (`rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`) with Bridge-backed sold/rental datasets. |
 | [GoHighLevel OAuth (vendor)](gohighlevel-oauth-documentation.md) | Curated GHL OAuth 2.0, token refresh, scopes, webhooks (reference from marketplace docs). |
 | [GHL Marketplace integration](ghl-marketplace-integration.md) | Quantyra implementation in **idx-api**: OAuth, onboarding, widgets, API routes, jobs. |
 | [GHL deployment & operations](ghl-deployment-and-operations.md) | Docker, Dokploy, migrations, queues, scheduling. |

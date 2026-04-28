@@ -2,6 +2,7 @@
 
 use App\Ghl\Http\Controllers\GhlApiController;
 use App\Ghl\Http\Middleware\AuthenticateGhlLocation;
+use App\Http\Controllers\Api\BridgeCompsController;
 use App\Http\Controllers\Api\BridgeProxyController;
 use App\Http\Controllers\Api\WidgetValidationController;
 use App\Http\Controllers\GisProxyController;
@@ -87,4 +88,5 @@ Route::prefix('v1')->middleware(['domain.token'])->group(function () {
     });
 
     Route::post('/search', [BridgeProxyController::class, 'search']);
+    Route::post('/comps/run', [BridgeCompsController::class, 'run']);
 });
