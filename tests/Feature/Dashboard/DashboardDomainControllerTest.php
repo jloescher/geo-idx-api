@@ -6,6 +6,7 @@ use App\Billing\SubscriptionCatalog;
 use App\Models\Domain;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Laravel\Cashier\Subscription;
 use Laravel\Cashier\SubscriptionItem;
 use Tests\TestCase;
@@ -80,6 +81,29 @@ class DashboardDomainControllerTest extends TestCase
 
         $this->assertDatabaseHas('domains', [
             'domain_slug' => 'example-idx.com',
+        ]);
+    }
+
+    public function test_dashboard_domain_store_gracefully_handles_missing_user_id_column(): void
+    {
+        config(['billing.plans.pro.stripe_price_monthly' => 'price_pro_monthly']);
+
+        /** @var User $user */
+        $user = User::factory()->createOne();
+        $this->attachSubscription($user, 'price_pro_monthly');
+        $this->actingAs($user);
+
+        Schema::shouldReceive('hasColumn')
+            ->with('domains', 'user_id')
+            ->andReturn(false);
+
+        $this->post('http://localhost/dashboard/domains', [
+            'domain_slug' => 'legacy-db.example.com',
+        ])->assertRedirect('http://localhost/dashboard');
+
+        $this->assertDatabaseHas('domains', [
+            'domain_slug' => 'legacy-db.example.com',
+            'is_active' => true,
         ]);
     }
 

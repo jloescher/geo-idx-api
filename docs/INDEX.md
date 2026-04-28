@@ -9,6 +9,7 @@ Central index for all documentation in this project. Implementation code lives i
 | Document | Description |
 |----------|-------------|
 | [idx-api HTTP API overview](api.md) | `/api/v1` and GIS entrypoints; how dashboard Sanctum keys relate to `domain.token`; link to Stripe test user seeding. |
+| [OpenAPI spec document](yaak-api-collection.json) | Canonical OpenAPI `3.1.0` document used by Swagger UI (`/swagger`) and served at `/openapi.json`. |
 | [Bridge / MLS API](bridge-api-documentation.md) | Bridge Data Output API reference (Stellar MLS proxy usage). |
 | [IDX-API Bridge proxy](idx-api-bridge-proxy.md) | Secured Bridge proxy: `/api/v1/*`, `?domain=`, auth (domains + Sanctum **`idx:access`/`idx:full`**, Ultra/Mega **dashboard API keys**), listings cache (15m), **search cache**, listing pricing enrichment (`pricing` + `pricing_converted`), queued CoinGecko quote refresh, JSON photo URL rewrite to **idx-images**, CloudFront URL normalization, OData cursor pagination, `/images/*` streaming proxy + immutable CDN headers, audit, env, Docker. |
 | [Comps API](comps-api.md) | `POST /api/v1/comps/run` for A–E comps plus investor modes (`rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`) with Bridge-backed sold/rental datasets. |

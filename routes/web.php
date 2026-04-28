@@ -6,12 +6,14 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardDomainController;
 use App\Http\Controllers\DashboardExtraDomainController;
 use App\Http\Controllers\DashboardLeadsController;
+use App\Http\Controllers\DashboardMlsMembershipController;
 use App\Http\Controllers\DashboardWidgetAppearanceController;
 use App\Http\Controllers\DashboardWidgetValidateController;
 use App\Http\Controllers\Marketing\SalesPageController;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 $parseHostList = static function (string $value): array {
     return collect(explode(',', $value))
@@ -50,6 +52,7 @@ foreach ($platformHosts as $platformHost) {
             Route::get('/dashboard/leads', DashboardLeadsController::class)->name('dashboard.leads');
             Route::post('/dashboard/widget-validate', DashboardWidgetValidateController::class)->name('dashboard.widget-validate');
             Route::post('/dashboard/widget-appearance', DashboardWidgetAppearanceController::class)->name('dashboard.widget-appearance');
+            Route::post('/dashboard/mls-membership', DashboardMlsMembershipController::class)->name('dashboard.mls-membership.store');
             Route::post('/dashboard/domains', [DashboardDomainController::class, 'store'])->name('dashboard.domains.store');
             Route::delete('/dashboard/domains/{domain}', [DashboardDomainController::class, 'destroy'])->name('dashboard.domains.destroy');
             Route::post('/dashboard/domains/{domain}/verify-txt', [DashboardDomainController::class, 'verifyTxt'])->name('dashboard.domains.verify-txt');
@@ -64,11 +67,25 @@ foreach ($platformHosts as $platformHost) {
 }
 
 foreach ($apiHosts as $apiHost) {
-    Route::domain($apiHost)->get('/', function (Request $request): RedirectResponse {
-        $host = (string) $request->getHost();
+    Route::domain($apiHost)->group(function (): void {
+        Route::get('/openapi.json', function (): BinaryFileResponse {
+            return response()->file(
+                base_path('docs/yaak-api-collection.json'),
+                ['Content-Type' => 'application/json; charset=UTF-8']
+            );
+        })->name('api.openapi');
 
-        $salesHost = str_replace('-api.', '.', $host);
+        Route::view('/swagger', 'docs.swagger', [
+            'openApiSpecUrl' => '/openapi.json',
+            'openApiVersion' => '3.1.0',
+        ])->name('api.swagger');
 
-        return redirect()->to(sprintf('https://%s', $salesHost), 302);
-    })->name('api.root.redirect');
+        Route::get('/', function (Request $request): RedirectResponse {
+            $host = (string) $request->getHost();
+
+            $salesHost = str_replace('-api.', '.', $host);
+
+            return redirect()->to(sprintf('https://%s', $salesHost), 302);
+        })->name('api.root.redirect');
+    });
 }

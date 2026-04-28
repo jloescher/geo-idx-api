@@ -5,12 +5,16 @@ namespace App\Http\Controllers;
 use App\Billing\SubscriptionCatalog;
 use App\Models\Domain;
 use App\Services\DomainOwnershipVerifier;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class DashboardDomainController extends Controller
 {
+    private ?bool $domainsHaveUserIdColumn = null;
+
     public function __construct(
         private readonly SubscriptionCatalog $catalog,
         private readonly DomainOwnershipVerifier $ownershipVerifier,
@@ -25,7 +29,10 @@ class DashboardDomainController extends Controller
 
         $domainLimit = $this->catalog->domainLimitForUser($user);
         $activeDomainCount = Domain::query()
-            ->where('user_id', $user->id)
+            ->when(
+                $this->domainsTableHasUserIdColumn(),
+                fn ($query) => $query->where('user_id', $user->id)
+            )
             ->where('is_active', true)
             ->count();
 
@@ -52,17 +59,24 @@ class DashboardDomainController extends Controller
             'domain_slug.regex' => 'Use a valid hostname like example.com (no protocol or path).',
         ]);
 
-        Domain::query()->create([
-            'user_id' => $user->id,
+        $attributes = [
             'domain_slug' => mb_strtolower((string) $validated['domain_slug']),
             'is_active' => true,
             'mls_dataset' => 'stellar',
             'allowed_mls_datasets' => ['stellar'],
             'verification_status' => 'pending',
-        ]);
+        ];
+        if ($this->domainsTableHasUserIdColumn()) {
+            $attributes['user_id'] = $user->id;
+        }
+
+        Domain::query()->create($attributes);
 
         $domain = Domain::query()
-            ->where('user_id', $user->id)
+            ->when(
+                $this->domainsTableHasUserIdColumn(),
+                fn ($query) => $query->where('user_id', $user->id)
+            )
             ->where('domain_slug', mb_strtolower((string) $validated['domain_slug']))
             ->latest('id')
             ->first();
@@ -138,5 +152,20 @@ class DashboardDomainController extends Controller
         }
 
         return rtrim(mb_strtolower($candidate), '.');
+    }
+
+    private function domainsTableHasUserIdColumn(): bool
+    {
+        if ($this->domainsHaveUserIdColumn !== null) {
+            return $this->domainsHaveUserIdColumn;
+        }
+
+        try {
+            $this->domainsHaveUserIdColumn = Schema::hasColumn('domains', 'user_id');
+        } catch (QueryException) {
+            $this->domainsHaveUserIdColumn = false;
+        }
+
+        return $this->domainsHaveUserIdColumn;
     }
 }

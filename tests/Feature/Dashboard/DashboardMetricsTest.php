@@ -5,6 +5,7 @@ namespace Tests\Feature\Dashboard;
 use App\Ghl\OAuth\Models\GhlOAuthToken;
 use App\Ghl\Sync\Models\QuantyraLead;
 use App\Ghl\Widgets\Models\GhlRegisteredUrl;
+use App\Models\Domain;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -51,7 +52,7 @@ class DashboardMetricsTest extends TestCase
         $this->get('http://localhost/dashboard')
             ->assertOk()
             ->assertSee('Not available')
-            ->assertSee('Provide a valid widget site key to scope lead telemetry.');
+            ->assertSeeText('Provide a valid widget site key to scope lead telemetry.');
     }
 
     public function test_dashboard_index_x_data_does_not_embed_a_raw_script_closing_token_for_copy_embed(): void
@@ -63,6 +64,55 @@ class DashboardMetricsTest extends TestCase
         $html = (string) $this->get('http://localhost/dashboard')->getContent();
         $this->assertStringNotContainsString('async></script', $html);
         $this->assertStringContainsString('x-data="window.__createDashboardAlpineState(', $html);
+    }
+
+    public function test_onboarding_panel_shows_checklist_and_setup_forms(): void
+    {
+        /** @var User $user */
+        $user = User::factory()->createOne();
+        $this->actingAs($user);
+
+        $this->get('http://localhost/dashboard?panel=onboarding')
+            ->assertOk()
+            ->assertSee('Getting Started Checklist')
+            ->assertSee('MLS membership verification')
+            ->assertSee('MLS ID')
+            ->assertSee('MLS Email')
+            ->assertSee('Verify MLS Membership')
+            ->assertSee('My Approved Domains')
+            ->assertSee('Add Domain')
+            ->assertSee('Open Domains command center');
+    }
+
+    public function test_onboarding_panel_locks_domain_add_after_first_domain(): void
+    {
+        /** @var User $user */
+        $user = User::factory()->createOne();
+        Domain::query()->create([
+            'user_id' => $user->id,
+            'domain_slug' => 'one.example.com',
+            'is_active' => true,
+        ]);
+        $this->actingAs($user);
+
+        $this->get('http://localhost/dashboard?panel=onboarding')
+            ->assertOk()
+            ->assertSee('Onboarding supports one initial widget domain. Add additional domains in the Domains tab.');
+    }
+
+    public function test_domains_panel_is_domain_only_command_center(): void
+    {
+        /** @var User $user */
+        $user = User::factory()->createOne();
+        $this->actingAs($user);
+
+        $this->get('http://localhost/dashboard?panel=domains')
+            ->assertOk()
+            ->assertSee('Domains Command Center')
+            ->assertSee('Register additional domain')
+            ->assertSee('Domain verification queue')
+            ->assertDontSee('Subscription Details')
+            ->assertDontSee('API Access');
     }
 
     public function test_dashboard_shows_real_scoped_lead_count_when_widget_key_is_supplied(): void

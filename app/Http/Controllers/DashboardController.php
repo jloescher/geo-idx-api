@@ -175,7 +175,7 @@ class DashboardController extends Controller
         }
 
         $activePanel = (string) $request->query('panel', 'dashboard');
-        if (! in_array($activePanel, ['dashboard', 'widgets', 'leads', 'domains', 'api', 'billing', 'settings'], true)) {
+        if (! in_array($activePanel, ['dashboard', 'onboarding', 'widgets', 'leads', 'domains', 'api', 'billing', 'settings'], true)) {
             $activePanel = 'dashboard';
         }
 

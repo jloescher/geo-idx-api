@@ -2,6 +2,14 @@
 
 This document summarizes **versioned JSON APIs** exposed by the Laravel idx-api service (Octane + FrankenPHP ready).
 
+## OpenAPI 3.1 + Swagger UI
+
+- **Spec document (OpenAPI 3.1):** `GET /openapi.json`
+- **Swagger UI:** `GET /swagger`
+- **Spec source file:** `docs/yaak-api-collection.json`
+
+The Swagger page loads the canonical `openapi: "3.1.0"` document served by the API host.
+
 ## Authenticated IDX / Bridge proxy (`/api/v1`)
 
 All routes in `routes/api.php` under the `v1` prefix use the `domain.token` middleware (domain header / referer host **or** Sanctum bearer with `idx:access` / `idx:full`).
