@@ -21,6 +21,7 @@ RUN apk add --no-cache \
 RUN install-php-extensions \
     pcntl \
     bcmath \
+    intl \
     pdo_pgsql \
     pgsql \
     gd \
@@ -68,6 +69,7 @@ RUN composer install --no-interaction --prefer-dist --no-scripts
 
 COPY . .
 RUN composer install --no-interaction --prefer-dist
+RUN php artisan filament:assets --no-interaction
 
 RUN mkdir -p storage/logs storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache \
     config \

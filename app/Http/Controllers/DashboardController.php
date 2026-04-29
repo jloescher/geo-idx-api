@@ -139,8 +139,8 @@ class DashboardController extends Controller
             ],
             [
                 'key' => 'domains',
-                'label' => 'Register at least one domain',
-                'done' => $activeDomains->isNotEmpty(),
+                'label' => 'Register and verify at least one domain',
+                'done' => $hasVerifiedDomain,
             ],
             [
                 'key' => 'widgets',

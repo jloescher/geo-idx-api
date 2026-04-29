@@ -62,7 +62,7 @@ new class extends Component {
     }
 }; ?>
 
-<div class="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
+<div class="idx-card p-4">
     <h3 class="text-sm font-semibold text-white">Email Alerts</h3>
     <p class="mt-1 text-xs text-slate-400">Configure real-time or digest alerts for new matching leads.</p>
 
@@ -74,7 +74,7 @@ new class extends Component {
 
         <label class="block text-xs text-slate-400">
             Frequency
-            <select wire:model="frequency" class="mt-1 w-full rounded-lg border border-white/15 bg-slate-950/70 px-3 py-2 text-xs text-slate-100">
+            <select wire:model="frequency" class="idx-input mt-1 w-full px-3 py-2 text-xs">
                 <option value="instant">Instant</option>
                 <option value="daily">Daily digest</option>
                 <option value="weekly">Weekly</option>
@@ -83,17 +83,17 @@ new class extends Component {
 
         <label class="block text-xs text-slate-400">
             Rule: domain
-            <input type="text" wire:model="ruleDomain" placeholder="example.com" class="mt-1 w-full rounded-lg border border-white/15 bg-slate-950/70 px-3 py-2 text-xs text-slate-100">
+            <input type="text" wire:model="ruleDomain" placeholder="example.com" class="idx-input mt-1 w-full px-3 py-2 text-xs">
         </label>
 
         <label class="block text-xs text-slate-400">
             Rule: min score
-            <input type="number" wire:model="ruleMinScore" placeholder="80" class="mt-1 w-full rounded-lg border border-white/15 bg-slate-950/70 px-3 py-2 text-xs text-slate-100">
+            <input type="number" wire:model="ruleMinScore" placeholder="80" class="idx-input mt-1 w-full px-3 py-2 text-xs">
         </label>
 
         <div class="flex gap-2">
-            <button type="button" wire:click="save" class="rounded-lg bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-cyan-400">Save alerts</button>
-            <button type="button" wire:click="sendTestEmail" class="rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-white/10">Test email</button>
+            <button type="button" wire:click="save" class="idx-btn-primary px-3 py-2 text-xs font-semibold">Save alerts</button>
+            <button type="button" wire:click="sendTestEmail" class="idx-btn-secondary px-3 py-2 text-xs font-semibold">Test email</button>
         </div>
         <p class="text-[11px] text-slate-500">Compliance: alert emails include unsubscribe support and respect notification controls.</p>
     </div>

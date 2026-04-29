@@ -81,6 +81,7 @@ class DashboardMetricsTest extends TestCase
             ->assertSee('Verify MLS Membership')
             ->assertSee('My Approved Domains')
             ->assertSee('Add Domain')
+            ->assertSee('Register and verify at least one domain')
             ->assertSee('Open Domains command center');
     }
 
@@ -98,6 +99,46 @@ class DashboardMetricsTest extends TestCase
         $this->get('http://localhost/dashboard?panel=onboarding')
             ->assertOk()
             ->assertSee('Onboarding supports one initial widget domain. Add additional domains in the Domains tab.');
+    }
+
+    public function test_onboarding_domain_card_shows_verify_actions_for_unverified_domain(): void
+    {
+        /** @var User $user */
+        $user = User::factory()->createOne();
+        Domain::query()->create([
+            'user_id' => $user->id,
+            'domain_slug' => 'verify-me.example.com',
+            'is_active' => true,
+            'verification_status' => 'pending',
+            'txt_verification_name' => '_geoidx.verify-me.example.com',
+            'txt_verification_value' => 'geoidx-verify=abc123',
+        ]);
+        $this->actingAs($user);
+
+        $this->get('http://localhost/dashboard?panel=onboarding')
+            ->assertOk()
+            ->assertSee('Verify TXT')
+            ->assertSee('Verify via GHL')
+            ->assertSee('_geoidx.verify-me.example.com')
+            ->assertSee('geoidx-verify=abc123')
+            ->assertSeeInOrder(['Register and verify at least one domain', 'Pending']);
+    }
+
+    public function test_onboarding_checklist_marks_domain_step_done_after_verified_domain_exists(): void
+    {
+        /** @var User $user */
+        $user = User::factory()->createOne();
+        Domain::query()->create([
+            'user_id' => $user->id,
+            'domain_slug' => 'verified.example.com',
+            'is_active' => true,
+            'verification_status' => 'verified',
+        ]);
+        $this->actingAs($user);
+
+        $this->get('http://localhost/dashboard?panel=onboarding')
+            ->assertOk()
+            ->assertSeeInOrder(['Register and verify at least one domain', 'Done']);
     }
 
     public function test_domains_panel_is_domain_only_command_center(): void

@@ -9,24 +9,33 @@ use Livewire\WithPagination;
 new class extends Component {
     use WithPagination;
 
+    public string $tab = 'all';
     public string $search = '';
     public string $status = '';
     public string $domain = '';
+    public string $stage = '';
+    public string $activity = '';
     public string $dateFrom = '';
     public string $dateTo = '';
     public array $selected = [];
 
     protected $queryString = [
+        'tab' => ['except' => 'all'],
         'search' => ['except' => ''],
         'status' => ['except' => ''],
         'domain' => ['except' => ''],
+        'stage' => ['except' => ''],
+        'activity' => ['except' => ''],
         'dateFrom' => ['except' => ''],
         'dateTo' => ['except' => ''],
     ];
 
+    public function updatingTab(): void { $this->resetPage(); }
     public function updatingSearch(): void { $this->resetPage(); }
     public function updatingStatus(): void { $this->resetPage(); }
     public function updatingDomain(): void { $this->resetPage(); }
+    public function updatingStage(): void { $this->resetPage(); }
+    public function updatingActivity(): void { $this->resetPage(); }
     public function updatingDateFrom(): void { $this->resetPage(); }
     public function updatingDateTo(): void { $this->resetPage(); }
 
@@ -73,6 +82,13 @@ new class extends Component {
 
     private function applyFilters(Builder $query): Builder
     {
+        if ($this->tab === 'smart') {
+            $query->where(function (Builder $smart): void {
+                $smart->whereRaw("coalesce((payload->>'lead_score')::int, 0) >= 80")
+                    ->orWhere('payload->status', 'hot');
+            });
+        }
+
         if ($this->search !== '') {
             $search = '%'.strtolower(trim($this->search)).'%';
             $query->where(function (Builder $inner) use ($search): void {
@@ -91,6 +107,15 @@ new class extends Component {
         if ($this->domain !== '') {
             $query->where('quantyra_domain', $this->domain);
         }
+        if ($this->stage !== '') {
+            $query->whereRaw('LOWER(payload->>\'stage\') = ?', [strtolower($this->stage)]);
+        }
+        if ($this->activity === 'recent') {
+            $query->where('created_at', '>=', now()->subDays(7));
+        }
+        if ($this->activity === 'stale') {
+            $query->where('created_at', '<', now()->subDays(30));
+        }
         if ($this->dateFrom !== '') {
             $query->whereDate('created_at', '>=', $this->dateFrom);
         }
@@ -102,73 +127,95 @@ new class extends Component {
     }
 }; ?>
 
-<div class="space-y-4">
-    <div class="grid gap-3 md:grid-cols-5">
-        <input type="text" wire:model.live.debounce.300ms="search" placeholder="Search leads..." class="rounded-xl border border-white/15 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 md:col-span-2">
-        <select wire:model.live="status" class="rounded-xl border border-white/15 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+<div class="mt-4 space-y-4">
+    <div class="idx-leads-tabs">
+        <button type="button" wire:click="$set('tab', 'all')" class="idx-leads-tab {{ $tab === 'all' ? 'is-active' : '' }}">All Leads</button>
+        <button type="button" wire:click="$set('tab', 'smart')" class="idx-leads-tab {{ $tab === 'smart' ? 'is-active' : '' }}">Smart Lists</button>
+        <button type="button" wire:click="$set('tab', 'domain')" class="idx-leads-tab {{ $tab === 'domain' ? 'is-active' : '' }}">Filter by Domain</button>
+        <button type="button" wire:click="$set('tab', 'stage')" class="idx-leads-tab {{ $tab === 'stage' ? 'is-active' : '' }}">Filter by Stage</button>
+    </div>
+
+    <div class="idx-toolbar grid gap-3 p-3 md:grid-cols-12">
+        <input type="text" wire:model.live.debounce.300ms="search" placeholder="Search leads..." class="idx-input px-3 py-2 text-sm md:col-span-5">
+        <select wire:model.live="status" class="idx-input px-3 py-2 text-sm md:col-span-2">
             <option value="">All statuses</option>
             <option value="new">New</option>
             <option value="hot">Hot</option>
             <option value="contacted">Contacted</option>
             <option value="converted">Converted</option>
         </select>
-        <select wire:model.live="domain" class="rounded-xl border border-white/15 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+        <select wire:model.live="domain" class="idx-input px-3 py-2 text-sm md:col-span-2">
             <option value="">All domains</option>
             @foreach ($domains as $domainOpt)
                 <option value="{{ $domainOpt }}">{{ $domainOpt }}</option>
             @endforeach
         </select>
-        <div class="grid grid-cols-2 gap-2">
-            <input type="date" wire:model.live="dateFrom" class="rounded-xl border border-white/15 bg-slate-950/70 px-2 py-2 text-xs text-slate-100">
-            <input type="date" wire:model.live="dateTo" class="rounded-xl border border-white/15 bg-slate-950/70 px-2 py-2 text-xs text-slate-100">
-        </div>
+        <input type="date" wire:model.live="dateFrom" class="idx-input px-2 py-2 text-xs md:col-span-1">
+        <input type="date" wire:model.live="dateTo" class="idx-input px-2 py-2 text-xs md:col-span-1">
+        <select wire:model.live="stage" class="idx-input px-3 py-2 text-sm md:col-span-1">
+            <option value="">Stage</option>
+            <option value="new">New</option>
+            <option value="qualified">Qualified</option>
+            <option value="nurture">Nurture</option>
+            <option value="closed">Closed</option>
+        </select>
     </div>
 
-    <div class="flex flex-wrap gap-2">
-        <button type="button" wire:click="markSelectedContacted" class="rounded-lg border border-cyan-400/40 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/10">Mark Contacted</button>
-        <button type="button" wire:click="deleteSelected" class="rounded-lg border border-rose-400/40 px-3 py-2 text-xs font-semibold text-rose-200 hover:bg-rose-500/10">Delete</button>
+    <div class="flex flex-wrap items-center gap-2">
+        <button type="button" wire:click="markSelectedContacted" class="idx-btn-primary px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50" @disabled($selected === [])>Mark Contacted ▾</button>
+        <button type="button" wire:click="deleteSelected" class="idx-btn-danger px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50" @disabled($selected === [])>Delete</button>
+        <select wire:model.live="activity" class="idx-input ms-auto px-3 py-2 text-xs">
+            <option value="">Filter Activity</option>
+            <option value="recent">Recent (7d)</option>
+            <option value="stale">Stale (30d+)</option>
+        </select>
     </div>
 
-    <div class="overflow-x-auto rounded-2xl border border-white/10">
-        <table class="min-w-full divide-y divide-white/10 text-sm">
-            <thead class="bg-slate-950/70 text-xs uppercase tracking-wide text-slate-400">
+    <div class="idx-table-shell overflow-x-auto">
+        <table class="min-w-full text-sm">
+            <thead class="idx-leads-table-head border-b border-white/10 bg-slate-950/70">
                 <tr>
-                    <th class="px-3 py-2 text-left">Select</th>
-                    <th class="px-3 py-2 text-left">Lead</th>
-                    <th class="px-3 py-2 text-left">Email / Phone</th>
-                    <th class="px-3 py-2 text-left">Property Interest</th>
-                    <th class="px-3 py-2 text-left">Domain</th>
-                    <th class="px-3 py-2 text-left">Score</th>
-                    <th class="px-3 py-2 text-left">Status</th>
-                    <th class="px-3 py-2 text-left">Created</th>
+                    <th>SELECT</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Last Activity</th>
+                    <th>Domain</th>
+                    <th>Score</th>
+                    <th>Status</th>
+                    <th>Created</th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-white/5 bg-slate-900/50 text-slate-200">
+            <tbody class="divide-y divide-white/5 bg-slate-900/60 text-slate-200">
                 @forelse ($leads as $lead)
                     @php($payload = is_array($lead->payload) ? $lead->payload : [])
-                    <tr>
-                        <td class="px-3 py-2">
+                    @php($leadName = $payload['name'] ?? trim(($payload['first_name'] ?? '').' '.($payload['last_name'] ?? '')) ?: 'Lead #'.$lead->id)
+                    @php($initials = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', (string) $leadName), 0, 2)))
+                    @php($avatarClass = match($lead->id % 4) {0 => 'idx-avatar-red', 1 => 'idx-avatar-blue', 2 => 'idx-avatar-amber', default => 'idx-avatar-indigo'})
+                    <tr class="idx-leads-row">
+                        <td class="px-4 py-3">
                             <input type="checkbox" value="{{ $lead->id }}" wire:model.live="selected" class="rounded border-white/30 bg-slate-950">
                         </td>
-                        <td class="px-3 py-2">
-                            <p class="font-semibold text-slate-100">{{ $payload['name'] ?? trim(($payload['first_name'] ?? '').' '.($payload['last_name'] ?? '')) ?: 'Lead #'.$lead->id }}</p>
-                            <p class="text-xs text-slate-400">ID {{ $lead->id }}</p>
+                        <td class="px-4 py-3">
+                            <div class="flex items-center gap-3">
+                                <span class="idx-avatar {{ $avatarClass }}">{{ $initials !== '' ? $initials : 'LD' }}</span>
+                                <div>
+                                    <p class="font-semibold text-slate-100">{{ $leadName }}</p>
+                                    <p class="text-xs text-slate-400">{{ $payload['phone'] ?? 'No phone' }}</p>
+                                </div>
+                            </div>
                         </td>
-                        <td class="px-3 py-2 text-xs">
-                            <p>{{ $payload['email'] ?? '—' }}</p>
-                            <p class="text-slate-400">{{ $payload['phone'] ?? '—' }}</p>
+                        <td class="px-4 py-3 text-xs">{{ $payload['email'] ?? '—' }}</td>
+                        <td class="px-4 py-3 text-xs">{{ $payload['property_interest'] ?? $lead->listing_id ?? '—' }}</td>
+                        <td class="px-4 py-3 text-xs">{{ $lead->quantyra_domain ?? '—' }}</td>
+                        <td class="px-4 py-3 text-xs font-semibold">{{ $payload['lead_score'] ?? '—' }}</td>
+                        <td class="px-4 py-3 text-xs">
+                            <span class="rounded-full border border-white/10 bg-slate-950/70 px-2 py-1">{{ strtoupper((string) ($payload['status'] ?? 'new')) }}</span>
                         </td>
-                        <td class="px-3 py-2 text-xs">{{ $payload['property_interest'] ?? $lead->listing_id ?? '—' }}</td>
-                        <td class="px-3 py-2 text-xs">{{ $lead->quantyra_domain ?? '—' }}</td>
-                        <td class="px-3 py-2 text-xs">{{ $payload['lead_score'] ?? '—' }}</td>
-                        <td class="px-3 py-2 text-xs">
-                            <span class="rounded-full bg-slate-800 px-2 py-1">{{ strtoupper((string) ($payload['status'] ?? 'new')) }}</span>
-                        </td>
-                        <td class="px-3 py-2 text-xs">{{ optional($lead->created_at)->diffForHumans() }}</td>
+                        <td class="px-4 py-3 text-xs">{{ optional($lead->created_at)->diffForHumans() }}</td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="8" class="px-3 py-8 text-center text-sm text-slate-400">No leads found for current filters.</td>
+                        <td colspan="8" class="px-4 py-12 text-center text-sm text-slate-400">No leads found for current filters.</td>
                     </tr>
                 @endforelse
             </tbody>
