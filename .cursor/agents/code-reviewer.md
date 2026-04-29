@@ -31,7 +31,7 @@ Four primary subsystems:
 - camelCase for methods/properties, PascalCase for classes
 - Import order: (1) External classes, (2) App models, (3) App services/controllers/middleware, (4) Support classes
 
-### Modern PHP (8.3+)
+### Modern PHP (8.5)
 - Use constructor property promotion: `public function __construct(private readonly Service $svc) {}`
 - Use PHP 8 attributes for models: `#[Fillable([...])]`, `#[Hidden([...])]`
 - Use `casts()` method (not `$casts` property)

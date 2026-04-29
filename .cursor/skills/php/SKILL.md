@@ -1,7 +1,7 @@
 ---
 name: php
 description: |
-  Enforces PHP 8.3+ patterns, strict typing, and constructor promotion.
+  Enforces PHP 8.5 patterns, strict typing, and constructor promotion.
   Use when: implementing or refactoring PHP work, troubleshooting patterns, workflows, or aligning new changes with the repository's existing conventions
 allowed-tools: Read, Edit, Write, Glob, Grep, Bash
 ---

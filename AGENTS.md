@@ -6,10 +6,10 @@ Laravel 13 + Octane service powering Quantyra's Bridge MLS proxy, GoHighLevel (G
 
 | Layer | Technology | Version | Purpose |
 |-------|------------|---------|---------|
-| Runtime | PHP | 8.3+ | Server language (8.5 in production Docker) |
+| Runtime | PHP | 8.5 | Server language |
 | Web Server | FrankenPHP (via Laravel Octane) | 2.x | High-performance concurrent request handling |
 | Framework | Laravel | 13.x | Application skeleton, routing, ORM, queues |
-| Language | PHP | 8.3+ | Strong typing, constructor promotion, PHP attributes for model fillable/hidden |
+| Language | PHP | 8.5 | Strong typing, constructor promotion, PHP attributes for model fillable/hidden |
 | Database | SQLite (local) / PostgreSQL (prod) | - | Eloquent ORM; local uses `:memory:` SQLite, production uses pgsql |
 | Frontend | Livewire 3 + Blade + Tailwind CSS 4 | 3.x / 4.x | Server-rendered marketing pages and subscriber dashboard |
 | Build | Vite | 8.x | CSS/JS bundling with Tailwind plugin |
@@ -20,7 +20,7 @@ Laravel 13 + Octane service powering Quantyra's Bridge MLS proxy, GoHighLevel (G
 ## Quick Start
 
 ```bash
-# Prerequisites: PHP 8.3+, Composer, Node 20+, SQLite (local dev)
+# Prerequisites: PHP 8.5+, Composer, Node 20+, SQLite (local dev)
 
 # Installation
 cp .env.example .env
@@ -408,7 +408,7 @@ When working on tasks involving these technologies, invoke the corresponding ski
 | laravel | Manages Laravel 13 routing, ORM, queues, and service providers |
 | stripe | Manages Stripe billing, Cashier subscriptions, and webhook handling |
 | docker | Configures Docker multi-stage builds, FrankenPHP, and Compose workflows |
-| php | Enforces PHP 8.3+ patterns, strict typing, and constructor promotion |
+| php | Enforces PHP 8.5 patterns, strict typing, and constructor promotion |
 | tailwind | Applies Tailwind CSS 4 styling and utility patterns |
 | scoping-feature-work | Breaks features into MVP slices and acceptance criteria |
 | mapping-user-journeys | Maps in-app journeys and identifies friction points in code |
