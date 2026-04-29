@@ -18,13 +18,13 @@
     --idx-surface-strong: #cbd5e1;
     --idx-border: #94a3b8;
     --idx-text-primary: #0f172a;
-    --idx-text-secondary: #334155;
-    --idx-text-muted: #475569;
-    --idx-accent: #0891b2;
-    --idx-accent-strong: #0e7490;
+    --idx-text-secondary: #1e293b;
+    --idx-text-muted: #374151;
+    --idx-accent: #0e7490;
+    --idx-accent-strong: #155e75;
     --idx-success: #047857;
-    --idx-warning: #b45309;
-    --idx-danger: #b91c1c;
+    --idx-warning: #92400e;
+    --idx-danger: #991b1b;
 }
 
 .dark {
@@ -33,15 +33,15 @@
     --idx-surface: #334155;
     --idx-surface-elevated: #0f172a;
     --idx-surface-strong: #1e293b;
-    --idx-border: #334155;
+    --idx-border: #475569;
     --idx-text-primary: #f8fafc;
     --idx-text-secondary: #e2e8f0;
-    --idx-text-muted: #cbd5e1;
+    --idx-text-muted: #d1d5db;
     --idx-accent: #22d3ee;
     --idx-accent-strong: #06b6d4;
     --idx-success: #34d399;
     --idx-warning: #fbbf24;
-    --idx-danger: #f87171;
+    --idx-danger: #fca5a5;
 }
 
 /* Sales pricing band: explicit surface so contrast checks never inherit page chrome (WCAG 1.4.3). */
@@ -279,12 +279,17 @@
         color: var(--idx-text-muted);
     }
 
+    .idx-dashboard-shell .text-slate-500 {
+        color: color-mix(in srgb, var(--idx-text-muted) 85%, transparent);
+    }
+
     .idx-dashboard-shell .text-cyan-100,
     .idx-dashboard-shell .text-cyan-200,
     .idx-dashboard-shell .text-cyan-300 {
         color: var(--idx-accent-strong);
     }
 
+    .idx-dashboard-shell .text-emerald-100,
     .idx-dashboard-shell .text-emerald-200,
     .idx-dashboard-shell .text-emerald-300 {
         color: var(--idx-success);
@@ -302,16 +307,61 @@
         color: var(--idx-danger);
     }
 
+    .idx-dashboard-shell .text-indigo-200 {
+        color: #818cf8;
+    }
+
+    .dark .idx-dashboard-shell .text-indigo-200 {
+        color: #a5b4fc;
+    }
+
     .idx-dashboard-shell .bg-emerald-500\/20 {
         background-color: color-mix(in srgb, var(--idx-success) 16%, transparent);
+    }
+
+    .idx-dashboard-shell .bg-emerald-900\/20 {
+        background-color: color-mix(in srgb, var(--idx-success) 12%, transparent);
     }
 
     .idx-dashboard-shell .bg-amber-500\/20 {
         background-color: color-mix(in srgb, var(--idx-warning) 16%, transparent);
     }
 
+    .idx-dashboard-shell .bg-amber-900\/20 {
+        background-color: color-mix(in srgb, var(--idx-warning) 12%, transparent);
+    }
+
     .idx-dashboard-shell .bg-rose-900\/20 {
         background-color: color-mix(in srgb, var(--idx-danger) 16%, transparent);
+    }
+
+    .idx-dashboard-shell .bg-slate-800 {
+        background-color: color-mix(in srgb, var(--idx-surface-strong) 90%, transparent);
+    }
+
+    .idx-dashboard-shell .bg-slate-950 {
+        background-color: color-mix(in srgb, var(--idx-surface-elevated) 96%, transparent);
+    }
+
+    .idx-dashboard-shell .bg-slate-900 {
+        background-color: color-mix(in srgb, var(--idx-surface) 88%, transparent);
+    }
+
+    .idx-dashboard-shell .bg-gradient-to-br {
+        background-image: linear-gradient(to bottom right, color-mix(in srgb, var(--idx-surface) 90%, transparent), color-mix(in srgb, var(--idx-surface-elevated) 96%, transparent));
+    }
+
+    .idx-dashboard-shell .ring-emerald-400\/30 {
+        --tw-ring-color: color-mix(in srgb, var(--idx-success) 30%, transparent);
+    }
+
+    .idx-dashboard-shell .ring-amber-400\/30 {
+        --tw-ring-color: color-mix(in srgb, var(--idx-warning) 30%, transparent);
+    }
+
+    .idx-dashboard-shell .ring-cyan-400\/30,
+    .idx-dashboard-shell .ring-cyan-400\/25 {
+        --tw-ring-color: color-mix(in srgb, var(--idx-accent) 30%, transparent);
     }
 
     .idx-dashboard-shell .placeholder\:text-slate-500::placeholder {
