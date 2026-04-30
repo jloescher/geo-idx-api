@@ -169,15 +169,38 @@ class WidgetHomeValueTest extends TestCase
         ]);
 
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors([
-            'address',
-            'property_type',
-            'bedrooms',
-            'full_bathrooms',
-            'living_area_sqft',
-            'condition',
-            'year_built',
+        // address or listing_id must be provided
+        $response->assertJsonValidationErrors(['address']);
+        // half_bathrooms is required
+        $response->assertJsonValidationErrors(['half_bathrooms']);
+    }
+
+    public function test_widget_home_value_condition_is_optional(): void
+    {
+        $this->createRegisteredUrl();
+
+        Http::fake([
+            'maps.googleapis.com/*' => Http::response([
+                'status' => 'OK',
+                'results' => [[
+                    'geometry' => ['location' => ['lat' => 27.95, 'lng' => -82.45]],
+                    'formatted_address' => '100 Main St, Tampa, FL 33602, USA',
+                    'place_id' => 'test_place_id',
+                ]],
+            ], 200),
+            'bridge.test/*' => Http::response(['value' => $this->fakeComps()], 200),
         ]);
+
+        $payload = $this->validHomeValuePayload();
+        unset($payload['condition']);
+
+        $response = $this->postJson('/widget/api/home-value', $payload, [
+            'Origin' => 'https://example.com',
+            'X-Quantyra-Widget-Key' => 'wak_test_home_value_123',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('success', true);
     }
 
     public function test_widget_home_value_optional_fields_accepted(): void
@@ -217,5 +240,69 @@ class WidgetHomeValueTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonPath('success', true);
+    }
+
+    public function test_widget_home_value_accepts_listing_id_instead_of_address(): void
+    {
+        $this->createRegisteredUrl();
+
+        $subjectRecord = [
+            'ListingKey' => 'stellar:99',
+            'StandardStatus' => 'Active',
+            'ListPrice' => 450000,
+            'ClosePrice' => null,
+            'BedroomsTotal' => 3,
+            'BathroomsTotalDecimal' => 2.5,
+            'BathroomsFull' => 2,
+            'BathroomsHalf' => 1,
+            'LivingArea' => 1800,
+            'LotSizeAcres' => 0.25,
+            'YearBuilt' => 2010,
+            'StoriesTotal' => 1,
+            'City' => 'Tampa',
+            'StateOrProvince' => 'FL',
+            'PostalCode' => '33602',
+            'PropertyType' => 'Residential',
+            'PropertySubType' => 'Single Family Residence',
+            'WaterfrontYN' => false,
+            'PoolPrivateYN' => true,
+            'GarageSpaces' => 2,
+            'CarportSpaces' => 0,
+            'CoveredSpaces' => 0,
+            'AssociationYN' => false,
+            'StreetNumber' => '100',
+            'StreetName' => 'Main',
+            'SubdivisionName' => 'Test Heights',
+            'MLSAreaMajor' => '33602',
+            'Coordinates' => ['coordinates' => [-82.45, 27.95]],
+            'DaysOnMarket' => 12,
+            'CumulativeDaysOnMarket' => 12,
+            'PublicRemarks' => 'Move-in ready and well maintained home.',
+            'PropertyCondition' => 'Good',
+            'STELLAR_FloodZoneCode' => 'X',
+            'STELLAR_TotalMonthlyFees' => 0,
+        ];
+
+        Http::fake(function ($request) use ($subjectRecord) {
+            $url = $request->url();
+            if (str_contains($url, 'Property(')) {
+                return Http::response($subjectRecord, 200);
+            }
+
+            return Http::response(['value' => $this->fakeComps()], 200);
+        });
+
+        $response = $this->postJson('/widget/api/home-value', [
+            'listing_id' => '99',
+            'half_bathrooms' => 1,
+            'api_key' => 'wak_test_home_value_123',
+        ], [
+            'Origin' => 'https://example.com',
+            'X-Quantyra-Widget-Key' => 'wak_test_home_value_123',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('success', true);
+        $this->assertNotNull($response->json('estimated_value'));
     }
 }

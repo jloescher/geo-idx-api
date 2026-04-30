@@ -17,16 +17,19 @@ class WidgetHomeValueRequest extends FormRequest
     public function rules(): array
     {
         return [
-            // Required fields (always visible on widget form)
-            'address' => ['required', 'string', 'max:500'],
-            'property_type' => ['required', 'string', 'in:sfr,townhouse,condo,manufactured'],
-            'bedrooms' => ['required', 'integer', 'min:1', 'max:20'],
-            'full_bathrooms' => ['required', 'integer', 'min:0', 'max:20'],
-            'half_bathrooms' => ['nullable', 'integer', 'min:0', 'max:10'],
-            'living_area_sqft' => ['required', 'integer', 'min:100', 'max:50000'],
-            'condition' => ['required', 'string', 'in:poor,fair,good,excellent'],
-            'year_built' => ['required', 'integer', 'min:1800', 'max:2100'],
+            // Either address or listing_id is required
+            'address' => ['required_without:listing_id', 'nullable', 'string', 'max:500'],
+            'listing_id' => ['required_without:address', 'nullable', 'string', 'max:255'],
             'api_key' => ['required', 'string'],
+
+            // Required fields (used when address is provided; auto-populated from listing when listing_id given)
+            'property_type' => ['required_without:listing_id', 'nullable', 'string', 'in:sfr,townhouse,condo,manufactured,duplex,triplex,quadplex,modular,cabin'],
+            'bedrooms' => ['required_without:listing_id', 'nullable', 'integer', 'min:1', 'max:20'],
+            'full_bathrooms' => ['required_without:listing_id', 'nullable', 'integer', 'min:0', 'max:20'],
+            'half_bathrooms' => ['required', 'integer', 'min:0', 'max:10'],
+            'living_area_sqft' => ['required_without:listing_id', 'nullable', 'integer', 'min:100', 'max:50000'],
+            'condition' => ['nullable', 'string', 'in:poor,fair,good,excellent'],
+            'year_built' => ['required_without:listing_id', 'nullable', 'integer', 'min:1800', 'max:2100'],
 
             // Optional fields ("Tell us more" expandable section)
             'garage_spaces' => ['nullable', 'integer', 'min:0', 'max:20'],

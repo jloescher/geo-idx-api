@@ -83,6 +83,17 @@ Variables are set in **`.env`** for this project (and mirrored in host/runtime e
 
 ---
 
+## Geocoding
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GOOGLE_MAPS_GEOCODING_API_KEY` | Yes (home value) | Google Maps Geocoding API key for resolving street addresses to coordinates. |
+| `GEOCODING_PROVIDER` | No | Geocoding provider name (default `google`). |
+| `GEOCODING_CACHE_TTL` | No | Cache TTL in seconds for geocoding results (default `2592000` = 30 days). |
+| `GEOCODING_TIMEOUT` | No | HTTP timeout for geocoding requests in seconds (default `5`). |
+
+---
+
 ## docker-compose (project root)
 
 The `idx-api` service passes through the variables above; set them in the host `.env` consumed by Compose.

@@ -18,7 +18,7 @@ class CompsRunRequest extends FormRequest
     {
         return [
             'subject' => ['required', 'array'],
-            'subject.type' => ['required', 'string', 'in:mls,off_market'],
+            'subject.type' => ['required_unless:mode,home_value', 'nullable', 'string', 'in:mls,off_market'],
             'subject.listing_id' => ['required_if:subject.type,mls', 'nullable', 'string', 'max:255'],
             'subject.lat' => ['required_if:subject.type,off_market', 'nullable', 'numeric', 'between:-90,90'],
             'subject.lng' => ['required_if:subject.type,off_market', 'nullable', 'numeric', 'between:-180,180'],
@@ -125,10 +125,11 @@ class CompsRunRequest extends FormRequest
 
             // Home value mode fields
             'subject.address' => ['nullable', 'string', 'max:500'],
+            'subject.listing_id' => ['nullable', 'string', 'max:255'],
             'subject.condition' => ['nullable', 'string', 'in:poor,fair,good,excellent'],
-            'subject.property_type' => ['nullable', 'string', 'in:sfr,townhouse,condo,manufactured'],
+            'subject.property_type' => ['nullable', 'string', 'in:sfr,townhouse,condo,manufactured,duplex,triplex,quadplex,modular,cabin'],
             'subject.full_bathrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
-            'subject.half_bathrooms' => ['nullable', 'integer', 'min:0', 'max:10'],
+            'subject.half_bathrooms' => ['required_if:mode,home_value', 'nullable', 'integer', 'min:0', 'max:10'],
             'subject.stories' => ['nullable', 'integer', 'min:1', 'max:5'],
             'subject.roof_year_replaced' => ['nullable', 'integer', 'min:1800', 'max:2100'],
             'subject.renovated_kitchen_year' => ['nullable', 'integer', 'min:1980', 'max:2100'],

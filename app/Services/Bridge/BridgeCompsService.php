@@ -179,9 +179,9 @@ final readonly class BridgeCompsService
         $subjectIn = $validated['subject'];
         $mode = (string) ($validated['mode'] ?? 'A');
 
-        // home_value mode builds its subject via geocoding in handleHomeValue()
+        // home_value mode builds its subject from owner-provided fields or listing_id
         if ($mode === 'home_value') {
-            return $this->subjectFromHomeValueFields($subjectIn);
+            return $this->subjectFromHomeValueFields($request, $dataset, $subjectIn);
         }
 
         if (($subjectIn['type'] ?? '') === 'off_market') {
@@ -1782,14 +1782,33 @@ final readonly class BridgeCompsService
     }
 
     /**
-     * Build a subject array from home_value mode fields (no MLS lookup needed).
+     * Build a subject array from home_value mode fields.
+     *
+     * Two paths:
+     *  1. listing_id provided → fetch from Bridge, auto-populate all fields
+     *  2. address provided → geocode, use owner-supplied fields
      *
      * @param  array<string, mixed>  $subjectIn
      * @return array<string, mixed>|null
      */
-    private function subjectFromHomeValueFields(array $subjectIn): ?array
+    private function subjectFromHomeValueFields(Request $request, string $dataset, array $subjectIn): ?array
     {
+        $listingId = trim((string) ($subjectIn['listing_id'] ?? ''));
         $address = trim((string) ($subjectIn['address'] ?? ''));
+
+        // Path 1: listing_id provided — fetch from Bridge
+        if ($listingId !== '') {
+            $listingKey = $this->normalizeListingKey($dataset, $listingId);
+            $record = $this->searchClient->getPropertyForComps($request, $dataset, $listingKey);
+
+            if ($record === null) {
+                return null;
+            }
+
+            return $this->subjectFromHomeValueListing($record, $subjectIn, $dataset);
+        }
+
+        // Path 2: address provided — geocode
         if ($address === '') {
             return null;
         }
@@ -1799,28 +1818,97 @@ final readonly class BridgeCompsService
             return null;
         }
 
+        return $this->subjectFromHomeValueAddress($subjectIn, $result);
+    }
+
+    /**
+     * Build a subject from a Bridge listing record for home_value mode.
+     *
+     * @param  array<string, mixed>  $record
+     * @param  array<string, mixed>  $subjectIn
+     * @return array<string, mixed>
+     */
+    private function subjectFromHomeValueListing(array $record, array $subjectIn, string $dataset): array
+    {
+        $coords = $this->parseCoordinates($record);
+        $propertySubType = $this->stringOrNull($record['PropertySubType'] ?? null);
+
+        // Derive condition: explicit override > PropertyCondition > PublicRemarks analysis
+        $condition = $subjectIn['condition'] ?? null;
+        if ($condition === null || trim((string) $condition) === '') {
+            $condition = $this->deriveCondition($record);
+        }
+
+        $fullBath = $this->intOrNull($record['BathroomsFull'] ?? null);
+        $halfBath = $this->intOrNull($record['BathroomsHalf'] ?? null) ?? 0;
+        $totalBath = $fullBath !== null ? (float) $fullBath + ($halfBath * 0.5) : null;
+
+        $lotAcres = $this->floatOrNull($record['LotSizeAcres'] ?? null);
+
+        $garage = $this->garageSpacesIntFromRow($record);
+
+        return [
+            'listing_key' => (string) ($record['ListingKey'] ?? ''),
+            'lat' => $coords['lat'] ?? 0.0,
+            'lng' => $coords['lng'] ?? 0.0,
+            'bedrooms' => $this->intOrNull($record['BedroomsTotal'] ?? null),
+            'bathrooms' => $totalBath,
+            'living_area' => $this->intOrNull($record['LivingArea'] ?? null),
+            'lot_acres' => $lotAcres,
+            'year_built' => $this->intOrNull($record['YearBuilt'] ?? null),
+            'pool' => $this->boolOrNull($record['PoolPrivateYN'] ?? null),
+            'hoa' => $this->boolOrNull($record['AssociationYN'] ?? null),
+            'senior_community' => null,
+            'waterfront' => $this->boolOrNull($record['WaterfrontYN'] ?? null),
+            'garage_spaces' => $garage,
+            'parking_stalls_total' => $this->parkingStallTotalFromRow($record),
+            'subdivision_name' => $this->stringOrNull($record['SubdivisionName'] ?? null),
+            'mls_area_major' => $this->stringOrNull($record['MLSAreaMajor'] ?? null),
+            'view_yn' => $this->boolOrNull($record['ViewYN'] ?? null),
+            'monthly_fees' => null,
+            'list_price' => $this->floatOrNull($record['ListPrice'] ?? null),
+            'property_type' => $propertySubType !== null ? 'Residential' : null,
+            'property_sub_type' => $propertySubType,
+            'flood_zone_codes' => [],
+            'address' => $this->formatAddress($record),
+            'condition' => $condition,
+            'renovations' => $this->buildRenovationsArray($subjectIn),
+            'stories' => $this->intOrNull($record['StoriesTotal'] ?? null),
+            'full_bathrooms' => $fullBath,
+            'half_bathrooms' => $halfBath,
+            'property_type_enum' => $this->mapPropertySubTypeToWidgetEnum($propertySubType),
+        ];
+    }
+
+    /**
+     * Build a subject from owner-provided address and fields for home_value mode.
+     *
+     * @param  array<string, mixed>  $subjectIn
+     * @param  object{lat: float, lng: float, formattedAddress: string}  $geocodeResult
+     * @return array<string, mixed>
+     */
+    private function subjectFromHomeValueAddress(array $subjectIn, object $geocodeResult): array
+    {
         $lotAcres = null;
         if (isset($subjectIn['lot_size_sqft']) && is_numeric($subjectIn['lot_size_sqft'])) {
             $lotAcres = (float) $subjectIn['lot_size_sqft'] / 43560.0;
         }
 
-        // Map property_type to Bridge PropertySubType for filtering
-        $propertySubType = match ($subjectIn['property_type'] ?? '') {
-            'sfr' => 'Single Family Residence',
-            'townhouse' => 'Townhouse',
-            'condo' => 'Condominium',
-            'manufactured' => 'Manufactured Home',
-            default => null,
-        };
+        $propertySubType = $this->mapWidgetEnumToPropertySubType($subjectIn['property_type'] ?? '');
 
         $fullBath = isset($subjectIn['full_bathrooms']) ? (int) $subjectIn['full_bathrooms'] : null;
         $halfBath = isset($subjectIn['half_bathrooms']) ? (int) $subjectIn['half_bathrooms'] : 0;
         $totalBath = $fullBath !== null ? (float) $fullBath + ($halfBath * 0.5) : null;
 
+        $condition = $subjectIn['condition'] ?? null;
+        if ($condition !== null && trim((string) $condition) === '') {
+            $condition = null;
+        }
+
         return [
             'listing_key' => '',
-            'lat' => $result->lat,
-            'lng' => $result->lng,
+            'lat' => $geocodeResult->lat,
+            'lng' => $geocodeResult->lng,
             'bedrooms' => isset($subjectIn['bedrooms']) ? (int) $subjectIn['bedrooms'] : null,
             'bathrooms' => $totalBath,
             'living_area' => isset($subjectIn['living_area_sqft']) ? (int) $subjectIn['living_area_sqft'] : null,
@@ -1840,11 +1928,116 @@ final readonly class BridgeCompsService
             'property_type' => $propertySubType !== null ? 'Residential' : null,
             'property_sub_type' => $propertySubType,
             'flood_zone_codes' => [],
-            'address' => $result->formattedAddress,
-            'condition' => $subjectIn['condition'] ?? null,
+            'address' => $geocodeResult->formattedAddress,
+            'condition' => $condition,
             'renovations' => $this->buildRenovationsArray($subjectIn),
             'stories' => isset($subjectIn['stories']) ? (int) $subjectIn['stories'] : null,
+            'full_bathrooms' => $fullBath,
+            'half_bathrooms' => $halfBath,
+            'property_type_enum' => $subjectIn['property_type'] ?? null,
         ];
+    }
+
+    /**
+     * Derive condition from PropertyCondition field or PublicRemarks keyword analysis.
+     *
+     * @param  array<string, mixed>  $record
+     */
+    private function deriveCondition(array $record): ?string
+    {
+        // 1. Check PropertyCondition field
+        $propertyCondition = $record['PropertyCondition'] ?? null;
+        if ($propertyCondition !== null) {
+            $conditions = is_array($propertyCondition) ? $propertyCondition : [$propertyCondition];
+            foreach ($conditions as $value) {
+                $lower = strtolower(trim((string) $value));
+                $mapped = match ($lower) {
+                    'excellent' => 'excellent',
+                    'good' => 'good',
+                    'fair' => 'fair',
+                    'poor' => 'poor',
+                    default => null,
+                };
+                if ($mapped !== null) {
+                    return $mapped;
+                }
+            }
+        }
+
+        // 2. Analyze PublicRemarks for condition keywords
+        $remarks = strtolower(trim((string) ($record['PublicRemarks'] ?? '')));
+        if ($remarks === '') {
+            return null;
+        }
+
+        $excellentKeywords = ['mint condition', 'turnkey', 'completely renovated', 'like new', 'shows like a model', 'no expense spared', 'gut renovated', 'fully renovated', 'brand new'];
+        $goodKeywords = ['well maintained', 'well-maintained', 'move-in ready', 'move in ready', 'updated', 'good condition', 'nicely kept', 'immaculate', 'pristine'];
+        $fairKeywords = ['needs some tlc', 'needs updating', 'being sold as-is', 'as-is', 'handyman special', 'needs cosmetic work', 'some updating needed', 'needs some work', 'priced to sell'];
+        $poorKeywords = ['needs major work', 'fixer upper', 'fixer-upper', 'tear down', 'tear-down', 'needs everything', 'major renovation', 'distressed', 'investor special', 'total rehab'];
+
+        foreach ($poorKeywords as $keyword) {
+            if (str_contains($remarks, $keyword)) {
+                return 'poor';
+            }
+        }
+
+        foreach ($excellentKeywords as $keyword) {
+            if (str_contains($remarks, $keyword)) {
+                return 'excellent';
+            }
+        }
+
+        foreach ($goodKeywords as $keyword) {
+            if (str_contains($remarks, $keyword)) {
+                return 'good';
+            }
+        }
+
+        foreach ($fairKeywords as $keyword) {
+            if (str_contains($remarks, $keyword)) {
+                return 'fair';
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Map a RESO PropertySubType value back to our simplified widget enum.
+     */
+    private function mapPropertySubTypeToWidgetEnum(?string $propertySubType): ?string
+    {
+        return match ($propertySubType) {
+            'Single Family Residence' => 'sfr',
+            'Townhouse' => 'townhouse',
+            'Condominium' => 'condo',
+            'Manufactured Home', 'Manufactured On Land' => 'manufactured',
+            'Duplex' => 'duplex',
+            'Triplex' => 'triplex',
+            'Quadruplex' => 'quadplex',
+            'Modular' => 'modular',
+            'Cabin' => 'cabin',
+            default => null,
+        };
+    }
+
+    /**
+     * Map our simplified widget enum to a RESO PropertySubType value.
+     */
+    private function mapWidgetEnumToPropertySubType(string $enum): ?string
+    {
+        return match ($enum) {
+            'sfr' => 'Single Family Residence',
+            'townhouse' => 'Townhouse',
+            'condo' => 'Condominium',
+            'manufactured' => 'Manufactured Home',
+            'duplex' => 'Duplex',
+            'triplex' => 'Triplex',
+            'quadplex' => 'Quadruplex',
+            'modular' => 'Modular',
+            'cabin' => 'Cabin',
+            default => null,
+        };
     }
 
     /**

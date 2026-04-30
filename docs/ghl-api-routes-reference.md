@@ -52,6 +52,8 @@ Loaded in `bootstrap/app.php` **`then`** callback with **`api`** middleware (no 
 | GET | `/widget/showcase/{apiKey}` | Same. |
 | OPTIONS | `/widget/api/leads` | Query `api_key`; validates registered origin for preflight. |
 | POST | `/widget/api/leads` | JSON body includes `api_key`, `lead_type`, optional name/email/phone, etc. |
+| OPTIONS | `/widget/api/home-value` | Query `api_key`; validates registered origin for CORS preflight. Throttle: 30/min. |
+| POST | `/widget/api/home-value` | Home value estimation for off-market properties. JSON body with owner-provided property details + `api_key`. Throttle: 30/min. |
 
 ---
 
@@ -93,6 +95,26 @@ curl -sS -X POST https://idx-api.quantyralabs.cc/widget/api/leads \
 ```bash
 curl -sS -X OPTIONS "https://idx-api.quantyralabs.cc/widget/api/leads?api_key=qh_..." \
   -H "Origin: https://your-registered-domain.com"
+```
+
+### Widget home value estimate
+
+```bash
+curl -sS -X POST https://idx-api.quantyralabs.cc/widget/api/home-value \
+  -H "Origin: https://your-registered-domain.com" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "api_key": "qh_...",
+    "address": "5280 16th Ave N, Saint Petersburg, FL 33710",
+    "property_type": "sfr",
+    "bedrooms": 3,
+    "full_bathrooms": 2,
+    "living_area_sqft": 1800,
+    "year_built": 1975,
+    "condition": "good",
+    "garage_spaces": 2,
+    "pool": true
+  }'
 ```
 
 ---

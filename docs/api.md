@@ -16,12 +16,14 @@ All routes in `routes/api.php` under the `v1` prefix use the `domain.token` midd
 
 Core resources: listings, agents, offices, RESO Property, members, public parcels bridge, **structured search**, etc. See [`docs/idx-api-bridge-proxy.md`](idx-api-bridge-proxy.md) and [`docs/bridge-api-documentation.md`](bridge-api-documentation.md).
 
-### New: Comparables & investor analysis (`POST /api/v1/comps/run`)
+### New: Comparables, investor analysis & home value estimation (`POST /api/v1/comps/run`)
 
-Comps endpoint supports standard sale-comps modes (`A`–`E`) and investor modes (`rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`) using Bridge OData data sources.
+Comps endpoint supports standard sale-comps modes (`A`–`E`), investor modes (`rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`), BPO mode (`bpo`) with URAR-style market-derived adjustments, and **home value estimation** (`home_value`) for off-market properties using Google Maps geocoding.
 
 - Uses the same `domain.token` middleware and dataset resolution path as other `/api/v1` routes
-- `idx:full` is required for investor modes
+- `idx:full` is required for investor modes, BPO, and home value
+- Home value mode accepts owner-provided property details (address, bedrooms, bathrooms, condition, renovations) and returns an estimated value with confidence scoring
+- Renovation credits are dynamically derived from market data (not static)
 - Includes garage/parking, view, subdivision, and MLS area matching extensions
 
 See [`docs/comps-api.md`](comps-api.md) for request/response details and mode behavior.

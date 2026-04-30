@@ -723,6 +723,7 @@ class BridgeCompsTest extends TestCase
                 'address' => '100 Main St, Tampa, FL 33602',
                 'condition' => 'good',
                 'property_type' => 'sfr',
+                'half_bathrooms' => 0,
             ],
             'mode' => 'home_value',
             'scope' => ['type' => 'radius', 'radius_miles' => 5],
@@ -760,6 +761,7 @@ class BridgeCompsTest extends TestCase
                 'property_type' => 'sfr',
                 'bedrooms' => 3,
                 'full_bathrooms' => 2,
+                'half_bathrooms' => 0,
                 'living_area_sqft' => 1800,
                 'year_built' => 2000,
             ],
@@ -813,6 +815,7 @@ class BridgeCompsTest extends TestCase
                 'property_type' => 'sfr',
                 'bedrooms' => 3,
                 'full_bathrooms' => 2,
+                'half_bathrooms' => 0,
                 'living_area_sqft' => 1800,
                 'year_built' => 2010,
             ],
@@ -852,17 +855,21 @@ class BridgeCompsTest extends TestCase
             $comps[] = $comp;
         }
 
-        Http::fake([
-            'maps.googleapis.com/*' => Http::response([
-                'status' => 'OK',
-                'results' => [[
-                    'geometry' => ['location' => ['lat' => 27.95, 'lng' => -82.45]],
-                    'formatted_address' => '100 Main St, Tampa, FL 33602, USA',
-                    'place_id' => 'test_place_id',
-                ]],
-            ], 200),
-            'bridge.test/*' => Http::response(['value' => $comps], 200),
-        ]);
+        Http::fake(function ($request) use ($comps) {
+            $url = $request->url();
+            if (str_contains($url, 'maps.googleapis.com')) {
+                return Http::response([
+                    'status' => 'OK',
+                    'results' => [[
+                        'geometry' => ['location' => ['lat' => 27.95, 'lng' => -82.45]],
+                        'formatted_address' => '100 Main St, Tampa, FL 33602, USA',
+                        'place_id' => 'test_place_id',
+                    ]],
+                ], 200);
+            }
+
+            return Http::response(['value' => $comps], 200);
+        });
 
         // Get "poor" condition estimate
         $responsePoor = $this->postJson('/api/v1/comps/run', [
@@ -875,6 +882,7 @@ class BridgeCompsTest extends TestCase
                 'property_type' => 'sfr',
                 'bedrooms' => 3,
                 'full_bathrooms' => 2,
+                'half_bathrooms' => 0,
                 'living_area_sqft' => 1800,
                 'year_built' => 2010,
             ],
@@ -895,6 +903,7 @@ class BridgeCompsTest extends TestCase
                 'property_type' => 'sfr',
                 'bedrooms' => 3,
                 'full_bathrooms' => 2,
+                'half_bathrooms' => 0,
                 'living_area_sqft' => 1800,
                 'year_built' => 2010,
             ],
@@ -952,6 +961,7 @@ class BridgeCompsTest extends TestCase
                 'property_type' => 'sfr',
                 'bedrooms' => 3,
                 'full_bathrooms' => 2,
+                'half_bathrooms' => 0,
                 'living_area_sqft' => 1800,
                 'year_built' => 2000,
                 'renovated_kitchen_year' => $renovationYear,
@@ -1031,6 +1041,7 @@ class BridgeCompsTest extends TestCase
                 'property_type' => 'sfr',
                 'bedrooms' => 4,
                 'full_bathrooms' => 3,
+                'half_bathrooms' => 0,
                 'living_area_sqft' => 2800,
                 'year_built' => 2015,
                 'renovated_kitchen_year' => $renovationYear,
@@ -1064,5 +1075,248 @@ class BridgeCompsTest extends TestCase
         // In a ~$500/sf market, kitchen credit (2% of ~$1.4M) should be ~$28K, well above $8K default
         $this->assertGreaterThan(8000, $kitchenCredit, 'Kitchen credit should exceed default in high-value market');
         $this->assertGreaterThan(6000, $bathCredit, 'Bathroom credit should exceed default in high-value market');
+    }
+
+    public function test_comps_home_value_with_listing_id_auto_populates_subject(): void
+    {
+        /** @var User $user */
+        $user = User::factory()->createOne();
+        $this->subscribeMega($user);
+        $token = $this->actingAsWithToken($user, 't', ['idx:full']);
+
+        $subjectRecord = $this->subjectProperty();
+        $subjectRecord['PropertyCondition'] = 'Good';
+        $subjectRecord['BathroomsFull'] = 2;
+        $subjectRecord['BathroomsHalf'] = 1;
+        $subjectRecord['StoriesTotal'] = 1;
+        $subjectRecord['SubdivisionName'] = 'Test Heights';
+
+        $comps = [];
+        for ($i = 0; $i < 6; $i++) {
+            $comp = $this->closedComp('stellar:li'.str_pad((string) $i, 3, '0', STR_PAD_LEFT), $i * 0.003);
+            $comp['LivingArea'] = 1700 + ($i * 100);
+            $comp['ClosePrice'] = 340000 + ($i * 20000);
+            $comp['GarageSpaces'] = 2;
+            $comps[] = $comp;
+        }
+
+        Http::fake(function (Request $request) use ($subjectRecord, $comps) {
+            if (preg_match('#/Property\([^?]+\)#', $request->url()) === 1) {
+                return Http::response($subjectRecord, 200);
+            }
+
+            return Http::response(['value' => $comps], 200);
+        });
+
+        $response = $this->postJson('/api/v1/comps/run', [
+            'subject' => [
+                'listing_id' => '12345',
+                'half_bathrooms' => 1,
+            ],
+            'mode' => 'home_value',
+            'scope' => ['type' => 'radius', 'radius_miles' => 5],
+            'home_value_params' => ['sold_months_back' => 12, 'max_comps' => 6],
+        ], [
+            'Authorization' => 'Bearer '.$token,
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('success', true);
+        $this->assertNotNull($response->json('home_value_result'));
+        $this->assertNotNull($response->json('home_value_result.point_estimate'));
+        $response->assertJsonPath('home_value_result.condition', 'good');
+        $response->assertJsonPath('subject.property_sub_type', 'Single Family Residence');
+        $response->assertJsonPath('subject.listing_id', '12345');
+    }
+
+    public function test_comps_home_value_condition_derived_from_public_remarks(): void
+    {
+        /** @var User $user */
+        $user = User::factory()->createOne();
+        $this->subscribeMega($user);
+        $token = $this->actingAsWithToken($user, 't', ['idx:full']);
+
+        $subjectRecord = $this->subjectProperty();
+        $subjectRecord['PropertyCondition'] = null;
+        $subjectRecord['PublicRemarks'] = 'This fixer upper needs major work but has great bones. Investor special!';
+        $subjectRecord['BathroomsFull'] = 2;
+        $subjectRecord['BathroomsHalf'] = 0;
+
+        $comps = [];
+        for ($i = 0; $i < 6; $i++) {
+            $comp = $this->closedComp('stellar:dr'.str_pad((string) $i, 3, '0', STR_PAD_LEFT), $i * 0.003);
+            $comp['LivingArea'] = 1700 + ($i * 100);
+            $comp['ClosePrice'] = 340000 + ($i * 20000);
+            $comp['GarageSpaces'] = 2;
+            $comps[] = $comp;
+        }
+
+        Http::fake(function (Request $request) use ($subjectRecord, $comps) {
+            if (preg_match('#/Property\([^?]+\)#', $request->url()) === 1) {
+                return Http::response($subjectRecord, 200);
+            }
+
+            return Http::response(['value' => $comps], 200);
+        });
+
+        $response = $this->postJson('/api/v1/comps/run', [
+            'subject' => [
+                'listing_id' => '12345',
+                'half_bathrooms' => 0,
+            ],
+            'mode' => 'home_value',
+            'scope' => ['type' => 'radius', 'radius_miles' => 5],
+        ], [
+            'Authorization' => 'Bearer '.$token,
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('success', true);
+        $response->assertJsonPath('home_value_result.condition', 'poor');
+    }
+
+    public function test_comps_home_value_condition_null_when_not_derivable(): void
+    {
+        /** @var User $user */
+        $user = User::factory()->createOne();
+        $this->subscribeMega($user);
+        $token = $this->actingAsWithToken($user, 't', ['idx:full']);
+
+        $subjectRecord = $this->subjectProperty();
+        $subjectRecord['PropertyCondition'] = null;
+        $subjectRecord['PublicRemarks'] = 'Beautiful 3 bedroom home in a great neighborhood.';
+        $subjectRecord['BathroomsFull'] = 2;
+        $subjectRecord['BathroomsHalf'] = 0;
+
+        $comps = [];
+        for ($i = 0; $i < 6; $i++) {
+            $comp = $this->closedComp('stellar:nd'.str_pad((string) $i, 3, '0', STR_PAD_LEFT), $i * 0.003);
+            $comp['LivingArea'] = 1700 + ($i * 100);
+            $comp['ClosePrice'] = 340000 + ($i * 20000);
+            $comp['GarageSpaces'] = 2;
+            $comps[] = $comp;
+        }
+
+        Http::fake(function (Request $request) use ($subjectRecord, $comps) {
+            if (preg_match('#/Property\([^?]+\)#', $request->url()) === 1) {
+                return Http::response($subjectRecord, 200);
+            }
+
+            return Http::response(['value' => $comps], 200);
+        });
+
+        $response = $this->postJson('/api/v1/comps/run', [
+            'subject' => [
+                'listing_id' => '12345',
+                'half_bathrooms' => 0,
+            ],
+            'mode' => 'home_value',
+            'scope' => ['type' => 'radius', 'radius_miles' => 5],
+        ], [
+            'Authorization' => 'Bearer '.$token,
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('success', true);
+        $response->assertJsonPath('home_value_result.condition', null);
+    }
+
+    public function test_comps_home_value_condition_override_takes_precedence(): void
+    {
+        /** @var User $user */
+        $user = User::factory()->createOne();
+        $this->subscribeMega($user);
+        $token = $this->actingAsWithToken($user, 't', ['idx:full']);
+
+        $subjectRecord = $this->subjectProperty();
+        $subjectRecord['PropertyCondition'] = 'Excellent';
+        $subjectRecord['BathroomsFull'] = 2;
+        $subjectRecord['BathroomsHalf'] = 0;
+
+        $comps = [];
+        for ($i = 0; $i < 6; $i++) {
+            $comp = $this->closedComp('stellar:co'.str_pad((string) $i, 3, '0', STR_PAD_LEFT), $i * 0.003);
+            $comp['LivingArea'] = 1700 + ($i * 100);
+            $comp['ClosePrice'] = 340000 + ($i * 20000);
+            $comp['GarageSpaces'] = 2;
+            $comps[] = $comp;
+        }
+
+        Http::fake(function (Request $request) use ($subjectRecord, $comps) {
+            if (preg_match('#/Property\([^?]+\)#', $request->url()) === 1) {
+                return Http::response($subjectRecord, 200);
+            }
+
+            return Http::response(['value' => $comps], 200);
+        });
+
+        // User explicitly passes condition=fair, which should override PropertyCondition=Excellent
+        $response = $this->postJson('/api/v1/comps/run', [
+            'subject' => [
+                'listing_id' => '12345',
+                'half_bathrooms' => 0,
+                'condition' => 'fair',
+            ],
+            'mode' => 'home_value',
+            'scope' => ['type' => 'radius', 'radius_miles' => 5],
+        ], [
+            'Authorization' => 'Bearer '.$token,
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('success', true);
+        $response->assertJsonPath('home_value_result.condition', 'fair');
+    }
+
+    public function test_comps_home_value_expanded_property_types_accepted(): void
+    {
+        /** @var User $user */
+        $user = User::factory()->createOne();
+        $this->subscribeMega($user);
+        $token = $this->actingAsWithToken($user, 't', ['idx:full']);
+
+        $comps = [];
+        for ($i = 0; $i < 6; $i++) {
+            $comp = $this->closedComp('stellar:ep'.str_pad((string) $i, 3, '0', STR_PAD_LEFT), $i * 0.003);
+            $comp['LivingArea'] = 1700 + ($i * 100);
+            $comp['ClosePrice'] = 340000 + ($i * 20000);
+            $comp['GarageSpaces'] = 2;
+            $comps[] = $comp;
+        }
+
+        Http::fake([
+            'maps.googleapis.com/*' => Http::response([
+                'status' => 'OK',
+                'results' => [[
+                    'geometry' => ['location' => ['lat' => 27.95, 'lng' => -82.45]],
+                    'formatted_address' => '100 Main St, Tampa, FL 33602, USA',
+                    'place_id' => 'test_place_id',
+                ]],
+            ], 200),
+            'bridge.test/*' => Http::response(['value' => $comps], 200),
+        ]);
+
+        $response = $this->postJson('/api/v1/comps/run', [
+            'subject' => [
+                'type' => 'off_market',
+                'lat' => 0,
+                'lng' => 0,
+                'address' => '100 Main St, Tampa, FL 33602',
+                'property_type' => 'duplex',
+                'bedrooms' => 4,
+                'full_bathrooms' => 2,
+                'half_bathrooms' => 0,
+                'living_area_sqft' => 1800,
+                'year_built' => 2000,
+            ],
+            'mode' => 'home_value',
+            'scope' => ['type' => 'radius', 'radius_miles' => 5],
+        ], [
+            'Authorization' => 'Bearer '.$token,
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('success', true);
+        $response->assertJsonPath('subject.property_sub_type', 'Duplex');
     }
 }

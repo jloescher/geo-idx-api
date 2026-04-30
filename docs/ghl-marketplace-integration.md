@@ -102,6 +102,43 @@ Behavior:
 
 Middleware chain: validate API key → validate **Origin** (or Referer) against registered URLs → append `Access-Control-Allow-Origin` → throttle.
 
+### Home Value Widget
+
+The Home Value Widget provides a public "What is my home worth?" endpoint for off-market property estimation. It accepts owner-provided property details, geocodes the address via Google Maps, and runs the full BPO engine against Bridge sold comps.
+
+| Route | Purpose |
+|-------|---------|
+| `OPTIONS /widget/api/home-value` | CORS preflight for cross-origin POST (30 req/min). |
+| `POST /widget/api/home-value` | Accepts property details + `api_key`, returns estimated value, range, confidence. |
+
+**Required fields:** `api_key`, `address`, `property_type` (`sfr`/`townhouse`/`condo`/`manufactured`), `bedrooms`, `full_bathrooms`, `living_area_sqft`, `year_built`, `condition` (`poor`/`fair`/`good`/`excellent`).
+
+**Optional fields:** `garage_spaces`, `pool`, `waterfront`, `lot_size_sqft`, `hoa_monthly_fee`, `stories`, `roof_year_replaced`, `renovated_kitchen_year`, `renovated_bathrooms_year`, `renovated_hvac_year`, `enclosed_lanai_sqft`, `screen_pool_enclosure`, `half_bathrooms`.
+
+**Response shape:**
+
+```json
+{
+  "estimated_value": 425000,
+  "value_range": { "low": 405000, "high": 445000 },
+  "confidence": 78,
+  "comparable_count": 6,
+  "comps_summary": [
+    { "address": "...", "close_price": 420000, "close_date": "...", "adjusted_price": 425000 }
+  ],
+  "market_rates_summary": {
+    "gla_per_sf": 235.50,
+    "pool_value": 25000,
+    "method": "ols",
+    "r_squared": 0.82
+  }
+}
+```
+
+Middleware chain is the same as other widget endpoints: `ValidateWidgetApiKey` → `ValidateWidgetOrigin` → `AppendRegisteredOriginCors` → `throttle:30,1`.
+
+**Geocoding:** Requires `GOOGLE_MAPS_GEOCODING_API_KEY` environment variable. Results are cached for 30 days.
+
 ---
 
 ## Lead sync → GHL CRM
