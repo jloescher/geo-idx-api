@@ -1085,7 +1085,7 @@ class BridgeCompsTest extends TestCase
         $token = $this->actingAsWithToken($user, 't', ['idx:full']);
 
         $subjectRecord = $this->subjectProperty();
-        $subjectRecord['PropertyCondition'] = 'Good';
+        $subjectRecord['PublicRemarks'] = 'Move-in ready and well maintained home with updated kitchen.';
         $subjectRecord['BathroomsFull'] = 2;
         $subjectRecord['BathroomsHalf'] = 1;
         $subjectRecord['StoriesTotal'] = 1;
@@ -1229,7 +1229,7 @@ class BridgeCompsTest extends TestCase
         $token = $this->actingAsWithToken($user, 't', ['idx:full']);
 
         $subjectRecord = $this->subjectProperty();
-        $subjectRecord['PropertyCondition'] = 'Excellent';
+        $subjectRecord['PublicRemarks'] = 'Well maintained home in pristine condition.';
         $subjectRecord['BathroomsFull'] = 2;
         $subjectRecord['BathroomsHalf'] = 0;
 
@@ -1250,7 +1250,7 @@ class BridgeCompsTest extends TestCase
             return Http::response(['value' => $comps], 200);
         });
 
-        // User explicitly passes condition=fair, which should override PropertyCondition=Excellent
+        // User explicitly passes condition=fair, which should override derived condition from PublicRemarks
         $response = $this->postJson('/api/v1/comps/run', [
             'subject' => [
                 'listing_id' => '12345',

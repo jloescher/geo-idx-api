@@ -55,7 +55,7 @@ Top-level keys:
   - Condition rating auto-derived from `PropertyCondition` field or `PublicRemarks` keyword analysis
   - Condition is optional: if not provided and cannot be derived, the condition adjustment is skipped
   - Renovation credits (kitchen, bathrooms, HVAC) derived from market data (scales with local price levels)
-  - Expanded `property_type` enum: `sfr`, `townhouse`, `condo`, `manufactured`, `duplex`, `triplex`, `quadplex`, `modular`, `cabin`
+  - Expanded `property_type` enum: `sfr`, `townhouse`, `condo`, `manufactured`, `duplex`, `triplex`, `quadplex`, `modular`
   - returns `home_value_result` with estimate, range, confidence, comparable count, and market rates summary
   - requires `idx:full`
 
@@ -142,7 +142,7 @@ When `listing_id` is provided, the following fields are auto-populated from the 
 | Field | Type | Description |
 |-------|------|-------------|
 | `address` | string | Full street address for geocoding (required unless `listing_id` provided) |
-| `property_type` | string | One of: `sfr`, `townhouse`, `condo`, `manufactured`, `duplex`, `triplex`, `quadplex`, `modular`, `cabin` |
+| `property_type` | string | One of: `sfr`, `townhouse`, `condo`, `manufactured`, `duplex`, `triplex`, `quadplex`, `modular` |
 | `bedrooms` | integer | Number of bedrooms (1-20) |
 | `full_bathrooms` | integer | Number of full bathrooms |
 | `living_area_sqft` | integer | Gross living area in square feet |
@@ -175,8 +175,8 @@ When `listing_id` is provided, the following fields are auto-populated from the 
 
 **Condition derivation** (when `listing_id` is used and `condition` is not explicitly provided):
 
-1. `PropertyCondition` field from Bridge is checked first (maps `Excellent`/`Good`/`Fair`/`Poor` directly)
-2. If no `PropertyCondition`, `PublicRemarks` text is analyzed for condition keywords:
+1. `PropertyCondition` field from Bridge is checked first. In Stellar MLS, `PropertyCondition` describes **construction state** (not physical quality). Valid values: `Existing`, `New Construction`, `Completed`, `Fixer`, `Proposed`, `Pre-Construction`, `Under Construction`, `Under Renovation`. Only `Fixer` maps to a condition quality rating (`poor`).
+2. If `PropertyCondition` doesn't yield a quality rating, `PublicRemarks` text is analyzed for condition keywords:
    - **Poor**: "fixer upper", "needs major work", "tear down", "investor special", "distressed", etc.
    - **Excellent**: "mint condition", "turnkey", "completely renovated", "like new", "no expense spared", etc.
    - **Good**: "well maintained", "move-in ready", "updated", "immaculate", etc.
@@ -185,19 +185,22 @@ When `listing_id` is provided, the following fields are auto-populated from the 
 
 **PropertySubType mapping:**
 
-The `property_type` enum maps bidirectionally to RESO `PropertySubType` values:
+The `property_type` enum maps bidirectionally to RESO `PropertySubType` values from the Stellar MLS dataset:
 
 | Widget enum | RESO PropertySubType |
 |-------------|---------------------|
 | `sfr` | Single Family Residence |
 | `townhouse` | Townhouse |
-| `condo` | Condominium |
-| `manufactured` | Manufactured Home, Manufactured On Land |
-| `duplex` | Duplex |
+| `condo` | Condominium, Condo - Hotel |
+| `manufactured` | Manufactured Home, Manufactured On Land, Mobile Home |
+| `duplex` | Duplex, 1/2 Duplex |
 | `triplex` | Triplex |
 | `quadplex` | Quadruplex |
-| `modular` | Modular |
-| `cabin` | Cabin |
+| `modular` | Modular Home |
+
+Additional Stellar MLS subtypes that map to `sfr`: `Apartment`, `Villa`, `Multi Family (5+)`, `Residential`.
+
+Other Stellar MLS subtypes (non-residential) are not mapped and will return `null`: `Commercial`, `Industrial`, `Retail`, `Office`, `Warehouse`, `Hotel/Motel`, `Mixed Use`, `Business`, `Farm`, `Ranch`, `Agriculture`, `Unimproved Land`, etc.
 
 When using `listing_id`, the listing's `PropertySubType` is reverse-mapped to the widget enum automatically.
 

@@ -278,7 +278,6 @@ class WidgetHomeValueTest extends TestCase
             'DaysOnMarket' => 12,
             'CumulativeDaysOnMarket' => 12,
             'PublicRemarks' => 'Move-in ready and well maintained home.',
-            'PropertyCondition' => 'Good',
             'STELLAR_FloodZoneCode' => 'X',
             'STELLAR_TotalMonthlyFees' => 0,
         ];

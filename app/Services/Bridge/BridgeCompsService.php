@@ -1946,20 +1946,17 @@ final readonly class BridgeCompsService
     private function deriveCondition(array $record): ?string
     {
         // 1. Check PropertyCondition field
+        // Stellar MLS PropertyCondition describes construction state, not quality:
+        //   "Existing", "New Construction", "Completed", "Fixer", "Proposed",
+        //   "Pre-Construction", "Under Construction", "Under Renovation"
+        // Only "Fixer" maps to a condition quality rating.
         $propertyCondition = $record['PropertyCondition'] ?? null;
         if ($propertyCondition !== null) {
             $conditions = is_array($propertyCondition) ? $propertyCondition : [$propertyCondition];
             foreach ($conditions as $value) {
                 $lower = strtolower(trim((string) $value));
-                $mapped = match ($lower) {
-                    'excellent' => 'excellent',
-                    'good' => 'good',
-                    'fair' => 'fair',
-                    'poor' => 'poor',
-                    default => null,
-                };
-                if ($mapped !== null) {
-                    return $mapped;
+                if ($lower === 'fixer') {
+                    return 'poor';
                 }
             }
         }
@@ -2010,13 +2007,13 @@ final readonly class BridgeCompsService
         return match ($propertySubType) {
             'Single Family Residence' => 'sfr',
             'Townhouse' => 'townhouse',
-            'Condominium' => 'condo',
-            'Manufactured Home', 'Manufactured On Land' => 'manufactured',
-            'Duplex' => 'duplex',
+            'Condominium', 'Condo - Hotel' => 'condo',
+            'Manufactured Home', 'Manufactured On Land', 'Mobile Home' => 'manufactured',
+            'Duplex', '1/2 Duplex' => 'duplex',
             'Triplex' => 'triplex',
             'Quadruplex' => 'quadplex',
-            'Modular' => 'modular',
-            'Cabin' => 'cabin',
+            'Modular Home' => 'modular',
+            'Apartment', 'Villa', 'Multi Family (5+)', 'Residential' => 'sfr',
             default => null,
         };
     }
@@ -2034,8 +2031,7 @@ final readonly class BridgeCompsService
             'duplex' => 'Duplex',
             'triplex' => 'Triplex',
             'quadplex' => 'Quadruplex',
-            'modular' => 'Modular',
-            'cabin' => 'Cabin',
+            'modular' => 'Modular Home',
             default => null,
         };
     }

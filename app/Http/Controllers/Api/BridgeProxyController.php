@@ -236,7 +236,45 @@ class BridgeProxyController extends Controller
 
     public function lookup(Request $request): SymfonyResponse
     {
-        return $this->proxyResoCollection($request, 'reso.lookup.collection', 'Lookup');
+        $dataset = (string) config('bridge.dataset');
+        $partitionKey = 'lookups:'.$dataset;
+
+        $queryParams = $request->query();
+        unset($queryParams['domain'], $queryParams['teaser']);
+        $this->ksortRecursive($queryParams);
+        $fingerprint = hash('sha256', json_encode($queryParams, JSON_UNESCAPED_UNICODE));
+
+        $body = $this->listingsCache->rememberLookups($partitionKey, $fingerprint, function () use ($request): string {
+            $response = $this->proxyResoWithFallback($request, $this->bridge->resoCollectionUrls('Lookup'));
+
+            if (! $response->successful()) {
+                $this->audit->log(
+                    $request,
+                    'reso.lookup.collection',
+                    null,
+                    $request->attributes->get('bridge.domain_slug'),
+                    $request->attributes->get('bridge.token_name'),
+                    $request->attributes->get('bridge.user_id'),
+                );
+
+                abort($response->status(), $response->body());
+            }
+
+            return $response->body();
+        });
+
+        $this->audit->log(
+            $request,
+            'reso.lookup.collection',
+            null,
+            $request->attributes->get('bridge.domain_slug'),
+            $request->attributes->get('bridge.token_name'),
+            $request->attributes->get('bridge.user_id'),
+        );
+
+        return response($body, 200, [
+            'Content-Type' => 'application/json',
+        ]);
     }
 
     public function pubParcels(Request $request): SymfonyResponse

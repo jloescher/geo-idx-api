@@ -127,7 +127,7 @@ class CompsRunRequest extends FormRequest
             'subject.address' => ['nullable', 'string', 'max:500'],
             'subject.listing_id' => ['nullable', 'string', 'max:255'],
             'subject.condition' => ['nullable', 'string', 'in:poor,fair,good,excellent'],
-            'subject.property_type' => ['nullable', 'string', 'in:sfr,townhouse,condo,manufactured,duplex,triplex,quadplex,modular,cabin'],
+            'subject.property_type' => ['nullable', 'string', 'in:sfr,townhouse,condo,manufactured,duplex,triplex,quadplex,modular'],
             'subject.full_bathrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
             'subject.half_bathrooms' => ['required_if:mode,home_value', 'nullable', 'integer', 'min:0', 'max:10'],
             'subject.stories' => ['nullable', 'integer', 'min:1', 'max:5'],

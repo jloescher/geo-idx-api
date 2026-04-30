@@ -169,7 +169,7 @@ Built from `BRIDGE_HOST`, optional `BRIDGE_PATH_PREFIX`, `BRIDGE_DATASET`, and o
 | GET | `/api/v1/reso-offices/{officeKey}` | `Office` by key | |
 | GET | `/api/v1/reso-openhouses` | `OpenHouse` collection | |
 | GET | `/api/v1/reso-openhouses/{openHouseKey}` | `OpenHouse` by key | |
-| GET | `/api/v1/lookup` | `Lookup` collection | |
+| GET | `/api/v1/lookup` | `Lookup` collection | 30-day gzip cache per dataset + query fingerprint; clear with `php artisan bridge:clear-lookups-cache`. |
 | POST | `/api/v1/search` | Structured search | Accepts `SearchRequest` JSON; translates to Bridge RESO OData with multi-dataset support, returns paginated results with stats. See [Search endpoint](#search-endpoint-post-apiv1search). |
 | POST | `/api/v1/comps/run` | Bridge comps + investor analysis | Supports modes `A`–`E`, `rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`; investor modes require `idx:full`. See [Comps API](comps-api.md). |
 
@@ -212,7 +212,7 @@ Registered in **`bootstrap/app.php`** `then` routing callback with middleware **
 |-------|---------|
 | `domains` | `domain_slug` (unique), `is_active`, `mls_dataset` (default), `allowed_mls_datasets` (JSON array of permitted datasets). Seeds include approved hostnames (e.g. `searchtampabayhouses.com`). |
 | `listings_cache` | **PK** `domain_slug`; `compressed_data` (gzip); `last_updated`; `etag`. One logical row per domain for the listings collection cache. |
-| `bridge_search_cache` | **PK** (`partition_key`, `fingerprint`); `compressed_data` (gzip); `last_updated`. Caches `POST /api/v1/search` and `GET/POST /api/v1/properties` responses by request fingerprint. |
+| `bridge_search_cache` | **PK** (`partition_key`, `fingerprint`); `compressed_data` (gzip); `last_updated`. Caches `POST /api/v1/search`, `GET/POST /api/v1/properties`, and `GET /api/v1/lookup` responses by request fingerprint. Lookups use a 30-day TTL; search/properties use 15-minute TTL. |
 | `crypto_price_snapshots` | **Unique** (`asset_id`, `vs_currency`); stores latest CoinGecko price per pair with `as_of` for listing enrichment. |
 | `bridge_proxy_audit_logs` | `logged_at`, `domain_slug`, `token_name`, `request_type`, `listing_count`, `ip_address`, `user_id` (nullable FK to `users`). |
 | `personal_access_tokens` | Laravel Sanctum; used for **`geo-web-internal`** and other PATs. |
@@ -336,6 +336,7 @@ curl -H "X-Domain-Slug: example.com" \
 |-----------|--------|
 | **Listings DB cache** | **Only** `GET /api/v1/listings` when the caller authenticated as a **domain** (not token-only), and the request does **not** include a **`filters`** query (filtered queries always hit Bridge). TTL **`LISTINGS_CACHE_TTL`** seconds (default **900** = 15 minutes). |
 | **Search cache** | `POST /api/v1/search` results cached by fingerprint (dataset + normalized search params) per domain/token. Also caches `GET/POST /api/v1/properties` when no `?filters=` present. TTL **`LISTINGS_CACHE_TTL`** (default **900** = 15 minutes). |
+| **Lookups cache** | `GET /api/v1/lookup` responses cached by dataset + query fingerprint (`lookups:{dataset}`). TTL **`BRIDGE_LOOKUPS_CACHE_TTL`** (default **2,592,000** = 30 days). Clear with `php artisan bridge:clear-lookups-cache [--all|--dataset=stellar]`. |
 | **Image edge cache** | `/images/*` responses are streamed from Bridge with immutable cache headers so Cloudflare/browser edges cache aggressively. |
 | **Scheduled refresh** | `routes/console.php` schedules a callback every **15 minutes** that dispatches **`RefreshDomainListingsCacheJob`** once per **active** domain (database queue). Requires a **queue worker** in each environment where refreshes must run. |
 
@@ -356,6 +357,7 @@ Set in **`idx-api/.env`** and/or root **`.env`** for Docker Compose. See also [G
 | `BRIDGE_IMAGE_REWRITE_HOSTS` | No | Comma-separated extra hostnames whose `…/listings/…/photos/…` URLs should be rewritten in JSON (in addition to defaults derived from **`BRIDGE_HOST`** and common Bridge domains). |
 | `BRIDGE_TIMEOUT` | No | HTTP timeout seconds. |
 | `LISTINGS_CACHE_TTL` | No | Seconds (default **900**). |
+| `BRIDGE_LOOKUPS_CACHE_TTL` | No | Lookup cache TTL in seconds (default **2,592,000** = 30 days). |
 | `IDX_IMAGES_PUBLIC_URL` | No | Public hostname for marketing / headers (default `https://idx-images.quantyralabs.cc`). Used for both image URL rewriting and environment normalization. |
 | `IDX_API_INTERNAL_TOKEN` | Ops / geo-web | Plaintext PAT for server-to-server calls; **issue via Artisan** (below). Not read automatically by idx-api logic—store where geo-web or scripts need it. |
 | `COINGECKO_API_KEY` | Recommended | CoinGecko API key used by scheduled pricing refresh job. |
@@ -381,6 +383,16 @@ php artisan idx-api:issue-geo-web-token --force
 ```
 
 Copy the printed `IDX_API_INTERNAL_TOKEN=...` into secrets / `.env` for **geo-web** (or other server clients). Abilities: **`idx:full`**, token name **`geo-web-internal`**.
+
+### Clear lookups cache
+
+```bash
+# Clear lookups cache for a specific dataset
+php artisan bridge:clear-lookups-cache --dataset=stellar
+
+# Clear lookups cache for all datasets
+php artisan bridge:clear-lookups-cache --all
+```
 
 **First-time seed:** `DatabaseSeeder` calls `GeoWebInternalTokenSeeder`, which creates the token **only if** a `geo-web-internal` token does not already exist for the internal user.
 

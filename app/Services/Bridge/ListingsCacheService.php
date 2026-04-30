@@ -153,4 +153,48 @@ class ListingsCacheService
 
         return $lastUpdated->greaterThan(now()->subSeconds($ttlSeconds));
     }
+
+    /**
+     * Cache Bridge Lookup API responses for 30 days.
+     *
+     * Lookup data (field enums, PropertySubType values, etc.) changes rarely,
+     * so a long TTL avoids repeated upstream calls for metadata that is essentially static.
+     *
+     * @param  callable(): string  $supplier
+     */
+    public function rememberLookups(string $partitionKey, string $fingerprint, callable $supplier): string
+    {
+        $ttlSeconds = (int) config('bridge.lookups_cache_ttl_seconds');
+
+        $row = DB::table('bridge_search_cache')
+            ->where('partition_key', $partitionKey)
+            ->where('fingerprint', $fingerprint)
+            ->first();
+
+        $lastUpdated = $row !== null && $row->last_updated !== null
+            ? Carbon::parse($row->last_updated)
+            : null;
+
+        if ($row !== null && $this->isFresh($lastUpdated, $ttlSeconds)) {
+            $decoded = @gzdecode((string) $row->compressed_data);
+            if (is_string($decoded) && $decoded !== '') {
+                return $decoded;
+            }
+        }
+
+        $payload = $supplier();
+
+        DB::table('bridge_search_cache')->updateOrInsert(
+            [
+                'partition_key' => $partitionKey,
+                'fingerprint' => $fingerprint,
+            ],
+            [
+                'compressed_data' => gzencode($payload, 9),
+                'last_updated' => now(),
+            ],
+        );
+
+        return $payload;
+    }
 }

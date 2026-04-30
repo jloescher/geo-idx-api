@@ -23,7 +23,7 @@ class WidgetHomeValueRequest extends FormRequest
             'api_key' => ['required', 'string'],
 
             // Required fields (used when address is provided; auto-populated from listing when listing_id given)
-            'property_type' => ['required_without:listing_id', 'nullable', 'string', 'in:sfr,townhouse,condo,manufactured,duplex,triplex,quadplex,modular,cabin'],
+            'property_type' => ['required_without:listing_id', 'nullable', 'string', 'in:sfr,townhouse,condo,manufactured,duplex,triplex,quadplex,modular'],
             'bedrooms' => ['required_without:listing_id', 'nullable', 'integer', 'min:1', 'max:20'],
             'full_bathrooms' => ['required_without:listing_id', 'nullable', 'integer', 'min:0', 'max:20'],
             'half_bathrooms' => ['required', 'integer', 'min:0', 'max:10'],

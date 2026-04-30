@@ -43,6 +43,8 @@ return [
 
     'listings_cache_ttl_seconds' => (int) env('LISTINGS_CACHE_TTL', 900),
 
+    'lookups_cache_ttl_seconds' => (int) env('BRIDGE_LOOKUPS_CACHE_TTL', 2_592_000),
+
     'image_cache_ttl_seconds' => (int) env('IMAGE_CACHE_TTL', 86400),
 
     'image_cache_path' => env('IMAGE_CACHE_PATH', storage_path('app/image_cache')),
