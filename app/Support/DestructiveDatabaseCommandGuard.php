@@ -76,7 +76,9 @@ final class DestructiveDatabaseCommandGuard
             return false;
         }
 
-        if (self::isEphemeralSqliteDatabaseContext()) {
+        $explicitParams = $environment !== null || $databaseName !== null;
+
+        if (! $explicitParams && self::isEphemeralSqliteDatabaseContext()) {
             return false;
         }
 

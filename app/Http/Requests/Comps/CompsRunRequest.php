@@ -43,7 +43,7 @@ class CompsRunRequest extends FormRequest
             'subject.asking_price' => ['nullable', 'numeric', 'min:0'],
             'subject.flood_zone_code' => ['nullable', 'string', 'max:200'],
 
-            'mode' => ['required', 'string', 'in:A,B,C,D,E,rent_hold_cashflow,flip_vs_hold,appraiser_simulation'],
+            'mode' => ['required', 'string', 'in:A,B,C,D,E,rent_hold_cashflow,flip_vs_hold,appraiser_simulation,bpo,home_value'],
 
             'scope' => ['required', 'array'],
             'scope.type' => ['required', 'string', 'in:radius,zip'],
@@ -115,6 +115,32 @@ class CompsRunRequest extends FormRequest
             'simulation_params' => ['nullable', 'array'],
             'simulation_params.supporting_comp_count' => ['nullable', 'integer', 'min:3', 'max:25'],
             'simulation_params.high_adjustment_threshold_pct' => ['nullable', 'numeric', 'min:5', 'max:60'],
+
+            'bpo_params' => ['nullable', 'array'],
+            'bpo_params.max_comps' => ['nullable', 'integer', 'min:3', 'max:25'],
+            'bpo_params.sold_months_back' => ['nullable', 'integer', 'min:1', 'max:18'],
+            'bpo_params.min_comps_for_regression' => ['nullable', 'integer', 'min:3', 'max:25'],
+            'bpo_params.confidence_threshold' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'bpo_params.exclude_outlier_zscore' => ['nullable', 'numeric', 'min:1', 'max:5'],
+
+            // Home value mode fields
+            'subject.address' => ['nullable', 'string', 'max:500'],
+            'subject.condition' => ['nullable', 'string', 'in:poor,fair,good,excellent'],
+            'subject.property_type' => ['nullable', 'string', 'in:sfr,townhouse,condo,manufactured'],
+            'subject.full_bathrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
+            'subject.half_bathrooms' => ['nullable', 'integer', 'min:0', 'max:10'],
+            'subject.stories' => ['nullable', 'integer', 'min:1', 'max:5'],
+            'subject.roof_year_replaced' => ['nullable', 'integer', 'min:1800', 'max:2100'],
+            'subject.renovated_kitchen_year' => ['nullable', 'integer', 'min:1980', 'max:2100'],
+            'subject.renovated_bathrooms_year' => ['nullable', 'integer', 'min:1980', 'max:2100'],
+            'subject.renovated_hvac_year' => ['nullable', 'integer', 'min:1980', 'max:2100'],
+            'subject.enclosed_lanai_sqft' => ['nullable', 'integer', 'min:0'],
+            'subject.screen_pool_enclosure' => ['nullable', 'boolean'],
+            'subject.hoa_monthly_fee' => ['nullable', 'numeric', 'min:0'],
+
+            'home_value_params' => ['nullable', 'array'],
+            'home_value_params.sold_months_back' => ['nullable', 'integer', 'min:1', 'max:18'],
+            'home_value_params.max_comps' => ['nullable', 'integer', 'min:3', 'max:25'],
         ];
     }
 }

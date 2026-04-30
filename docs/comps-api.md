@@ -9,7 +9,7 @@ Bridge-backed comparables and investor analysis endpoint for the active MLS data
 - Token/domain behavior:
   - domain auth or `idx:access` token: A–E comps only (sold comps teaser cap applies)
   - `idx:full` token: full comps payload + investor modes
-- Investor modes (`rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`) require `idx:full`.
+- Investor modes (`rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`, `bpo`) require `idx:full`.
 
 ## Request shape
 
@@ -18,7 +18,7 @@ Top-level keys:
 - `subject`
 - `mode`
 - `scope`
-- optional: `filters`, `keywords`, `aggregation_method`, `rental_params`, `flip_params`, `simulation_params`
+- optional: `filters`, `keywords`, `aggregation_method`, `rental_params`, `flip_params`, `simulation_params`, `bpo_params`
 
 ### Subject
 
@@ -43,6 +43,11 @@ Top-level keys:
 - `appraiser_simulation`:
   - sold comps simulation
   - returns `simulation_result` (`indicated_value`, BPO band, risk score/band)
+- `bpo`:
+  - URAR-style Broker Price Opinion using market-derived adjustments
+  - OLS regression extracts $/unit rates from the comp dataset (no static values)
+  - returns `bpo_result` with full 14-line adjustment grid, reconciliation, and confidence scoring
+  - requires `idx:full`
 
 ## Key filter extensions
 
@@ -73,6 +78,7 @@ Mode-specific additions:
 - `rent_hold_cashflow`: `rental_comps`, `rental_result`
 - `flip_vs_hold`: `flip_vs_hold_result`, `rental_comps`
 - `appraiser_simulation`: `simulation_result`
+- `bpo`: `bpo_result`
 
 ## Implementation notes
 
@@ -84,4 +90,20 @@ Mode-specific additions:
   - `ClosePrice` for `StandardStatus=Closed`
   - `ListPrice` for active/pending rows
   - `LeaseAmountFrequency=Annually` is converted to monthly (`/12`)
+
+### BPO mode (`bpo_params`)
+
+Optional request parameters for BPO mode:
+
+- `bpo_params.max_comps`: max sold comps to include (3-25, default 8)
+- `bpo_params.sold_months_back`: lookback window (1-18, default 12)
+- `bpo_params.min_comps_for_regression`: minimum comps for OLS regression (3-25, default 6)
+- `bpo_params.confidence_threshold`: minimum confidence to return estimate (0-100)
+- `bpo_params.exclude_outlier_zscore`: z-score threshold for outlier removal (1-5)
+
+All adjustment rates are derived from the comp dataset at query time:
+
+- **6+ comps**: OLS multiple regression solves `ClosePrice = b0 + b1*LivingArea + b2*BedroomsTotal + b3*BathroomsTotalDecimal + b4*YearBuilt + b5*LotSizeAcres + b6*GarageSpaces + b7*PoolPrivateYN + b8*WaterfrontYN + b9*CloseDateEpoch`
+- **3-5 comps**: Paired-sales extraction finds comp pairs differing in only one feature
+- **<3 comps**: Median PPSF fallback with `median_only` method and low confidence warning
 

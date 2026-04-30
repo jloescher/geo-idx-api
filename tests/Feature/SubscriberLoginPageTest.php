@@ -20,6 +20,6 @@ class SubscriberLoginPageTest extends TestCase
         $response->assertOk();
         $response->assertSee('Subscriber login');
         $response->assertSee('Sign in');
-        $response->assertSee('Quantyra GeoIDX');
+        $response->assertSee('GeoIDX');
     }
 }

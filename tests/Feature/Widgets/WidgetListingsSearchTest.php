@@ -9,11 +9,38 @@ use App\Models\Domain;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Laravel\Cashier\Subscription;
+use Laravel\Cashier\SubscriptionItem;
 use Tests\TestCase;
 
 class WidgetListingsSearchTest extends TestCase
 {
     use RefreshDatabase;
+
+    private function subscribePro(User $user): void
+    {
+        $priceId = 'price_pro_monthly';
+        config(['billing.plans.pro.stripe_price_monthly' => $priceId]);
+
+        $subscription = Subscription::query()->create([
+            'user_id' => $user->id,
+            'type' => 'default',
+            'stripe_id' => 'sub_test_'.$user->id,
+            'stripe_status' => 'active',
+            'stripe_price' => $priceId,
+            'quantity' => 1,
+            'trial_ends_at' => now()->addDays(7),
+            'ends_at' => null,
+        ]);
+
+        SubscriptionItem::query()->create([
+            'subscription_id' => $subscription->id,
+            'stripe_id' => 'si_test_'.$user->id,
+            'stripe_product' => 'prod_test',
+            'stripe_price' => $priceId,
+            'quantity' => 100,
+        ]);
+    }
 
     private function fakeBridgePropertyResponse(array $properties = []): void
     {
@@ -76,14 +103,17 @@ class WidgetListingsSearchTest extends TestCase
     {
         $this->fakeBridgePropertyResponse([$this->sampleBridgeProperty()]);
 
+        /** @var User $user */
+        $user = User::factory()->createOne(['mls_membership_status' => 'active']);
+        $this->subscribePro($user);
+        $key = $user->ensureWidgetEmbedSiteKey();
+
         Domain::query()->create([
+            'user_id' => $user->id,
             'domain_slug' => 'embed-client.test',
             'is_active' => true,
+            'verification_status' => 'verified',
         ]);
-
-        /** @var User $user */
-        $user = User::factory()->createOne();
-        $key = $user->ensureWidgetEmbedSiteKey();
 
         $this->withHeaders([
             'Origin' => 'https://embed-client.test',

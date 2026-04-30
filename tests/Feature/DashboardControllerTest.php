@@ -1,19 +1,22 @@
 <?php
 
-namespace Tests\Unit;
+namespace Tests\Feature;
 
 use App\Http\Controllers\DashboardController;
 use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Tests\TestCase;
 
 class DashboardControllerTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_dashboard_controller_returns_expected_view_data_without_subscription(): void
     {
+        $user = User::factory()->createOne();
         $request = Request::create('/dashboard', 'GET');
-        $user = User::factory()->make();
         $request->setUserResolver(static fn (): User => $user);
 
         $response = app(DashboardController::class)->__invoke($request);

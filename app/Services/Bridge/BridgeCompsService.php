@@ -2,6 +2,7 @@
 
 namespace App\Services\Bridge;
 
+use App\Services\Geocoding\GoogleGeocodingService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -17,6 +18,9 @@ final readonly class BridgeCompsService
         private BridgeSearchClient $searchClient,
         private MlsDatasetResolver $resolver,
         private BridgeProxyAuditLogger $audit,
+        private BpoMarketExtractor $bpoExtractor,
+        private BpoAdjustmentEngine $bpoEngine,
+        private GoogleGeocodingService $geocodingService,
     ) {}
 
     /**
@@ -30,6 +34,18 @@ final readonly class BridgeCompsService
         $fullAccess = (bool) $request->attributes->get('bridge.full_access', false);
         $mode = (string) ($validated['mode'] ?? 'A');
 
+        // Access gate for restricted modes — checked before resolveSubject to avoid
+        // unnecessary geocoding calls for home_value when access is denied.
+        if (in_array($mode, ['rent_hold_cashflow', 'flip_vs_hold', 'appraiser_simulation', 'bpo', 'home_value'], true) && ! $fullAccess) {
+            $processingMs = (int) round((microtime(true) - $started) * 1000);
+
+            return [
+                'success' => false,
+                'error' => 'Investor modes require idx:full access.',
+                'metadata' => $this->buildMetadata($validated, $fullAccess, 0, 0, 0, $processingMs, 'median'),
+            ];
+        }
+
         $subject = $this->resolveSubject($request, $dataset, $validated);
         if ($subject === null) {
             $processingMs = (int) round((microtime(true) - $started) * 1000);
@@ -37,16 +53,6 @@ final readonly class BridgeCompsService
             return [
                 'success' => false,
                 'error' => 'Subject listing not found',
-                'metadata' => $this->buildMetadata($validated, $fullAccess, 0, 0, 0, $processingMs, 'median'),
-            ];
-        }
-
-        if (in_array($mode, ['rent_hold_cashflow', 'flip_vs_hold', 'appraiser_simulation'], true) && ! $fullAccess) {
-            $processingMs = (int) round((microtime(true) - $started) * 1000);
-
-            return [
-                'success' => false,
-                'error' => 'Investor modes require idx:full access.',
                 'metadata' => $this->buildMetadata($validated, $fullAccess, 0, 0, 0, $processingMs, 'median'),
             ];
         }
@@ -61,6 +67,14 @@ final readonly class BridgeCompsService
 
         if ($mode === 'appraiser_simulation') {
             return $this->handleAppraiserSimulation($request, $validated, $subject, $dataset, $fullAccess, $started);
+        }
+
+        if ($mode === 'bpo') {
+            return $this->handleBpo($request, $validated, $subject, $dataset, $fullAccess, $started);
+        }
+
+        if ($mode === 'home_value') {
+            return $this->handleHomeValue($request, $validated, $subject, $dataset, $fullAccess, $started);
         }
 
         $filters = $validated['filters'] ?? [];
@@ -163,6 +177,13 @@ final readonly class BridgeCompsService
     private function resolveSubject(Request $request, string $dataset, array $validated): ?array
     {
         $subjectIn = $validated['subject'];
+        $mode = (string) ($validated['mode'] ?? 'A');
+
+        // home_value mode builds its subject via geocoding in handleHomeValue()
+        if ($mode === 'home_value') {
+            return $this->subjectFromHomeValueFields($subjectIn);
+        }
+
         if (($subjectIn['type'] ?? '') === 'off_market') {
             return $this->subjectOffMarket($subjectIn);
         }
@@ -1758,5 +1779,347 @@ final readonly class BridgeCompsService
         }
 
         return ['Sold comps capped at '.$appliedMax.' for non-full-access requests (requested '.$requestedMax.').'];
+    }
+
+    /**
+     * Build a subject array from home_value mode fields (no MLS lookup needed).
+     *
+     * @param  array<string, mixed>  $subjectIn
+     * @return array<string, mixed>|null
+     */
+    private function subjectFromHomeValueFields(array $subjectIn): ?array
+    {
+        $address = trim((string) ($subjectIn['address'] ?? ''));
+        if ($address === '') {
+            return null;
+        }
+
+        $result = $this->geocodingService->geocode($address);
+        if ($result === null) {
+            return null;
+        }
+
+        $lotAcres = null;
+        if (isset($subjectIn['lot_size_sqft']) && is_numeric($subjectIn['lot_size_sqft'])) {
+            $lotAcres = (float) $subjectIn['lot_size_sqft'] / 43560.0;
+        }
+
+        // Map property_type to Bridge PropertySubType for filtering
+        $propertySubType = match ($subjectIn['property_type'] ?? '') {
+            'sfr' => 'Single Family Residence',
+            'townhouse' => 'Townhouse',
+            'condo' => 'Condominium',
+            'manufactured' => 'Manufactured Home',
+            default => null,
+        };
+
+        $fullBath = isset($subjectIn['full_bathrooms']) ? (int) $subjectIn['full_bathrooms'] : null;
+        $halfBath = isset($subjectIn['half_bathrooms']) ? (int) $subjectIn['half_bathrooms'] : 0;
+        $totalBath = $fullBath !== null ? (float) $fullBath + ($halfBath * 0.5) : null;
+
+        return [
+            'listing_key' => '',
+            'lat' => $result->lat,
+            'lng' => $result->lng,
+            'bedrooms' => isset($subjectIn['bedrooms']) ? (int) $subjectIn['bedrooms'] : null,
+            'bathrooms' => $totalBath,
+            'living_area' => isset($subjectIn['living_area_sqft']) ? (int) $subjectIn['living_area_sqft'] : null,
+            'lot_acres' => $lotAcres,
+            'year_built' => isset($subjectIn['year_built']) ? (int) $subjectIn['year_built'] : null,
+            'pool' => isset($subjectIn['pool']) ? (bool) $subjectIn['pool'] : null,
+            'hoa' => null,
+            'senior_community' => null,
+            'waterfront' => isset($subjectIn['waterfront']) ? (bool) $subjectIn['waterfront'] : null,
+            'garage_spaces' => isset($subjectIn['garage_spaces']) ? (int) $subjectIn['garage_spaces'] : null,
+            'parking_stalls_total' => isset($subjectIn['garage_spaces']) ? (int) $subjectIn['garage_spaces'] : null,
+            'subdivision_name' => null,
+            'mls_area_major' => null,
+            'view_yn' => null,
+            'monthly_fees' => isset($subjectIn['hoa_monthly_fee']) && is_numeric($subjectIn['hoa_monthly_fee']) ? (float) $subjectIn['hoa_monthly_fee'] : null,
+            'list_price' => null,
+            'property_type' => $propertySubType !== null ? 'Residential' : null,
+            'property_sub_type' => $propertySubType,
+            'flood_zone_codes' => [],
+            'address' => $result->formattedAddress,
+            'condition' => $subjectIn['condition'] ?? null,
+            'renovations' => $this->buildRenovationsArray($subjectIn),
+            'stories' => isset($subjectIn['stories']) ? (int) $subjectIn['stories'] : null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $subjectIn
+     * @return array<string, int|null>
+     */
+    private function buildRenovationsArray(array $subjectIn): array
+    {
+        return [
+            'kitchen_year' => isset($subjectIn['renovated_kitchen_year']) ? (int) $subjectIn['renovated_kitchen_year'] : null,
+            'bathrooms_year' => isset($subjectIn['renovated_bathrooms_year']) ? (int) $subjectIn['renovated_bathrooms_year'] : null,
+            'hvac_year' => isset($subjectIn['renovated_hvac_year']) ? (int) $subjectIn['renovated_hvac_year'] : null,
+        ];
+    }
+
+    /**
+     * Revenue impact: Home Value Estimator is a lead-gen widget that exposes
+     * the BPO engine to off-market homeowners, driving subscription conversions.
+     *
+     * @param  array<string, mixed>  $validated
+     * @param  array<string, mixed>  $subject
+     * @return array<string, mixed>
+     */
+    private function handleHomeValue(Request $request, array $validated, array $subject, string $dataset, bool $fullAccess, float $started): array
+    {
+        $homeValueParams = is_array($validated['home_value_params'] ?? null) ? $validated['home_value_params'] : [];
+        $aggMethod = ($validated['aggregation_method'] ?? 'median') === 'average' ? 'average' : 'median';
+        $subject['_dataset'] = $dataset;
+        $soldMonthsBack = (int) ($homeValueParams['sold_months_back'] ?? 12);
+        $subject['_sold_months_back'] = $soldMonthsBack;
+        $soldSince = CarbonImmutable::now()->subMonths($soldMonthsBack)->format('Y-m-d');
+        $subject['_sold_since'] = $soldSince;
+        $normDistMiles = $this->normalizationDistanceMiles($validated);
+        $maxComps = min(25, max(3, (int) ($homeValueParams['max_comps'] ?? 8)));
+
+        $condition = $subject['condition'] ?? null;
+        $renovations = $subject['renovations'] ?? null;
+
+        // Build filters for home_value with property type constraint
+        $filters = $validated['filters'] ?? [];
+        $soldFilter = $this->buildSoldFilter($subject, $validated, $filters, $soldSince);
+
+        // Add property type constraint if available
+        if ($subject['property_sub_type'] !== null) {
+            $escaped = str_replace("'", "''", $subject['property_sub_type']);
+            $soldFilter .= " and PropertySubType eq '{$escaped}'";
+        }
+
+        // Add stories constraint if provided
+        if (isset($subject['stories']) && $subject['stories'] !== null) {
+            $soldFilter .= ' and StoriesTotal eq '.((int) $subject['stories']);
+        }
+
+        $soldRows = $this->searchClient->search(
+            $dataset,
+            $soldFilter,
+            $this->buildOrderByDistance($subject, $validated),
+            120,
+            0,
+            $this->searchClient->compsPropertySelectList($dataset),
+            '',
+        )['value'];
+
+        $soldRanked = $this->rankAndSlice($soldRows, $subject, $normDistMiles, $maxComps);
+
+        $rates = $this->bpoExtractor->extractRates($soldRanked);
+
+        $gridEntries = [];
+        $adjustedComps = [];
+        foreach ($soldRanked as $i => $row) {
+            $grid = $this->bpoEngine->adjust($subject, $row, $rates, $soldRanked, $condition, $renovations);
+            $close = $this->floatOrNull($row['ClosePrice'] ?? null);
+            $closeDate = null;
+            if (isset($row['CloseDate']) && is_string($row['CloseDate']) && $row['CloseDate'] !== '') {
+                try {
+                    $closeDate = (new \DateTimeImmutable($row['CloseDate']))->format('Y-m-d');
+                } catch (\Throwable) {
+                    $closeDate = null;
+                }
+            }
+
+            $gridEntries[] = [
+                'comp_index' => $i,
+                'listing_id' => Str::afterLast((string) ($row['ListingKey'] ?? ''), ':'),
+                'address' => $this->formatAddress($row),
+                'sale_price' => $close,
+                'sale_date' => $closeDate,
+                'distance_miles' => round($this->distanceMiles($subject, $row), 3),
+                'lines' => $grid['lines'],
+                'net_adjustment' => $grid['net_adjustment'],
+                'gross_adjustment' => $grid['gross_adjustment'],
+                'gross_adjustment_pct' => $grid['gross_adjustment_pct'],
+                'adjusted_price' => $grid['adjusted_price'],
+            ];
+
+            $adjustedComps[] = [
+                'adjusted_price' => $grid['adjusted_price'],
+                'gross_adjustment_pct' => $grid['gross_adjustment_pct'],
+                'comp' => $row,
+            ];
+        }
+
+        $reconciliation = $this->bpoEngine->reconcile($subject, $adjustedComps, $rates);
+
+        $marketConditions = $this->computeMarketConditions($soldRanked, count($soldRows), 0, $soldMonthsBack, $aggMethod);
+
+        $processingMs = (int) round((microtime(true) - $started) * 1000);
+
+        $this->audit->log(
+            $request,
+            'comps.run.home_value',
+            count($soldRanked),
+            $request->attributes->get('bridge.domain_slug'),
+            $request->attributes->get('bridge.token_name'),
+            $request->attributes->get('bridge.user_id'),
+        );
+
+        return [
+            'success' => true,
+            'subject' => $this->mapSubjectResponse($subject),
+            'sold_comps' => [],
+            'competition_comps' => [],
+            'failed_listings' => [],
+            'overpriced_signals' => [],
+            'market_conditions' => $marketConditions,
+            'home_value_result' => [
+                'point_estimate' => $reconciliation['point_estimate'],
+                'range' => $reconciliation['range'],
+                'confidence' => $reconciliation['confidence'],
+                'confidence_band' => $reconciliation['confidence_band'],
+                'reconciliation_summary' => $reconciliation['reconciliation_summary'],
+                'condition' => $condition,
+                'renovation_credits_applied' => $renovations !== null,
+                'market_rates' => [
+                    'gla_per_sf' => round($rates['gla_per_sf'], 2),
+                    'bed_per_room' => round($rates['bed_per_room']),
+                    'bath_per_full' => round($rates['bath_per_full']),
+                    'age_per_year' => round($rates['age_per_year']),
+                    'lot_per_acre' => round($rates['lot_per_acre']),
+                    'garage_per_space' => round($rates['garage_per_space']),
+                    'pool_value' => round($rates['pool_value']),
+                    'waterfront_value' => round($rates['waterfront_value']),
+                    'time_per_month_pct' => round($rates['time_per_month_pct'], 4),
+                    'method' => $rates['method'],
+                    'r_squared' => $rates['r_squared'],
+                    'comp_count' => $rates['comp_count'],
+                    'warnings' => $rates['warnings'],
+                ],
+                'adjustment_grid' => $gridEntries,
+            ],
+            'metadata' => $this->buildMetadata($validated, $fullAccess, count($soldRows), 0, 0, $processingMs, $aggMethod),
+            'warnings' => $rates['warnings'] ?? [],
+        ];
+    }
+
+    /**
+     * Revenue impact: BPO mode is the flagship Mega-tier comp engine feature.
+     * Market-derived adjustments produce appraisal-grade estimates, driving
+     * upgrade conversions from Smart/Pro tiers.
+     *
+     * @param  array<string, mixed>  $validated
+     * @param  array<string, mixed>  $subject
+     * @return array<string, mixed>
+     */
+    private function handleBpo(Request $request, array $validated, array $subject, string $dataset, bool $fullAccess, float $started): array
+    {
+        $bpoParams = is_array($validated['bpo_params'] ?? null) ? $validated['bpo_params'] : [];
+        $aggMethod = ($validated['aggregation_method'] ?? 'median') === 'average' ? 'average' : 'median';
+        $subject['_dataset'] = $dataset;
+        $soldMonthsBack = (int) ($bpoParams['sold_months_back'] ?? 12);
+        $subject['_sold_months_back'] = $soldMonthsBack;
+        $soldSince = CarbonImmutable::now()->subMonths($soldMonthsBack)->format('Y-m-d');
+        $subject['_sold_since'] = $soldSince;
+        $normDistMiles = $this->normalizationDistanceMiles($validated);
+        $maxComps = min(25, max(3, (int) ($bpoParams['max_comps'] ?? 8)));
+
+        $soldFilter = $this->buildSoldFilter($subject, $validated, $validated['filters'] ?? [], $soldSince);
+        $soldRows = $this->searchClient->search(
+            $dataset,
+            $soldFilter,
+            $this->buildOrderByDistance($subject, $validated),
+            120,
+            0,
+            $this->searchClient->compsPropertySelectList($dataset),
+            '',
+        )['value'];
+
+        $soldRanked = $this->rankAndSlice($soldRows, $subject, $normDistMiles, $maxComps);
+
+        $rates = $this->bpoExtractor->extractRates($soldRanked);
+
+        $gridEntries = [];
+        $adjustedComps = [];
+        foreach ($soldRanked as $i => $row) {
+            $grid = $this->bpoEngine->adjust($subject, $row, $rates, $soldRanked);
+            $coords = $this->parseCoordinates($row);
+            $close = $this->floatOrNull($row['ClosePrice'] ?? null);
+            $closeDate = null;
+            if (isset($row['CloseDate']) && is_string($row['CloseDate']) && $row['CloseDate'] !== '') {
+                try {
+                    $closeDate = (new \DateTimeImmutable($row['CloseDate']))->format('Y-m-d');
+                } catch (\Throwable) {
+                    $closeDate = null;
+                }
+            }
+
+            $gridEntries[] = [
+                'comp_index' => $i,
+                'listing_id' => Str::afterLast((string) ($row['ListingKey'] ?? ''), ':'),
+                'address' => $this->formatAddress($row),
+                'sale_price' => $close,
+                'sale_date' => $closeDate,
+                'distance_miles' => round($this->distanceMiles($subject, $row), 3),
+                'lines' => $grid['lines'],
+                'net_adjustment' => $grid['net_adjustment'],
+                'gross_adjustment' => $grid['gross_adjustment'],
+                'gross_adjustment_pct' => $grid['gross_adjustment_pct'],
+                'adjusted_price' => $grid['adjusted_price'],
+            ];
+
+            $adjustedComps[] = [
+                'adjusted_price' => $grid['adjusted_price'],
+                'gross_adjustment_pct' => $grid['gross_adjustment_pct'],
+                'comp' => $row,
+            ];
+        }
+
+        $reconciliation = $this->bpoEngine->reconcile($subject, $adjustedComps, $rates);
+
+        $marketConditions = $this->computeMarketConditions($soldRanked, count($soldRows), 0, $soldMonthsBack, $aggMethod);
+
+        $processingMs = (int) round((microtime(true) - $started) * 1000);
+
+        $this->audit->log(
+            $request,
+            'comps.run.bpo',
+            count($soldRanked),
+            $request->attributes->get('bridge.domain_slug'),
+            $request->attributes->get('bridge.token_name'),
+            $request->attributes->get('bridge.user_id'),
+        );
+
+        return [
+            'success' => true,
+            'subject' => $this->mapSubjectResponse($subject),
+            'sold_comps' => [],
+            'competition_comps' => [],
+            'failed_listings' => [],
+            'overpriced_signals' => [],
+            'market_conditions' => $marketConditions,
+            'bpo_result' => [
+                'point_estimate' => $reconciliation['point_estimate'],
+                'range' => $reconciliation['range'],
+                'confidence' => $reconciliation['confidence'],
+                'confidence_band' => $reconciliation['confidence_band'],
+                'reconciliation_summary' => $reconciliation['reconciliation_summary'],
+                'market_rates' => [
+                    'gla_per_sf' => round($rates['gla_per_sf'], 2),
+                    'bed_per_room' => round($rates['bed_per_room']),
+                    'bath_per_full' => round($rates['bath_per_full']),
+                    'age_per_year' => round($rates['age_per_year']),
+                    'lot_per_acre' => round($rates['lot_per_acre']),
+                    'garage_per_space' => round($rates['garage_per_space']),
+                    'pool_value' => round($rates['pool_value']),
+                    'waterfront_value' => round($rates['waterfront_value']),
+                    'time_per_month_pct' => round($rates['time_per_month_pct'], 4),
+                    'method' => $rates['method'],
+                    'r_squared' => $rates['r_squared'],
+                    'comp_count' => $rates['comp_count'],
+                    'warnings' => $rates['warnings'],
+                ],
+                'adjustment_grid' => $gridEntries,
+            ],
+            'metadata' => $this->buildMetadata($validated, $fullAccess, count($soldRows), 0, 0, $processingMs, $aggMethod),
+            'warnings' => $rates['warnings'] ?? [],
+        ];
     }
 }

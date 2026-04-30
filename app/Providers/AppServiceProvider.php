@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\Geocoding\GoogleGeocodingService;
 use App\Support\DestructiveDatabaseCommandGuard;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Http\Middleware\HandleCors;
@@ -18,7 +19,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(GoogleGeocodingService::class, function (): GoogleGeocodingService {
+            return new GoogleGeocodingService(
+                apiKey: (string) config('geocoding.google_api_key'),
+                cacheTtl: (int) config('geocoding.cache_ttl_seconds'),
+                timeout: (int) config('geocoding.timeout_seconds'),
+            );
+        });
     }
 
     /**

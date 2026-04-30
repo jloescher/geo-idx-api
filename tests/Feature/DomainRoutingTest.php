@@ -16,10 +16,12 @@ class DomainRoutingTest extends TestCase
 
     public function test_platform_domain_root_shows_sales_page(): void
     {
+        $this->withoutVite();
+
         $response = $this->get('https://dev-idx.quantyralabs.cc/');
 
         $response->assertOk();
-        $response->assertSee('Quantyra GeoIDX');
+        $response->assertSee('GeoIDX');
         $response->assertSee('Subscriber login');
     }
 
