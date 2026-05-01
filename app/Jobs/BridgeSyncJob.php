@@ -4,10 +4,7 @@ namespace App\Jobs;
 
 use App\Services\Bridge\BridgeSyncService;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
 
 /**
  * Revenue impact: 15‑minute ingestion keeps Postgres mirror monetization-ready without exceeding
@@ -15,10 +12,7 @@ use Illuminate\Queue\SerializesModels;
  */
 class BridgeSyncJob implements ShouldQueue
 {
-    use Dispatchable;
-    use InteractsWithQueue;
     use Queueable;
-    use SerializesModels;
 
     public int $timeout = 600;
 

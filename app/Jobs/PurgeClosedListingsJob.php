@@ -4,10 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Listing;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
 
 /**
  * Revenue impact: evicting Closed + stale Closed rows trims storage footprint and keeps teaser
@@ -17,10 +14,7 @@ use Illuminate\Queue\SerializesModels;
  */
 class PurgeClosedListingsJob implements ShouldQueue
 {
-    use Dispatchable;
-    use InteractsWithQueue;
     use Queueable;
-    use SerializesModels;
 
     public function handle(): void
     {
