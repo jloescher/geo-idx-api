@@ -76,4 +76,21 @@ return [
         explode(',', (string) env('BRIDGE_IMAGE_REWRITE_HOSTS', ''))
     ))),
 
+    /*
+     * Revenue impact: honoring Bridge $top limits (200 standard / 2000 replication) prevents
+     * API suspension; bounded pages per job avoids tight retry loops under rate limits.
+     */
+    'sync_replication_top' => min(2000, max(1, (int) env('BRIDGE_SYNC_REPLICATION_TOP', 2000))),
+    'sync_incremental_top' => min(200, max(1, (int) env('BRIDGE_SYNC_INCREMENTAL_TOP', 200))),
+    'sync_max_replication_pages_per_job' => max(1, (int) env('BRIDGE_SYNC_MAX_REPLICATION_PAGES', 12)),
+    'sync_max_incremental_pages_per_job' => max(1, (int) env('BRIDGE_SYNC_MAX_INCREMENTAL_PAGES', 40)),
+    'sync_max_http_retries' => max(0, (int) env('BRIDGE_SYNC_MAX_HTTP_RETRIES', 4)),
+
+    /*
+     * Rolling mirror window — rows older than this (by MLS ModificationTimestamp) are purged
+     * nightly; PostGIS searches also constrain to this window for parity with mirror scope.
+     */
+    'local_mirror_rolling_months' => min(36, max(1, (int) env('BRIDGE_LOCAL_MIRROR_ROLLING_MONTHS', 12))),
+
+    'sync_upsert_chunk_size' => min(500, max(25, (int) env('BRIDGE_SYNC_UPSERT_CHUNK', 250))),
 ];

@@ -9,6 +9,25 @@ use Illuminate\Support\Facades\Http;
 class BridgeHttpService
 {
     /**
+     * Revenue impact: server-driven replication/sync must not depend on an inbound web request;
+     * Bearer token stays server-side per Stellar MLS IDX / MLS GRID Rule 11 server-to-server posture.
+     *
+     * @param  array<string, scalar|list<string>>  $query
+     */
+    public function serverJsonGet(string $fullUrl, array $query = []): Response
+    {
+        $token = config('bridge.server_token');
+        if (! is_string($token) || $token === '') {
+            abort(503, 'Bridge server token is not configured.');
+        }
+
+        return Http::timeout((int) config('bridge.timeout_seconds'))
+            ->withToken($token)
+            ->acceptJson()
+            ->get($fullUrl, $query);
+    }
+
+    /**
      * Revenue impact: a single HTTP wrapper keeps Bridge credentials off edge devices
      * and centralizes timeouts so slow MLS responses do not tie up checkout flows.
      */

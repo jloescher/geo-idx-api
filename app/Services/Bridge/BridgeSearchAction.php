@@ -22,6 +22,7 @@ final readonly class BridgeSearchAction
         private BridgeSearchClient $searchClient,
         private BridgeSearchTranslator $searchTranslator,
         private MlsDatasetResolver $resolver,
+        private HybridSearchService $hybridSearch,
     ) {}
 
     public function __invoke(SearchRequest $request): JsonResponse
@@ -42,26 +43,10 @@ final readonly class BridgeSearchAction
             $bridgeResult = $this->listingsCache->rememberSearchResult(
                 $partitionKey,
                 $fingerprint,
-                fn (): array => $this->searchClient->search(
-                    dataset: $dataset,
-                    filter: $translated['filter'],
-                    orderby: $translated['orderby'],
-                    top: $bridgeTop,
-                    skip: $translated['skip'],
-                    select: $translated['select'],
-                    unselect: $translated['unselect'],
-                ),
+                fn (): array => $this->hybridSearch->fetchSearchResultPayload($request, $dataset, $translated),
             );
         } else {
-            $bridgeResult = $this->searchClient->search(
-                dataset: $dataset,
-                filter: $translated['filter'],
-                orderby: $translated['orderby'],
-                top: $bridgeTop,
-                skip: $translated['skip'],
-                select: $translated['select'],
-                unselect: $translated['unselect'],
-            );
+            $bridgeResult = $this->hybridSearch->fetchSearchResultPayload($request, $dataset, $translated);
         }
 
         $results = array_map(

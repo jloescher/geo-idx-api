@@ -8,6 +8,10 @@ use App\Services\AgentPortal\Contracts\LookupProviderInterface;
 use App\Services\AgentPortal\Contracts\MultiMlsQueryCompilerInterface;
 use App\Services\AgentPortal\Contracts\SearchExecutionBrokerInterface;
 use App\Services\AgentPortal\DefaultMultiMlsQueryCompiler;
+use App\Services\Bridge\BridgeSyncService;
+use App\Services\Bridge\HybridReplicaSearchDecision;
+use App\Services\Bridge\HybridSearchService;
+use App\Services\Bridge\PostgisSearchService;
 use App\Services\Geocoding\GoogleGeocodingService;
 use App\Support\DestructiveDatabaseCommandGuard;
 use Illuminate\Console\Events\CommandStarting;
@@ -36,6 +40,15 @@ class AppServiceProvider extends ServiceProvider
                 timeout: (int) config('geocoding.timeout_seconds'),
             );
         });
+
+        /*
+         * Octane: stateless collaborators; singletons amortize translator wiring and reuse the
+         * same hydrated service graphs without request-scoped mutation.
+         */
+        $this->app->singleton(BridgeSyncService::class);
+        $this->app->singleton(PostgisSearchService::class);
+        $this->app->singleton(HybridReplicaSearchDecision::class);
+        $this->app->singleton(HybridSearchService::class);
     }
 
     /**

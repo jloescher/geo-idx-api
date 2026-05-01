@@ -1,5 +1,7 @@
 <?php
 
+use App\Jobs\BridgeSyncJob;
+use App\Jobs\PurgeClosedListingsJob;
 use App\Jobs\RefreshCryptoPricingJob;
 use App\Jobs\RefreshDomainListingsCacheJob;
 use App\Jobs\RefreshGisSourceMetadataJob;
@@ -23,6 +25,14 @@ Schedule::call(function (): void {
         RefreshDomainListingsCacheJob::dispatch($slug);
     });
 })->everyFifteenMinutes()->name('bridge-listings-cache-refresh')->withoutOverlapping();
+
+Schedule::call(function (): void {
+    BridgeSyncJob::dispatch();
+})->everyFifteenMinutes()->name('bridge-listings-replica-sync')->withoutOverlapping();
+
+Schedule::call(function (): void {
+    PurgeClosedListingsJob::dispatch();
+})->dailyAt('03:05')->name('bridge-listings-purge-closed')->withoutOverlapping();
 
 Schedule::call(function (): void {
     RefreshGisSourceMetadataJob::dispatch()->onQueue((string) config('gis.queue'));
