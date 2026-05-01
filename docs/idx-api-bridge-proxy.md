@@ -15,6 +15,7 @@ This document describes the **Quantyra idx-api** integration that proxies [Bridg
 | Single MLS egress | All Bridge calls go through Laravel `Http` using `BRIDGE_API_KEY` (server-side only). |
 | Multi-dataset MLS control | Requests identify an **active** row in `domains` (via header, **`?domain=`** query, or `Referer` host) **or** present a valid **Sanctum personal access token** with IDX abilities. Dataset access is validated against `domains.allowed_mls_datasets` (defaults to `domains.mls_dataset`). |
 | Cost & latency control | Domain-scoped **`GET /api/v1/listings`** and **`POST /api/v1/search`** responses are cached in PostgreSQL (`listings_cache`, `bridge_search_cache`) for **15 minutes** (configurable), gzip-compressed — **skipped** when **`filters`** is present for collection endpoints so filtered feeds are never wrong. Search requests cache full payloads before teaser gating. |
+| Hybrid map performance | Eligible `POST /api/v1/search` requests are served from a PostGIS replica (`listings`) for sub-50ms pan/zoom and radius workloads; non-eligible requests transparently fall back to live Bridge data. |
 | Pricing enrichment | Listing responses include top-level `pricing` quotes and per-listing `pricing_converted` data sourced from local cache/DB snapshots refreshed asynchronously by queue job. |
 | Lead / revenue gating | Non–`idx:full` clients receive **teaser** JSON (first list slice capped at **3** items for listings, **40** features for GIS) where applicable. Teaser is applied **after** cache retrieval. |
 | Auditability | Every proxied JSON request and image hit writes a row to **`bridge_proxy_audit_logs`**. |
@@ -171,6 +172,7 @@ Built from `BRIDGE_HOST`, optional `BRIDGE_PATH_PREFIX`, `BRIDGE_DATASET`, and o
 | GET | `/api/v1/reso-openhouses/{openHouseKey}` | `OpenHouse` by key | |
 | GET | `/api/v1/lookup` | `Lookup` collection | 30-day gzip cache per dataset + query fingerprint; clear with `php artisan bridge:clear-lookups-cache`. |
 | POST | `/api/v1/search` | Structured search | Accepts `SearchRequest` JSON; translates to Bridge RESO OData with multi-dataset support, returns paginated results with stats. See [Search endpoint](#search-endpoint-post-apiv1search). |
+| GET | `/api/v1/bridge/stats` | Replica stats | Returns per-dataset replica row counts and last sync timestamps from `listing_sync_cursors`. |
 | POST | `/api/v1/comps/run` | Bridge comps + investor analysis | Supports modes `A`–`E`, `rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`; investor modes require `idx:full`. See [Comps API](comps-api.md). |
 
 #### Public & ancillary paths (doc-style paths on `BRIDGE_HOST`)
@@ -336,6 +338,8 @@ curl -H "X-Domain-Slug: example.com" \
 |-----------|--------|
 | **Listings DB cache** | **Only** `GET /api/v1/listings` when the caller authenticated as a **domain** (not token-only), and the request does **not** include a **`filters`** query (filtered queries always hit Bridge). TTL **`LISTINGS_CACHE_TTL`** seconds (default **900** = 15 minutes). |
 | **Search cache** | `POST /api/v1/search` results cached by fingerprint (dataset + normalized search params) per domain/token. Also caches `GET/POST /api/v1/properties` when no `?filters=` present. TTL **`LISTINGS_CACHE_TTL`** (default **900** = 15 minutes). |
+| **Replica sync** | `BridgeSyncJob` runs every 15 minutes and hydrates `listings` + `listing_sync_cursors` via Bridge replication/incremental feeds. Mirror scope is **Active + Pending** only; Closed/other statuses are purged from replica rows. |
+| **Replica purge** | `PurgeClosedListingsJob` runs daily and deletes Closed rows and rows older than the rolling mirror window (`BRIDGE_LOCAL_MIRROR_ROLLING_MONTHS`, default 12). |
 | **Lookups cache** | `GET /api/v1/lookup` responses cached by dataset + query fingerprint (`lookups:{dataset}`). TTL **`BRIDGE_LOOKUPS_CACHE_TTL`** (default **2,592,000** = 30 days). Clear with `php artisan bridge:clear-lookups-cache [--all|--dataset=stellar]`. |
 | **Image edge cache** | `/images/*` responses are streamed from Bridge with immutable cache headers so Cloudflare/browser edges cache aggressively. |
 | **Scheduled refresh** | `routes/console.php` schedules a callback every **15 minutes** that dispatches **`RefreshDomainListingsCacheJob`** once per **active** domain (database queue). Requires a **queue worker** in each environment where refreshes must run. |
@@ -358,6 +362,13 @@ Set in **`idx-api/.env`** and/or root **`.env`** for Docker Compose. See also [G
 | `BRIDGE_TIMEOUT` | No | HTTP timeout seconds. |
 | `LISTINGS_CACHE_TTL` | No | Seconds (default **900**). |
 | `BRIDGE_LOOKUPS_CACHE_TTL` | No | Lookup cache TTL in seconds (default **2,592,000** = 30 days). |
+| `BRIDGE_SYNC_REPLICATION_TOP` | No | Replication `$top` page size (max 2000; default 2000). Must be an integer, not a URL. |
+| `BRIDGE_SYNC_INCREMENTAL_TOP` | No | Incremental `Property` `$top` page size (max 200; default 200). Must be an integer, not a URL. |
+| `BRIDGE_SYNC_MAX_REPLICATION_PAGES` | No | Max replication pages processed per job run (default 12). |
+| `BRIDGE_SYNC_MAX_INCREMENTAL_PAGES` | No | Max incremental pages processed per job run (default 40). |
+| `BRIDGE_SYNC_MAX_HTTP_RETRIES` | No | Max retry attempts for sync HTTP 429/503 handling (default 4). |
+| `BRIDGE_LOCAL_MIRROR_ROLLING_MONTHS` | No | Rolling replica retention window in months (default 12). |
+| `BRIDGE_SYNC_UPSERT_CHUNK` | No | Upsert chunk size for batched Postgres writes (25-500, default 250). |
 | `IDX_IMAGES_PUBLIC_URL` | No | Public hostname for marketing / headers (default `https://idx-images.quantyralabs.cc`). Used for both image URL rewriting and environment normalization. |
 | `IDX_API_INTERNAL_TOKEN` | Ops / geo-web | Plaintext PAT for server-to-server calls; **issue via Artisan** (below). Not read automatically by idx-api logic—store where geo-web or scripts need it. |
 | `COINGECKO_API_KEY` | Recommended | CoinGecko API key used by scheduled pricing refresh job. |
