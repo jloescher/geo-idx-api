@@ -10,7 +10,11 @@ const hmrClientPort = Number(process.env.VITE_HMR_CLIENT_PORT ?? 443);
 export default defineConfig({
     plugins: [
         laravel({
-            input: ['resources/css/app.css', 'resources/js/app.js'],
+            input: [
+                'resources/css/app.css',
+                'resources/css/filament-dashboard.css',
+                'resources/js/app.js',
+            ],
             refresh: true,
         }),
         tailwindcss(),

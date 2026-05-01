@@ -37,3 +37,13 @@ Schedule::command('leads:send-alerts')
     ->everyFifteenMinutes()
     ->name('leads-alert-digests')
     ->withoutOverlapping();
+
+Schedule::command(sprintf('agent:prune-share-links --days=%d', (int) config('agent_portal.share_links.prune_days', 90)))
+    ->dailyAt('03:30')
+    ->name('agent-share-links-prune')
+    ->withoutOverlapping();
+
+Schedule::command('agent:process-due-alerts')
+    ->everyFifteenMinutes()
+    ->name('agent-process-due-alerts')
+    ->withoutOverlapping();

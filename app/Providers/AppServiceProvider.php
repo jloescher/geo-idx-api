@@ -2,6 +2,12 @@
 
 namespace App\Providers;
 
+use App\Services\AgentPortal\BridgeLookupProvider;
+use App\Services\AgentPortal\BridgeSearchExecutionBroker;
+use App\Services\AgentPortal\Contracts\LookupProviderInterface;
+use App\Services\AgentPortal\Contracts\MultiMlsQueryCompilerInterface;
+use App\Services\AgentPortal\Contracts\SearchExecutionBrokerInterface;
+use App\Services\AgentPortal\DefaultMultiMlsQueryCompiler;
 use App\Services\Geocoding\GoogleGeocodingService;
 use App\Support\DestructiveDatabaseCommandGuard;
 use Illuminate\Console\Events\CommandStarting;
@@ -19,6 +25,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(LookupProviderInterface::class, BridgeLookupProvider::class);
+        $this->app->bind(MultiMlsQueryCompilerInterface::class, DefaultMultiMlsQueryCompiler::class);
+        $this->app->bind(SearchExecutionBrokerInterface::class, BridgeSearchExecutionBroker::class);
+
         $this->app->singleton(GoogleGeocodingService::class, function (): GoogleGeocodingService {
             return new GoogleGeocodingService(
                 apiKey: (string) config('geocoding.google_api_key'),
@@ -46,6 +56,10 @@ class AppServiceProvider extends ServiceProvider
             }
 
             DestructiveDatabaseCommandGuard::assertNotRefused($event->command);
+        });
+
+        Gate::define('viewAgentPortal', function ($user = null): bool {
+            return $user !== null;
         });
 
         Gate::define('viewPulse', function ($user = null): bool {

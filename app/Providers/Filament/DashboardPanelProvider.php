@@ -27,6 +27,7 @@ class DashboardPanelProvider extends PanelProvider
             ->default()
             ->id('dashboard')
             ->path('filament-dashboard')
+            ->viteTheme('resources/css/filament-dashboard.css')
             ->login()
             ->colors([
                 'primary' => Color::Cyan,
@@ -41,6 +42,7 @@ class DashboardPanelProvider extends PanelProvider
                 SubscriberDashboard::class,
             ])
             ->navigationGroups([
+                NavigationGroup::make('Agent Portal'),
                 NavigationGroup::make('Subscriber Dashboard'),
             ])
             ->navigationItems([

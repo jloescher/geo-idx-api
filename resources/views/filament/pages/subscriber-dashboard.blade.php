@@ -16,6 +16,16 @@
             <div class="rounded-xl border border-emerald-400/30 bg-emerald-900/20 px-4 py-3 text-sm text-emerald-100">{{ session('dashboard_status') }}</div>
         @endif
 
+        @if ($activePanel === 'dashboard')
+            <div class="rounded-xl border border-cyan-500/25 bg-cyan-950/30 px-4 py-3 text-sm text-cyan-50">
+                <span class="font-semibold text-cyan-100">Agent portal</span>
+                <span class="text-cyan-200/90"> — saved searches, alerts, marketing tools, and MLS scope (new).</span>
+                <a href="/filament-dashboard/agent-portal-overview" class="ml-2 inline-flex font-medium text-white underline decoration-cyan-300/80 underline-offset-2 hover:text-cyan-100">
+                    Open overview
+                </a>
+            </div>
+        @endif
+
         @include('dashboard.items.dashboard-home')
         @include('dashboard.items.onboarding')
         @include('dashboard.items.widgets')

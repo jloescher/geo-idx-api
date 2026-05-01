@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Http\Controllers\DashboardController;
 use Filament\Pages\Page;
+use Filament\Support\Enums\Width;
 use Illuminate\Contracts\View\View;
 
 class SubscriberDashboard extends Page
@@ -16,7 +17,11 @@ class SubscriberDashboard extends Page
 
     protected static ?string $slug = '/';
 
+    protected static bool $isDiscovered = false;
+
     protected static bool $shouldRegisterNavigation = false;
+
+    protected Width|string|null $maxContentWidth = Width::Full;
 
     public function render(): View
     {

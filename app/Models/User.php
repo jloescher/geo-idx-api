@@ -4,6 +4,8 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Panel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -30,7 +32,7 @@ use RuntimeException;
     'mls_membership_last_error',
 ])]
 #[Hidden(['password', 'remember_token', 'widget_embed_site_key'])]
-class User extends Authenticatable
+class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<UserFactory> */
     use Billable, HasApiTokens, HasFactory, Notifiable;
@@ -68,8 +70,37 @@ class User extends Authenticatable
     }
 
     /**
+     * @return HasMany<SubscriberFeedAccess, $this>
+     */
+    public function subscriberFeedAccessRows(): HasMany
+    {
+        return $this->hasMany(SubscriberFeedAccess::class);
+    }
+
+    /**
+     * @return HasMany<AgentSearch, $this>
+     */
+    public function agentSearches(): HasMany
+    {
+        return $this->hasMany(AgentSearch::class);
+    }
+
+    /**
+     * @return HasMany<AgentAlert, $this>
+     */
+    public function agentAlerts(): HasMany
+    {
+        return $this->hasMany(AgentAlert::class);
+    }
+
+    /**
      * @return list<string>
      */
+    public function canAccessPanel(Panel $panel): bool
+    {
+        return $panel->getId() === 'dashboard';
+    }
+
     public function assignedDatasets(): array
     {
         $datasets = $this->assigned_mls_datasets;
