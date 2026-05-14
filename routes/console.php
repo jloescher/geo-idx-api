@@ -14,7 +14,6 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command('ghl:refresh-tokens')->hourly()->withoutOverlapping();
 Schedule::call(function (): void {
     RefreshCryptoPricingJob::dispatch()
         ->onQueue((string) config('coingecko.queue'));
@@ -37,23 +36,3 @@ Schedule::call(function (): void {
 Schedule::call(function (): void {
     RefreshGisSourceMetadataJob::dispatch()->onQueue((string) config('gis.queue'));
 })->weeklyOn(1, '6:30')->name('gis-source-metadata-probe')->withoutOverlapping();
-
-Schedule::command('mls:reverify-memberships')
-    ->monthlyOn(1, '03:00')
-    ->name('mls-membership-reverify')
-    ->withoutOverlapping();
-
-Schedule::command('leads:send-alerts')
-    ->everyFifteenMinutes()
-    ->name('leads-alert-digests')
-    ->withoutOverlapping();
-
-Schedule::command(sprintf('agent:prune-share-links --days=%d', (int) config('agent_portal.share_links.prune_days', 90)))
-    ->dailyAt('03:30')
-    ->name('agent-share-links-prune')
-    ->withoutOverlapping();
-
-Schedule::command('agent:process-due-alerts')
-    ->everyFifteenMinutes()
-    ->name('agent-process-due-alerts')
-    ->withoutOverlapping();

@@ -180,10 +180,10 @@ class GisProxyTest extends TestCase
         ]);
 
         $response->assertOk();
-        $response->assertJsonPath('meta.teaser', true);
+        $response->assertJsonPath('meta.teaser', false);
         $props = $response->json('features.0.properties');
         $this->assertIsArray($props);
-        $this->assertArrayNotHasKey('OWNER1', $props);
+        $this->assertArrayHasKey('OWNER1', $props);
         $this->assertArrayHasKey('PARCELID', $props);
     }
 

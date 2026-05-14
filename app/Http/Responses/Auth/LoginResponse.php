@@ -9,12 +9,6 @@ class LoginResponse implements LoginResponseContract
 {
     public function toResponse($request): RedirectResponse
     {
-        $user = $request->user();
-
-        if ($user?->subscribed('default')) {
-            return redirect()->intended('/dashboard');
-        }
-
-        return redirect()->intended('/#pricing');
+        return redirect()->intended('/dashboard');
     }
 }

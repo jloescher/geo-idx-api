@@ -6,18 +6,11 @@ Use these workflows for local development setup, production deployment, and main
 ## Local Development Workflow
 
 ```bash
-# Local uses SQLite by default; ensure migrations exist
 php artisan migrate
-
-# Run GHL-specific migrations (loaded via AppServiceProvider)
-php artisan migrate --path=database/migrations/ghl
-
-# Seed GHL configuration data
-php artisan db:seed --class=GhlConfigSeeder
 ```
 
-**Test Safety Guard**
-Tests enforce ephemeral databases. `TestCase::setUp()` blocks against accidental PostgreSQL truncation unless `ALLOW_DESTRUCTIVE_TEST_DB=true`.
+**Test safety guard**
+PHPUnit targets a dedicated database name (see `phpunit.xml`). `TestCase::setUp()` blocks other database names unless `ALLOW_DESTRUCTIVE_TEST_DB=true`.
 
 ## Production Setup Workflow
 

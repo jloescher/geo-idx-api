@@ -52,18 +52,6 @@ composer test
 vendor/bin/pint
 ```
 
-## ⚠️ Pitfall: Database Safety in Tests
+## Pitfall: database safety in tests
 
-Tests enforce ephemeral databases. Never run tests against PostgreSQL production databases.
-
-```php
-// tests/TestCase.php guards against this
-protected function setUp(): void
-{
-    parent::setUp();
-    
-    // Throws if not SQLite :memory: or explicitly allowed
-    if (DB::getDriverName() !== 'sqlite' && !env('ALLOW_DESTRUCTIVE_TEST_DB')) {
-        throw new \RuntimeException('Tests require SQLite :memory: database');
-    }
-}
+PHPUnit forces a dedicated PostgreSQL database (see `phpunit.xml`, default `idx_api_testing`). `tests/TestCase.php` refuses other `DB_DATABASE` values when `APP_ENV=testing`, unless `ALLOW_DESTRUCTIVE_TEST_DB=true`. Never point tests at shared staging or production.

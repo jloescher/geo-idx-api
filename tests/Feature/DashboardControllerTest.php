@@ -13,7 +13,7 @@ class DashboardControllerTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_dashboard_controller_returns_expected_view_data_without_subscription(): void
+    public function test_dashboard_controller_returns_expected_view_data(): void
     {
         $user = User::factory()->createOne();
         $request = Request::create('/dashboard', 'GET');
@@ -23,14 +23,10 @@ class DashboardControllerTest extends TestCase
 
         $this->assertInstanceOf(View::class, $response);
         $this->assertSame('dashboard.index', $response->name());
-        $this->assertFalse($response->getData()['hasApiAccess']);
-        $this->assertFalse($response->getData()['hasWidgetAccess']);
-        $this->assertNull($response->getData()['subscription']);
-        $this->assertSame(0, $response->getData()['apiOverageCount']);
+        $this->assertTrue($response->getData()['hasApiAccess']);
         $this->assertIsIterable($response->getData()['apiTokens']);
-        $this->assertFalse($response->getData()['leadsMetricAvailable']);
-        $this->assertNull($response->getData()['leadsThisMonth']);
         $this->assertFalse($response->getData()['canPurchaseExtraDomainSlots']);
-        $this->assertIsArray($response->getData()['widgetPaletteForm']);
+        $this->assertSame(0, $response->getData()['verifiedDomainCount']);
+        $this->assertIsArray($response->getData()['mlsCatalogFeedCodes']);
     }
 }

@@ -76,11 +76,10 @@ class BridgeProxySecurityTest extends TestCase
         ]);
 
         $user = User::factory()->create();
+        $this->createVerifiedDomainForUser($user);
         $plain = $user->createToken('integration', ['idx:access'])->plainTextToken;
 
-        $response = $this->getJson('/api/v1/listings', [
-            'Authorization' => 'Bearer '.$plain,
-        ]);
+        $response = $this->getJson('/api/v1/listings', $this->tokenHeadersForDomain($plain));
 
         $response->assertOk();
         $this->assertCount(10, $response->json('value'));
@@ -193,10 +192,8 @@ class BridgeProxySecurityTest extends TestCase
 
     public function test_listings_full_for_idx_full_token(): void
     {
-        Domain::query()->create([
-            'domain_slug' => 'searchtampabayhouses.com',
-            'is_active' => true,
-        ]);
+        $user = User::factory()->create();
+        $this->createVerifiedDomainForUser($user);
 
         Http::fake([
             'https://bridge.test/stellar/listings*' => Http::response(
@@ -206,12 +203,9 @@ class BridgeProxySecurityTest extends TestCase
             ),
         ]);
 
-        $user = User::factory()->create();
         $plain = $user->createToken('integration', ['idx:full'])->plainTextToken;
 
-        $response = $this->getJson('/api/v1/listings', [
-            'Authorization' => 'Bearer '.$plain,
-        ]);
+        $response = $this->getJson('/api/v1/listings', $this->tokenHeadersForDomain($plain));
 
         $response->assertOk();
         $payload = $response->json();
@@ -220,11 +214,6 @@ class BridgeProxySecurityTest extends TestCase
 
     public function test_listings_include_global_pricing_and_per_listing_conversions(): void
     {
-        Domain::query()->create([
-            'domain_slug' => 'searchtampabayhouses.com',
-            'is_active' => true,
-        ]);
-
         Cache::put('coingecko.pricing.matrix', [
             'quotes' => [
                 'btc' => ['usd' => 100000.0, 'cad' => 136000.0, 'eur' => 92000.0, 'gbp' => 78000.0, 'mxn' => 1700000.0],
@@ -246,11 +235,10 @@ class BridgeProxySecurityTest extends TestCase
         ]);
 
         $user = User::factory()->create();
+        $this->createVerifiedDomainForUser($user);
         $plain = $user->createToken('integration', ['idx:full'])->plainTextToken;
 
-        $response = $this->getJson('/api/v1/listings', [
-            'Authorization' => 'Bearer '.$plain,
-        ]);
+        $response = $this->getJson('/api/v1/listings', $this->tokenHeadersForDomain($plain));
 
         $response->assertOk();
         $payload = $response->json();
@@ -261,11 +249,6 @@ class BridgeProxySecurityTest extends TestCase
 
     public function test_listings_pricing_enrichment_uses_cached_quotes_without_coingecko_http_calls(): void
     {
-        Domain::query()->create([
-            'domain_slug' => 'searchtampabayhouses.com',
-            'is_active' => true,
-        ]);
-
         Cache::put('coingecko.pricing.matrix', [
             'quotes' => [
                 'btc' => ['usd' => 100000.0, 'cad' => 136000.0, 'eur' => 92000.0, 'gbp' => 78000.0, 'mxn' => 1700000.0],
@@ -284,11 +267,10 @@ class BridgeProxySecurityTest extends TestCase
         ]);
 
         $user = User::factory()->create();
+        $this->createVerifiedDomainForUser($user);
         $plain = $user->createToken('integration', ['idx:full'])->plainTextToken;
 
-        $this->getJson('/api/v1/listings', [
-            'Authorization' => 'Bearer '.$plain,
-        ])->assertOk();
+        $this->getJson('/api/v1/listings', $this->tokenHeadersForDomain($plain))->assertOk();
 
         Http::assertSentCount(1);
     }
@@ -304,11 +286,10 @@ class BridgeProxySecurityTest extends TestCase
         ]);
 
         $user = User::factory()->create();
+        $this->createVerifiedDomainForUser($user);
         $plain = $user->createToken('integration', ['idx:full'])->plainTextToken;
 
-        $this->getJson('/api/v1/properties?city=largo&limit=10', [
-            'Authorization' => 'Bearer '.$plain,
-        ])->assertOk();
+        $this->getJson('/api/v1/properties?city=largo&limit=10', $this->tokenHeadersForDomain($plain))->assertOk();
 
         Http::assertSent(function (Request $request): bool {
             $query = $request->data();
@@ -334,14 +315,13 @@ class BridgeProxySecurityTest extends TestCase
         ]);
 
         $user = User::factory()->create();
+        $this->createVerifiedDomainForUser($user);
         $plain = $user->createToken('integration', ['idx:full'])->plainTextToken;
 
         $this->postJson('/api/v1/properties', [
             'city' => 'largo',
             'limit' => 10,
-        ], [
-            'Authorization' => 'Bearer '.$plain,
-        ])->assertOk();
+        ], $this->tokenHeadersForDomain($plain))->assertOk();
 
         Http::assertSent(function (Request $request): bool {
             $query = $request->data();
@@ -369,11 +349,10 @@ class BridgeProxySecurityTest extends TestCase
         ]);
 
         $user = User::factory()->create();
+        $this->createVerifiedDomainForUser($user);
         $plain = $user->createToken('integration', ['idx:full'])->plainTextToken;
 
-        $response = $this->getJson('/api/v1/properties?city=largo&limit=10', [
-            'Authorization' => 'Bearer '.$plain,
-        ])->assertOk();
+        $response = $this->getJson('/api/v1/properties?city=largo&limit=10', $this->tokenHeadersForDomain($plain))->assertOk();
 
         $payload = $response->json();
         $nextLink = $payload['@odata.nextLink'] ?? null;
@@ -389,9 +368,7 @@ class BridgeProxySecurityTest extends TestCase
             ),
         ]);
 
-        $this->getJson('/api/v1/properties?cursor=TOKEN123', [
-            'Authorization' => 'Bearer '.$plain,
-        ])->assertOk();
+        $this->getJson('/api/v1/properties?cursor=TOKEN123', $this->tokenHeadersForDomain($plain))->assertOk();
 
         Http::assertSent(function (Request $request): bool {
             $query = $request->data();
@@ -401,5 +378,28 @@ class BridgeProxySecurityTest extends TestCase
                 && $query['$next'] === 'TOKEN123'
                 && ! isset($query['cursor']);
         });
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function tokenHeadersForDomain(string $plainToken, string $slug = 'searchtampabayhouses.com'): array
+    {
+        return [
+            'Authorization' => 'Bearer '.$plainToken,
+            'X-Domain-Slug' => $slug,
+        ];
+    }
+
+    private function createVerifiedDomainForUser(User $user, string $slug = 'searchtampabayhouses.com'): void
+    {
+        Domain::query()->create([
+            'user_id' => $user->id,
+            'domain_slug' => $slug,
+            'is_active' => true,
+            'verification_status' => 'verified',
+            'mls_dataset' => 'stellar',
+            'allowed_mls_datasets' => ['stellar'],
+        ]);
     }
 }

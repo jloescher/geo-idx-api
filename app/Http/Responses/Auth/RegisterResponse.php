@@ -9,12 +9,6 @@ class RegisterResponse implements RegisterResponseContract
 {
     public function toResponse($request): RedirectResponse
     {
-        $user = $request->user();
-
-        if ($user?->subscribed('default')) {
-            return redirect('/dashboard');
-        }
-
-        return redirect('/#pricing');
+        return redirect('/dashboard');
     }
 }

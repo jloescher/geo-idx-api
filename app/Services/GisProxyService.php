@@ -22,7 +22,7 @@ class GisProxyService
      */
     public function fetch(Request $request, ?string $mlsCode = null): array
     {
-        $fullAccess = (bool) $request->attributes->get('bridge.full_access', false);
+        $fullAccess = true;
         $layers = (string) $request->query('layers', 'parcels');
 
         $envelope = $this->resolveEnvelope($request);
@@ -460,16 +460,11 @@ class GisProxyService
             default => 'degraded_osm_hint',
         };
 
-        if (! $fullAccess) {
-            // Revenue impact: teaser geometry/attribute starvation preserves OTP conversion lift.
-            $featureCollection = $this->applyTeaserMode($featureCollection);
-        }
-
         $meta = [
             'source_used' => $sourceKey,
             'source_tier' => $tier,
             'county_hint' => $countyHint,
-            'teaser' => ! $fullAccess,
+            'teaser' => false,
             'full_access' => $fullAccess,
             'mls_code' => $mlsCode,
             'layers' => array_values(array_filter(array_map(trim(...), explode(',', $layers)))),

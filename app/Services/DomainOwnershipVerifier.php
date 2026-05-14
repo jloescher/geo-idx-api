@@ -2,9 +2,7 @@
 
 namespace App\Services;
 
-use App\Ghl\Widgets\Models\GhlRegisteredUrl;
 use App\Models\Domain;
-use App\Models\User;
 
 final class DomainOwnershipVerifier
 {
@@ -55,33 +53,6 @@ final class DomainOwnershipVerifier
         $domain->forceFill([
             'verification_checked_at' => now(),
         ])->save();
-
-        return false;
-    }
-
-    public function verifyGhlAttachment(Domain $domain, User $user): bool
-    {
-        $target = strtolower($domain->domain_slug);
-
-        $match = GhlRegisteredUrl::query()
-            ->where('quantyra_user_id', $user->id)
-            ->where(function ($query) use ($target): void {
-                $query->whereRaw('LOWER(primary_url) like ?', ['%'.$target.'%']);
-                $query->orWhereJsonContains('additional_urls', 'https://'.$target);
-                $query->orWhereJsonContains('additional_urls', 'http://'.$target);
-            })
-            ->exists();
-
-        if ($match) {
-            $domain->forceFill([
-                'verification_status' => 'verified_ghl',
-                'verification_method' => 'ghl_site_attachment',
-                'ghl_verified_at' => now(),
-                'verification_checked_at' => now(),
-            ])->save();
-
-            return true;
-        }
 
         return false;
     }

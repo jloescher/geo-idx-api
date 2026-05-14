@@ -1,6 +1,5 @@
 <?php
 
-use App\Billing\SubscriptionCatalog;
 use App\Models\User;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Str;
@@ -17,12 +16,10 @@ new class extends Component {
     /** @var list<array{id: int, name: string, abilities: list<string>, last_used_at: ?string, created_at: ?string}> */
     public array $tokens = [];
 
-    public function mount(SubscriptionCatalog $catalog): void
+    public function mount(): void
     {
         /** @var User $user */
         $user = auth()->user();
-        abort_unless($this->userMayCreateTokens($catalog, $user), 403);
-
         $this->loadTokens($user);
     }
 
@@ -35,10 +32,7 @@ new class extends Component {
         /** @var User $user */
         $user = auth()->user();
 
-        $abilities = app(SubscriptionCatalog::class)->idxProxyAbilitiesForUser($user);
-        abort_if($abilities === null, 403);
-
-        $token = $user->createToken(Str::of($validated['tokenName'])->trim()->value(), $abilities);
+        $token = $user->createToken(Str::of($validated['tokenName'])->trim()->value(), ['idx:full']);
 
         $this->newToken = $token->plainTextToken;
         $this->tokenName = '';
@@ -72,18 +66,9 @@ new class extends Component {
         /** @var User $user */
         $user = auth()->user();
 
-        $abilitiesLabels = match (app(SubscriptionCatalog::class)->planKeyForUser($user)) {
-            'mega' => ['idx:full' => 'Full API access'],
-            'ultra' => ['idx:access' => 'API access (teaser)'],
-            default => [],
-        };
+        $abilitiesLabels = ['idx:full' => 'Full API access'];
 
         return ['abilitiesLabels' => $abilitiesLabels];
-    }
-
-    private function userMayCreateTokens(SubscriptionCatalog $catalog, User $user): bool
-    {
-        return $catalog->userMayCreateIdxProxyApiTokens($user);
     }
 
     private function loadTokens(User $user): void
@@ -105,7 +90,10 @@ new class extends Component {
 
 <div class="mt-8 rounded-2xl border border-white/10 bg-slate-900/70 p-6">
     <h2 class="text-xl font-semibold text-white">API Keys</h2>
-    <p class="mt-1 text-sm text-slate-300">Manage tokens for the Bridge and GIS JSON API. Send as <span class="font-mono text-xs">Authorization: Bearer …</span> to API endpoints.</p>
+    <p class="mt-1 text-sm text-slate-300">
+        Manage tokens for the Bridge and GIS JSON API. Send <span class="font-mono text-xs">Authorization: Bearer …</span> together with
+        <span class="font-mono text-xs">X-Domain-Slug: your-verified-domain.com</span> on every request (or <span class="font-mono text-xs">?domain=</span>).
+    </p>
 
     {{-- Token creation form --}}
     <form wire:submit="createToken" class="mt-5 flex flex-col gap-3 sm:flex-row">

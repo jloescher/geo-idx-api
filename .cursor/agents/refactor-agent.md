@@ -16,7 +16,7 @@ composer dump-autoload
 # Verify Blade views compile
 php artisan view:compile
 
-# Run tests (uses in-memory SQLite)
+# Run tests (PostgreSQL test database; see README)
 composer test
 ```
 

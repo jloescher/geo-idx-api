@@ -6,7 +6,7 @@ allowed-tools: Read, Edit, Write, Glob, Grep, Bash
 
 # Laravel Skill
 
-Laravel 13 + Octane service with FrankenPHP, Eloquent ORM, and PostgreSQL/SQLite. Uses PHP 8 attributes for model definitions, constructor property promotion, and import-style routing.
+Laravel 13 + Octane service with FrankenPHP, Eloquent ORM, and PostgreSQL. Uses PHP 8 attributes for model definitions, constructor property promotion, and import-style routing.
 
 ## Quick Start
 
@@ -18,16 +18,14 @@ php artisan migrate
 composer dev  # server + queue + logs + Vite
 ```
 
-Run tests: `composer test` (in-memory SQLite, sync queue)
+Run tests: `composer test` (PostgreSQL test database from `phpunit.xml`, sync queue)
 Code format: `vendor/bin/pint`
 
 ## Key Concepts
 
 **Routing** — Import-style with `use` statements in `routes/`:
 - `api.php` — Sanctum-auth API routes (`/api` prefix)
-- `web.php` — Web routes (marketing, dashboard)
-- `ghl-web.php` — GHL OAuth flows, install wizard
-- `ghl-widget.php` — Widget JS loader, CORS endpoints
+- `web.php` — Web routes (marketing, dashboard, agent JSON endpoints)
 - `console.php` — Scheduled tasks
 
 **Models** — PHP 8 attributes for fillable/hidden, `casts()` method:
@@ -39,7 +37,7 @@ class User extends Model { }
 
 **Middleware** — Registered in `bootstrap/app.php`:
 - `domain.token` — `DomainOrTokenAuth` for Bridge/GIS proxy
-- `AuthenticateGhlLocation` — GHL Bearer token validation
+- `mls.access` — feed access for MLS clients
 
 **Queues** — Database queue with jobs in `app/Jobs/`:
 - `RefreshDomainListingsCacheJob`
@@ -63,6 +61,6 @@ public function __construct(
 
 **Artisan Commands** — `app/Console/Commands/` with `handle()` method and `$signature`
 
-**Migrations** — `database/migrations/` with `loadMigrationsFrom()` for subdirectories (GHL in `ghl/`)
+**Migrations** — `database/migrations/` with dated migration classes
 
 **Config** — Use `env()` directly in config files (not `config()` to avoid cache-breaking)

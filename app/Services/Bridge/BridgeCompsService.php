@@ -31,20 +31,8 @@ final readonly class BridgeCompsService
     {
         $started = microtime(true);
         $dataset = $this->resolver->resolveDataset($request);
-        $fullAccess = (bool) $request->attributes->get('bridge.full_access', false);
+        $fullAccess = true;
         $mode = (string) ($validated['mode'] ?? 'A');
-
-        // Access gate for restricted modes — checked before resolveSubject to avoid
-        // unnecessary geocoding calls for home_value when access is denied.
-        if (in_array($mode, ['rent_hold_cashflow', 'flip_vs_hold', 'appraiser_simulation', 'bpo', 'home_value'], true) && ! $fullAccess) {
-            $processingMs = (int) round((microtime(true) - $started) * 1000);
-
-            return [
-                'success' => false,
-                'error' => 'Investor modes require idx:full access.',
-                'metadata' => $this->buildMetadata($validated, $fullAccess, 0, 0, 0, $processingMs, 'median'),
-            ];
-        }
 
         $subject = $this->resolveSubject($request, $dataset, $validated);
         if ($subject === null) {
@@ -79,9 +67,9 @@ final readonly class BridgeCompsService
 
         $filters = $validated['filters'] ?? [];
         $maxSoldRequested = (int) ($filters['max_sold_comps'] ?? 12);
-        $maxSold = $fullAccess ? min(25, max(1, $maxSoldRequested)) : min(3, max(1, $maxSoldRequested));
+        $maxSold = min(25, max(1, $maxSoldRequested));
         $soldMonthsBack = (int) ($filters['sold_months_back'] ?? 6);
-        $includeCompetition = (bool) ($filters['include_active_pending'] ?? true) && $fullAccess;
+        $includeCompetition = (bool) ($filters['include_active_pending'] ?? true);
         $maxCompetition = min(50, (int) ($filters['max_competition_comps'] ?? 20));
         $includeOverpriced = (bool) ($filters['include_overpriced_signals'] ?? true);
         $aggMethod = ($validated['aggregation_method'] ?? 'median') === 'average' ? 'average' : 'median';

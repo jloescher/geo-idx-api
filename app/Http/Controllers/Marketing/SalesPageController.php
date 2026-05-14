@@ -11,10 +11,6 @@ class SalesPageController extends Controller
 {
     public function __invoke(Request $request): View|RedirectResponse
     {
-        if ($request->query('checkout') === 'success' && $request->user()?->subscribed('default')) {
-            return redirect('/dashboard');
-        }
-
-        return view('marketing.sales');
+        return view('marketing.home');
     }
 }

@@ -1,6 +1,6 @@
 # Quantyra IDX API
 
-Laravel 13 + Octane service powering Quantyra's Bridge MLS proxy, GoHighLevel (GHL) Marketplace integration, GIS parcel/geometry proxy, lead ingestion, and secured image proxy delivery. The service sits between real estate MLS data (Bridge Data Output / Stellar MLS), public ArcGIS parcel sources, GHL CRM widgets, and subscriber dashboards. Three public surfaces: **idx.quantyralabs.cc** (app/marketing), **idx-api.quantyralabs.cc** (API/widgets), **idx-images.quantyralabs.cc** (image proxy).
+Laravel 13 + Octane service powering Quantyra's Bridge MLS proxy, GIS parcel/geometry proxy, authenticated user dashboard (domains, API keys, MLS feed scope), and secured image proxy delivery. The service sits between real estate MLS data (Bridge Data Output / Stellar MLS and optional Spark RESO feeds), public ArcGIS parcel sources, and customer tooling. Three public surfaces: **idx.quantyralabs.cc** (app/marketing), **idx-api.quantyralabs.cc** (API), **idx-images.quantyralabs.cc** (image proxy).
 
 ## Tech Stack
 
@@ -10,17 +10,16 @@ Laravel 13 + Octane service powering Quantyra's Bridge MLS proxy, GoHighLevel (G
 | Web Server | FrankenPHP (via Laravel Octane) | 2.x | High-performance concurrent request handling |
 | Framework | Laravel | 13.x | Application skeleton, routing, ORM, queues |
 | Language | PHP | 8.5 | Strong typing, constructor promotion, PHP attributes for model fillable/hidden |
-| Database | SQLite (local) / PostgreSQL (prod) | - | Eloquent ORM; local uses `:memory:` SQLite, production uses pgsql |
-| Frontend | Livewire 3 + Blade + Tailwind CSS 4 | 3.x / 4.x | Server-rendered marketing pages and subscriber dashboard |
+| Database | PostgreSQL | - | Eloquent ORM; development, staging (shared), and production (dedicated) all use `pgsql` |
+| Frontend | Livewire + Blade + Tailwind CSS 4 | 4.x / 4.x | Server-rendered marketing home, user dashboard, Filament dashboard shell |
 | Build | Vite | 8.x | CSS/JS bundling with Tailwind plugin |
 | Auth | Laravel Sanctum + Fortify | 4.x / 1.36.x | API tokens for server-to-server; login/register/2FA views |
-| Billing | Laravel Cashier (Stripe) | 16.x | Subscription tiers: Pro ($39/mo), Smart ($79/mo), Ultra ($179/mo), Mega ($449/mo) with metered overage |
 | Observability | Pulse + Telescope + Debugbar | 1.x / 5.x / 4.x | Production metrics, local debugging, rate-limited behind HTTP Basic Auth |
 
 ## Quick Start
 
 ```bash
-# Prerequisites: PHP 8.5+, Composer, Node 20+, SQLite (local dev)
+# Prerequisites: PHP 8.5+, Composer, Node 20+, PostgreSQL (local development database)
 
 # Installation
 cp .env.example .env
@@ -35,7 +34,7 @@ npm run build
 # Development (server + queue + logs + Vite HMR in parallel)
 composer dev
 
-# Run tests (uses in-memory SQLite by default)
+# Run tests (PostgreSQL database `idx_api_testing` or `testing`; see README)
 composer test
 
 # Code formatting (Laravel Pint)
@@ -47,166 +46,83 @@ vendor/bin/pint
 ```
 idx-api/
 ├── app/
-│   ├── Actions/Fortify/          # User creation, password reset, profile update (5 files)
-│   ├── Billing/
-│   │   └── SubscriptionCatalog.php  # Plan definitions, Stripe price IDs, teaser lead counts
-│   ├── Console/Commands/          # 5 Artisan commands (GHL, GIS, Stripe, token management)
-│   ├── Ghl/                       # GoHighLevel Marketplace — 44 PHP files across 16 subdirs
-│   │   ├── Api/Clients/           # GhlApiClient — HTTP wrapper with auto-audit
-│   │   ├── Http/                  # Install flow, GHL API proxy, embed redirect
-│   │   ├── OAuth/                 # OAuth 2.0 authorize/callback/refresh + URL registration
-│   │   ├── Services/              # GhlAuditService — dual-channel audit logging
-│   │   ├── Sync/                  # Lead sync, subscription sync, tags, contacts, opportunities
-│   │   ├── Webhooks/              # Dispatcher + handlers (install, uninstall, CRM events)
-│   │   └── Widgets/               # JS embed surfaces + 3-phase middleware chain
+│   ├── Actions/Fortify/          # User creation, password reset, profile update
+│   ├── Console/Commands/         # GIS, token management, MLS utilities
+│   ├── Filament/                 # User dashboard (Filament v4)
 │   ├── Http/
 │   │   ├── Controllers/
-│   │   │   ├── Api/               # BridgeProxyController, ImageProxyController
-│   │   │   ├── Billing/           # SubscriptionCheckoutController
-│   │   │   ├── Marketing/         # SalesPageController
-│   │   │   ├── DashboardController.php
-│   │   │   ├── DashboardApiTokenController.php
+│   │   │   ├── Api/              # BridgeProxyController, ImageProxyController
+│   │   │   ├── Marketing/        # SalesPageController → marketing home
+│   │   │   ├── Dashboard*.php    # User dashboard + domains + MLS scope + API tokens
 │   │   │   └── GisProxyController.php
-│   │   ├── Middleware/            # DomainOrTokenAuth, VerifyGhlWebhookSignature, ProtectMonitoringDashboard
-│   │   ├── Requests/              # GisProxyRequest (bbox/coordinate validation)
-│   │   └── Responses/Auth/        # LoginResponse, RegisterResponse (redirect to dashboard)
-│   ├── Jobs/                      # RefreshDomainListingsCacheJob, RefreshGisSourceMetadataJob, PersistGisGeoJsonBackupJob
-│   ├── Livewire/Marketing/        # SalesLandingPage (pricing, billing toggle, login modal)
-│   ├── Models/                    # User, Domain, ListingsCache, BridgeProxyAuditLog, GisCache, GisSourceState
-│   ├── Providers/                 # AppServiceProvider, FortifyServiceProvider, TelescopeServiceProvider
-│   └── Services/
-│       ├── Bridge/                # BridgeHttpService, ListingsCacheService, BridgeTeaser, BridgeImageUrlRewriter, BridgeProxyAuditLogger
-│       ├── GisProxyService.php    # Multi-tier ArcGIS proxy with 3-level caching + teaser
-│       └── GisSourceMetadataService.php  # ArcGIS layer fingerprinting + generation invalidation
-├── bootstrap/
-├── config/                        # 20 config files: bridge, ghl, billing, gis, idx/idx_urls, fortify, pulse, octane, etc.
-├── database/
-│   ├── factories/                 # UserFactory
-│   ├── migrations/                # 20 core + 9 GHL (in ghl/) = 29 total
-│   └── seeders/                   # DomainSeeder, GeoWebInternalTokenSeeder, GhlConfigSeeder
-├── docs/                          # 13+ docs: API guides, GHL integration, deployment, Stripe, GIS
-├── public/
-├── resources/
-│   ├── css/app.css               # Tailwind entry
-│   ├── js/app.js                 # Vite entry (Alpine/livewire)
-│   └── views/                    # 13 Blade templates (auth, dashboard, marketing, livewire, ghl, leadconnector)
-├── routes/
-│   ├── api.php                   # Sanctum-auth: /auth/token, /leadconnector/*; domain.token: /api/v1/* (Bridge + GIS)
-│   ├── web.php                   # marketing.sales, dashboard, billing.checkout
-│   ├── ghl-web.php               # GHL OAuth flows, install wizard, webhooks
-│   ├── ghl-widget.php            # Widget JS loader, surfaces, config, lead ingest, CORS preflight
-│   └── console.php               # Scheduled tasks (hourly GHL, 15m Bridge, weekly GIS)
-├── scripts/
-│   ├── docker-dev.sh             # Docker dev up-watch / down
-│   └── stripe-dev.sh             # Stripe webhook listen / trigger-checkout-completed
+│   │   ├── Middleware/           # DomainOrTokenAuth, mls.access, ProtectMonitoringDashboard
+│   │   └── Requests/
+│   ├── Jobs/                     # Listings cache refresh, GIS metadata, backups
+│   ├── Models/                   # User, Domain, ListingsCache, Bridge proxy audit, GIS cache
+│   ├── Providers/
+│   └── Services/                 # Bridge/, Gis*
+├── config/                       # bridge, gis, mls, idx/idx_urls, fortify, pulse, octane, etc.
+├── database/migrations/
+├── docs/
+├── routes/                       # web.php (platform + API hosts), api.php (v1 Bridge + GIS)
 ├── tests/
-│   ├── Feature/                  # 10 tests: Auth, Billing, Bridge, Dashboard, Gis, Ghl, Marketing, etc.
-│   ├── Unit/                     # 4 tests: Bridge rewriter, auth response, dashboard controller
-│   └── TestCase.php              # Guard against non-ephemeral test databases
-├── Dockerfile.idx-api            # FrankenPHP + PHP 8.5 Alpine production image (port 8000)
-├── Dockerfile.idx-images         # Nginx Alpine edge image for image proxy (port 8080)
-├── Dockerfile.dev                # Dev image with Xdebug, watch mode support
-├── docker-compose.dev.yml        # Dev compose: idx-api-dev + idx-images-dev + cloudflared-dev (tunnel)
-├── nginx.idx-images.conf         # Nginx reverse proxy config for idx-images
-├── composer.json
-├── package.json
-├── phpunit.xml                   # In-memory SQLite, sync queue, fake Bridge/Stripe keys
-└── vite.config.js                # Tailwind plugin, HMR configured for Cloudflare tunnel hosts
+└── Dockerfile.* / docker-compose.dev.yml
 ```
 
 ## Architecture Overview
 
-The service has four primary subsystems:
+The service has three primary subsystems:
 
 ### 1. Bridge MLS Proxy (`/api/v1/*`)
 
-Proxies Bridge Data Output (Stellar MLS) API with domain-based or Sanctum token authentication. Key behaviors:
-- **DomainOrTokenAuth middleware** resolves identity from `X-Domain-Slug` header, `?domain=` query, or referer header — falling back to Bearer token authentication
-- **Teaser gating**: non-full-access requests get listings capped at 3 items (revenue lever)
-- **Image URL rewriting**: Bridge photo URLs rewritten to `idx-images` public URLs before response
-- **Listings cache**: 15-minute TTL collection cache per domain in PostgreSQL; skipped when `?filters=` present
-- **Audit logging**: every proxied request logged with domain, token, endpoint, listing count
+Proxies Bridge Data Output (and Spark OAuth feeds per `config/mls.php`) with domain-based or Sanctum token authentication. Key behaviors:
+- **DomainOrTokenAuth** + **mls.access** resolve identity and feed access
+- **Teaser gating**: non-full-access requests cap listings (revenue lever)
+- **Image URL rewriting**: Bridge photo URLs rewritten to `idx-images` public URLs
+- **Listings cache**: TTL collection cache per domain; purge/housekeeping jobs for stale rows
+- **Audit logging**: proxied requests logged where enabled
 
-### 2. GoHighLevel Marketplace Integration (`/leadconnector/*`, `/oauth/*`, `/webhooks/*`, `/widget/*`)
+### 2. GIS Parcel/Geometry Proxy (`/api/v1/gis`, `/api/v1/mls/{mlsCode}/gis`)
 
-Full GHL Marketplace app implementing OAuth 2.0 install flow, webhook ingestion, and JS embed widgets:
-- **OAuth flow**: authorize -> callback -> token exchange -> location registration -> URL registration -> installation complete
-- **Token management**: hourly scheduled refresh job; agency-to-location token exchange via `LocationTokenService`
-- **Webhooks**: signature-verified event ingestion with handler pattern (install, uninstall, 9 CRM event types — audit-only)
-- **Widgets**: API-key gated surfaces (search, lead form, showcase) with 3-phase middleware (key validate -> origin validate -> CORS append); lead ingest POST endpoint
-- **Lead sync**: QuantyraLead ingestion -> GhlLeadMapping resolution -> contact + optional opportunity creation
-- **Audit logging**: dual-channel (database + file at `storage/logs/ghl_audit.log`)
+Public ArcGIS feature server proxy for Florida parcel data. Three-tier caching with generation-based invalidation, source failover, teaser mode for non-full tokens, and bbox limits.
 
-### 3. GIS Parcel/Geometry Proxy (`/api/v1/gis`, `/api/v1/mls/{mlsCode}/gis`)
+### 3. Platform & user dashboard
 
-Public ArcGIS feature server proxy for Florida county parcel data (zero MLS data). Three-tier caching with generation-based invalidation:
-- **Source failover**: Florida statewide (FGIO) -> Pinellas County -> Hillsborough County -> degraded OSM fallback
-- **3-level cache**: Laravel Cache (900s edge) -> PostgreSQL `gis_cache` (30-90 day origin) -> async filesystem backup
-- **Generation invalidation**: Weekly metadata probe fingerprints ArcGIS layer `?f=json`; cache rows store generation at write time
-- **Teaser mode** (non-`idx:full`): caps features at 40, rounds coordinates to ~11m precision, strips non-essential properties
-- **Bbox guard**: maximum span cap (0.35 degrees) prevents abusive mega-queries
-
-### 4. Billing & Subscriptions (Stripe via Laravel Cashier)
-
-Tiered subscription model with metered API overage and 14-day trials:
-
-| Plan | Monthly | Annual | Key Features |
-|------|---------|--------|-------------|
-| Pro | $39/mo | $374/yr (20% off) | 3 domains, teaser gating, basic GHL app |
-| Smart | $79/mo | $758/yr | 5 domains, full GHL app, phone + email OTP |
-| Ultra | $179/mo | $1,718/yr | Unlimited domains, 2M API calls/mo, developer keys |
-| Mega | $449/mo | $4,310/yr | Unlimited everything, custom branding, SLA targets |
-
-- **Catalog**: `SubscriptionCatalog` reads from `config/billing.php` with Stripe price IDs
-- **Checkout**: `SubscriptionCheckoutController` creates Stripe Checkout sessions with trial days
-- **Dashboard**: subscription status, API usage counters, Sanctum token management, widget install count
-- **Webhook**: Stripe events update subscription status, synced to GHL via `SubscriptionSyncService`
+- **Marketing home** (`/`) on platform hosts — static Blade intro and links to login / dashboard
+- **User dashboard** (`/dashboard` and Filament `/filament-dashboard`) — domains, TXT verification, MLS datasets per domain, Sanctum API tokens
 
 ```
 ┌──────────────┐        ┌──────────────┐        ┌──────────────┐
 │  idx.*       │        │  idx-api.*   │        │ idx-images.* │
-│  (App/Mktg)  │        │  (API/Widgets)│       │  (Nginx)     │
+│  (App/Mktg)  │        │  (API)       │        │  (Nginx)     │
 ├──────────────┤        ├──────────────┤        ├──────────────┤
-│ Livewire     │        │ Bridge Proxy │        │ Edge cache   │
-│ Dashboard    │        │ GIS Proxy    │   ──▶  │ -> idx-api   │
-│ Sales page   │        │ GHL OAuth    │        │ /images/*    │
-│ Billing UI   │        │ GHL Webhooks │        └──────────────┘
-└──────┬───────┘        │ GHL Widgets  │
-       │                └──────┬───────┘
-       │                       │
-       ▼                       ▼
-┌──────────────┐        ┌──────────────┐        ┌──────────────┐
-│   Stripe     │        │  Bridge Data │        │  ArcGIS      │
-│   (Cashier)  │        │  Output MLS  │        │  Parcel Src  │
-└──────────────┘        └──────────────┘        └──────────────┘
+│ User dashboard │        │ Bridge Proxy │        │ Edge cache   │
+│ (Blade +       │        │ GIS Proxy    │   ──▶  │ -> idx-api   │
+│  Filament)     │        │              │        │ /images/*    │
+└──────────────┘        └──────┬───────┘        └──────────────┘
+                               │
+                               ▼
+                       ┌──────────────┐        ┌──────────────┐
+                       │  Bridge /    │        │  ArcGIS      │
+                       │  Spark MLS   │        │  Parcel Src  │
+                       └──────────────┘        └──────────────┘
 ```
 
-### Key Modules
+### Key modules
 
 | Module | Location | Purpose |
 |--------|----------|---------|
-| `BridgeProxyController` | `app/Http/Controllers/Api/` | Central MLS proxy — 25+ Bridge endpoints (web, RESO OData, doc-style) |
-| `GisProxyController` | `app/Http/Controllers/` | ArcGIS parcel proxy with MLS-scoped routing (`showForMls()`) |
-| `GisProxyService` | `app/Services/` | Multi-tier ArcGIS proxy — 3-level cache, failover chain, teaser mode (615 lines) |
-| `GisSourceMetadataService` | `app/Services/` | Layer fingerprinting via `?f=json` — generation-based cache invalidation |
-| `BridgeHttpService` | `app/Services/Bridge/` | HTTP client wrapper — URL building, header forwarding, timeout management |
-| `BridgeTeaser` | `app/Services/Bridge/` | JSON teaser — truncates listing arrays to N items for non-full-access |
-| `BridgeImageUrlRewriter` | `app/Services/Bridge/` | Rewrites Bridge CDN URLs to `idx-images` public URLs in JSON bodies |
-| `DomainOrTokenAuth` | `app/Http/Middleware/` | Dual auth: domain slug identification OR Sanctum token with ability checks |
-| `GhlApiClient` | `app/Ghl/Api/Clients/` | Central HTTP wrapper for all GHL REST calls with auto-audit |
-| `OAuthService` | `app/Ghl/OAuth/Services/` | GHL OAuth URL building, code exchange, token persistence |
-| `TokenRefreshService` | `app/Ghl/OAuth/Services/` | Proactive token refresh before expiry |
-| `LocationTokenService` | `app/Ghl/OAuth/Services/` | Agency-to-location token exchange via `/oauth/locationToken` |
-| `LeadSyncService` | `app/Ghl/Sync/Services/` | Syncs Quantyra leads to GHL contacts + opportunities |
-| `WebhookDispatcher` | `app/Ghl/Webhooks/Services/` | Routes GHL webhooks by type to install/uninstall/CRM handlers |
-| `SubscriptionCatalog` | `app/Billing/` | Plan definitions, Stripe price IDs, teaser lead counts |
-| `SalesLandingPage` | `app/Livewire/Marketing/` | Livewire marketing component with billing interval toggle |
+| `BridgeProxyController` | `app/Http/Controllers/Api/` | MLS proxy — web, RESO OData, doc-style endpoints |
+| `GisProxyController` | `app/Http/Controllers/` | ArcGIS parcel proxy, MLS-scoped routing |
+| `GisProxyService` | `app/Services/` | Multi-tier GIS proxy, cache, failover, teaser |
+| `BridgeHttpService` | `app/Services/Bridge/` | HTTP client, URL building, timeouts |
+| `DomainOrTokenAuth` | `app/Http/Middleware/` | Domain slug and/or Sanctum token auth |
 
 ## Development Guidelines
 
 ### Code Style
 - **PHP**: Laravel Pint (PSR-12), 4-space indent, UTF-8, LF line endings (`.editorconfig`)
-- **File naming**: PascalCase for classes (`BridgeProxyController.php`, `OAuthService.php`), matching PSR-4 autoloading
+- **File naming**: PascalCase for classes (`BridgeProxyController.php`, `GisProxyService.php`), matching PSR-4 autoloading
 - **Code naming**: camelCase for methods and properties (`webUrl()`, `server_token`), PascalCase for class names
 - **Models**: Use PHP 8 attributes for `$fillable` and `$hidden` (`#[Fillable([...])]`, `#[Hidden([...])]`), `casts()` method (not `$casts` property)
 - **Controllers**: Constructor property promotion for DI (`public function __construct(private readonly Service $svc) {}`)
@@ -222,23 +138,21 @@ Tiered subscription model with metered API overage and 14-day trials:
 4. Support classes (Closure, RuntimeException)
 
 ### Database Conventions
-- Core migrations: `database/migrations/` (users, domains, listings_cache, audit, gis, cashier)
-- GHL migrations: `database/migrations/ghl/` — loaded via `loadMigrationsFrom()` in `AppServiceProvider`
+- Core migrations: `database/migrations/` (users, domains, listings_cache, audit, gis, MLS registry)
 - Migration files: `YYYY_MM_DD_HHMMSS_description.php` format
-- Models use `#[Fillable]` and `#[Hidden]` PHP 8 attributes
+- Models use `#[Fillable]` and `#[Hidden]` PHP 8 attributes where applicable
 
 ### Testing Patterns
 - **Feature tests**: `tests/Feature/` — use `RefreshDatabase`, `Http::fake()` for external APIs, assert on JSON
-- **Unit tests**: `tests/Unit/` — pure logic (URL rewriter, controller logic) without database
-- **Test safety**: `TestCase::setUp()` guards against non-ephemeral databases (requires SQLite `:memory:` or `ALLOW_DESTRUCTIVE_TEST_DB=true`)
-- **phpunit.xml**: in-memory SQLite, sync queue, fake Bridge/Stripe keys, PULSE/TELESCOPE disabled
+- **Unit tests**: `tests/Unit/` — pure logic without database where possible
+- **Test safety**: `TestCase::setUp()` refuses non-whitelisted databases unless `ALLOW_DESTRUCTIVE_TEST_DB=true` (allowed: `pgsql` with `DB_DATABASE` `testing` or `idx_api_testing`)
+- **phpunit.xml**: PostgreSQL test database, sync queue, fake Bridge keys, PULSE/TELESCOPE disabled
 - **Factories**: `User::factory()->create()`; direct model creation for seed data
 - **Config setup**: Tests set config values in `setUp()` (bridge host, dataset, tokens)
 
 ### Scheduled Tasks (routes/console.php)
 | Task | Schedule | Queue |
 |------|----------|-------|
-| `ghl:refresh-tokens` | Hourly, no overlap | default |
 | `bridge-listings-cache-refresh` | Every 15 min per active domain, no overlap | default |
 | `gis-source-metadata-probe` | Monday 6:30am, no overlap | `config('gis.queue')` |
 
@@ -250,7 +164,7 @@ Tiered subscription model with metered API overage and 14-day trials:
 |----------|----------|-------------|
 | `APP_KEY` | Yes | Laravel encryption key |
 | `APP_URL` | Yes | Base URL (becomes IDX_API_PUBLIC_URL by default) |
-| `DB_CONNECTION` | Yes | `sqlite` (local) or `pgsql` (prod) |
+| `DB_CONNECTION` | Yes | `pgsql` (development, staging, production) |
 
 ### Public URLs
 
@@ -278,20 +192,6 @@ Tiered subscription model with metered API overage and 14-day trials:
 | `IMAGE_CACHE_PATH` | No | Image storage root (Docker: /var/cache/geoidx/images) |
 | `IMAGE_CACHE_TTL` | No | Origin re-fetch TTL (default: 86400) |
 
-### GHL Marketplace
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GHL_CLIENT_ID` | Yes | GHL Marketplace app client ID |
-| `GHL_CLIENT_SECRET` | Yes | GHL Marketplace app client secret |
-| `GHL_REDIRECT_URI` | Yes | OAuth callback URL |
-| `GHL_WEBHOOK_REQUIRE_SIGNATURE` | No | HMAC verification toggle (default: true) |
-| `GHL_WEBHOOK_SECRET` | No | Webhook signing secret |
-| `GHL_ADMIN_REFRESH_TOKEN` | No | Admin token for manual refresh endpoint |
-| `GHL_SCOPES` | No | OAuth scopes (see `.env.example` for full list) |
-| `GHL_AUDIT_LOG_ENABLED` | No | File audit logging toggle |
-| `GHL_AUDIT_LOG_PATH` | No | Audit log file path (default: storage/logs/ghl_audit.log) |
-
 ### GIS Parcel Proxy
 
 | Variable | Required | Description |
@@ -306,17 +206,6 @@ Tiered subscription model with metered API overage and 14-day trials:
 | `GIS_TEASER_COORD_DECIMALS` | No | Coordinate precision for teaser (default: 4, ~11m) |
 | `GIS_MAX_BBOX_SPAN_DEG` | No | Max bbox span to prevent abuse (default: 0.35) |
 | `GIS_FLORIDA_MLS_CODES` | No | Comma-separated MLS codes (default: stellar) |
-
-### Stripe / Billing
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `STRIPE_KEY` | Yes (billing) | Stripe publishable key |
-| `STRIPE_SECRET` | Yes (billing) | Stripe secret key |
-| `STRIPE_WEBHOOK_SECRET` | Yes (billing) | Webhook signing secret |
-| `STRIPE_PRICE_IDX_*` | Yes (billing) | Price IDs for Pro/Smart/Ultra/Mega (monthly + yearly) |
-| `STRIPE_PRICE_IDX_API_OVERAGE_METERED` | No | Metered overage price ID |
-| `CASHIER_CURRENCY` | Recommended | ISO currency (e.g. `usd`) |
 
 ### Internal / Ops
 
@@ -342,10 +231,6 @@ Tiered subscription model with metered API overage and 14-day trials:
 | `vendor/bin/pint` | Format code with Laravel Pint |
 | `./scripts/docker-dev.sh up-watch` | Docker dev with hot reload (Compose watch) |
 | `./scripts/docker-dev.sh down` | Stop Docker dev containers |
-| `./scripts/stripe-dev.sh listen` | Forward Stripe webhooks locally |
-| `./scripts/stripe-dev.sh trigger-checkout-completed` | Fire test checkout event |
-| `php artisan ghl:refresh-tokens` | Manually trigger GHL token refresh |
-| `php artisan billing:provision-stripe-catalog` | Create Stripe products + prices for all plans |
 | `php artisan gis:probe-sources` | Probe ArcGIS layer metadata (inline or queued) |
 | `php artisan gis:clear-cache` | Clear GIS cache (all or by source) |
 | `php artisan idx-api:issue-geo-web-token` | Create/rotate geo-web-internal Sanctum token |
@@ -378,75 +263,41 @@ Dev compose (`docker-compose.dev.yml`) includes Xdebug support (`XDEBUG_MODE`, `
 ## Testing
 
 - **16 test files** across Feature (10) and Unit (4) suites
-- Tests use in-memory SQLite with sync queue driver
-- External APIs faked via `Http::fake()` (Bridge, Stripe)
+- Tests run against **PostgreSQL** using the database name forced in `phpunit.xml` (default `idx_api_testing`) with the **sync** queue driver
+- External APIs faked via `Http::fake()` (Bridge, ArcGIS in GIS tests)
 - `TestCase::setUp()` enforces ephemeral database safety guard
-- Coverage includes Bridge proxy security, image proxy headers, GIS probe/proxy, GHL marketplace flow, billing checkout gates, dashboard API tokens, marketing/sales pages
+- Coverage includes Bridge proxy security, image proxy headers, GIS probe/proxy, dashboard and marketing home, domain auth
 
 ## Additional Resources
 
-- @docs/INDEX.md — Full documentation index (API guides, GHL integration, deployment, Stripe billing)
+- @docs/INDEX.md — Documentation index
 - @docs/idx-api-bridge-proxy.md — Bridge proxy architecture, auth flow, cache strategy, image rewrite
-- @docs/ghl-marketplace-integration.md — GHL OAuth, widgets, webhooks, sync implementation details
-- @docs/stripe-laravel-cashier.md — Stripe subscription catalog, webhook handling, local development
-- @docs/ghl-environment-variables.md — All GHL_, IDX_, and related env vars
-- @docs/ghl-database-schema.md — PostgreSQL table reference for GHL subsystem
-- @docs/ghl-api-routes-reference.md — Curl examples and response notes for GHL API
 - @docs/bridge-api-documentation.md — Bridge Data Output upstream API reference
 - @docs/gis-api.md — GIS parcel/geometry proxy documentation
 - @README.md — Project overview and Docker build instructions
 
 ## Skill Usage Guide
 
-When working on tasks involving these technologies, invoke the corresponding skill:
+When working on tasks involving these technologies, invoke the corresponding skill from [`.cursor/skills/`](.cursor/skills/) (see also [SKILL.md](SKILL.md) at repo root):
 
 | Skill | Invoke When |
 |-------|-------------|
-| livewire | Manages Livewire 3 reactive components and Blade integration |
+| livewire | Manages Livewire reactive components and Blade integration |
 | postgresql | Handles PostgreSQL schema, migrations, and query patterns |
 | frontend-design | Applies UI design with Livewire, Blade, Tailwind CSS 4, and Alpine.js |
 | laravel | Manages Laravel 13 routing, ORM, queues, and service providers |
-| stripe | Manages Stripe billing, Cashier subscriptions, and webhook handling |
 | docker | Configures Docker multi-stage builds, FrankenPHP, and Compose workflows |
 | php | Enforces PHP 8.5 patterns, strict typing, and constructor promotion |
 | tailwind | Applies Tailwind CSS 4 styling and utility patterns |
-| scoping-feature-work | Breaks features into MVP slices and acceptance criteria |
-| mapping-user-journeys | Maps in-app journeys and identifies friction points in code |
-| improving-activation-flow | Optimizes activation steps and time-to-value milestones |
+| vite | Configures Vite build pipeline and HMR |
+| nginx | Configures Nginx reverse proxy for idx-images |
 | crafting-empty-states | Creates empty states and onboarding affordances |
-| designing-onboarding-paths | Designs onboarding paths, checklists, and first-run UI |
-| prioritizing-roadmap-bets | Ranks initiatives using impact, effort, and risk signals |
-| orchestrating-feature-adoption | Plans feature discovery, nudges, and adoption flows |
-| writing-release-notes | Drafts release notes tied to shipped features |
-| triaging-user-feedback | Routes feedback into backlog and quick wins |
-| clarifying-market-fit | Aligns ICP, positioning, and value narrative for on-page messaging |
-| running-product-experiments | Sets up product experiments and rollout checks |
-| structuring-offer-ladders | Frames plan tiers, value ladders, and upgrade logic |
-| generating-growth-hypotheses | Generates channel experiments and growth loops |
-| instrumenting-product-metrics | Defines product events, funnels, and activation metrics |
-| framing-release-stories | Builds launch narratives, assets, and rollout checklists |
-| crafting-page-messaging | Writes conversion-focused messaging for pages and key CTAs |
-| planning-editorial-arcs | Defines content themes, briefs, and editorial cadence |
-| designing-lifecycle-messages | Designs onboarding and lifecycle email sequences |
 | designing-inapp-guidance | Builds tooltips, tours, and contextual guidance |
-| tightening-brand-voice | Refines copy for clarity, tone, and consistency |
-| embedding-decision-cues | Applies behavioral cues that improve conversion decisions |
-| accelerating-first-run | Improves onboarding sequence and time-to-value |
-| streamlining-signup-steps | Reduces friction in signup and trial activation |
-| orchestrating-social-rhythm | Plans social content beats and distribution rhythm |
-| reducing-form-falloff | Improves lead capture forms to reduce drop-off |
-| tuning-landing-journeys | Improves landing page flow, hierarchy, and conversion paths |
-| refining-prompt-surfaces | Optimizes banners, modals, and in-app prompts |
-| strengthening-upgrade-moments | Improves upgrade prompts and paywall messaging |
-| mapping-conversion-events | Defines funnel events, tracking, and success signals |
-| designing-variation-tests | Plans A/B experiments and measurement plans |
-| engineering-referral-loops | Designs referral or partner loop mechanics |
-| building-acquisition-tools | Designs lead magnets or free tools for acquisition |
-| adding-structured-signals | Adds structured data for rich results |
-| scaling-template-pages | Builds scalable, template-driven search pages |
-| calibrating-paid-campaigns | Aligns paid acquisition with landing pages and pixels |
-| inspecting-search-coverage | Audits technical and on-page search coverage |
-| building-compare-hubs | Creates comparison and alternative pages for discovery |
+| inspecting-search-coverage | Audits Bridge MLS filters, GIS queries, and on-page search coverage |
+| laravel-best-practices | Laravel PHP patterns, security, queues, validation (under `.agents/skills` or `.cursor/skills`) |
+| fortify-development | Fortify authentication customization |
+| cashier-stripe-development | Stripe / Cashier when billing code is in scope |
+| pulse-development | Laravel Pulse dashboards and recorders |
 
 ## Laravel Boost Guidelines
 
@@ -459,12 +310,11 @@ The Laravel Boost guidelines are specifically curated by Laravel maintainers for
 This application is a Laravel application and its main Laravel ecosystem package versions are:
 
 - php - 8.5
-- laravel/cashier (CASHIER) - v16
 - laravel/framework (LARAVEL) - v13
 - laravel/octane (OCTANE) - v2
 - laravel/prompts (PROMPTS) - v0
 - laravel/sanctum (SANCTUM) - v4
-- livewire/livewire (LIVEWIRE) - v3
+- livewire/livewire (LIVEWIRE) - v4
 - laravel/boost (BOOST) - v2
 - laravel/mcp (MCP) - v0
 - laravel/pail (PAIL) - v1
@@ -475,7 +325,6 @@ This application is a Laravel application and its main Laravel ecosystem package
 
 Activate the relevant domain skill whenever working in that domain:
 
-- cashier-stripe-development for Laravel Cashier Stripe integration and billing workflows.
 - laravel-best-practices for Laravel PHP code changes, reviews, and refactors.
 - livewire-development for any Livewire-specific component or reactivity work.
 
@@ -639,7 +488,6 @@ The Laravel Boost guidelines are specifically curated by Laravel maintainers for
 This application is a Laravel application and its main Laravel ecosystems package & versions are below. You are an expert with them all. Ensure you abide by these specific packages & versions.
 
 - php - 8.5
-- laravel/cashier (CASHIER) - v16
 - laravel/fortify (FORTIFY) - v1
 - laravel/framework (LARAVEL) - v13
 - laravel/octane (OCTANE) - v2
@@ -660,7 +508,6 @@ This application is a Laravel application and its main Laravel ecosystems packag
 
 This project has domain-specific skills available. You MUST activate the relevant skill whenever you work in that domain—don't wait until you're stuck.
 
-- `cashier-stripe-development` — Handles Laravel Cashier Stripe integration including subscriptions, webhooks, Stripe Checkout, invoices, charges, refunds, trials, coupons, metered billing, and payment failure handling. Triggered when a user mentions Cashier, Billable, IncompletePayment, stripe_id, newSubscription, Stripe subscriptions, or billing. Also applies when setting up webhooks, handling SCA/3DS payment failures, testing with Stripe test cards, or troubleshooting incomplete subscriptions, CSRF webhook errors, or migration publish issues.
 - `fortify-development` — ACTIVATE when the user works on authentication in Laravel. This includes login, registration, password reset, email verification, two-factor authentication (2FA/TOTP/QR codes/recovery codes), profile updates, password confirmation, or any auth-related routes and controllers. Activate when the user mentions Fortify, auth, authentication, login, register, signup, forgot password, verify email, 2FA, or references app/Actions/Fortify/, CreateNewUser, UpdateUserProfileInformation, FortifyServiceProvider, config/fortify.php, or auth guards. Fortify is the frontend-agnostic authentication backend for Laravel that registers all auth routes and controllers. Also activate when building SPA or headless authentication, customizing login redirects, overriding response contracts like LoginResponse, or configuring login throttling. Do NOT activate for Laravel Passport (OAuth2 API tokens), Socialite (OAuth social login), or non-auth Laravel features.
 - `laravel-best-practices` — Apply this skill whenever writing, reviewing, or refactoring Laravel PHP code. This includes creating or modifying controllers, models, migrations, form requests, policies, jobs, scheduled commands, service classes, and Eloquent queries. Triggers for N+1 and query performance issues, caching strategies, authorization and security patterns, validation, error handling, queue and job configuration, route definitions, and architectural decisions. Also use for Laravel code reviews and refactoring existing Laravel code to follow best practices. Covers any task involving Laravel backend PHP code patterns.
 - `pulse-development` — Handles Laravel Pulse setup, configuration, and custom card development. Activates when installing Pulse; configuring the dashboard or authorization gate; setting up recorders and filtering; building custom Livewire cards; optimizing with Redis ingest or sampling; or when the user mentions /pulse, pulse:check, pulse:work, Pulse::record(), or application monitoring.

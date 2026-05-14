@@ -1,5 +1,5 @@
 ---
-  Feature and unit tests for Bridge, GHL, GIS, and billing flows using in-memory SQLite and Http::fake()
+  Feature and unit tests for Bridge, GIS, and dashboard flows using PostgreSQL (dedicated test DB) and Http::fake()
 tools: Read, Edit, Write, Glob, Grep, Bash
 skills: php, laravel, postgresql, livewire, tailwind, frontend-design, stripe, docker, scoping-feature-work, prioritizing-roadmap-bets, mapping-user-journeys, designing-onboarding-paths, improving-activation-flow, crafting-empty-states, orchestrating-feature-adoption, designing-inapp-guidance, instrumenting-product-metrics, running-product-experiments, triaging-user-feedback, writing-release-notes, clarifying-market-fit, structuring-offer-ladders, framing-release-stories, generating-growth-hypotheses, embedding-decision-cues, crafting-page-messaging, tightening-brand-voice, designing-lifecycle-messages, planning-editorial-arcs, orchestrating-social-rhythm, tuning-landing-journeys, streamlining-signup-steps, accelerating-first-run, reducing-form-falloff, refining-prompt-surfaces, strengthening-upgrade-moments, mapping-conversion-events, designing-variation-tests, calibrating-paid-campaigns, building-acquisition-tools, engineering-referral-loops, inspecting-search-coverage, scaling-template-pages, adding-structured-signals, building-compare-hubs
 name: test-engineer
@@ -263,7 +263,7 @@ public function test_checkout_session_creation_requires_auth(): void
 
 ## CRITICAL for This Project
 
-1. **NEVER run tests against production databases** - TestCase enforces SQLite `:memory:` or `ALLOW_DESTRUCTIVE_TEST_DB=true`
+1. **NEVER run tests against production or shared staging databases** — `TestCase` allows only PostgreSQL databases named `testing` or `idx_api_testing`, unless `ALLOW_DESTRUCTIVE_TEST_DB=true`
 
 2. **Always use Http::fake() for external APIs** - Bridge, Stripe, GHL APIs must be mocked
 

@@ -17,14 +17,22 @@
             <directory>app</directory>
         </include>
     </source>
+    <!--
+        Tests use PostgreSQL only. Create an empty database `idx_api_testing` (or use `testing`)
+        and align DB_* below with your local instance. RefreshDatabase will migrate fresh each run.
+    -->
     <php>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="sqlite" force="true"/>
-        <env name="DB_DATABASE" value=":memory:" force="true"/>
+        <env name="DB_CONNECTION" value="pgsql" force="true"/>
+        <env name="DB_HOST" value="127.0.0.1" force="true"/>
+        <env name="DB_PORT" value="5432" force="true"/>
+        <env name="DB_DATABASE" value="idx_api_testing" force="true"/>
+        <env name="DB_USERNAME" value="postgres" force="true"/>
+        <env name="DB_PASSWORD" value="" force="true"/>
         <env name="DB_URL" value="" force="true"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
@@ -36,7 +44,5 @@
         <env name="BRIDGE_HOST" value="https://bridge.test"/>
         <env name="IDX_PLATFORM_HOSTS" value="localhost,127.0.0.1,dev-idx.quantyralabs.cc,idx.quantyralabs.cc,staging-idx.quantyralabs.cc"/>
         <env name="IDX_API_HOSTS" value="localhost,staging-idx-api.quantyralabs.cc"/>
-        <env name="STRIPE_KEY" value="pk_test_placeholder"/>
-        <env name="STRIPE_SECRET" value="sk_test_placeholder"/>
     </php>
 </phpunit>

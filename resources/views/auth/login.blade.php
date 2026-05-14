@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Subscriber login | GeoIDX by Quantyra Labs</title>
+    <title>Log in | GeoIDX by Quantyra Labs</title>
     <meta name="robots" content="noindex, nofollow">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>

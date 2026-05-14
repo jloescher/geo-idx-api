@@ -6,31 +6,28 @@ allowed-tools: [Read, Edit, Write, Glob, Grep, Bash]
 
 # Postgresql Skill
 
-Manages PostgreSQL schema design, migrations, and query patterns for a Laravel 13 + Octane service handling MLS proxy data, GHL marketplace integration, and GIS parcel caching. The codebase uses SQLite for local development and testing, PostgreSQL for production.
+Manages PostgreSQL schema design, migrations, and query patterns for a Laravel 13 + Octane service handling MLS proxy data, GIS parcel caching, and subscriber dashboards. Development, staging, production, and automated tests all use PostgreSQL (`pgsql`).
 
 ## Quick Start
 
 ```bash
-# Local development uses SQLite; ensure migrations run
+# Configure DB_* in .env, then apply migrations
 php artisan migrate
+```
 
-# Production PostgreSQL connection (configured via env)
+```bash
+# Example PostgreSQL connection (adjust per environment)
 DB_CONNECTION=pgsql
-DB_HOST=localhost
+DB_HOST=127.0.0.1
+DB_PORT=5432
 DB_DATABASE=idx_api
-DB_USERNAME=quantyra
-DB_PASSWORD=secret
-
-# Run GHL-specific migrations (loaded via AppServiceProvider)
-php artisan migrate --path=database/migrations/ghl
-
-# Seed GHL configuration data
-php artisan db:seed --class=GhlConfigSeeder
+DB_USERNAME=postgres
+DB_PASSWORD=
 ```
 
 ## Key Concepts
 
-**Migration Structure**: Core migrations live in `database/migrations/`; GHL marketplace migrations are isolated in `database/migrations/ghl/` and loaded via `AppServiceProvider::loadMigrationsFrom()`. Migration filenames follow Laravel's `YYYY_MM_DD_HHMMSS_description.php` format.
+**Migration Structure**: Core migrations live in `database/migrations/`. Migration filenames follow Laravel's `YYYY_MM_DD_HHMMSS_description.php` format.
 
 **PHP 8 Model Attributes**: Models use PHP 8 attributes instead of property arrays:
 ```php
@@ -50,34 +47,29 @@ class ListingsCache extends Model
 
 **GIS Caching Strategy**: PostgreSQL stores GIS cache blobs with generation-based invalidation. The `gis_cache` table stores `query_hash`, `geojson_blob`, `source_generation`, and `expires_at`. Cache hits require matching `source_generation` against `gis_source_states.generation`.
 
-**Dual-Channel Audit**: GHL operations write to both `ghl_audit_logs` (PostgreSQL) and optionally `storage/logs/ghl_audit.log` (filesystem) via `GhlAuditService`.
+**Bridge proxy audit**: MLS proxy requests can be logged to `bridge_proxy_audit_logs` where enabled.
 
-**Domain-Scoped Caching**: `listings_cache` uses `domain_slug` as primary key for per-domain MLS listing caches with gzip-compressed `compressed_data` columns.
+**Domain-Scoped Caching**: `listings_cache` stores per-domain MLS listing caches with gzip-compressed `compressed_data` columns (see migrations for the current primary key shape).
 
-**Ephemeral Test Guard**: Tests enforce SQLite `:memory:` or require `ALLOW_DESTRUCTIVE_TEST_DB=true` to prevent accidental PostgreSQL truncation in `TestCase::setUp()`.
+**Ephemeral Test Guard**: PHPUnit uses a dedicated PostgreSQL database (see `phpunit.xml`, default `idx_api_testing`). `TestCase::setUp()` allows only `testing` or `idx_api_testing` unless `ALLOW_DESTRUCTIVE_TEST_DB=true`.
 
 ## Common Patterns
 
-**Migration with JSON Columns** (GHL tables):
+**Migration with JSON columns**:
 ```php
-Schema::create('ghl_registered_urls', function (Blueprint $table) {
+Schema::create('example_settings', function (Blueprint $table) {
     $table->id();
-    $table->string('primary_url');
-    $table->json('additional_urls')->nullable();
-    $table->string('widget_api_key')->unique();
-    $table->enum('integration_type', ['ghl_website', 'external_website', 'both']);
+    $table->json('payload')->nullable();
     $table->timestamps();
 });
 ```
 
-**Encrypted Token Storage**:
+**Encrypted columns**:
 ```php
-// In GhlOAuthToken model
 protected function casts(): array
 {
     return [
-        'access_token' => 'encrypted',
-        'refresh_token' => 'encrypted',
+        'secret' => 'encrypted',
         'expires_at' => 'datetime',
     ];
 }

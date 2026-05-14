@@ -78,4 +78,4 @@ AND c.expires_at > NOW();
 ```
 
 ## Warning
-Never rely on `$casts` property arrays—this codebase uses PHP 8 attributes and the `casts()` method exclusively. SQLite tests will fail silently on JSON column mutations if you forget `->nullable()` on JSON columns.
+Never rely on `$casts` property arrays—this codebase uses PHP 8 attributes and the `casts()` method exclusively. For JSON columns, remember `->nullable()` when the column is optional so factories and partial updates behave consistently.

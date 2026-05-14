@@ -1,11 +1,8 @@
 <?php
 
-use App\Ghl\Http\Controllers\GhlApiController;
-use App\Ghl\Http\Middleware\AuthenticateGhlLocation;
 use App\Http\Controllers\Api\BridgeCompsController;
 use App\Http\Controllers\Api\BridgeProxyController;
 use App\Http\Controllers\Api\BridgeReplicationStatsController;
-use App\Http\Controllers\Api\WidgetValidationController;
 use App\Http\Controllers\GisProxyController;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -36,16 +33,6 @@ Route::post('/auth/token', function (Request $request): array {
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('/auth/user', fn (Request $request): ?User => $request->user());
 });
-
-Route::prefix('leadconnector')->middleware([AuthenticateGhlLocation::class])->group(function () {
-    Route::get('/leads', [GhlApiController::class, 'leads']);
-    Route::get('/leads/{id}', [GhlApiController::class, 'lead']);
-    Route::get('/stats', [GhlApiController::class, 'stats']);
-    Route::get('/config', [GhlApiController::class, 'config']);
-});
-
-Route::match(['post', 'options'], '/widgets/validate', WidgetValidationController::class)
-    ->middleware('throttle:120,1');
 
 Route::prefix('v1')->middleware(['domain.token', 'mls.access'])->group(function () {
     Route::get('/gis', [GisProxyController::class, 'show']);

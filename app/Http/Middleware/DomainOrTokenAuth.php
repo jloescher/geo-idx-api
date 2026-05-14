@@ -12,9 +12,8 @@ use Symfony\Component\HttpFoundation\Response;
 class DomainOrTokenAuth
 {
     /**
-     * Revenue impact: this gate is the primary unauthorized-access prevention control
-     * for Stellar MLS data; it converts anonymous traffic into either verified domains
-     * (lead capture) or tokenized server-to-server integrations (full IDX throughput).
+     * Authenticates Bridge/GIS proxy traffic via verified domain hostname, or via
+     * Sanctum bearer token together with X-Domain-Slug (or ?domain=) for a domain owned by the token user.
      */
     public function handle(Request $request, Closure $next): Response
     {
@@ -40,19 +39,36 @@ class DomainOrTokenAuth
         }
 
         $user = User::query()->find($accessToken->tokenable_id);
-        $requiresMlsGate = $user !== null && (
-            trim((string) $user->mls_id) !== ''
-            || trim((string) $user->mls_email) !== ''
-        );
-        if ($user === null || ($requiresMlsGate && (string) $user->mls_membership_status !== 'active')) {
-            abort(403, 'MLS membership verification is required for API access.');
+        if ($user === null) {
+            abort(403, 'Invalid API token.');
+        }
+
+        $slug = $this->resolveDomainSlugForTokenRequest($request);
+        if ($slug === null) {
+            abort(400, 'Missing domain identification. Send X-Domain-Slug (or ?domain=) matching a verified domain on your account.');
+        }
+
+        /** @var Domain|null $domain */
+        $domain = Domain::query()
+            ->active()
+            ->where('user_id', $user->id)
+            ->whereRaw('LOWER(domain_slug) = ?', [mb_strtolower($slug)])
+            ->first();
+
+        if ($domain === null) {
+            abort(403, 'Domain is not registered, inactive, or not owned by this token.');
+        }
+
+        if (! in_array((string) $domain->verification_status, ['verified', 'verified_ghl'], true)) {
+            abort(403, 'Domain must be TXT-verified before API token access is allowed.');
         }
 
         $request->attributes->set('bridge.auth', 'token');
         $request->attributes->set('bridge.token_name', $accessToken->name);
         $request->attributes->set('bridge.user_id', $accessToken->tokenable_id);
-        $request->attributes->set('bridge.allowed_datasets', $user->assignedDatasets());
-        $request->attributes->set('bridge.full_access', $accessToken->can('idx:full'));
+        $request->attributes->set('bridge.domain', $domain);
+        $request->attributes->set('bridge.domain_slug', $domain->domain_slug);
+        $request->attributes->set('bridge.full_access', true);
 
         return $next($request);
     }
@@ -79,9 +95,24 @@ class DomainOrTokenAuth
         $request->attributes->set('bridge.domain_slug', $domain->domain_slug);
         $request->attributes->set('bridge.token_name', null);
         $request->attributes->set('bridge.user_id', null);
-        $request->attributes->set('bridge.full_access', false);
+        $request->attributes->set('bridge.full_access', true);
 
         return $next($request);
+    }
+
+    private function resolveDomainSlugForTokenRequest(Request $request): ?string
+    {
+        $header = $request->headers->get('X-Domain-Slug');
+        if (is_string($header) && trim($header) !== '') {
+            return trim($header);
+        }
+
+        $queryDomain = $request->query('domain');
+        if (is_string($queryDomain) && trim($queryDomain) !== '') {
+            return trim($queryDomain);
+        }
+
+        return null;
     }
 
     private function resolveDomainSlug(Request $request): ?string

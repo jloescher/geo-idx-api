@@ -94,7 +94,7 @@ app/
 - Feature tests: `tests/Feature/` with `RefreshDatabase`
 - Unit tests: `tests/Unit/` for pure logic without database
 - Always use `Http::fake()` for external APIs (Bridge, Stripe, GHL)
-- Test safety: Must use SQLite `:memory:` or `ALLOW_DESTRUCTIVE_TEST_DB=true`
+- Test safety: PostgreSQL with `DB_DATABASE` `testing` or `idx_api_testing` (see `phpunit.xml`), or `ALLOW_DESTRUCTIVE_TEST_DB=true`
 - Config setup in `setUp()` method for test-specific values
 
 ## Feedback Format

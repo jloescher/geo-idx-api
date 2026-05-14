@@ -25,7 +25,7 @@ php artisan queue:work
 |----------|---------|---------|
 | `APP_KEY` | idx-api | Laravel encryption key |
 | `APP_URL` | idx-api | Base URL for routes |
-| `DB_CONNECTION` | idx-api | `pgsql` (prod) / `sqlite` (dev) |
+| `DB_CONNECTION` | idx-api | `pgsql` |
 | `DB_HOST` | idx-api | Database host |
 | `DB_DATABASE` | idx-api | Database name |
 | `DB_USERNAME` | idx-api | Database user |
@@ -99,6 +99,6 @@ docker compose exec idx-api php artisan gis:probe-sources
 2. **idx-images is NOT standalone** — it proxies to idx-api:8000 for auth enforcement
 3. **Queue workers required** — Without them, GHL token refresh, lead sync, and cache jobs won't run
 4. **Cloudflare tunnel for HTTPS** — Dev environment needs valid `CLOUDFLARED_TOKEN` for GHL OAuth callbacks
-5. **PostgreSQL in production** — SQLite only for local dev and tests; migrations tested on both
+5. **PostgreSQL everywhere** — Development, staging, production, and PHPUnit use `pgsql`; use a dedicated test database name (see `phpunit.xml` and `tests/TestCase.php`)
 6. **Image cache TTL separate from CDN** — `IMAGE_CACHE_TTL` (origin refresh) vs `Cache-Control` headers (CDN)
 7. **Environment files** — `.env` at repo root for Docker Compose; `idx-api/.env` for Laravel directly

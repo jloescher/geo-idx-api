@@ -11,7 +11,7 @@ class IdxPublicUrlsTest extends TestCase
     public function test_derives_platform_host_from_dev_idx_api_request(): void
     {
         $request = Request::create(
-            'https://dev-idx-api.quantyralabs.cc/leadconnector/install',
+            'https://dev-idx-api.quantyralabs.cc/openapi.json',
             'GET',
             server: [
                 'HTTP_HOST' => 'dev-idx-api.quantyralabs.cc',

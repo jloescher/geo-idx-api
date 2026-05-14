@@ -32,17 +32,17 @@ class AuthResponseRedirectTest extends TestCase
         $this->assertStringEndsWith('/dashboard', $response->getTargetUrl());
     }
 
-    public function test_login_response_redirects_non_subscribers_to_pricing(): void
+    public function test_login_response_redirects_non_subscribers_to_dashboard(): void
     {
         $response = app(LoginResponse::class)->toResponse($this->requestWithSubscribedState(false));
 
-        $this->assertStringEndsWith('/#pricing', $response->getTargetUrl());
+        $this->assertStringEndsWith('/dashboard', $response->getTargetUrl());
     }
 
-    public function test_register_response_redirects_non_subscribers_to_pricing(): void
+    public function test_register_response_redirects_non_subscribers_to_dashboard(): void
     {
         $response = app(RegisterResponse::class)->toResponse($this->requestWithSubscribedState(false));
 
-        $this->assertStringEndsWith('/#pricing', $response->getTargetUrl());
+        $this->assertStringEndsWith('/dashboard', $response->getTargetUrl());
     }
 }

@@ -6,9 +6,9 @@
 <div class="space-y-6">
     @if ($showIntro)
         <div>
-            <h2 class="text-xl font-bold tracking-tight text-slate-100">Subscriber login</h2>
+            <h2 class="text-xl font-bold tracking-tight text-slate-100">Internal login</h2>
             <p class="mt-1 text-sm text-slate-200">
-                Sign in to manage your GeoIDX subscription, widgets, and dashboard.
+                Sign in to manage internal GeoIDX API access and dashboard settings.
             </p>
         </div>
     @endif

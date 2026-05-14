@@ -12,16 +12,20 @@ return new class extends Migration
             $table->json('widget_palette')->nullable()->after('remember_token');
         });
 
-        Schema::table('ghl_registered_urls', function (Blueprint $table) {
-            $table->foreignId('quantyra_user_id')->nullable()->after('ghl_oauth_token_id')->constrained('users')->nullOnDelete();
-        });
+        if (Schema::hasTable('ghl_registered_urls')) {
+            Schema::table('ghl_registered_urls', function (Blueprint $table) {
+                $table->foreignId('quantyra_user_id')->nullable()->after('ghl_oauth_token_id')->constrained('users')->nullOnDelete();
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('ghl_registered_urls', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('quantyra_user_id');
-        });
+        if (Schema::hasTable('ghl_registered_urls')) {
+            Schema::table('ghl_registered_urls', function (Blueprint $table) {
+                $table->dropConstrainedForeignId('quantyra_user_id');
+            });
+        }
 
         Schema::table('users', function (Blueprint $table) {
             $table->dropColumn('widget_palette');

@@ -14,15 +14,15 @@ class DomainRoutingTest extends TestCase
         $this->withoutVite();
     }
 
-    public function test_platform_domain_root_shows_sales_page(): void
+    public function test_platform_domain_root_shows_marketing_home(): void
     {
         $this->withoutVite();
 
         $response = $this->get('https://dev-idx.quantyralabs.cc/');
 
         $response->assertOk();
-        $response->assertSee('GeoIDX');
-        $response->assertSee('Subscriber login');
+        $response->assertSee('GeoIDX API', false);
+        $response->assertSee('Log in');
     }
 
     public function test_api_domain_root_redirects_to_matching_sales_host(): void
@@ -59,10 +59,10 @@ class DomainRoutingTest extends TestCase
         $response->assertSee('/openapi.json');
     }
 
-    public function test_leadconnector_app_requires_authentication(): void
+    public function test_leadconnector_embed_path_is_removed(): void
     {
         $response = $this->get('https://idx.quantyralabs.cc/leadconnectorapp');
 
-        $response->assertRedirect('/login');
+        $response->assertNotFound();
     }
 }

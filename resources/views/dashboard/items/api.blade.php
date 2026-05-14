@@ -1,21 +1,10 @@
-@if ($activePanel === 'api' && $hasApiAccess)
+@if ($activePanel === 'api')
     <section class="idx-card mt-8 p-6">
-        <h2 class="text-xl font-semibold text-white">API Usage &amp; Billing</h2>
-        <div class="mt-4 grid gap-4 sm:grid-cols-3">
-            <div class="rounded-xl border border-white/10 bg-slate-950/70 p-4">
-                <p class="text-xs uppercase tracking-wide text-slate-400">API requests (period)</p>
-                <p class="mt-1 text-2xl font-semibold text-white">{{ number_format($apiRequestCount ?? 0) }}</p>
-            </div>
-            <div class="rounded-xl border border-white/10 bg-slate-950/70 p-4">
-                <p class="text-xs uppercase tracking-wide text-slate-400">Included</p>
-                <p class="mt-1 text-2xl font-semibold text-white">{{ $apiRequestLimit === null ? 'Unlimited' : number_format($apiRequestLimit) }}</p>
-            </div>
-            <div class="rounded-xl border border-white/10 bg-slate-950/70 p-4">
-                <p class="text-xs uppercase tracking-wide text-slate-400">Overage billing</p>
-                <p class="mt-1 text-sm font-semibold text-white">{{ $apiOverageRate }}</p>
-                <p class="mt-1 text-xs text-slate-400">Overage requests: {{ number_format($apiOverageCount) }}</p>
-            </div>
-        </div>
+        <h2 class="text-xl font-semibold text-white">API access</h2>
+        <p class="mt-2 text-sm text-slate-300">
+            Use your API base <span class="font-mono text-cyan-200/90">{{ $apiPublicUrl }}</span> with a dashboard token and a
+            <span class="font-semibold text-slate-200">verified</span> domain slug on each call.
+        </p>
     </section>
 
     <livewire:dashboard.api-token-manager />

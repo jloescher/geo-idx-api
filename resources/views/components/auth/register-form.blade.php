@@ -2,7 +2,7 @@
     <div>
         <h2 class="text-xl font-bold tracking-tight text-slate-100">Create subscriber account</h2>
         <p class="mt-1 text-sm text-slate-200">
-            Set up paid access with MLS verification, then manage GeoIDX widgets, LeadConnector, and billing from your dashboard.
+            Set up internal access with MLS verification, then manage GeoIDX domains and API tokens from your dashboard.
         </p>
     </div>
 

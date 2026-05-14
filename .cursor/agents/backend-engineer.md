@@ -138,8 +138,8 @@ JSON responses must rewrite Bridge photo URLs to `IDX_IMAGES_PUBLIC_URL`:
 
 ### 10. Testing Patterns
 - Feature tests: `RefreshDatabase`, `Http::fake()` for external APIs
-- Guard against non-ephemeral databases in `TestCase::setUp()`
-- In-memory SQLite with sync queue driver
+- Guard against non-whitelisted databases in `TestCase::setUp()` (PostgreSQL `testing` or `idx_api_testing` only, unless `ALLOW_DESTRUCTIVE_TEST_DB=true`)
+- PostgreSQL test database with sync queue driver (see `phpunit.xml`)
 
 ## CRITICAL for This Project
 
@@ -156,7 +156,6 @@ JSON responses must rewrite Bridge photo URLs to `IDX_IMAGES_PUBLIC_URL`:
 
 ## Environment-Specific Defaults
 
-- Local: SQLite `:memory:`, sync queue
-- Production: PostgreSQL, database queue, FrankenPHP Octane
+- Local / staging / production: PostgreSQL (`pgsql`), database queue where configured, FrankenPHP Octane in production
 
 Always check `TestCase.php` database guard before destructive operations.

@@ -13,8 +13,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Illuminate\Support\Str;
-use Laravel\Cashier\Billable;
 use Laravel\Sanctum\HasApiTokens;
 use RuntimeException;
 
@@ -35,7 +33,7 @@ use RuntimeException;
 class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<UserFactory> */
-    use Billable, HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable;
 
     /**
      * Get the attributes that should be cast.
@@ -70,30 +68,6 @@ class User extends Authenticatable implements FilamentUser
     }
 
     /**
-     * @return HasMany<SubscriberFeedAccess, $this>
-     */
-    public function subscriberFeedAccessRows(): HasMany
-    {
-        return $this->hasMany(SubscriberFeedAccess::class);
-    }
-
-    /**
-     * @return HasMany<AgentSearch, $this>
-     */
-    public function agentSearches(): HasMany
-    {
-        return $this->hasMany(AgentSearch::class);
-    }
-
-    /**
-     * @return HasMany<AgentAlert, $this>
-     */
-    public function agentAlerts(): HasMany
-    {
-        return $this->hasMany(AgentAlert::class);
-    }
-
-    /**
      * @return list<string>
      */
     public function canAccessPanel(Panel $panel): bool
@@ -125,24 +99,5 @@ class User extends Authenticatable implements FilamentUser
                 );
             }
         });
-    }
-
-    /**
-     * Revenue impact: Non-GHL subscribers still need a stable embed token for widget JS + dashboard previews.
-     */
-    public function ensureWidgetEmbedSiteKey(): string
-    {
-        $existing = $this->widget_embed_site_key;
-        if (is_string($existing) && $existing !== '') {
-            return $existing;
-        }
-
-        do {
-            $key = 'qh_'.Str::lower(Str::random(30));
-        } while (static::query()->where('widget_embed_site_key', $key)->exists());
-
-        $this->forceFill(['widget_embed_site_key' => $key])->save();
-
-        return $key;
     }
 }

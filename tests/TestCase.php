@@ -28,16 +28,28 @@ abstract class TestCase extends BaseTestCase
 
         $defaultConnection = (string) ($_ENV['DB_CONNECTION'] ?? $_SERVER['DB_CONNECTION'] ?? getenv('DB_CONNECTION') ?: '');
         $database = (string) ($_ENV['DB_DATABASE'] ?? $_SERVER['DB_DATABASE'] ?? getenv('DB_DATABASE') ?: '');
-        $isInMemorySqlite = $defaultConnection === 'sqlite' && $database === ':memory:';
 
-        if (! $isInMemorySqlite) {
-            throw new RuntimeException(
-                sprintf(
-                    'Refusing to run tests with non-ephemeral DB configuration [%s:%s]. Set ALLOW_DESTRUCTIVE_TEST_DB=true to override intentionally.',
-                    $defaultConnection,
-                    $database
-                )
-            );
+        if ($this->isAllowedEphemeralTestDatabase($defaultConnection, $database)) {
+            return;
         }
+
+        throw new RuntimeException(
+            sprintf(
+                'Refusing to run tests with DB configuration [%s:%s]. Use a dedicated PostgreSQL database named "testing" or "idx_api_testing" (see phpunit.xml and README), or set ALLOW_DESTRUCTIVE_TEST_DB=true only when you intentionally accept destructive migrations on this database.',
+                $defaultConnection,
+                $database
+            )
+        );
+    }
+
+    private function isAllowedEphemeralTestDatabase(string $connection, string $database): bool
+    {
+        if ($connection !== 'pgsql') {
+            return false;
+        }
+
+        $normalized = strtolower(trim($database));
+
+        return in_array($normalized, ['testing', 'idx_api_testing'], true);
     }
 }

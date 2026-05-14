@@ -3,7 +3,6 @@
 use App\Http\Controllers\Api\ImageProxyController;
 use App\Http\Middleware\CheckMlsAccess;
 use App\Http\Middleware\DomainOrTokenAuth;
-use App\Http\Middleware\EnsureAgentModuleEnabled;
 use App\Http\Middleware\ProtectMonitoringDashboard;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -17,11 +16,6 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
         then: function (): void {
-            Route::middleware('web')
-                ->group(base_path('routes/ghl-web.php'));
-            Route::middleware('api')
-                ->group(base_path('routes/ghl-widget.php'));
-
             Route::middleware(['api', 'domain.token'])
                 ->group(function (): void {
                     Route::get('/images/{listingKey}/{photoId}', [ImageProxyController::class, 'show'])
@@ -35,15 +29,10 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->statefulApi();
 
-        $middleware->preventRequestForgery([
-            'webhooks/leadconnector',
-        ]);
-
         $middleware->alias([
             'domain.token' => DomainOrTokenAuth::class,
             'mls.access' => CheckMlsAccess::class,
             'monitoring.basic-auth' => ProtectMonitoringDashboard::class,
-            'agent.module' => EnsureAgentModuleEnabled::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

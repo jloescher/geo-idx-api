@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Billing\SubscriptionCatalog;
 use App\Models\Domain;
 use App\Services\DomainOwnershipVerifier;
 use Illuminate\Database\QueryException;
@@ -16,7 +15,6 @@ class DashboardDomainController extends Controller
     private ?bool $domainsHaveUserIdColumn = null;
 
     public function __construct(
-        private readonly SubscriptionCatalog $catalog,
         private readonly DomainOwnershipVerifier $ownershipVerifier,
     ) {}
 
@@ -25,23 +23,6 @@ class DashboardDomainController extends Controller
         $user = $request->user();
         if ($user === null) {
             return redirect('/dashboard');
-        }
-
-        $domainLimit = $this->catalog->domainLimitForUser($user);
-        $activeDomainCount = Domain::query()
-            ->when(
-                $this->domainsTableHasUserIdColumn(),
-                fn ($query) => $query->where('user_id', $user->id)
-            )
-            ->where('is_active', true)
-            ->count();
-
-        if (is_int($domainLimit) && $activeDomainCount >= $domainLimit) {
-            return redirect('/dashboard')
-                ->withErrors([
-                    'domain_slug' => "You've reached your plan limit of {$domainLimit} domains. Remove a domain or upgrade to add more.",
-                ])
-                ->withInput();
         }
 
         $normalizedDomain = $this->normalizeDomainInput((string) $request->input('domain_slug', ''));
@@ -85,7 +66,7 @@ class DashboardDomainController extends Controller
         }
 
         return redirect('/dashboard')
-            ->with('dashboard_status', 'Domain added. Publish the TXT record (or connect GHL) to enable widget access.');
+            ->with('dashboard_status', 'Domain added. Publish the TXT record to verify ownership and enable API access.');
     }
 
     public function destroy(Request $request, Domain $domain): RedirectResponse
@@ -114,25 +95,8 @@ class DashboardDomainController extends Controller
         return redirect('/dashboard')->with(
             'dashboard_status',
             $verified
-                ? 'TXT verification succeeded. Widget access for this domain is now enabled.'
+                ? 'TXT verification succeeded. You can bind this domain to API tokens with X-Domain-Slug.'
                 : 'TXT verification not detected yet. DNS propagation can take a few minutes.'
-        );
-    }
-
-    public function verifyGhl(Request $request, Domain $domain): RedirectResponse
-    {
-        $user = $request->user();
-        if ($user === null || $domain->user_id !== $user->id) {
-            abort(403);
-        }
-
-        $verified = $this->ownershipVerifier->verifyGhlAttachment($domain, $user);
-
-        return redirect('/dashboard')->with(
-            'dashboard_status',
-            $verified
-                ? 'LeadConnector/GHL verification succeeded for this domain.'
-                : 'No matching LeadConnector/GHL site attachment found for this domain yet.'
         );
     }
 

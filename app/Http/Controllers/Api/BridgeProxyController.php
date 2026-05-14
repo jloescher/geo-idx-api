@@ -379,7 +379,7 @@ class BridgeProxyController extends Controller
     }
 
     /**
-     * Revenue impact: Bridge-only ancillary endpoints avoid shipping broken Spark stubs to production widgets.
+     * Revenue impact: Bridge-only ancillary endpoints avoid shipping broken Spark stubs to production API clients.
      *
      * Compliance: Spark feeds must not hit Bridge-only RESO resources without explicit Spark mapping.
      */

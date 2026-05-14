@@ -14,7 +14,7 @@ class ExampleTest extends TestCase
     {
         $this->withoutVite();
 
-        $response = $this->get('https://localhost/');
+        $response = $this->get('https://idx.quantyralabs.cc/');
 
         $response->assertStatus(200);
     }

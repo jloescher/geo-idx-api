@@ -1,6 +1,6 @@
 # GHL Integration — Database Schema (PostgreSQL)
 
-All tables below are created by migrations in **`database/migrations/ghl/`** and loaded via `AppServiceProvider::loadMigrationsFrom()`. Use PostgreSQL in production (docker-compose / Patroni); local tests may use SQLite.
+All tables below are created by migrations in **`database/migrations/ghl/`** and loaded via `AppServiceProvider::loadMigrationsFrom()`. Use PostgreSQL everywhere (development, staging, production, and automated tests).
 
 ---
 

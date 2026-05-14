@@ -22,7 +22,6 @@ class DatabaseSeeder extends Seeder
             'email' => 'test@example.com',
         ]);
 
-        $this->call(GhlConfigSeeder::class);
         $this->call(DomainSeeder::class);
         $this->call(GeoWebInternalTokenSeeder::class);
     }

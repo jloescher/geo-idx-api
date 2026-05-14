@@ -1,4 +1,4 @@
-import { createDashboardAlpineState } from './dashboard/widget-shell.js';
+import { createDashboardAlpineState } from './dashboard/dashboard-alpine.js';
 
 window.__createDashboardAlpineState = createDashboardAlpineState;
 

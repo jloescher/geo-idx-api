@@ -4,14 +4,14 @@ When to use: Reviewing title tags, meta descriptions, heading hierarchy, and con
 
 ## Patterns
 
-**Livewire Marketing Component SEO**
-The `SalesLandingPage` Livewire component in `app/Livewire/Marketing/` renders the main IDX sales page. Since Livewire dynamically updates content, ensure that initial page loads contain complete title tags and meta descriptions server-side, and that JavaScript-enhanced content degrades gracefully for crawlers.
+**Platform marketing home**
+The static Blade view [`resources/views/marketing/home.blade.php`](resources/views/marketing/home.blade.php) is the primary public entry on the platform host. Keep `<title>` and `<meta name="description">` accurate in that file so crawlers see complete metadata without relying on client-side JS.
 
 **Widget Embed Content Isolation**
 Widget endpoints (`/widget/search/{apiKey}`, `/widget/showcase/{apiKey}`) in `routes/ghl-widget.php` return HTML shells for iframe embeds. These should use appropriate `X-Robots-Tag: noindex, nofollow` headers to prevent widget content from competing with primary listing pages in search results.
 
-**Dashboard vs Marketing Page Differentiation**
-Authenticated dashboard views (`/dashboard`, `/billing/checkout`) should universally carry `noindex` directives to prevent search engines from indexing subscriber-specific content. Marketing pages (`/`, `/leadconnector/install`) need optimized `<title>` and `<meta name="description">` tags targeting real estate agent onboarding keywords.
+**Dashboard vs marketing differentiation**
+Authenticated dashboard and Filament user dashboard views should use `noindex` where appropriate so search engines do not index account-specific content. The platform home and GHL install surfaces need clear titles and descriptions for onboarding keywords.
 
 ## Warning
 

@@ -31,6 +31,8 @@ idx-api/
 
 ## Local Setup
 
+PostgreSQL is used for local development, staging (shared), and production (dedicated). Configure `DB_*` in `.env` (see `.env.example`).
+
 ```bash
 cp .env.example .env
 composer install
@@ -61,7 +63,10 @@ Start at `docs/INDEX.md` for implementation and operations guides.
 
 ## Testing
 
+Create an empty PostgreSQL database for PHPUnit (name must match `phpunit.xml`, default **`idx_api_testing`**, or use **`testing`**). Adjust `DB_HOST`, `DB_USERNAME`, and `DB_PASSWORD` in `phpunit.xml` if your local server differs. `RefreshDatabase` will run migrations on that database each run; `tests/TestCase.php` blocks accidental runs against other database names unless `ALLOW_DESTRUCTIVE_TEST_DB=true`.
+
 ```bash
+createdb idx_api_testing
 php artisan test --compact
 ```
 
