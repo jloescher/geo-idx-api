@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\ImageProxyController;
+use App\Http\Middleware\CheckMlsAccess;
 use App\Http\Middleware\DomainOrTokenAuth;
 use App\Http\Middleware\EnsureAgentModuleEnabled;
 use App\Http\Middleware\ProtectMonitoringDashboard;
@@ -35,12 +36,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->statefulApi();
 
         $middleware->preventRequestForgery([
-            'stripe/*',
             'webhooks/leadconnector',
         ]);
 
         $middleware->alias([
             'domain.token' => DomainOrTokenAuth::class,
+            'mls.access' => CheckMlsAccess::class,
             'monitoring.basic-auth' => ProtectMonitoringDashboard::class,
             'agent.module' => EnsureAgentModuleEnabled::class,
         ]);

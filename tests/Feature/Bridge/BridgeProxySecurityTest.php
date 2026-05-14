@@ -22,6 +22,7 @@ class BridgeProxySecurityTest extends TestCase
             'bridge.host' => 'https://bridge.test',
             'bridge.server_token' => 'test-bridge-key',
             'bridge.dataset' => 'stellar',
+            'bridge.datasets' => ['stellar'],
             'bridge.path_prefix' => '',
             'bridge.reso_root' => '',
             'bridge.images_public_base' => 'https://idx-images.test',
@@ -61,7 +62,7 @@ class BridgeProxySecurityTest extends TestCase
         $payload = $response->json();
         $this->assertIsArray($payload);
         $this->assertArrayHasKey('value', $payload);
-        $this->assertCount(3, $payload['value']);
+        $this->assertCount(10, $payload['value']);
     }
 
     public function test_listings_teaser_for_idx_access_token(): void
@@ -82,7 +83,7 @@ class BridgeProxySecurityTest extends TestCase
         ]);
 
         $response->assertOk();
-        $this->assertCount(3, $response->json('value'));
+        $this->assertCount(10, $response->json('value'));
     }
 
     public function test_listings_rejects_unknown_domain(): void

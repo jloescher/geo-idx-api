@@ -29,7 +29,7 @@ Route::post('/auth/token', function (Request $request): array {
     }
 
     return [
-        'token' => $user->createToken($credentials['device_name'], ['idx:read', 'idx:search'])->plainTextToken,
+        'token' => $user->createToken($credentials['device_name'], ['idx:full'])->plainTextToken,
     ];
 });
 
@@ -40,7 +40,6 @@ Route::middleware('auth:sanctum')->group(function (): void {
 Route::prefix('leadconnector')->middleware([AuthenticateGhlLocation::class])->group(function () {
     Route::get('/leads', [GhlApiController::class, 'leads']);
     Route::get('/leads/{id}', [GhlApiController::class, 'lead']);
-    Route::get('/subscriptions', [GhlApiController::class, 'subscriptions']);
     Route::get('/stats', [GhlApiController::class, 'stats']);
     Route::get('/config', [GhlApiController::class, 'config']);
 });
@@ -48,7 +47,7 @@ Route::prefix('leadconnector')->middleware([AuthenticateGhlLocation::class])->gr
 Route::match(['post', 'options'], '/widgets/validate', WidgetValidationController::class)
     ->middleware('throttle:120,1');
 
-Route::prefix('v1')->middleware(['domain.token'])->group(function () {
+Route::prefix('v1')->middleware(['domain.token', 'mls.access'])->group(function () {
     Route::get('/gis', [GisProxyController::class, 'show']);
     Route::get('/mls/{mlsCode}/gis', [GisProxyController::class, 'showForMls'])->where('mlsCode', '[A-Za-z0-9_\-]+');
 

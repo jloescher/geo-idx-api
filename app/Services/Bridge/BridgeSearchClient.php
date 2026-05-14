@@ -42,8 +42,9 @@ final readonly class BridgeSearchClient
         }
 
         $url = $this->buildResoUrl($dataset);
+        $token = (string) (config('mls.bridge.api_key') ?: config('bridge.server_token', ''));
         $response = Http::timeout((int) config('bridge.timeout_seconds', 30))
-            ->withToken((string) config('bridge.server_token'))
+            ->withToken($token)
             ->acceptJson()
             ->get($url, $queryParams);
 
@@ -78,7 +79,7 @@ final readonly class BridgeSearchClient
         $select = $this->compsPropertySelectList($dataset);
         $urls = array_values(array_unique(array_filter([
             $this->buildResoUrl($dataset)."('{$escaped}')",
-            ...$this->bridge->resoEntityUrls('Property', $listingKey),
+            ...$this->bridge->resoEntityUrls('Property', $listingKey, $dataset),
         ])));
 
         foreach ($urls as $url) {

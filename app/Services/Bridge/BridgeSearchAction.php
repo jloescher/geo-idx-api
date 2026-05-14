@@ -2,11 +2,13 @@
 
 namespace App\Services\Bridge;
 
+use App\Enums\MlsProvider;
 use App\Http\Controllers\Api\BridgeProxyController;
 use App\Http\Requests\Search\SearchRequest;
 use App\Http\Responses\Search\ListingResult;
 use App\Http\Responses\Search\SearchResult;
 use App\Http\Responses\Search\SearchStats;
+use App\Services\Mls\MlsClientFactory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -23,11 +25,17 @@ final readonly class BridgeSearchAction
         private BridgeSearchTranslator $searchTranslator,
         private MlsDatasetResolver $resolver,
         private HybridSearchService $hybridSearch,
+        private MlsClientFactory $mlsClients,
     ) {}
 
     public function __invoke(SearchRequest $request): JsonResponse
     {
-        $fullAccess = (bool) $request->attributes->get('bridge.full_access', false);
+        if ($this->mlsClients->providerForRequest($request) !== MlsProvider::Bridge) {
+            return response()->json([
+                'message' => 'Structured search is not yet available for this MLS feed.',
+            ], 501);
+        }
+
         $domainSlug = $request->attributes->get('bridge.domain_slug');
         $tokenName = $request->attributes->get('bridge.token_name');
         $userId = $request->attributes->get('bridge.user_id');
@@ -63,14 +71,9 @@ final readonly class BridgeSearchAction
         }
 
         $countAfterFilter = count($results);
-        $teaserCap = $fullAccess ? PHP_INT_MAX : 3;
-        if ($countAfterFilter > $teaserCap) {
-            $results = array_slice($results, 0, $teaserCap);
-        }
-
         $stats = $this->computeSearchStats($results);
 
-        $hasMore = $fullAccess && $countAfterFilter >= $bridgeTop && $bridgeTop < 200;
+        $hasMore = $countAfterFilter >= $bridgeTop && $bridgeTop < 200;
         $nextSkip = $hasMore ? $translated['skip'] + $bridgeTop : null;
 
         $this->audit->log(
@@ -95,14 +98,17 @@ final readonly class BridgeSearchAction
 
     private function searchCachePartitionKey(Request $request): ?string
     {
+        $feed = (string) $request->attributes->get('mls.feed_code', '');
+        $suffix = $feed !== '' ? ':'.$feed : '';
+
         $slug = $request->attributes->get('bridge.domain_slug');
         if (is_string($slug) && $slug !== '') {
-            return $slug;
+            return $slug.$suffix;
         }
 
         $userId = $request->attributes->get('bridge.user_id');
         if ($userId !== null && (is_int($userId) || (is_string($userId) && $userId !== ''))) {
-            return 'user:'.(string) $userId;
+            return 'user:'.(string) $userId.$suffix;
         }
 
         return null;

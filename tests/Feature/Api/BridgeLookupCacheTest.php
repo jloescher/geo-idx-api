@@ -20,6 +20,7 @@ class BridgeLookupCacheTest extends TestCase
             'bridge.host' => 'https://bridge.test',
             'bridge.server_token' => 'test-bridge-key',
             'bridge.dataset' => 'stellar',
+            'bridge.datasets' => ['stellar'],
             'bridge.path_prefix' => '',
             'bridge.reso_root' => '',
             'bridge.images_public_base' => 'https://idx-images.test',

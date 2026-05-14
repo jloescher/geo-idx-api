@@ -15,7 +15,7 @@ class MlsDatasetResolverTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->resolver = new MlsDatasetResolver;
+        $this->resolver = app(MlsDatasetResolver::class);
     }
 
     public function test_resolve_dataset_from_query_param(): void
@@ -84,7 +84,7 @@ class MlsDatasetResolverTest extends TestCase
         config(['bridge.datasets' => ['stellar']]);
 
         $this->expectException(HttpException::class);
-        $this->expectExceptionMessage("Dataset 'miami' is not available");
+        $this->expectExceptionMessage("MLS feed 'miami' is not available");
 
         $this->resolver->validateDataset('miami');
     }

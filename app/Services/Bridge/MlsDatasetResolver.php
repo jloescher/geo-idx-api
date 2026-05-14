@@ -3,11 +3,15 @@
 namespace App\Services\Bridge;
 
 use App\Models\Domain;
+use App\Services\Mls\MlsFeedResolver;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpKernel\Exception\HttpException;
 
 final class MlsDatasetResolver
 {
+    public function __construct(
+        private readonly MlsFeedResolver $feeds,
+    ) {}
+
     /**
      * Resolve the MLS dataset for the current request.
      *
@@ -17,40 +21,7 @@ final class MlsDatasetResolver
      */
     public function resolveDataset(Request $request): string
     {
-        $domain = $request->attributes->get('bridge.domain');
-        $allowed = $this->datasetsEnabledForDomain($domain);
-        $allowedForUser = $request->attributes->get('bridge.allowed_datasets');
-        if (is_array($allowedForUser) && $allowedForUser !== []) {
-            $allowed = array_values(array_intersect($allowed, $allowedForUser));
-        }
-
-        if ($allowed === []) {
-            throw new HttpException(503, 'No MLS dataset is enabled for this site.');
-        }
-
-        $queryDataset = $request->query('dataset');
-        if (is_string($queryDataset) && trim($queryDataset) !== '') {
-            $dataset = trim($queryDataset);
-            $this->validateDatasetForSite($dataset, $allowed);
-
-            return $dataset;
-        }
-
-        if ($domain instanceof Domain) {
-            $domainDataset = $domain->getMlsDataset();
-            if ($domainDataset !== null) {
-                $this->validateDatasetForSite($domainDataset, $allowed);
-
-                return $domainDataset;
-            }
-        }
-
-        $default = (string) config('bridge.dataset', 'stellar');
-        if (in_array($default, $allowed, true)) {
-            return $default;
-        }
-
-        return $allowed[0];
+        return $this->feeds->resolveFeedCode($request);
     }
 
     /**
@@ -58,9 +29,7 @@ final class MlsDatasetResolver
      */
     public function getAvailableDatasets(): array
     {
-        $datasets = config('bridge.datasets', ['stellar']);
-
-        return is_array($datasets) ? array_values(array_filter(array_map('trim', $datasets))) : ['stellar'];
+        return $this->feeds->catalogFeedCodes();
     }
 
     /**
@@ -70,22 +39,22 @@ final class MlsDatasetResolver
      */
     public function datasetsEnabledForDomain(?Domain $domain): array
     {
-        $global = $this->getAvailableDatasets();
+        $catalog = $this->getAvailableDatasets();
         if (! $domain instanceof Domain) {
-            return $global;
+            return $catalog;
         }
 
         $restriction = $domain->getAllowedMlsDatasets();
         if ($restriction === null) {
-            return $global;
+            return $catalog;
         }
 
-        return array_values(array_intersect($restriction, $global));
+        return array_values(array_intersect($restriction, $catalog));
     }
 
     public function validateDataset(string $dataset): void
     {
-        $this->validateDatasetForSite($dataset, $this->getAvailableDatasets());
+        $this->feeds->validateFeedCode($dataset);
     }
 
     /**
@@ -93,13 +62,6 @@ final class MlsDatasetResolver
      */
     public function validateDatasetForSite(string $dataset, array $enabledForSite): void
     {
-        $available = $this->getAvailableDatasets();
-        if (! in_array($dataset, $available, true)) {
-            throw new HttpException(400, "Dataset '{$dataset}' is not available. Available datasets: ".implode(', ', $available));
-        }
-
-        if (! in_array($dataset, $enabledForSite, true)) {
-            throw new HttpException(403, "Dataset '{$dataset}' is not enabled for this site.");
-        }
+        $this->feeds->validateFeedForSite($dataset, $enabledForSite);
     }
 }

@@ -16,8 +16,8 @@ class BridgeHttpService
      */
     public function serverJsonGet(string $fullUrl, array $query = []): Response
     {
-        $token = config('bridge.server_token');
-        if (! is_string($token) || $token === '') {
+        $token = $this->resolveBearerToken();
+        if ($token === null) {
             abort(503, 'Bridge server token is not configured.');
         }
 
@@ -33,8 +33,8 @@ class BridgeHttpService
      */
     public function getJsonFromUrl(string $url, Request $incoming, array $query = [], array $stripQueryKeys = []): Response
     {
-        $token = config('bridge.server_token');
-        if (! is_string($token) || $token === '') {
+        $token = $this->resolveBearerToken();
+        if ($token === null) {
             abort(503, 'Bridge server token is not configured.');
         }
 
@@ -53,28 +53,28 @@ class BridgeHttpService
     /**
      * Bridge Web API paths documented as /{dataset}/listings, /{dataset}/agents, etc.
      */
-    public function webUrl(string $resourcePath): string
+    public function webUrl(string $resourcePath, ?string $datasetOverride = null): string
     {
         $resourcePath = ltrim($resourcePath, '/');
 
-        return $this->joinUrl($this->datasetPathPrefix().'/'.$resourcePath);
+        return $this->joinUrl($this->datasetPathPrefix($datasetOverride).'/'.$resourcePath);
     }
 
     /**
      * RESO resources (Property, Member, Office, OpenHouse, Lookup).
      */
-    public function resoCollectionUrl(string $resource): string
+    public function resoCollectionUrl(string $resource, ?string $datasetOverride = null): string
     {
-        return $this->resoCollectionUrls($resource)[0];
+        return $this->resoCollectionUrls($resource, $datasetOverride)[0];
     }
 
     /**
      * @return list<string>
      */
-    public function resoCollectionUrls(string $resource): array
+    public function resoCollectionUrls(string $resource, ?string $datasetOverride = null): array
     {
         $resource = ltrim($resource, '/');
-        $dataset = (string) config('bridge.dataset');
+        $dataset = $this->resolveDataset($datasetOverride);
         $prefix = trim((string) config('bridge.path_prefix', ''), '/');
         $resoRoot = trim((string) config('bridge.reso_root', ''), '/');
         $paths = [];
@@ -99,39 +99,40 @@ class BridgeHttpService
         )));
     }
 
-    public function resoEntityUrl(string $resource, string $key): string
+    public function resoEntityUrl(string $resource, string $key, ?string $datasetOverride = null): string
     {
-        return $this->resoEntityUrls($resource, $key)[0];
+        return $this->resoEntityUrls($resource, $key, $datasetOverride)[0];
     }
 
     /**
      * @return list<string>
      */
-    public function resoEntityUrls(string $resource, string $key): array
+    public function resoEntityUrls(string $resource, string $key, ?string $datasetOverride = null): array
     {
         $safeKey = str_replace("'", "''", $key);
 
         return array_map(
             fn (string $url): string => $url."('{$safeKey}')",
-            $this->resoCollectionUrls($resource),
+            $this->resoCollectionUrls($resource, $datasetOverride),
         );
     }
 
-    public function listingPhotoUrl(string $listingKey, string $photoId): string
+    public function listingPhotoUrl(string $listingKey, string $photoId, ?string $datasetOverride = null): string
     {
         $template = (string) config('bridge.listing_photo_path_template');
+        $dataset = $this->resolveDataset($datasetOverride);
 
         if (str_starts_with($template, 'http://') || str_starts_with($template, 'https://')) {
             return str_replace(
                 ['{dataset}', '{listingKey}', '{photoId}'],
-                [(string) config('bridge.dataset'), rawurlencode($listingKey), rawurlencode($photoId)],
+                [$dataset, rawurlencode($listingKey), rawurlencode($photoId)],
                 $template
             );
         }
 
         $path = str_replace(
             ['{dataset}', '{listingKey}', '{photoId}'],
-            [(string) config('bridge.dataset'), rawurlencode($listingKey), rawurlencode($photoId)],
+            [$dataset, rawurlencode($listingKey), rawurlencode($photoId)],
             $template
         );
 
@@ -148,8 +149,8 @@ class BridgeHttpService
 
     public function getBinaryFromUrl(string $url, Request $incoming): Response
     {
-        $token = config('bridge.server_token');
-        if (! is_string($token) || $token === '') {
+        $token = $this->resolveBearerToken();
+        if ($token === null) {
             abort(503, 'Bridge server token is not configured.');
         }
 
@@ -191,15 +192,39 @@ class BridgeHttpService
         return rtrim((string) config('bridge.host'), '/').'/'.ltrim($path, '/');
     }
 
-    private function datasetPathPrefix(): string
+    private function datasetPathPrefix(?string $datasetOverride = null): string
     {
         $prefix = trim((string) config('bridge.path_prefix', ''), '/');
-        $dataset = trim((string) config('bridge.dataset', ''), '/');
+        $dataset = trim($this->resolveDataset($datasetOverride), '/');
 
         if ($prefix === '') {
             return $dataset;
         }
 
         return $prefix.'/'.$dataset;
+    }
+
+    private function resolveDataset(?string $datasetOverride): string
+    {
+        if (is_string($datasetOverride) && trim($datasetOverride) !== '') {
+            return trim($datasetOverride);
+        }
+
+        return trim((string) config('bridge.dataset', 'stellar'), '/');
+    }
+
+    private function resolveBearerToken(): ?string
+    {
+        $fromMls = config('mls.bridge.api_key');
+        if (is_string($fromMls) && $fromMls !== '') {
+            return $fromMls;
+        }
+
+        $legacy = config('bridge.server_token');
+        if (is_string($legacy) && $legacy !== '') {
+            return $legacy;
+        }
+
+        return null;
     }
 }

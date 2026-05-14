@@ -67,6 +67,26 @@ class Domain extends Model
     }
 
     /**
+     * Revenue impact: stable default feed selection avoids mis-keyed Bridge calls that burn API quota.
+     *
+     * Compliance: domain-scoped defaults must align with `allowed_mls_datasets` enforced upstream.
+     */
+    public function resolveDefaultFeedCode(): string
+    {
+        $explicit = $this->getMlsDataset();
+        if ($explicit !== null) {
+            return $explicit;
+        }
+
+        $allowed = $this->getAllowedMlsDatasets();
+        if ($allowed !== null && $allowed !== []) {
+            return $allowed[0];
+        }
+
+        return (string) config('bridge.dataset', 'stellar');
+    }
+
+    /**
      * Optional allowlist of Bridge dataset keys (e.g. stellar, miami). Null or empty means
      * any dataset from the global IDX catalog may be used for this domain.
      *
