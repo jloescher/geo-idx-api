@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\MlsProvider;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Search\SearchRequest;
 use App\Services\Bridge\BridgeHttpService;
@@ -12,10 +11,12 @@ use App\Services\Bridge\BridgeSearchAction;
 use App\Services\Bridge\ListingPriceConversionService;
 use App\Services\Bridge\ListingsCacheService;
 use App\Services\Mls\BridgeClient;
+use App\Services\Mls\MlsActivePendingListingsFetcher;
 use App\Services\Mls\MlsClientFactory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Http;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class BridgeProxyController extends Controller
@@ -28,6 +29,7 @@ class BridgeProxyController extends Controller
         private readonly BridgeImageUrlRewriter $imageUrlRewriter,
         private readonly ListingPriceConversionService $listingPricing,
         private readonly BridgeSearchAction $bridgeSearchAction,
+        private readonly MlsActivePendingListingsFetcher $listingsActivePendingFetcher,
     ) {}
 
     /**
@@ -46,22 +48,24 @@ class BridgeProxyController extends Controller
     public function listings(Request $request): SymfonyResponse
     {
         $feedCode = (string) $request->attributes->get('mls.feed_code');
-        $provider = $this->mlsClients->providerForRequest($request);
 
         $domainSlug = $request->attributes->get('bridge.domain_slug');
         $useCache = is_string($domainSlug) && $domainSlug !== '' && ! $request->filled('filters');
 
-        $fetchResponse = function () use ($request, $provider, $feedCode): \Illuminate\Http\Client\Response {
-            if ($provider === MlsProvider::Spark) {
-                $spark = $this->mlsClients->sparkClientForFeed($feedCode);
+        $fetchResponse = function () use ($request, $feedCode): \Illuminate\Http\Client\Response {
+            if ($request->filled('filters')) {
+                $client = $this->mlsClients->bridgeClientForFeed($feedCode);
+                $url = $client->webUrl('listings');
 
-                return $spark->getActivePendingPropertyCollection($request);
+                return $client->getJsonFromUrl($url, $request);
             }
 
-            $client = $this->mlsClients->bridgeClientForFeed($feedCode);
-            $url = $client->webUrl('listings');
+            $payload = $this->listingsActivePendingFetcher->fetchMergedCollectionForCache($request);
 
-            return $client->getJsonFromUrl($url, $request);
+            return Http::response($payload['body'], 200, array_filter([
+                'Content-Type' => 'application/json',
+                'ETag' => $payload['etag'],
+            ]));
         };
 
         if ($useCache) {
@@ -91,16 +95,9 @@ class BridgeProxyController extends Controller
     public function listing(Request $request, string $listingId): SymfonyResponse
     {
         $feedCode = (string) $request->attributes->get('mls.feed_code');
-        $provider = $this->mlsClients->providerForRequest($request);
-
-        if ($provider === MlsProvider::Spark) {
-            $spark = $this->mlsClients->sparkClientForFeed($feedCode);
-            $response = $spark->getPropertyEntity($request, $listingId);
-        } else {
-            $client = $this->mlsClients->bridgeClientForFeed($feedCode);
-            $url = $client->webUrl('listings/'.$listingId);
-            $response = $client->getJsonFromUrl($url, $request);
-        }
+        $client = $this->mlsClients->bridgeClientForFeed($feedCode);
+        $url = $client->webUrl('listings/'.$listingId);
+        $response = $client->getJsonFromUrl($url, $request);
 
         if (! $response->successful()) {
             return $this->auditAndPassthrough($request, 'listings.detail', $response);
@@ -148,13 +145,12 @@ class BridgeProxyController extends Controller
         [$query, $stripKeys] = $this->buildResoCompatibilityQuery($request);
         $partitionKey = $this->searchCachePartitionKey($request);
         $fingerprint = $this->propertiesFingerprint($request, $query);
-        $provider = $this->mlsClients->providerForRequest($request);
 
         $body = null;
         if ($partitionKey !== null) {
             try {
-                $body = $this->listingsCache->rememberJsonPayload($partitionKey, $fingerprint, function () use ($request, $query, $stripKeys, $provider): string {
-                    $response = $this->propertyCollectionResponse($request, $query, $stripKeys, $provider);
+                $body = $this->listingsCache->rememberJsonPayload($partitionKey, $fingerprint, function () use ($request, $query, $stripKeys): string {
+                    $response = $this->propertyCollectionResponse($request, $query, $stripKeys);
                     if (! $response->successful()) {
                         throw new \RuntimeException('MLS Property collection response failed');
                     }
@@ -165,7 +161,7 @@ class BridgeProxyController extends Controller
                 $body = null;
             }
         } else {
-            $response = $this->propertyCollectionResponse($request, $query, $stripKeys, $provider);
+            $response = $this->propertyCollectionResponse($request, $query, $stripKeys);
 
             if (! $response->successful()) {
                 return $this->auditAndPassthrough($request, 'reso.property.collection', $response);
@@ -174,7 +170,7 @@ class BridgeProxyController extends Controller
             $body = $response->body();
         }
         if (! is_string($body) || $body === '') {
-            $response = $this->propertyCollectionResponse($request, $query, $stripKeys, $provider);
+            $response = $this->propertyCollectionResponse($request, $query, $stripKeys);
             if (! $response->successful()) {
                 return $this->auditAndPassthrough($request, 'reso.property.collection', $response);
             }
@@ -379,27 +375,15 @@ class BridgeProxyController extends Controller
     }
 
     /**
-     * Revenue impact: Bridge-only ancillary endpoints avoid shipping broken Spark stubs to production API clients.
-     *
-     * Compliance: Spark feeds must not hit Bridge-only RESO resources without explicit Spark mapping.
+     * Revenue impact: RESO ancillary collections share one Bridge client so token spend stays predictable.
      */
     private function requireBridgeClient(Request $request): BridgeClient
     {
-        if ($this->mlsClients->providerForRequest($request) !== MlsProvider::Bridge) {
-            abort(501, 'This endpoint is only available for Bridge-backed MLS feeds.');
-        }
-
         return $this->mlsClients->bridgeClientFromRequest($request);
     }
 
-    private function propertyCollectionResponse(Request $request, array $query, array $stripKeys, MlsProvider $provider): \Illuminate\Http\Client\Response
+    private function propertyCollectionResponse(Request $request, array $query, array $stripKeys): \Illuminate\Http\Client\Response
     {
-        if ($provider === MlsProvider::Spark) {
-            $feedCode = (string) $request->attributes->get('mls.feed_code');
-
-            return $this->mlsClients->sparkClientForFeed($feedCode)->getJson('Property', $request, $query);
-        }
-
         $client = $this->mlsClients->bridgeClientFromRequest($request);
 
         return $this->proxyResoWithFallback($request, $client, $client->resoCollectionUrls('Property'), $query, $stripKeys);
@@ -407,12 +391,6 @@ class BridgeProxyController extends Controller
 
     private function propertyEntityResponse(Request $request, string $listingKey): \Illuminate\Http\Client\Response
     {
-        if ($this->mlsClients->providerForRequest($request) === MlsProvider::Spark) {
-            $feedCode = (string) $request->attributes->get('mls.feed_code');
-
-            return $this->mlsClients->sparkClientForFeed($feedCode)->getPropertyEntity($request, $listingKey);
-        }
-
         $client = $this->mlsClients->bridgeClientFromRequest($request);
 
         return $this->proxyResoWithFallback($request, $client, $client->resoEntityUrls('Property', $listingKey));

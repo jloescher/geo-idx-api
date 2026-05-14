@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Mls\MlsFeedResolver;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -73,17 +74,7 @@ class Domain extends Model
      */
     public function resolveDefaultFeedCode(): string
     {
-        $explicit = $this->getMlsDataset();
-        if ($explicit !== null) {
-            return $explicit;
-        }
-
-        $allowed = $this->getAllowedMlsDatasets();
-        if ($allowed !== null && $allowed !== []) {
-            return $allowed[0];
-        }
-
-        return (string) config('bridge.dataset', 'stellar');
+        return app(MlsFeedResolver::class)->resolveDefaultCatalogFeedForDomain($this);
     }
 
     /**

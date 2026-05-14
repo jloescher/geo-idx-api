@@ -25,7 +25,7 @@ class MlsDatasetResolverTest extends TestCase
         $request = new Request;
         $request->query->set('dataset', 'miami');
 
-        $this->assertSame('miami', $this->resolver->resolveDataset($request));
+        $this->assertSame('bridge_miami', $this->resolver->resolveDataset($request));
     }
 
     public function test_resolve_dataset_from_domain(): void
@@ -41,7 +41,7 @@ class MlsDatasetResolverTest extends TestCase
         $request = new Request;
         $request->attributes->set('bridge.domain', $domain);
 
-        $this->assertSame('stellar', $this->resolver->resolveDataset($request));
+        $this->assertSame('bridge_stellar', $this->resolver->resolveDataset($request));
     }
 
     public function test_resolve_dataset_from_domain_with_null_falls_back_to_global(): void
@@ -57,7 +57,7 @@ class MlsDatasetResolverTest extends TestCase
         $request = new Request;
         $request->attributes->set('bridge.domain', $domain);
 
-        $this->assertSame('miami', $this->resolver->resolveDataset($request));
+        $this->assertSame('bridge_miami', $this->resolver->resolveDataset($request));
     }
 
     public function test_resolve_dataset_falls_back_to_global_default(): void
@@ -66,7 +66,7 @@ class MlsDatasetResolverTest extends TestCase
 
         $request = new Request;
 
-        $this->assertSame('stellar', $this->resolver->resolveDataset($request));
+        $this->assertSame('bridge_stellar', $this->resolver->resolveDataset($request));
     }
 
     public function test_validate_dataset_accepts_valid_dataset(): void
@@ -95,7 +95,7 @@ class MlsDatasetResolverTest extends TestCase
 
         $datasets = $this->resolver->getAvailableDatasets();
 
-        $this->assertSame(['stellar', 'miami', 'phoenix'], $datasets);
+        $this->assertSame(['bridge_stellar', 'bridge_miami', 'bridge_phoenix'], $datasets);
     }
 
     public function test_get_available_datasets_defaults_to_stellar(): void
@@ -104,7 +104,7 @@ class MlsDatasetResolverTest extends TestCase
 
         $datasets = $this->resolver->getAvailableDatasets();
 
-        $this->assertSame(['stellar'], $datasets);
+        $this->assertSame(['bridge_stellar'], $datasets);
     }
 
     public function test_query_param_takes_priority_over_domain(): void
@@ -121,7 +121,7 @@ class MlsDatasetResolverTest extends TestCase
         $request->query->set('dataset', 'stellar');
         $request->attributes->set('bridge.domain', $domain);
 
-        $this->assertSame('stellar', $this->resolver->resolveDataset($request));
+        $this->assertSame('bridge_stellar', $this->resolver->resolveDataset($request));
     }
 
     public function test_validate_dataset_for_site_rejects_disabled_dataset(): void
@@ -131,7 +131,7 @@ class MlsDatasetResolverTest extends TestCase
         $this->expectException(HttpException::class);
         $this->expectExceptionMessage('not enabled');
 
-        $this->resolver->validateDatasetForSite('miami', ['stellar']);
+        $this->resolver->validateDatasetForSite('miami', ['bridge_stellar']);
     }
 
     public function test_datasets_enabled_for_domain_intersects_with_global_catalog(): void
@@ -143,7 +143,7 @@ class MlsDatasetResolverTest extends TestCase
 
         $enabled = $this->resolver->datasetsEnabledForDomain($domain);
 
-        $this->assertSame(['stellar'], $enabled);
+        $this->assertSame(['bridge_stellar'], $enabled);
     }
 
     public function test_resolve_dataset_falls_back_when_global_default_not_enabled_for_domain(): void
@@ -157,6 +157,6 @@ class MlsDatasetResolverTest extends TestCase
         $request = new Request;
         $request->attributes->set('bridge.domain', $domain);
 
-        $this->assertSame('miami', $this->resolver->resolveDataset($request));
+        $this->assertSame('bridge_miami', $this->resolver->resolveDataset($request));
     }
 }

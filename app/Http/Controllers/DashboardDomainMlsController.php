@@ -21,21 +21,21 @@ class DashboardDomainMlsController extends Controller
             abort(403);
         }
 
-        $catalog = $this->mlsFeeds->catalogFeedCodes();
+        $accepted = $this->mlsFeeds->validFormFeedInputs();
 
         $validated = $request->validate([
             'allowed_mls_datasets' => ['required', 'array', 'min:1'],
-            'allowed_mls_datasets.*' => ['string', Rule::in($catalog)],
-            'mls_dataset' => ['nullable', 'string', Rule::in($catalog)],
+            'allowed_mls_datasets.*' => ['string', Rule::in($accepted)],
+            'mls_dataset' => ['nullable', 'string', Rule::in($accepted)],
         ]);
 
         $allowed = array_values(array_unique(array_map(
-            static fn (mixed $v): string => is_string($v) ? trim($v) : '',
+            fn (mixed $v): string => $this->mlsFeeds->normalizeWireDatasetToCatalogKey(is_string($v) ? trim($v) : ''),
             $validated['allowed_mls_datasets'],
         )));
 
         $default = isset($validated['mls_dataset']) && is_string($validated['mls_dataset']) && $validated['mls_dataset'] !== ''
-            ? trim($validated['mls_dataset'])
+            ? $this->mlsFeeds->normalizeWireDatasetToCatalogKey(trim($validated['mls_dataset']))
             : $allowed[0];
 
         if (! in_array($default, $allowed, true)) {

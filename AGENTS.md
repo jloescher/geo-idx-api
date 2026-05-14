@@ -1,6 +1,6 @@
 # Quantyra IDX API
 
-Laravel 13 + Octane service powering Quantyra's Bridge MLS proxy, GIS parcel/geometry proxy, authenticated user dashboard (domains, API keys, MLS feed scope), and secured image proxy delivery. The service sits between real estate MLS data (Bridge Data Output / Stellar MLS and optional Spark RESO feeds), public ArcGIS parcel sources, and customer tooling. Three public surfaces: **idx.quantyralabs.cc** (app/marketing), **idx-api.quantyralabs.cc** (API), **idx-images.quantyralabs.cc** (image proxy).
+Laravel 13 + Octane service powering Quantyra's Bridge MLS proxy, GIS parcel/geometry proxy, authenticated user dashboard (domains, API keys, MLS feed scope), and secured image proxy delivery. The service sits between real estate MLS data (Bridge Data Output / Stellar MLS), public ArcGIS parcel sources, and customer tooling. Three public surfaces: **idx.quantyralabs.cc** (app/marketing), **idx-api.quantyralabs.cc** (API), **idx-images.quantyralabs.cc** (image proxy).
 
 ## Tech Stack
 
@@ -75,7 +75,7 @@ The service has three primary subsystems:
 
 ### 1. Bridge MLS Proxy (`/api/v1/*`)
 
-Proxies Bridge Data Output (and Spark OAuth feeds per `config/mls.php`) with domain-based or Sanctum token authentication. Key behaviors:
+Proxies Bridge Data Output with domain-based or Sanctum token authentication. Key behaviors:
 - **DomainOrTokenAuth** + **mls.access** resolve identity and feed access
 - **Teaser gating**: non-full-access requests cap listings (revenue lever)
 - **Image URL rewriting**: Bridge photo URLs rewritten to `idx-images` public URLs
@@ -103,8 +103,8 @@ Public ArcGIS feature server proxy for Florida parcel data. Three-tier caching w
                                │
                                ▼
                        ┌──────────────┐        ┌──────────────┐
-                       │  Bridge /    │        │  ArcGIS      │
-                       │  Spark MLS   │        │  Parcel Src  │
+                       │  Bridge MLS  │        │  ArcGIS      │
+                       │              │        │  Parcel Src  │
                        └──────────────┘        └──────────────┘
 ```
 
@@ -153,7 +153,7 @@ Public ArcGIS feature server proxy for Florida parcel data. Three-tier caching w
 ### Scheduled Tasks (routes/console.php)
 | Task | Schedule | Queue |
 |------|----------|-------|
-| `bridge-listings-cache-refresh` | Every 15 min per active domain, no overlap | default |
+| `mls-listings-cache-refresh` | Every 15 min via `mls:refresh-cache` (per domain × enabled feed), no overlap | default |
 | `gis-source-metadata-probe` | Monday 6:30am, no overlap | `config('gis.queue')` |
 
 ## Environment Variables

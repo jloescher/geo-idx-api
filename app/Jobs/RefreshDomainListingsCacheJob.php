@@ -2,20 +2,25 @@
 
 namespace App\Jobs;
 
-use App\Enums\MlsProvider;
+use App\Console\Commands\MlsRefreshCache;
+use App\Jobs\Mls\RefreshListingsCache;
 use App\Models\Domain;
-use App\Services\Bridge\ListingsCacheService;
-use App\Services\Mls\MlsClientFactory;
 use App\Services\Mls\MlsFeedResolver;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Http\Request;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
+/**
+ * Revenue impact: legacy single-domain dispatch now fans out per enabled feed so multi-MLS sites refresh fully.
+ *
+ * Compliance: MLS GRID IDX + Stellar Data Access Agreement — each feed uses its own credential boundary.
+ *
+ * @deprecated Prefer {@see RefreshListingsCache} dispatched from {@see MlsRefreshCache}.
+ */
 class RefreshDomainListingsCacheJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -30,7 +35,7 @@ class RefreshDomainListingsCacheJob implements ShouldQueue
         public string $domainSlug,
     ) {}
 
-    public function handle(ListingsCacheService $cache, MlsClientFactory $factory, MlsFeedResolver $feeds): void
+    public function handle(MlsFeedResolver $feeds): void
     {
         $domain = Domain::query()
             ->active()
@@ -41,50 +46,8 @@ class RefreshDomainListingsCacheJob implements ShouldQueue
             return;
         }
 
-        $feedCode = $domain->resolveDefaultFeedCode();
-        $restriction = $domain->getAllowedMlsDatasets();
-        $catalog = $feeds->catalogFeedCodes();
-        if ($restriction !== null) {
-            $intersect = array_values(array_intersect($restriction, $catalog));
-            if ($intersect !== []) {
-                $preferred = $domain->getMlsDataset();
-                if (is_string($preferred) && trim($preferred) !== '' && in_array(trim($preferred), $intersect, true)) {
-                    $feedCode = trim($preferred);
-                } else {
-                    $feedCode = $intersect[0];
-                }
-            }
+        foreach ($feeds->enabledFeedsForDomain($domain) as $internalFeedCode) {
+            RefreshListingsCache::dispatch($domain->domain_slug, $internalFeedCode);
         }
-
-        $incoming = Request::create('/api/v1/listings', 'GET', [
-            'limit' => 200,
-        ]);
-        $incoming->attributes->set('bridge.domain', $domain);
-        $incoming->attributes->set('bridge.domain_slug', $domain->domain_slug);
-
-        $def = $feeds->feedDefinition($feedCode);
-        $provider = (($def['provider'] ?? '') === MlsProvider::Spark->value)
-            ? MlsProvider::Spark
-            : MlsProvider::Bridge;
-
-        $cache->rememberListingsCollection($domain->domain_slug, $feedCode, function () use ($factory, $feedCode, $provider, $incoming): array {
-            if ($provider === MlsProvider::Spark) {
-                $response = $factory->sparkClientForFeed($feedCode)->getActivePendingPropertyCollection($incoming);
-
-                return [
-                    'body' => $response->body(),
-                    'etag' => $response->header('ETag'),
-                ];
-            }
-
-            $client = $factory->bridgeClientForFeed($feedCode);
-            $url = $client->webUrl('listings');
-            $response = $client->getJsonFromUrl($url, $incoming);
-
-            return [
-                'body' => $response->body(),
-                'etag' => $response->header('ETag'),
-            ];
-        });
     }
 }

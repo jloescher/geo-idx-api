@@ -47,7 +47,7 @@ class BridgeProxySecurityTest extends TestCase
         ]);
 
         Http::fake([
-            'https://bridge.test/stellar/listings*' => Http::response(
+            'https://bridge.test/stellar/Property*' => Http::response(
                 json_encode(['value' => array_map(static fn (int $i): array => ['id' => $i], range(1, 10))], JSON_THROW_ON_ERROR),
                 200,
                 ['Content-Type' => 'application/json']
@@ -68,7 +68,7 @@ class BridgeProxySecurityTest extends TestCase
     public function test_listings_teaser_for_idx_access_token(): void
     {
         Http::fake([
-            'https://bridge.test/stellar/listings*' => Http::response(
+            'https://bridge.test/stellar/Property*' => Http::response(
                 json_encode(['value' => array_map(static fn (int $i): array => ['id' => $i], range(1, 10))], JSON_THROW_ON_ERROR),
                 200,
                 ['Content-Type' => 'application/json']
@@ -102,7 +102,7 @@ class BridgeProxySecurityTest extends TestCase
         ]);
 
         Http::fake([
-            'https://bridge.test/stellar/listings*' => Http::response(
+            'https://bridge.test/stellar/Property*' => Http::response(
                 json_encode(['value' => [['id' => 1]]], JSON_THROW_ON_ERROR),
                 200,
                 ['Content-Type' => 'application/json']
@@ -133,7 +133,7 @@ class BridgeProxySecurityTest extends TestCase
         ];
 
         Http::fake([
-            'https://bridge.test/stellar/listings*' => Http::response(
+            'https://bridge.test/stellar/Property*' => Http::response(
                 json_encode($payload, JSON_THROW_ON_ERROR),
                 200,
                 ['Content-Type' => 'application/json']
@@ -172,7 +172,7 @@ class BridgeProxySecurityTest extends TestCase
         ];
 
         Http::fake([
-            'https://bridge.test/stellar/listings*' => Http::response(
+            'https://bridge.test/stellar/Property*' => Http::response(
                 json_encode($payload, JSON_THROW_ON_ERROR),
                 200,
                 ['Content-Type' => 'application/json']
@@ -196,7 +196,7 @@ class BridgeProxySecurityTest extends TestCase
         $this->createVerifiedDomainForUser($user);
 
         Http::fake([
-            'https://bridge.test/stellar/listings*' => Http::response(
+            'https://bridge.test/stellar/Property*' => Http::response(
                 json_encode(['value' => array_map(static fn (int $i): array => ['id' => $i], range(1, 10))], JSON_THROW_ON_ERROR),
                 200,
                 ['Content-Type' => 'application/json']
@@ -227,7 +227,7 @@ class BridgeProxySecurityTest extends TestCase
         ], now()->addMinutes(20));
 
         Http::fake([
-            'https://bridge.test/stellar/listings*' => Http::response(
+            'https://bridge.test/stellar/Property*' => Http::response(
                 json_encode(['value' => [['ListingKey' => 'LIST1', 'ListPrice' => 500000]]], JSON_THROW_ON_ERROR),
                 200,
                 ['Content-Type' => 'application/json']
@@ -258,7 +258,7 @@ class BridgeProxySecurityTest extends TestCase
         ], now()->addMinutes(20));
 
         Http::fake([
-            'https://bridge.test/stellar/listings*' => Http::response(
+            'https://bridge.test/stellar/Property*' => Http::response(
                 json_encode(['value' => [['ListingKey' => 'LIST1', 'ListPrice' => 500000]]], JSON_THROW_ON_ERROR),
                 200,
                 ['Content-Type' => 'application/json']

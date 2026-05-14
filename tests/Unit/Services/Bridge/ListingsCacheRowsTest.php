@@ -17,7 +17,7 @@ class ListingsCacheRowsTest extends TestCase
 
         $svc = app(ListingsCacheService::class);
 
-        $svc->rememberListingsCollection('dom-a', 'stellar', function (): array {
+        $svc->rememberListingsCollection('dom-a', 'bridge_stellar', function (): array {
             return [
                 'body' => json_encode([
                     'value' => [
@@ -31,7 +31,7 @@ class ListingsCacheRowsTest extends TestCase
 
         $this->assertSame(2, DB::table('listings_cache')->where('domain_slug', 'dom-a')->count());
 
-        $svc->rememberListingsCollection('dom-a', 'stellar', function (): array {
+        $svc->rememberListingsCollection('dom-a', 'bridge_stellar', function (): array {
             return [
                 'body' => json_encode([
                     'value' => [

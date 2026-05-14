@@ -5,6 +5,7 @@ namespace App\Services\Bridge;
 use App\Models\Domain;
 use App\Services\Mls\MlsFeedResolver;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 final class MlsDatasetResolver
 {
@@ -49,7 +50,19 @@ final class MlsDatasetResolver
             return $catalog;
         }
 
-        return array_values(array_intersect($restriction, $catalog));
+        $normalized = [];
+        foreach ($restriction as $item) {
+            if (! is_string($item) || trim($item) === '') {
+                continue;
+            }
+            try {
+                $normalized[] = $this->feeds->normalizeWireDatasetToCatalogKey(trim($item));
+            } catch (HttpException) {
+                continue;
+            }
+        }
+
+        return array_values(array_intersect($normalized, $catalog));
     }
 
     public function validateDataset(string $dataset): void

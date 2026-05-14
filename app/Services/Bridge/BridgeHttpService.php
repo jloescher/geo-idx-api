@@ -51,6 +51,27 @@ class BridgeHttpService
     }
 
     /**
+     * GET a fully qualified URL (e.g. OData @odata.nextLink) with Bridge auth — no query merge from the request.
+     *
+     * Revenue impact: cursor-chained Property pulls complete Active+Pending sets so row cache eviction matches MLS reality.
+     *
+     * Compliance: Stellar MLS / MLS GRID IDX — Bearer token remains server-side; nextLink URLs are upstream-controlled.
+     */
+    public function getAuthorizedJson(string $url, Request $incoming): Response
+    {
+        $token = $this->resolveBearerToken();
+        if ($token === null) {
+            abort(503, 'Bridge server token is not configured.');
+        }
+
+        return Http::timeout((int) config('bridge.timeout_seconds'))
+            ->withHeaders($this->forwardClientHeaders($incoming))
+            ->withToken($token)
+            ->acceptJson()
+            ->get($url);
+    }
+
+    /**
      * Bridge Web API paths documented as /{dataset}/listings, /{dataset}/agents, etc.
      */
     public function webUrl(string $resourcePath, ?string $datasetOverride = null): string

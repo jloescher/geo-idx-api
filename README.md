@@ -5,9 +5,22 @@ Laravel 13 + Octane service for Quantyra's Bridge MLS proxy and secured image pr
 ## What This Project Contains
 
 - Bridge Data Output proxy APIs under `/api/v1/*`
+- **Multi-MLS catalog:** internal feed keys are `bridge_{dataset}` (e.g. `bridge_stellar`) for cache rows, queues, and `mls.feed_code`. Public API clients still pass **`?dataset=`** using the **unprefixed** Bridge dataset slug (`stellar`, `miami`, …) as configured in `BRIDGE_DATASET` / `BRIDGE_DATASETS`.
 - Domain/token authorization middleware and proxy audit logging
 - Image proxy flow (`/images/*`) with cache path support and Nginx edge support
+- Listings row cache (`listings_cache`) with `php artisan mls:refresh-cache` (scheduled every 15 minutes; requires `QUEUE_CONNECTION=database` and a queue worker)
 - Supporting migrations, seeders, and automated tests
+
+## Octane (FrankenPHP)
+
+Production and local high-concurrency mode:
+
+```bash
+php artisan octane:install --server=frankenphp
+php artisan octane:start --server=frankenphp
+```
+
+Run a queue worker in parallel (`php artisan queue:work`) so MLS listings cache refresh jobs execute.
 
 ## Project Structure
 

@@ -2,13 +2,11 @@
 
 namespace App\Services\Bridge;
 
-use App\Enums\MlsProvider;
 use App\Http\Controllers\Api\BridgeProxyController;
 use App\Http\Requests\Search\SearchRequest;
 use App\Http\Responses\Search\ListingResult;
 use App\Http\Responses\Search\SearchResult;
 use App\Http\Responses\Search\SearchStats;
-use App\Services\Mls\MlsClientFactory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -25,17 +23,10 @@ final readonly class BridgeSearchAction
         private BridgeSearchTranslator $searchTranslator,
         private MlsDatasetResolver $resolver,
         private HybridSearchService $hybridSearch,
-        private MlsClientFactory $mlsClients,
     ) {}
 
     public function __invoke(SearchRequest $request): JsonResponse
     {
-        if ($this->mlsClients->providerForRequest($request) !== MlsProvider::Bridge) {
-            return response()->json([
-                'message' => 'Structured search is not yet available for this MLS feed.',
-            ], 501);
-        }
-
         $domainSlug = $request->attributes->get('bridge.domain_slug');
         $tokenName = $request->attributes->get('bridge.token_name');
         $userId = $request->attributes->get('bridge.user_id');

@@ -3,9 +3,7 @@
 use App\Jobs\BridgeSyncJob;
 use App\Jobs\PurgeClosedListingsJob;
 use App\Jobs\RefreshCryptoPricingJob;
-use App\Jobs\RefreshDomainListingsCacheJob;
 use App\Jobs\RefreshGisSourceMetadataJob;
-use App\Models\Domain;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -19,11 +17,10 @@ Schedule::call(function (): void {
         ->onQueue((string) config('coingecko.queue'));
 })->everyTenMinutes()->name('coingecko-price-refresh')->withoutOverlapping();
 
-Schedule::call(function (): void {
-    Domain::query()->active()->pluck('domain_slug')->each(function (string $slug): void {
-        RefreshDomainListingsCacheJob::dispatch($slug);
-    });
-})->everyFifteenMinutes()->name('bridge-listings-cache-refresh')->withoutOverlapping();
+Schedule::command('mls:refresh-cache')
+    ->everyFifteenMinutes()
+    ->name('mls-listings-cache-refresh')
+    ->withoutOverlapping();
 
 Schedule::call(function (): void {
     BridgeSyncJob::dispatch();

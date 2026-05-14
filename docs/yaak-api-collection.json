@@ -193,7 +193,7 @@
       "get": {
         "tags": ["MLS Data - Listings"],
         "summary": "Get Listings",
-        "description": "Get MLS listings for the resolved MLS feed (Bridge web collection or Spark active/pending collection). Responses include top-level `pricing` and per-row `pricing_converted` when `ListPrice` is present. **Collection cache:** 15-minute TTL applies per domain when **`filters` is absent**; any `filters` query parameter bypasses the cache and forwards to the upstream MLS client. Standard Bridge/Spark query parameters are passed through.",
+        "description": "Get MLS listings for the resolved MLS feed (Bridge web collection when `filters` is set; merged Active/Pending Bridge RESO slice when `filters` is absent). Responses include top-level `pricing` and per-row `pricing_converted` when `ListPrice` is present. **Collection cache:** 15-minute TTL applies per domain when **`filters` is absent**; any `filters` query parameter bypasses the cache and forwards to Bridge. Standard Bridge query parameters are passed through.",
         "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
