@@ -18,6 +18,7 @@
 /storage/pail
 /vendor
 _ide_helper.php
+.phpstorm.meta.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
