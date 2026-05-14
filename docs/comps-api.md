@@ -6,10 +6,7 @@ Bridge-backed comparables and investor analysis endpoint for the active MLS data
 
 - Route: `POST /api/v1/comps/run`
 - Middleware: `domain.token`
-- Token/domain behavior:
-  - domain auth or `idx:access` token: A–E comps only (sold comps teaser cap applies)
-  - `idx:full` token: full comps payload + investor modes
-- Investor modes (`rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`, `bpo`) require `idx:full`.
+- Authenticated **domain** or **PAT** traffic (with `idx:access` or `idx:full` and a verified domain binding for tokens) receives **full** comps payloads, including investor modes, BPO, and home value.
 
 ## Request shape
 
@@ -47,7 +44,6 @@ Top-level keys:
   - URAR-style Broker Price Opinion using market-derived adjustments
   - OLS regression extracts $/unit rates from the comp dataset (no static values)
   - returns `bpo_result` with full 14-line adjustment grid, reconciliation, and confidence scoring
-  - requires `idx:full`
 - `home_value`:
   - Home value estimation from owner-provided details or an active MLS listing
   - Two paths: `address` + geocoding via Google Maps, or `listing_id` + Bridge lookup
@@ -57,7 +53,6 @@ Top-level keys:
   - Renovation credits (kitchen, bathrooms, HVAC) derived from market data (scales with local price levels)
   - Expanded `property_type` enum: `sfr`, `townhouse`, `condo`, `manufactured`, `duplex`, `triplex`, `quadplex`, `modular`
   - returns `home_value_result` with estimate, range, confidence, comparable count, and market rates summary
-  - requires `idx:full`
 
 ## Key filter extensions
 

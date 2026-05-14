@@ -1,12 +1,11 @@
 # Quantyra IDX API
 
-Laravel 13 + Octane service for Quantyra's Bridge MLS proxy, GHL Marketplace integration, lead ingestion, and secured image proxy delivery.
+Laravel 13 + Octane service for Quantyra's Bridge MLS proxy and secured image proxy delivery.
 
 ## What This Project Contains
 
 - Bridge Data Output proxy APIs under `/api/v1/*`
 - Domain/token authorization middleware and proxy audit logging
-- GoHighLevel OAuth install flow, token refresh, webhooks, widgets, and sync jobs
 - Image proxy flow (`/images/*`) with cache path support and Nginx edge support
 - Supporting migrations, seeders, and automated tests
 
@@ -23,8 +22,9 @@ idx-api/
 ├── resources/
 ├── routes/
 ├── tests/
-├── Dockerfile.idx-api
-├── Dockerfile.idx-images
+├── Dockerfile.production   # Production API (Coolify targets: octane, queue-worker, scheduler)
+├── Dockerfile.staging      # Staging API (Xdebug); same targets as production
+├── Dockerfile.idx-images   # Nginx edge for /images/* (staging + production; see file header)
 ├── nginx.idx-images.conf
 └── README.md
 ```
@@ -50,16 +50,20 @@ npm run build
 
 ## Docker Images
 
-Build images from this project root:
+Build from this project root. **Production API:** [`Dockerfile.production`](Dockerfile.production). **Staging API:** [`Dockerfile.staging`](Dockerfile.staging). **Image edge (all envs):** [`Dockerfile.idx-images`](Dockerfile.idx-images).
 
 ```bash
-docker build -f Dockerfile.idx-api -t quantyra/idx-api:latest .
+docker build -f Dockerfile.production --target octane -t quantyra/idx-api:latest .
+docker build -f Dockerfile.production --target queue-worker -t quantyra/idx-api-worker:latest .
+docker build -f Dockerfile.production --target scheduler -t quantyra/idx-api-scheduler:latest .
 docker build -f Dockerfile.idx-images -t quantyra/idx-images:latest .
 ```
 
+**Coolify:** use the Dockerfile build pack, set **port 8000**, and deploy **three** API services (build targets `octane`, `queue-worker`, `scheduler`) with `QUEUE_CONNECTION=database` and shared `DB_*`. Add **idx-images** on port **8080**. Full steps: **[docs/coolify-deployment.md](docs/coolify-deployment.md)**. See [`AGENTS.md`](AGENTS.md) (Docker Deployment) for vCPU/RAM and PHP memory guidance. The production image does not bake **`route:cache`** when multiple platform hosts reuse the same route names; use post-deploy `php artisan route:cache` only if your environment uses a single host or unique names (see [deployment-operations.md](docs/deployment-operations.md)).
+
 ## Docs
 
-Start at `docs/INDEX.md` for implementation and operations guides.
+Start at `docs/INDEX.md` for implementation and operations guides. **Coolify (production & staging):** [`docs/coolify-deployment.md`](docs/coolify-deployment.md).
 
 ## Testing
 

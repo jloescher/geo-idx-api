@@ -33,9 +33,9 @@ php artisan test tests/Feature/Bridge/ProxyTest.php
 
 **In-Memory Testing**: `phpunit.xml` configures SQLite `:memory:` for tests. `TestCase.php` guards against running tests against non-ephemeral databases via `setUp()` checks that require SQLite `:memory:` or `ALLOW_DESTRUCTIVE_TEST_DB=true`.
 
-**Migration Organization**: Core migrations live in `database/migrations/`. GHL-specific migrations load via `AppServiceProvider::loadMigrationsFrom('database/migrations/ghl')`.
+**Migration Organization**: Core migrations live in `database/migrations/`.
 
-**Seeder Safety**: `DatabaseSeeder` delegates to domain seeders (`DomainSeeder`, `GeoWebInternalTokenSeeder`, `GhlConfigSeeder`). Tokens and sensitive data seed only when missing.
+**Seeder Safety**: `DatabaseSeeder` delegates to domain seeders (`DomainSeeder`, `GeoWebInternalTokenSeeder`). Tokens and sensitive data seed only when missing.
 
 ## Common Patterns
 

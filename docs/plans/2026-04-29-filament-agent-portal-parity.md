@@ -33,7 +33,7 @@ Captured from product exploration; Quantyra must not reuse RealScout branding, l
 - **Automations:** Auto Nurture settings, mode/status controls, FAQ/help, per-contact eligibility management.
 - **Integrations:** external connectors (CRM + marketing + pixel), credential/API-key forms, reconnect/disconnect states.
 - **Marketing tools:** shareable link builder, quick/advanced/listing templates, attribution tags/UTMs, performance columns.
-- **Account settings:** lead registration gates, notification/billing tabs, feature toggles for client experience.
+- **Account settings:** lead registration gates, notification and account tabs, feature toggles for client experience.
 
 ## Functional Parity Targets
 
@@ -91,7 +91,7 @@ flowchart LR
 
 ## Immediate Workstreams (No Deferred Phases)
 
-### Workstream A — Filament Foundations, Onboarding, and Subscriber Access
+### Workstream A — Filament Foundations, Onboarding, and User Access
 
 - Define module map in Filament navigation:
   - Dashboard

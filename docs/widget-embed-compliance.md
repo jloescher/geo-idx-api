@@ -4,7 +4,7 @@
 
 ```html
 <script
-  src="https://geo.quantyralabs.com/js/widgets/loader.js?token=SUBSCRIBER_TOKEN&primaryColor=3b82f6&accentColor=10b981"
+  src="https://geo.quantyralabs.com/js/widgets/loader.js?token=YOUR_WIDGET_API_KEY&primaryColor=3b82f6&accentColor=10b981"
   data-widget="search"
   data-footer-required="true"
   async

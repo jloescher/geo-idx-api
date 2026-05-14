@@ -20,7 +20,6 @@ This file lists **in-repo** Cursor skills under [`.cursor/skills/`](.cursor/skil
 | Tooltips, tours, in-app hints | `designing-inapp-guidance` |
 | Fortify auth | `fortify-development` |
 | Pulse | `pulse-development` |
-| Stripe / Cashier (if touching billing code) | `cashier-stripe-development` |
 
 ## Product surfaces (current)
 

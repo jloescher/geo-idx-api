@@ -68,6 +68,7 @@ rg --files | rg "docker|docker|ci-cd"
 
 ## See Also
 
+- [Coolify deployment](../../../docs/coolify-deployment.md) — production and staging (Quantyra `docs/`)
 - [Docker](references/docker.md)
 - [CI CD](references/ci-cd.md)
 - [Deployment](references/deployment.md)

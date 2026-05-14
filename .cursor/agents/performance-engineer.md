@@ -67,7 +67,7 @@ You are a performance optimization specialist for the Quantyra IDX API — a Lar
 | Bridge HTTP | `app/Services/Bridge/BridgeHttpService.php` |
 | Database | `database/migrations/2026_04_22_120000_create_listings_cache_table.php`, `database/migrations/*_create_gis_cache_table.php` |
 | Queues | `routes/console.php` (scheduling), `app/Jobs/` |
-| Octane | `config/octane.php`, `Dockerfile.idx-api` |
+| Octane | `config/octane.php`, `Dockerfile.production` |
 
 ## Approach
 

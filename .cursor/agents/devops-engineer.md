@@ -41,7 +41,7 @@ php artisan queue:work
 ## Security & Compliance
 
 - **Never commit secrets**: `.env` contains all sensitive values
-- **Build context**: Always build from project root: `docker build -f Dockerfile.idx-api -t quantyra/idx-api:latest .`
+- **Build context**: Always build from project root: `docker build -f Dockerfile.production --target octane -t quantyra/idx-api:latest .`
 - **Least privilege**: idx-images service only needs to proxy `/images/*`
 - **Image cache**: `IMAGE_CACHE_PATH` must be writable by `www-data` (uid 82 in Alpine)
 - **Audit logs**: `storage/logs/ghl_audit.log` and `storage/logs/` should be on persistent volume
@@ -50,7 +50,7 @@ php artisan queue:work
 
 ```bash
 # Build production images
-docker build -f Dockerfile.idx-api -t quantyra/idx-api:latest .
+docker build -f Dockerfile.production --target octane -t quantyra/idx-api:latest .
 docker build -f Dockerfile.idx-images -t quantyra/idx-images:latest .
 
 # Dev environment

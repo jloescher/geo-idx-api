@@ -1,0 +1,77 @@
+# Quantyra IDX-API — production image (Coolify / VPS)
+# Multi-stage: builder → octane | queue-worker | scheduler (PostgreSQL queue, no Redis).
+# Default build target is `octane` (last stage). Coolify: set port 8000; use build targets per service.
+# PHP memory_limit per role — align Coolify RAM > limit + ~300MB headroom on web (opcache 256MB).
+
+FROM dunglas/frankenphp:php8.5-alpine AS builder
+
+RUN apk add --no-cache \
+    zip \
+    unzip \
+    git \
+    curl
+
+RUN install-php-extensions \
+    pcntl \
+    bcmath \
+    intl \
+    pdo_pgsql \
+    pgsql \
+    gd \
+    zip \
+    opcache
+
+RUN echo "opcache.memory_consumption=256" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini \
+    && echo "opcache.max_accelerated_files=10000" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini \
+    && echo "opcache.enable_cli=1" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini
+
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+WORKDIR /var/www/html
+
+COPY . .
+
+RUN composer install --no-dev --optimize-autoloader --no-interaction
+
+RUN mkdir -p /var/cache/geoidx /var/cache/geoidx/images /var/log/geoidx \
+    && chown -R www-data:www-data /var/www/html /var/cache/geoidx /var/log/geoidx
+
+RUN touch /var/log/geoidx/ghl_audit.log && chown www-data:www-data /var/log/geoidx/ghl_audit.log
+
+RUN php artisan filament:assets --no-interaction
+
+RUN php artisan key:generate --force || true
+
+RUN php artisan config:cache \
+    && php artisan view:cache
+
+# route:cache is omitted at image build: routes/web.php registers the same names on each
+# IDX_PLATFORM_HOSTS domain, which breaks serialization. Run `php artisan route:cache` in
+# post-deploy when using a single platform host, or after namespacing route names per domain.
+
+FROM builder AS queue-worker
+
+EXPOSE 8000
+
+USER www-data
+
+CMD ["/bin/sh", "-lc", "exec php -d memory_limit=512M artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=120"]
+
+FROM builder AS scheduler
+
+EXPOSE 8000
+
+USER www-data
+
+CMD ["php", "-d", "memory_limit=256M", "artisan", "schedule:work"]
+
+FROM builder AS octane
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD php artisan octane:status || exit 1
+
+USER www-data
+
+CMD ["php", "-d", "memory_limit=256M", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000"]

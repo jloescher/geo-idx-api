@@ -1,8 +1,18 @@
 ## Development image for Laravel Octane (FrankenPHP) + cloudflared.
+##
+## OrbStack (recommended on macOS): Docker Compose + bind mounts work like Docker Desktop.
+## See https://docs.orbstack.dev/docker — fast file sync, low overhead. Use `extra_hosts:
+## host.docker.internal:host-gateway` (see docker-compose.dev.yml) so Xdebug can reach your
+## IDE on the host; OrbStack provides host.docker.internal for container → host debugging.
+##
 ## Build the reusable base once:
 ##   docker buildx build --target php-base -f Dockerfile.dev -t quantyra/idx-api-dev-base:php85 --platform linux/arm64,linux/amd64 .
 ## Build app image from that base:
 ##   docker buildx build -f Dockerfile.dev -t quantyra/idx-api-dev:latest --platform linux/arm64 .
+##
+## This image only runs Octane. Queue workers and the scheduler are not part of Docker dev:
+## use `composer dev` on the host (queue + Vite + logs) or deploy Dockerfile.production /
+## Dockerfile.staging targets `queue-worker` and `scheduler` when you want workers in containers.
 
 ARG BASE_IMAGE=dunglas/frankenphp:php8.5-alpine
 
@@ -81,9 +91,3 @@ EXPOSE 8000
 USER www-data
 
 CMD ["/bin/sh", "-lc", "php artisan octane:start --server=${OCTANE_SERVER} --host=${OCTANE_HOST} --port=${OCTANE_PORT} $( [ \"${OCTANE_WATCH}\" = \"true\" ] && echo '--watch' )"]
-
-FROM dev AS dev-worker
-CMD ["/bin/sh", "-lc", "php artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=120"]
-
-FROM dev AS dev-scheduler
-CMD ["/bin/sh", "-lc", "php artisan schedule:work"]

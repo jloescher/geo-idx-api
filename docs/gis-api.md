@@ -2,10 +2,10 @@
 
 Quantyra GeoIDX **idx-api** exposes a GIS proxy that returns **public Florida government parcel polygons** as **GeoJSON** (with a `meta` foreign member) optimized for **Leaflet**. **No MLS or Bridge RESO data** is read or merged into this endpoint—only external open-government ArcGIS services.
 
-## Revenue & compliance notes
+## Product and compliance notes
 
-- **Lead capture / time-on-site:** Parcel overlays increase map dwell time before and after OTP, improving registration completion rates without expanding MLS data processing.
-- **Infra margin:** 15-minute PostgreSQL + Laravel cache mirrors `listings_cache` economics so government ArcGIS instability does not scale linearly with traffic.
+- **Map UX:** Parcel overlays pair with listing markers so consumers get cadastral context without expanding MLS processing beyond Bridge-backed listing calls.
+- **Infra:** Short PostgreSQL + Laravel cache mirrors `listings_cache` economics so upstream ArcGIS instability does not scale linearly with traffic.
 - **Stellar MLS PDA / IDX:** This layer uses **public** cadastral and county GIS only, consistent with enhancing IDX display with non-MLS context.
 
 ## Authentication
@@ -13,12 +13,11 @@ Quantyra GeoIDX **idx-api** exposes a GIS proxy that returns **public Florida go
 Same as other `/api/v1/*` Bridge proxy routes:
 
 - **Domain mode:** `X-Domain-Slug` header (or `domain` query / Referer host) for an **active** `domains` row.
-- **Token mode:** Bearer Sanctum token with `idx:access` or `idx:full`.
+- **Token mode:** Bearer Sanctum token with `idx:access` or `idx:full`, plus **`X-Domain-Slug`** / **`?domain=`** for a verified domain on the token owner's account.
 
-**Teaser vs full access**
+**Access shape**
 
-- Domain / `idx:access` → **teaser:** simplified coordinates, limited properties, `meta.teaser=true`.
-- `idx:full` → **full:** richer attributes, `meta.context_layers` hints (URLs only; client-side fetch).
+- Authenticated GIS traffic receives **full** GeoJSON (rich properties, `meta.teaser=false`, `meta.full_access=true`, optional `meta.context_layers` hints). There is **no** plan-based teaser tier in the current internal deployment.
 
 ## Endpoints
 
@@ -80,8 +79,8 @@ X-Domain-Slug: your-registered-domain.com
     "source_used": "pinellas_enterprise_parcels",
     "source_tier": "pinellas",
     "county_hint": "pinellas",
-    "teaser": true,
-    "full_access": false,
+    "teaser": false,
+    "full_access": true,
     "mls_code": null,
     "layers": ["parcels"],
     "cached": false,
@@ -133,4 +132,4 @@ Geo-web can call `/api/v1/listings` then `/api/v1/gis` with the **same map bbox*
 
 ## Configuration reference
 
-See `config/gis.php` for source URLs, county bounding boxes, teaser limits, and Florida MLS allow-list.
+See `config/gis.php` for source URLs, county bounding boxes, optional teaser-related limits (legacy config keys), and Florida MLS allow-list.

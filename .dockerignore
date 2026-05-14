@@ -1,0 +1,46 @@
+# Laravel / Coolify build context — keep images small and avoid leaking secrets
+.git
+.gitattributes
+.github
+.idea
+.vscode
+.cursor
+
+# Dependencies (installed in image)
+node_modules
+vendor
+
+# Local env and tooling
+.env
+.env.*
+!.env.example
+
+# Tests and dev-only
+tests
+phpunit.xml
+.phpunit.result.cache
+.php-cs-fixer.cache
+pint.json
+
+# Docs (not needed at runtime in container)
+docs
+
+# Logs and caches (runtime paths recreated in Dockerfile)
+storage/logs
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+bootstrap/cache/*
+!bootstrap/cache/.gitignore
+
+# Frontend build artifacts (Filament/npm handled in Dockerfile when needed)
+public/hot
+public/build
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

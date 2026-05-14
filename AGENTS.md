@@ -237,19 +237,32 @@ Public ArcGIS feature server proxy for Florida parcel data. Three-tier caching w
 
 ## Docker Deployment
 
-### Production
+### Production and staging (Coolify / VPS)
 
-Two images built from project root:
+Canonical API image definition: **[`Dockerfile.production`](Dockerfile.production)** (multi-target `octane`, `queue-worker`, `scheduler`). Staging: **[`Dockerfile.staging`](Dockerfile.staging)** — same targets; Xdebug and lighter build-time caches than production.
 
-| Image | Dockerfile | Base | Port | Entry point |
-|-------|-----------|------|------|-------------|
-| idx-api | `Dockerfile.idx-api` | FrankenPHP + PHP 8.5 Alpine | 8000 | `php artisan octane:start --server=frankenphp` |
-| idx-images | `Dockerfile.idx-images` | Nginx 1.27 Alpine | 8080 | Nginx reverse-proxy to idx-api:8000 |
+| Image | Dockerfile | Base | Port | Default process |
+|-------|-----------|------|------|------------------|
+| idx-api (web) | `Dockerfile.production` (target `octane`) | FrankenPHP + PHP 8.5 Alpine + intl | 8000 | Octane + FrankenPHP |
+| idx-api (worker) | same file (target `queue-worker`) | (same image) | — | `queue:work` (Postgres `jobs` table) |
+| idx-api (scheduler) | same file (target `scheduler`) | (same image) | — | `schedule:work` |
+| idx-api staging (web / worker / scheduler) | `Dockerfile.staging` (targets `octane`, `queue-worker`, `scheduler`) | FrankenPHP + Xdebug | 8000 | same process layout as production |
+| idx-images (staging + production) | `Dockerfile.idx-images` | Nginx 1.27 Alpine | 8080 | Reverse-proxy to `idx-api:8000` |
+
+Build examples:
 
 ```bash
-docker build -f Dockerfile.idx-api -t quantyra/idx-api:latest .
+docker build -f Dockerfile.production --target octane -t quantyra/idx-api:latest .
+docker build -f Dockerfile.production --target queue-worker -t quantyra/idx-api-worker:latest .
+docker build -f Dockerfile.production --target scheduler -t quantyra/idx-api-scheduler:latest .
 docker build -f Dockerfile.idx-images -t quantyra/idx-images:latest .
 ```
+
+**Coolify ([Dockerfile build pack](https://coolify.io/docs/builds/packs/dockerfile)):** set the API service **port to 8000** (Coolify defaults to 3000). Create **three** API applications from the same repo (targets `octane`, `queue-worker`, `scheduler`) with identical env. Add a **fourth** application for **`Dockerfile.idx-images`** on port **8080** (same image for staging and production; upstream hostname `idx-api` must match your API service name on the Docker network). Step-by-step: **[docs/coolify-deployment.md](docs/coolify-deployment.md)**. Optional post-deploy: `php artisan migrate --force` and `php artisan optimize` if config was not baked at build time.
+
+**Resources (starting points — tune in Coolify per service):** VPS **2 vCPU / 4 GB** minimum (tight); staging **4–8 GB RAM** if using Xdebug + Telescope heavily; production **4 vCPU / 8 GB+** for proxy + queue spikes. Per service: web **0.5–1.0 CPU**, **1024–1536 MB RAM**; each worker replica **0.25–0.5 CPU**, **512–1024 MB RAM**; scheduler **0.1–0.25 CPU**, **256–384 MB RAM**. Reserve **1–2 GB** on the host for PostgreSQL if it shares the VPS. Container memory limit should exceed PHP `memory_limit` + headroom (~300 MB on web for opcache).
+
+**Route cache:** the production/staging Dockerfiles run `config:cache` and `view:cache` at build; **`route:cache` is not run in production** during build because multiple `IDX_PLATFORM_HOSTS` entries register duplicate route names. Run `php artisan route:cache` post-deploy only for single-host environments or after route names are unique per domain.
 
 ### Development
 
@@ -258,7 +271,7 @@ docker build -f Dockerfile.idx-images -t quantyra/idx-images:latest .
 ./scripts/docker-dev.sh down       # Stop all dev services
 ```
 
-Dev compose (`docker-compose.dev.yml`) includes Xdebug support (`XDEBUG_MODE`, `client_host=host.docker.internal`), file watching via Compose `develop.watch`, and Cloudflare tunnel for public HTTPS access.
+Dev compose (`docker-compose.dev.yml`) runs **Octane only** in `idx-api-dev` (no queue or scheduler containers). For local jobs and the scheduler, use **`composer dev`** on the host (server + queue + logs + Vite) or point **staging/production worker images** at the same database. Includes Xdebug support (`XDEBUG_MODE`, `client_host=host.docker.internal`), file watching via Compose `develop.watch`, and Cloudflare tunnel for public HTTPS access. Local Docker on macOS: **[OrbStack](https://docs.orbstack.dev/docker)** works well with the same Compose file; see comments in [`Dockerfile.dev`](Dockerfile.dev).
 
 ## Testing
 
@@ -271,6 +284,7 @@ Dev compose (`docker-compose.dev.yml`) includes Xdebug support (`XDEBUG_MODE`, `
 ## Additional Resources
 
 - @docs/INDEX.md — Documentation index
+- @docs/coolify-deployment.md — Coolify production & staging (four apps, env, networking, resources)
 - @docs/idx-api-bridge-proxy.md — Bridge proxy architecture, auth flow, cache strategy, image rewrite
 - @docs/bridge-api-documentation.md — Bridge Data Output upstream API reference
 - @docs/gis-api.md — GIS parcel/geometry proxy documentation
@@ -296,7 +310,6 @@ When working on tasks involving these technologies, invoke the corresponding ski
 | inspecting-search-coverage | Audits Bridge MLS filters, GIS queries, and on-page search coverage |
 | laravel-best-practices | Laravel PHP patterns, security, queues, validation (under `.agents/skills` or `.cursor/skills`) |
 | fortify-development | Fortify authentication customization |
-| cashier-stripe-development | Stripe / Cashier when billing code is in scope |
 | pulse-development | Laravel Pulse dashboards and recorders |
 
 ## Laravel Boost Guidelines

@@ -29,7 +29,7 @@ services:
           - idx-api
     healthcheck:
       # Cloudflared returns 502 when the origin refuses TCP; wait until Octane binds before other services rely on the API.
-      test: ["CMD-SHELL", "curl -sf --connect-timeout 3 http://127.0.0.1:8000/up >/dev/null || exit 1"]
+      test: [ "CMD-SHELL", "curl -sf --connect-timeout 3 http://127.0.0.1:8000/up >/dev/null || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -59,47 +59,6 @@ services:
           path: Dockerfile.dev
         - action: rebuild
           path: docker-compose.dev.yml
-
-  idx-queue-dev:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-      target: dev-worker
-      args:
-        BASE_IMAGE: ${DEV_BASE_IMAGE:-dunglas/frankenphp:php8.5-alpine}
-    image: ${DEV_IMAGE_NAME_QUEUE:-quantyra/idx-api-dev-queue:local}
-    platform: ${DOCKER_PLATFORM:-linux/arm64}
-    env_file:
-      - .env
-    environment:
-      XDG_CONFIG_HOME: /var/www/html/config
-      XDG_DATA_HOME: /var/www/html/data
-      XDEBUG_MODE: ${XDEBUG_MODE:-off}
-      WORKER_QUEUES: ${WORKER_QUEUES:-default}
-    depends_on:
-      - idx-api-dev
-    restart: unless-stopped
-    init: true
-
-  idx-scheduler-dev:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-      target: dev-scheduler
-      args:
-        BASE_IMAGE: ${DEV_BASE_IMAGE:-dunglas/frankenphp:php8.5-alpine}
-    image: ${DEV_IMAGE_NAME_SCHEDULER:-quantyra/idx-api-dev-scheduler:local}
-    platform: ${DOCKER_PLATFORM:-linux/arm64}
-    env_file:
-      - .env
-    environment:
-      XDG_CONFIG_HOME: /var/www/html/config
-      XDG_DATA_HOME: /var/www/html/data
-      XDEBUG_MODE: ${XDEBUG_MODE:-off}
-    depends_on:
-      - idx-api-dev
-    restart: unless-stopped
-    init: true
 
   idx-images-dev:
     build:
