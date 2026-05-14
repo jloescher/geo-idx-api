@@ -48,6 +48,7 @@
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
             "@php artisan key:generate",
             "@php artisan migrate --force",
+            "@ide-helper",
             "npm install --ignore-scripts",
             "npm run build"
         ],
@@ -59,12 +60,19 @@
             "@php artisan config:clear --ansi",
             "@php artisan test"
         ],
+        "ide-helper": [
+            "@php scripts/compose-ide-helper.php"
+        ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"
         ],
         "post-update-cmd": [
-            "@php artisan vendor:publish --tag=laravel-assets --ansi --force"
+            "@php artisan vendor:publish --tag=laravel-assets --ansi --force",
+            "@ide-helper"
+        ],
+        "post-install-cmd": [
+            "@ide-helper"
         ],
         "post-root-package-install": [
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\""

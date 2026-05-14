@@ -1,0 +1,4 @@
+{
+    "php.suggest.basic": false,
+    "intelephense.files.maxSize": 6000000
+}
