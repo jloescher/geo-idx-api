@@ -1,9 +1,13 @@
 # Quantyra IDX-API — production image (Coolify / VPS)
-# Multi-stage: builder → octane | queue-worker | scheduler (PostgreSQL queue, no Redis).
+# Multi-stage: builder-base → vite (Node) → builder → octane | queue-worker | scheduler (+ optional
+# alias stages idx-api-worker, idx-api-scheduler for Coolify build targets that match service names).
 # Default build target is `octane` (last stage). Coolify: set port 8000; use build targets per service.
 # PHP memory_limit per role — align Coolify RAM > limit + ~300MB headroom on web (opcache 256MB).
+#
+# Vite: public/build comes only from the vite stage — never from the git context (.dockerignore).
+# vite runs after composer so vendor/ exists (Filament theme imports in resources/css).
 
-FROM dunglas/frankenphp:php8.5-alpine AS builder
+FROM dunglas/frankenphp:php8.5-alpine AS builder-base
 
 RUN apk add --no-cache \
     zip \
@@ -38,6 +42,20 @@ RUN mkdir -p /var/cache/geoidx /var/cache/geoidx/images /var/log/geoidx \
 
 RUN touch /var/log/geoidx/ghl_audit.log && chown www-data:www-data /var/log/geoidx/ghl_audit.log
 
+FROM node:22-alpine AS vite
+
+WORKDIR /app
+
+COPY --from=builder-base /var/www/html /app
+
+RUN mkdir -p storage/framework/views
+
+RUN npm ci && npm run build
+
+FROM builder-base AS builder
+
+COPY --from=vite /app/public/build ./public/build
+
 RUN php artisan filament:assets --no-interaction
 
 RUN php artisan key:generate --force || true
@@ -70,6 +88,11 @@ EXPOSE 8000
 USER www-data
 
 CMD ["php", "-d", "memory_limit=256M", "artisan", "schedule:work"]
+
+# Alias stages: some operators use the Coolify service name as `docker build --target`.
+FROM queue-worker AS idx-api-worker
+
+FROM scheduler AS idx-api-scheduler
 
 FROM builder AS octane
 

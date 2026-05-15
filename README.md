@@ -35,7 +35,7 @@ idx-api/
 ├── resources/
 ├── routes/
 ├── tests/
-├── Dockerfile.production   # Production API (Coolify targets: octane, queue-worker, scheduler)
+├── Dockerfile.production   # Production API (Coolify targets: octane, queue-worker, scheduler; aliases idx-api-worker, idx-api-scheduler)
 ├── Dockerfile.staging      # Staging API (Xdebug); same targets as production
 ├── Dockerfile.idx-images   # Nginx edge for /images/* (staging + production; see file header)
 ├── nginx.idx-images.conf

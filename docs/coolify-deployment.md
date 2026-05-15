@@ -18,6 +18,22 @@ This guide describes how to run **Quantyra IDX API** on [Coolify](https://coolif
 
 Each row in the tables below is a **separate Coolify application** (or an equivalent service in a single Compose stack). Repeat the same **repository** and **base directory**; only the Dockerfile, **Docker build target**, port, and env differ.
 
+### 1.1 Docker build target vs application name
+
+Coolify’s **Docker Build Target** is passed to `docker build --target=…` and must match a **`FROM … AS <stage>`** name in the Dockerfile (for example **`octane`**, **`queue-worker`**, **`scheduler`**). It is **not** automatically the same as the Coolify **application name** (for example `idx-api-worker`).
+
+| Mistake | Typical error |
+|---------|----------------|
+| Build target **`idx-api-worker`** when only **`queue-worker`** exists | `target stage "idx-api-worker" could not be found` |
+
+**Canonical targets:** **`octane`** (web), **`queue-worker`**, **`scheduler`**.
+
+**Alias stages (forgiving):** [Dockerfile.staging](../Dockerfile.staging) and [Dockerfile.production](../Dockerfile.production) also expose **`idx-api-worker`** (same image as **`queue-worker`**) and **`idx-api-scheduler`** (same as **`scheduler`**). Prefer the canonical names in new Coolify apps so logs and docs stay clear.
+
+### 1.2 Vite / `public/build` on image build
+
+The API Dockerfiles **never** copy `public/build` from the git build context (it is listed in [`.dockerignore`](../.dockerignore)). Each build runs **`npm ci`** and **`npm run build`** inside a **Node** stage after **`composer install`**, then **`COPY --from=… ./public/build`** into the PHP image so `@vite()` and the marketing home have **`manifest.json`** at runtime. Do not expect to “bring your own” committed `public/build` from the repo on deploy.
+
 ---
 
 ## 2. Production — four applications
@@ -38,7 +54,7 @@ Each row in the tables below is a **separate Coolify application** (or an equiva
 |-------|--------|
 | **Name** | e.g. `idx-api-worker` |
 | **Dockerfile** | `Dockerfile.production` |
-| **Docker Build Target** | `queue-worker` |
+| **Docker Build Target** | `queue-worker` (optional alias: **`idx-api-worker`** — same image) |
 | **Port** | None exposed publicly (no inbound HTTP). |
 | **Command** | Use image default (`queue:work` with `php -d memory_limit=512M`). |
 
@@ -48,7 +64,7 @@ Each row in the tables below is a **separate Coolify application** (or an equiva
 |-------|--------|
 | **Name** | e.g. `idx-api-scheduler` |
 | **Dockerfile** | `Dockerfile.production` |
-| **Docker Build Target** | `scheduler` |
+| **Docker Build Target** | `scheduler` (optional alias: **`idx-api-scheduler`** — same image) |
 | **Port** | None exposed publicly. |
 | **Command** | Use image default (`schedule:work`). |
 
@@ -62,7 +78,9 @@ Each row in the tables below is a **separate Coolify application** (or an equiva
 | **Port** | **8080** |
 | **Healthcheck** | `GET /health` on port **8080**. |
 
-**Networking:** `idx-images` must resolve **`idx-api`** to the **web** container on the **same Docker network** (same Coolify project / stack). If Coolify assigns another hostname, update `upstream idx_api_images` in `nginx.idx-images.conf` and rebuild, or align the web service name to `idx-api`.
+**Networking:** `idx-images` must resolve **`idx-api`** to the **web** container on the **same Docker network** (same Coolify project / stack). If Coolify assigns another internal hostname, either set a **network alias** / service name **`idx-api`** for the Octane app or change the upstream host in [nginx.idx-images.conf](../nginx.idx-images.conf) and rebuild the idx-images image.
+
+[nginx.idx-images.conf](../nginx.idx-images.conf) uses Docker’s embedded DNS (**`resolver 127.0.0.11`**) and a **variable `proxy_pass`** so Nginx starts even if **`idx-api`** appears on the network slightly later than idx-images (rolling updates). You still need a **shared network** and a resolvable name for the API container; the resolver does not replace correct service discovery.
 
 ---
 
@@ -201,7 +219,17 @@ Coolify may inject `APP_ENV` at **build** time. For Laravel, prefer **`APP_ENV` 
 
 Coolify expects healthchecks that can probe HTTP with **`curl` or `wget`** ([troubleshooting](https://coolify.io/docs/troubleshoot/applications/no-available-server)). The API Dockerfile uses **`curl -fsS http://127.0.0.1:8000/up`** so the proxy can verify the app without bootstrapping a full `php artisan` invocation.
 
----
+### idx-images: `host not found in upstream "idx-api:8000"` or container `(unhealthy)`
+
+**Symptoms:** Nginx logs **`[emerg] host not found in upstream`** and the container never passes Coolify’s rolling update healthcheck.
+
+**Causes:** idx-images and the **Octane** API are on **different** Docker networks, or the API service has **no DNS name `idx-api`** on that network, or the idx-images app was mis-pointed at the **PHP** Dockerfile instead of **`Dockerfile.idx-images`**.
+
+**Fix:** Put both services in the **same** Coolify project/stack, and ensure the web API is reachable as **`idx-api`** (display name and/or internal hostname / network alias, depending on Coolify version). Rebuild idx-images after changing [nginx.idx-images.conf](../nginx.idx-images.conf). The image uses **runtime DNS** for the upstream; see §2.4.
+
+### Octane: `ViteManifestNotFoundException` in the container
+
+The runtime image must contain **`public/build/manifest.json`** produced **during `docker build`**, not from git (see §1.2). If you see this error after deploy, the image was built without the Node/Vite stage succeeding, or an old image layer was reused incorrectly — rebuild the **web** application image from the current Dockerfile and redeploy.
 
 ## 10. Official Coolify references
 
