@@ -183,7 +183,27 @@ PHP **`memory_limit`** is set in the image `CMD`: web **256M**, worker **512M**,
 
 ---
 
-## 9. Official Coolify references
+## 9. Troubleshooting (deploy / rolling updates)
+
+### `storage/logs/laravel.log` permission denied (container unhealthy)
+
+The API image runs Octane as **`www-data`**. If **`storage/logs`** is missing (it is excluded from the Docker build context via `.dockerignore`) or root-owned files exist under **`storage/`** / **`bootstrap/cache/`** after build-time `php artisan` commands, Laravel cannot log and Octane may fail writing its process state — the **Dockerfile healthcheck** then never passes.
+
+**Fix:** Use an image that includes the post-artisan `mkdir` + `chown`/`chmod` step (see `Dockerfile.staging` / `Dockerfile.production`). Rebuild and redeploy.
+
+**If you mount a persistent volume on `storage/`** in Coolify, ensure the mount is writable by the **`www-data`** user the image uses (same uid/gid as in `Dockerfile.staging`), or `chown` the volume once after first deploy.
+
+### Coolify: `APP_ENV=staging` build-time warning
+
+Coolify may inject `APP_ENV` at **build** time. For Laravel, prefer **`APP_ENV` as runtime-only** in Coolify (or use `local` during build if you must pass it at build time), per Coolify’s own hint — see [environment variables](https://coolify.io/docs/builds/packs/dockerfile#environment-variables).
+
+### Rolling updates stuck on healthcheck
+
+Coolify expects healthchecks that can probe HTTP with **`curl` or `wget`** ([troubleshooting](https://coolify.io/docs/troubleshoot/applications/no-available-server)). The API Dockerfile uses **`curl -fsS http://127.0.0.1:8000/up`** so the proxy can verify the app without bootstrapping a full `php artisan` invocation.
+
+---
+
+## 10. Official Coolify references
 
 - [Dockerfile build pack](https://coolify.io/docs/builds/packs/dockerfile) — port **3000** default; set **8000** / **8080** explicitly.  
 - [Environment variables](https://coolify.io/docs/builds/packs/dockerfile#environment-variables) — UI and build-time injection.  

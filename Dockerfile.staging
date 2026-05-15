@@ -54,6 +54,12 @@ RUN php artisan key:generate --force || true
 
 RUN php artisan config:cache
 
+# Artisan above runs as root; Octane/queue/scheduler run as www-data. Ensure runtime dirs exist
+# and are owned by www-data (`.dockerignore` omits `storage/logs` from build context).
+RUN mkdir -p storage/logs storage/framework/cache/data storage/framework/sessions storage/framework/views storage/app/public \
+    && chown -R www-data:www-data storage bootstrap/cache \
+    && chmod -R u+rwX,g+rwX storage bootstrap/cache
+
 FROM builder AS queue-worker
 
 EXPOSE 8000
@@ -74,8 +80,8 @@ FROM builder AS octane
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD php artisan octane:status || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8000/up >/dev/null || exit 1
 
 USER www-data
 
