@@ -239,7 +239,7 @@ Public ArcGIS feature server proxy for Florida parcel data. Three-tier caching w
 
 ### Production and staging (Coolify / VPS)
 
-Canonical API image definition: **[`Dockerfile.production`](Dockerfile.production)** (multi-target `octane`, `queue-worker`, `scheduler`). Staging: **[`Dockerfile.staging`](Dockerfile.staging)** — same targets; Xdebug and lighter build-time caches than production.
+FrankenPHP base (published to GHCR): **[`Dockerfile.frankenphp-base.production`](Dockerfile.frankenphp-base.production)** / **[`.staging`](Dockerfile.frankenphp-base.staging)**. Application images: **[`Dockerfile.production`](Dockerfile.production)** / **[`.staging`](Dockerfile.staging)** (`FROM` GHCR base via `FRANKENPHP_BASE_IMAGE`; targets `octane`, `queue-worker`, `scheduler`).
 
 | Image | Dockerfile | Base | Port | Default process |
 |-------|-----------|------|------|------------------|
@@ -252,13 +252,14 @@ Canonical API image definition: **[`Dockerfile.production`](Dockerfile.productio
 Build examples:
 
 ```bash
-docker build -f Dockerfile.production --target octane -t quantyra/idx-api:latest .
-docker build -f Dockerfile.production --target queue-worker -t quantyra/idx-api-worker:latest .
-docker build -f Dockerfile.production --target scheduler -t quantyra/idx-api-scheduler:latest .
+docker build -f Dockerfile.frankenphp-base.production -t ghcr.io/<owner>/<repo>-frankenphp:production .
+docker build -f Dockerfile.production --target octane \
+  --build-arg FRANKENPHP_BASE_IMAGE=ghcr.io/<owner>/<repo>-frankenphp:production \
+  -t quantyra/idx-api:latest .
 docker build -f Dockerfile.idx-images -t quantyra/idx-images:latest .
 ```
 
-**Coolify ([Dockerfile build pack](https://coolify.io/docs/builds/packs/dockerfile)):** set the API service **port to 8000** (Coolify defaults to 3000). Create **three** API applications from the same repo (targets `octane`, `queue-worker`, `scheduler`) with identical env. Add a **fourth** application for **`Dockerfile.idx-images`** on port **8080** (same image for staging and production; upstream hostname `idx-api` must match your API service name on the Docker network). Step-by-step: **[docs/coolify-deployment.md](docs/coolify-deployment.md)**. Optional post-deploy: `php artisan migrate --force` and `php artisan optimize` if config was not baked at build time.
+**Coolify (FrankenPHP base + Dockerfile app build):** GHA [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) publishes **`ghcr.io/<owner>/<repo>-frankenphp:production|staging`** from [`Dockerfile.frankenphp-base.production`](Dockerfile.frankenphp-base.production) / [`.staging`](Dockerfile.frankenphp-base.staging) (`linux/amd64`). Coolify uses the **[Dockerfile build pack](https://coolify.io/docs/builds/packs/dockerfile)** with [`Dockerfile.production`](Dockerfile.production) or [`.staging`](Dockerfile.staging), build-arg **`FRANKENPHP_BASE_IMAGE`**, targets **`octane`** / **`queue-worker`** / **`scheduler`**, web port **8000**. Fourth app: **`Dockerfile.idx-images`** on **8080**. See **[docs/coolify-deployment.md](docs/coolify-deployment.md)**.
 
 **Resources (starting points — tune in Coolify per service):** VPS **2 vCPU / 4 GB** minimum (tight); staging **4–8 GB RAM** if using Xdebug + Telescope heavily; production **4 vCPU / 8 GB+** for proxy + queue spikes. Per service: web **0.5–1.0 CPU**, **1024–1536 MB RAM**; each worker replica **0.25–0.5 CPU**, **512–1024 MB RAM**; scheduler **0.1–0.25 CPU**, **256–384 MB RAM**. Reserve **1–2 GB** on the host for PostgreSQL if it shares the VPS. Container memory limit should exceed PHP `memory_limit` + headroom (~300 MB on web for opcache).
 

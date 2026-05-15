@@ -44,7 +44,7 @@ foreach ($platformHosts as $platformHost) {
     Route::domain($platformHost)->group(function (): void {
         Route::get('/', SalesPageController::class)->name('marketing.sales');
 
-        Route::middleware(['web', 'guest'])->group(function (): void {
+        Route::middleware(['web', 'guest', 'turnstile'])->group(function (): void {
             Route::get('/register/{token}', [RegisterInvitationController::class, 'show'])
                 ->middleware('throttle:60,1')
                 ->where('token', '[A-Za-z0-9]+')

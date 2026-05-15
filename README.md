@@ -73,7 +73,7 @@ docker build -f Dockerfile.production --target scheduler -t quantyra/idx-api-sch
 docker build -f Dockerfile.idx-images -t quantyra/idx-images:latest .
 ```
 
-**Coolify:** use the Dockerfile build pack, set **port 8000**, and deploy **three** API services (build targets `octane`, `queue-worker`, `scheduler`) with `QUEUE_CONNECTION=database` and shared `DB_*`. Add **idx-images** on port **8080**. Full steps: **[docs/coolify-deployment.md](docs/coolify-deployment.md)**. See [`AGENTS.md`](AGENTS.md) (Docker Deployment) for vCPU/RAM and PHP memory guidance. The production image does not bake **`route:cache`** when multiple platform hosts reuse the same route names; use post-deploy `php artisan route:cache` only if your environment uses a single host or unique names (see [deployment-operations.md](docs/deployment-operations.md)).
+**Coolify:** GHA publishes **FrankenPHP base** images (`Dockerfile.frankenphp-base.*` → `ghcr.io/<owner>/<repo>-frankenphp:production|staging`). Coolify builds the app from **`Dockerfile.production`** / **`Dockerfile.staging`** (Dockerfile build pack, build-arg `FRANKENPHP_BASE_IMAGE`). Targets: `octane`, `queue-worker`, `scheduler`; web port **8000**. **idx-images** on **8080**. Full steps: **[docs/coolify-deployment.md](docs/coolify-deployment.md)**. See [`AGENTS.md`](AGENTS.md) (Docker Deployment) for vCPU/RAM and PHP memory guidance. The production image does not bake **`route:cache`** when multiple platform hosts reuse the same route names; use post-deploy `php artisan route:cache` only if your environment uses a single host or unique names (see [deployment-operations.md](docs/deployment-operations.md)).
 
 ## Docs
 

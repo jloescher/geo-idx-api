@@ -1,24 +1,28 @@
-# Build and push the Octane API image to GHCR (single tag per workflow).
-# Coolify: deploy pre-built image; web = default CMD; worker/scheduler = same image + command override (see docs/coolify-deployment.md §1.3).
+# Publish FrankenPHP base images to GHCR (linux/amd64).
+# Coolify builds the app from Dockerfile.staging / Dockerfile.production using those bases
+# (build-arg FRANKENPHP_BASE_IMAGE). See docs/coolify-deployment.md.
 
-name: Docker publish (octane)
+name: Docker publish (FrankenPHP base)
 
 on:
   push:
     branches: [main, staging]
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-push:
+  frankenphp-base:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -27,31 +31,35 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
-            type=raw,value=staging,enable=${{ github.ref_name == 'staging' }}
-            type=sha
-
-      - name: Set Dockerfile
+      - name: Pick base Dockerfile and tag
         id: pick
         run: |
           if [ "${{ github.ref_name }}" = "staging" ]; then
-            echo "file=Dockerfile.staging" >> "$GITHUB_OUTPUT"
+            echo "file=Dockerfile.frankenphp-base.staging" >> "$GITHUB_OUTPUT"
+            echo "tag=staging" >> "$GITHUB_OUTPUT"
           else
-            echo "file=Dockerfile.production" >> "$GITHUB_OUTPUT"
+            echo "file=Dockerfile.frankenphp-base.production" >> "$GITHUB_OUTPUT"
+            echo "tag=production" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build and push
+      - name: Docker metadata (FrankenPHP base)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-frankenphp
+          tags: |
+            type=raw,value=${{ steps.pick.outputs.tag }}
+            type=sha,prefix=sha-
+
+      - name: Build and push FrankenPHP base
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ steps.pick.outputs.file }}
-          target: octane
+          platforms: linux/amd64
+          provenance: false
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=frankenphp-base-${{ steps.pick.outputs.tag }}
+          cache-to: type=gha,mode=max,scope=frankenphp-base-${{ steps.pick.outputs.tag }}

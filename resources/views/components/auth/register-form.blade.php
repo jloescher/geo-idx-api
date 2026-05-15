@@ -181,6 +181,8 @@
             >
         </div>
 
+        <x-auth.turnstile-widget />
+
         <button
             type="submit"
             class="w-full rounded-xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:ring-offset-2 focus:ring-offset-slate-900"

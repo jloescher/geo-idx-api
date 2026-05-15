@@ -21,7 +21,8 @@ class DomainRoutingTest extends TestCase
         $response = $this->get('https://dev-idx.quantyralabs.cc/');
 
         $response->assertOk();
-        $response->assertSee('GeoIDX API', false);
+        $response->assertSee('GeoIDX', false);
+        $response->assertSee('Log in', false);
         $response->assertSee('Log in');
     }
 

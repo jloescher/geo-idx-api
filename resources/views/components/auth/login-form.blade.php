@@ -6,9 +6,9 @@
 <div class="space-y-6">
     @if ($showIntro)
         <div>
-            <h2 class="text-xl font-bold tracking-tight text-slate-100">Internal login</h2>
+            <h2 class="text-xl font-bold tracking-tight text-slate-100">Log in</h2>
             <p class="mt-1 text-sm text-slate-200">
-                Sign in to manage internal GeoIDX API access and dashboard settings.
+                Sign in to your GeoIDX dashboard.
             </p>
         </div>
     @endif
@@ -78,7 +78,14 @@
                 >
                 Remember me
             </label>
+            @if (Route::has('password.request'))
+                <a href="{{ route('password.request', [], false) }}" class="text-sm text-emerald-300 hover:text-emerald-200">
+                    Forgot password?
+                </a>
+            @endif
         </div>
+
+        <x-auth.turnstile-widget />
 
         <button
             type="submit"

@@ -1,35 +1,16 @@
 # Quantyra IDX-API — production image (Coolify / VPS)
-# Multi-stage: builder-base → vite (Node) → builder → octane | queue-worker | scheduler (+ optional
-# alias stages idx-api-worker, idx-api-scheduler for Coolify build targets that match service names).
-# Default build target is `octane` (last stage). Coolify: set port 8000; use build targets per service.
-# PHP memory_limit per role — align Coolify RAM > limit + ~300MB headroom on web (opcache 256MB).
+# Multi-stage: GHCR FrankenPHP base → vite (Node) → builder → octane | queue-worker | scheduler.
+# Default build target is `octane`. Coolify: Dockerfile build pack, port 8000, target per service.
+#
+# Build arg FRANKENPHP_BASE_IMAGE (required on Coolify): ghcr.io/<owner>/<repo>-frankenphp:production
+# Base is built by GHA from Dockerfile.frankenphp-base.production — not install-php-extensions here.
 #
 # Vite: public/build comes only from the vite stage — never from the git context (.dockerignore).
-# vite runs after composer so vendor/ exists (Filament theme imports in resources/css).
 
-FROM dunglas/frankenphp:php8.5-alpine AS builder-base
+# Set in Coolify (Build Arguments / env) or: --build-arg FRANKENPHP_BASE_IMAGE=ghcr.io/<owner>/<repo>-frankenphp:production
+ARG FRANKENPHP_BASE_IMAGE
 
-RUN apk add --no-cache \
-    zip \
-    unzip \
-    git \
-    curl
-
-RUN install-php-extensions \
-    pcntl \
-    bcmath \
-    intl \
-    pdo_pgsql \
-    pgsql \
-    gd \
-    zip \
-    opcache
-
-RUN echo "opcache.memory_consumption=256" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini \
-    && echo "opcache.max_accelerated_files=10000" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini \
-    && echo "opcache.enable_cli=1" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini
-
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+FROM ${FRANKENPHP_BASE_IMAGE} AS builder-base
 
 WORKDIR /var/www/html
 
@@ -37,10 +18,7 @@ COPY . .
 
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-RUN mkdir -p /var/cache/geoidx /var/cache/geoidx/images /var/log/geoidx \
-    && chown -R www-data:www-data /var/www/html /var/cache/geoidx /var/log/geoidx
-
-RUN touch /var/log/geoidx/ghl_audit.log && chown www-data:www-data /var/log/geoidx/ghl_audit.log
+RUN chown -R www-data:www-data /var/www/html
 
 FROM node:22-alpine AS vite
 
@@ -81,7 +59,8 @@ USER www-data
 
 CMD ["/bin/sh", "-lc", "exec php -d memory_limit=512M artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=120"]
 
-HEALTHCHECK NONE
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD pgrep -f "artisan queue:work" >/dev/null || exit 1
 
 FROM builder AS scheduler
 
@@ -91,7 +70,8 @@ USER www-data
 
 CMD ["php", "-d", "memory_limit=256M", "artisan", "schedule:work"]
 
-HEALTHCHECK NONE
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD pgrep -f "artisan schedule:work" >/dev/null || exit 1
 
 # Alias stages: some operators use the Coolify service name as `docker build --target`.
 FROM queue-worker AS idx-api-worker
