@@ -2,7 +2,7 @@
 
 This guide describes how to run **Quantyra IDX API** on [Coolify](https://coolify.io/) using the **[Dockerfile build pack](https://coolify.io/docs/builds/packs/dockerfile)** (not Nixpacks). Use **two Coolify projects** (or two clearly separated groups of resources): one for **production** and one for **staging**, each with its own PostgreSQL database and environment variables.
 
-**Queues:** this app uses Laravel’s **`database`** queue driver (`jobs` table in PostgreSQL). There is **no Redis** requirement for queues. Deploy **three** API processes (web + worker + scheduler) plus the **idx-images** edge.
+**Queues:** this app uses Laravel’s **`database`** queue driver (`jobs` table in PostgreSQL). There is **no Redis** requirement for queues. Deploy **one** web (Octane), **one or more** queue workers, **exactly one** scheduler, plus the **idx-images** edge. See §2.5 for scaling workers.
 
 **Related:** [Deployment & operations](deployment-operations.md) (Docker, Compose, Dokploy), root [README.md](../README.md), [AGENTS.md](../AGENTS.md) (Docker tables and PHP memory notes).
 
@@ -82,6 +82,20 @@ The API Dockerfiles **never** copy `public/build` from the git build context (it
 
 [nginx.idx-images.conf](../nginx.idx-images.conf) uses Docker’s embedded DNS (**`resolver 127.0.0.11`**) and a **variable `proxy_pass`** so Nginx starts even if **`idx-api`** appears on the network slightly later than idx-images (rolling updates). You still need a **shared network** and a resolvable name for the API container; the resolver does not replace correct service discovery.
 
+### 2.5 Multiple queue workers (scaling)
+
+Laravel’s **`database`** driver is safe with **multiple concurrent `queue:work` processes**: each worker claims jobs using the database, so you can scale horizontally for throughput (GIS jobs, listing cache refresh, etc.).
+
+**Preferred (Coolify replicas):** On the **queue worker** application (same Dockerfile and **`queue-worker`** / **`idx-api-worker`** target), open **Configuration** → **Advanced** (or **Resources** / scaling, depending on Coolify version) and set **Replicas** / **Instances** to **`2`** or higher. Coolify runs multiple containers from the same service; each runs the image default `artisan queue:work`. Keep **identical environment variables** on that app so every replica uses the same `DB_*`, `APP_KEY`, and `QUEUE_CONNECTION=database`.
+
+**If replicas are unavailable** (older Coolify, or `container_name` blocking scaling): create **additional Coolify applications** cloned from the worker app—same repository, **`Dockerfile.production`** or **`Dockerfile.staging`**, build target **`queue-worker`**, same env and branch—so each app is one worker process. Name them distinctly (e.g. `idx-api-worker-2`) for logs only; DNS names do not need to match for workers.
+
+**Scheduler:** Run **only one** replica of the **`scheduler`** service. Multiple `schedule:work` processes can run the same scheduled tasks in duplicate unless you design around it.
+
+**Queues env:** `WORKER_QUEUES` (e.g. `default` or `default,gis`) applies to **each** worker replica—all replicas listen to those queues and compete for jobs, which is usually what you want.
+
+**Sizing:** Multiply worker **RAM** and **vCPU** by replica count (see §7). Watch PostgreSQL **`max_connections`** if you add many workers and other services on the same database.
+
 ---
 
 ## 3. Staging — same layout, different Dockerfile
@@ -95,13 +109,15 @@ Use **`Dockerfile.staging`** for all **three** API applications (targets **`octa
 | Scheduler | `Dockerfile.staging` | `scheduler` | — |
 | idx-images | `Dockerfile.idx-images` | *(default)* | **8080** |
 
+Scaling **multiple workers** (replicas or duplicate worker apps) matches production; see **§2.5**.
+
 Point domains (e.g. `staging-idx-api.*`, `staging-idx-images.*`) at these services in Coolify’s **Domains** / reverse proxy UI.
 
 ---
 
 ## 4. Environment variables (production vs staging)
 
-Set variables in Coolify **per application** for the three API services (worker and scheduler need the **same** `DB_*`, `APP_KEY`, `QUEUE_CONNECTION`, and app URLs as the web process). Copy from root **`.env.example`** and trim to what you use.
+Set variables in Coolify **per application** for the **web**, **each worker**, and **scheduler** (all worker replicas and the scheduler need the **same** `DB_*`, `APP_KEY`, `QUEUE_CONNECTION`, and app URLs as the web process). Copy from root **`.env.example`** and trim to what you use.
 
 ### 4.1 Core Laravel
 
@@ -191,13 +207,13 @@ PHP **`memory_limit`** is set in the image `CMD`: web **256M**, worker **512M**,
 ## 8. Coolify UI checklist (quick)
 
 1. Create **PostgreSQL** (or attach external) for the environment.  
-2. Create **four** applications from the repo with the Dockerfile pack.  
+2. Create **four** applications from the repo with the Dockerfile pack (web, worker, scheduler, idx-images). If you add **extra worker apps** instead of replicas, create one application per worker process (§2.5).  
 3. Set **ports** 8000 (API web) and 8080 (idx-images).  
 4. Paste **environment variables** (shared across web/worker/scheduler for API).  
 5. Ensure **network / service name** so `idx-api` resolves from `idx-images`.  
 6. Attach **domains** and TLS.  
 7. **Deploy**, then run **post-deploy** commands (§5).  
-8. Optionally scale **workers** by increasing replicas in Coolify (each replica runs `queue:work`; sum RAM when sizing).
+8. Optionally scale **workers**: increase **replicas** on the worker app or add duplicate worker apps — see **§2.5** (each process runs `queue:work`; sum RAM and DB connections when sizing).
 
 ---
 
