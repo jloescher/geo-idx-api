@@ -4,6 +4,7 @@ namespace App\Actions\Fortify;
 
 use App\Models\Domain;
 use App\Models\User;
+use App\Models\UserInvitation;
 use App\Services\DomainOwnershipVerifier;
 use App\Services\MlsMembershipVerificationService;
 use Illuminate\Support\Facades\DB;
@@ -20,12 +21,28 @@ class CreateNewUser implements CreatesNewUsers
     /**
      * Validate and create a newly registered user.
      *
-     * @param  array<string, string>  $input
+     * @param  array<string, mixed>  $input
      *
      * @throws ValidationException
      */
     public function create(array $input): User
     {
+        $invitation = UserInvitation::findValidByPlainToken((string) ($input['invitation_token'] ?? ''));
+
+        if ($invitation === null) {
+            throw ValidationException::withMessages([
+                'invitation_token' => __('This invitation link is invalid or has expired.'),
+            ]);
+        }
+
+        if (User::query()->where('email', $invitation->email)->exists()) {
+            throw ValidationException::withMessages([
+                'email' => __('An account already exists for this email address.'),
+            ]);
+        }
+
+        $input['email'] = $invitation->email;
+
         Validator::make($input, [
             'name' => ['required', 'string', 'max:255'],
             'email' => [
@@ -35,6 +52,7 @@ class CreateNewUser implements CreatesNewUsers
                 'max:255',
                 Rule::unique(User::class),
             ],
+            'invitation_token' => ['required', 'string'],
             'domain_slug' => [
                 'required',
                 'string',
@@ -49,10 +67,23 @@ class CreateNewUser implements CreatesNewUsers
         ])->validate();
 
         /** @var User $user */
-        $user = DB::transaction(function () use ($input): User {
+        $user = DB::transaction(function () use ($input, $invitation): User {
+            $lockedInvitation = UserInvitation::query()
+                ->whereKey($invitation->id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($lockedInvitation === null
+                || $lockedInvitation->accepted_at !== null
+                || $lockedInvitation->expires_at->isPast()) {
+                throw ValidationException::withMessages([
+                    'invitation_token' => __('This invitation link is invalid or has expired.'),
+                ]);
+            }
+
             $user = User::create([
                 'name' => $input['name'],
-                'email' => $input['email'],
+                'email' => $lockedInvitation->email,
                 'password' => Hash::make($input['password']),
                 'mls_id' => trim((string) $input['mls_id']),
                 'mls_email' => trim((string) $input['mls_email']),
@@ -71,6 +102,8 @@ class CreateNewUser implements CreatesNewUsers
 
             app(DomainOwnershipVerifier::class)->issueTxtChallenge($domain);
             app(MlsMembershipVerificationService::class)->verify($user, 'stellar');
+
+            $lockedInvitation->markAccepted();
 
             return $user;
         });

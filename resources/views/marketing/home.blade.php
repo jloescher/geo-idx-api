@@ -32,14 +32,6 @@
                         Log in
                     </a>
                 @endif
-                @if (Route::has('register'))
-                    <a
-                        href="{{ route('register', [], false) }}"
-                        class="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 px-8 py-3 text-base font-semibold text-white hover:border-white/40 hover:bg-white/10"
-                    >
-                        Create account
-                    </a>
-                @endif
             @endauth
         </div>
     </div>

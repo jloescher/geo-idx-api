@@ -81,6 +81,8 @@ USER www-data
 
 CMD ["/bin/sh", "-lc", "exec php -d memory_limit=512M artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=120"]
 
+HEALTHCHECK NONE
+
 FROM builder AS scheduler
 
 EXPOSE 8000
@@ -88,6 +90,8 @@ EXPOSE 8000
 USER www-data
 
 CMD ["php", "-d", "memory_limit=256M", "artisan", "schedule:work"]
+
+HEALTHCHECK NONE
 
 # Alias stages: some operators use the Coolify service name as `docker build --target`.
 FROM queue-worker AS idx-api-worker

@@ -26,6 +26,7 @@ class DashboardControllerTest extends TestCase
         $this->assertTrue($response->getData()['hasApiAccess']);
         $this->assertIsIterable($response->getData()['apiTokens']);
         $this->assertFalse($response->getData()['canPurchaseExtraDomainSlots']);
+        $this->assertFalse($response->getData()['canInviteUsers']);
         $this->assertSame(0, $response->getData()['verifiedDomainCount']);
         $this->assertIsArray($response->getData()['mlsCatalogFeedCodes']);
     }

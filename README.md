@@ -10,6 +10,7 @@ Laravel 13 + Octane service for Quantyra's Bridge MLS proxy and secured image pr
 - Image proxy flow (`/images/*`) with cache path support and Nginx edge support
 - Listings row cache (`listings_cache`) with `php artisan mls:refresh-cache` (scheduled every 15 minutes; requires `QUEUE_CONNECTION=database` and a queue worker)
 - Supporting migrations, seeders, and automated tests
+- **Invite-only dashboard signup:** administrators send email invitations; `ADMIN_SEED_*` env vars seed a bootstrap admin (see `.env.example`)
 
 ## Octane (FrankenPHP)
 

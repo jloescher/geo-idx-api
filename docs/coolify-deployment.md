@@ -34,6 +34,20 @@ Coolify’s **Docker Build Target** is passed to `docker build --target=…` and
 
 The API Dockerfiles **never** copy `public/build` from the git build context (it is listed in [`.dockerignore`](../.dockerignore)). Each build runs **`npm ci`** and **`npm run build`** inside a **Node** stage after **`composer install`**, then **`COPY --from=… ./public/build`** into the PHP image so `@vite()` and the marketing home have **`manifest.json`** at runtime. Do not expect to “bring your own” committed `public/build` from the repo on deploy.
 
+### 1.3 Single pre-built image (`octane` only) — three Coolify services (optional)
+
+To avoid **three** full Dockerfile builds on the VPS (each pulling FrankenPHP + extensions), CI can build and push **one** image tag from the **`octane`** target only (same Dockerfile). In Coolify:
+
+| Service | Image tag | Command |
+|---------|-----------|---------|
+| **Web** | e.g. `ghcr.io/<org>/idx-api:staging` | **Default** image `CMD` (Octane on port **8000**). |
+| **Worker** | **Same** tag | **Override** to the worker argv from the Dockerfile, e.g. production: `/bin/sh -lc 'exec php -d memory_limit=512M artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=120'` (staging Dockerfile uses **640M** for `queue:work`). |
+| **Scheduler** | **Same** tag | **Override** to e.g. `php -d memory_limit=256M artisan schedule:work` (staging: **384M**). |
+
+Set container **user** to **`www-data`** (and **`WORKDIR` `/var/www/html`**) on worker/scheduler if your platform runs command overrides as root. Copy the same **`DB_*`**, **`APP_KEY`**, **`WORKER_QUEUES`**, and app URL env as the web app.
+
+**Healthcheck:** the **`octane`** image advertises **`curl` → `127.0.0.1:8000/up`**. Worker and scheduler processes do **not** listen on port 8000 — in Coolify, **disable or clear the HTTP healthcheck** for those two services when they use the **octane** image, or rolling deploys may stay unhealthy. (Building separate **`queue-worker`** / **`scheduler`** targets instead embeds **`HEALTHCHECK NONE`** in those images; see §9.)
+
 ---
 
 ## 2. Production — four applications
@@ -152,6 +166,7 @@ Align with your real hostnames (see `.env.example`):
 ### 4.4 Integrations (set per environment)
 
 - **Bridge MLS:** `BRIDGE_API_KEY`, `BRIDGE_HOST`, `BRIDGE_DATASET`, etc.  
+- **Invite emails:** `MAIL_*` must reach a real transport in production/staging so `UserInvitationMail` delivers (dashboard admin invites and `php artisan user:invite`).  
 - **Telescope / Pulse / Debugbar:** usually **off** or gated in production; Telescope may be on in staging (`TELESCOPE_ENABLED=true`).
 
 ### 4.5 Xdebug (staging only)
@@ -233,7 +248,13 @@ Coolify may inject `APP_ENV` at **build** time. For Laravel, prefer **`APP_ENV` 
 
 ### Rolling updates stuck on healthcheck
 
-Coolify expects healthchecks that can probe HTTP with **`curl` or `wget`** ([troubleshooting](https://coolify.io/docs/troubleshoot/applications/no-available-server)). The API Dockerfile uses **`curl -fsS http://127.0.0.1:8000/up`** so the proxy can verify the app without bootstrapping a full `php artisan` invocation.
+Coolify expects healthchecks that can probe HTTP with **`curl` or `wget`** ([troubleshooting](https://coolify.io/docs/troubleshoot/applications/no-available-server)). The **web (`octane`)** Dockerfile uses **`curl -fsS http://127.0.0.1:8000/up`** so the proxy can verify the app without bootstrapping a full `php artisan` invocation.
+
+### Worker / scheduler: `curl` to `localhost:2019` or rolling update unhealthy
+
+The FrankenPHP base image can inherit an HTTP **healthcheck** aimed at port **2019**. **`queue-worker`** and **`scheduler`** do not serve HTTP, so that probe always fails. The API Dockerfiles set **`HEALTHCHECK NONE`** on the **`queue-worker`** and **`scheduler`** stages so the metadata is cleared. If Coolify still applies a custom HTTP probe, **disable it** in the UI for worker and scheduler.
+
+If all three services use the **same `octane` image** (§1.3), turn off HTTP healthchecks for **worker** and **scheduler** in Coolify — they do not listen on **8000**.
 
 ### idx-images: `host not found in upstream "idx-api:8000"` or container `(unhealthy)`
 

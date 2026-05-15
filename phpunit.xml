@@ -41,6 +41,7 @@
         <!-- Override .env: dev machines may set ALLOW_DESTRUCTIVE_DB_COMMANDS=true for maintenance; tests must assert guard refusal. -->
         <env name="ALLOW_DESTRUCTIVE_DB_COMMANDS" value="false" force="true"/>
         <env name="IDX_PLATFORM_HOSTS" value="localhost,127.0.0.1,dev-idx.quantyralabs.cc,idx.quantyralabs.cc,staging-idx.quantyralabs.cc"/>
+        <env name="IDX_PLATFORM_URL" value="https://dev-idx.quantyralabs.cc"/>
         <env name="IDX_API_HOSTS" value="localhost,staging-idx-api.quantyralabs.cc"/>
     </php>
 </phpunit>

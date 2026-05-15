@@ -1,9 +1,11 @@
 <?php
 
+use App\Http\Controllers\Auth\RegisterInvitationController;
 use App\Http\Controllers\DashboardApiTokenController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardDomainController;
 use App\Http\Controllers\DashboardDomainMlsController;
+use App\Http\Controllers\DashboardUserInvitationController;
 use App\Http\Controllers\Marketing\SalesPageController;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -42,6 +44,16 @@ foreach ($platformHosts as $platformHost) {
     Route::domain($platformHost)->group(function (): void {
         Route::get('/', SalesPageController::class)->name('marketing.sales');
 
+        Route::middleware(['web', 'guest'])->group(function (): void {
+            Route::get('/register/{token}', [RegisterInvitationController::class, 'show'])
+                ->middleware('throttle:60,1')
+                ->where('token', '[A-Za-z0-9]+')
+                ->name('register.invite');
+            Route::post('/register', [RegisterInvitationController::class, 'store'])
+                ->middleware('throttle:registration')
+                ->name('register.store');
+        });
+
         Route::middleware('auth')->group(function (): void {
             Route::get('/dashboard', DashboardController::class)->name('dashboard.index');
             Route::post('/dashboard/domains', [DashboardDomainController::class, 'store'])->name('dashboard.domains.store');
@@ -50,6 +62,9 @@ foreach ($platformHosts as $platformHost) {
             Route::put('/dashboard/domains/{domain}/mls', [DashboardDomainMlsController::class, 'update'])->name('dashboard.domains.mls.update');
             Route::post('/dashboard/api-tokens', [DashboardApiTokenController::class, 'store'])->name('dashboard.api-tokens.store');
             Route::delete('/dashboard/api-tokens/{token}', [DashboardApiTokenController::class, 'destroy'])->name('dashboard.api-tokens.destroy');
+            Route::post('/dashboard/invitations', [DashboardUserInvitationController::class, 'store'])
+                ->middleware(['admin', 'throttle:dashboard-invitations'])
+                ->name('dashboard.invitations.store');
         });
     });
 }

@@ -13,7 +13,7 @@ Laravel 13 + Octane service powering Quantyra's Bridge MLS proxy, GIS parcel/geo
 | Database | PostgreSQL | - | Eloquent ORM; development, staging (shared), and production (dedicated) all use `pgsql` |
 | Frontend | Livewire + Blade + Tailwind CSS 4 | 4.x / 4.x | Server-rendered marketing home, user dashboard, Filament dashboard shell |
 | Build | Vite | 8.x | CSS/JS bundling with Tailwind plugin |
-| Auth | Laravel Sanctum + Fortify | 4.x / 1.36.x | API tokens for server-to-server; login/register/2FA views |
+| Auth | Laravel Sanctum + Fortify | 4.x / 1.36.x | API tokens; login + **invite-only** registration (no public self-signup), password reset, 2FA |
 | Observability | Pulse + Telescope + Debugbar | 1.x / 5.x / 4.x | Production metrics, local debugging, rate-limited behind HTTP Basic Auth |
 
 ## Quick Start

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\ImageProxyController;
 use App\Http\Middleware\CheckMlsAccess;
 use App\Http\Middleware\DomainOrTokenAuth;
+use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Middleware\ProtectMonitoringDashboard;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -33,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'domain.token' => DomainOrTokenAuth::class,
             'mls.access' => CheckMlsAccess::class,
             'monitoring.basic-auth' => ProtectMonitoringDashboard::class,
+            'admin' => EnsureUserIsAdmin::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

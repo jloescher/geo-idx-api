@@ -1,13 +1,40 @@
+@props([
+    'inviteEmail' => null,
+    'invitationToken' => null,
+])
+
+@php
+    $isInvite = is_string($inviteEmail) && $inviteEmail !== '' && is_string($invitationToken) && $invitationToken !== '';
+@endphp
+
 <div class="space-y-6">
     <div>
-        <h2 class="text-xl font-bold tracking-tight text-slate-100">Create subscriber account</h2>
+        <h2 class="text-xl font-bold tracking-tight text-slate-100">
+            @if ($isInvite)
+                Complete your invitation
+            @else
+                Create subscriber account
+            @endif
+        </h2>
         <p class="mt-1 text-sm text-slate-200">
-            Set up internal access with MLS verification, then manage GeoIDX domains and API tokens from your dashboard.
+            @if ($isInvite)
+                You are invited as <span class="font-medium text-slate-100">{{ $inviteEmail }}</span>. Finish MLS verification and domain setup below.
+            @else
+                Set up internal access with MLS verification, then manage GeoIDX domains and API tokens from your dashboard.
+            @endif
         </p>
     </div>
 
-    <form method="POST" action="{{ route('register', [], false) }}" class="space-y-5">
+    <form
+        method="POST"
+        action="{{ $isInvite ? route('register.store', [], false) : '#' }}"
+        class="space-y-5"
+    >
         @csrf
+
+        @if ($isInvite)
+            <input type="hidden" name="invitation_token" value="{{ $invitationToken }}">
+        @endif
 
         <div>
             <label for="register-name" class="block text-sm font-medium text-slate-200">Name</label>
@@ -32,20 +59,34 @@
 
         <div>
             <label for="register-email" class="block text-sm font-medium text-slate-200">Email</label>
-            <input
-                id="register-email"
-                name="email"
-                type="email"
-                value="{{ old('email') }}"
-                required
-                autocomplete="email"
-                @class([
-                    'mt-2 block w-full rounded-xl border bg-slate-950/50 px-4 py-3 text-slate-100 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-offset-0',
-                    'border-red-400/70 focus:border-red-400 focus:ring-red-400/40' => $errors->has('email'),
-                    'border-white/15 focus:border-emerald-400/60 focus:ring-emerald-400/30' => ! $errors->has('email'),
-                ])
-            >
+            @if ($isInvite)
+                <input type="hidden" name="email" value="{{ $inviteEmail }}">
+                <input
+                    id="register-email"
+                    type="email"
+                    value="{{ $inviteEmail }}"
+                    readonly
+                    class="mt-2 block w-full cursor-not-allowed rounded-xl border border-white/10 bg-slate-950/30 px-4 py-3 text-slate-300 shadow-sm"
+                >
+            @else
+                <input
+                    id="register-email"
+                    name="email"
+                    type="email"
+                    value="{{ old('email') }}"
+                    required
+                    autocomplete="email"
+                    @class([
+                        'mt-2 block w-full rounded-xl border bg-slate-950/50 px-4 py-3 text-slate-100 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-offset-0',
+                        'border-red-400/70 focus:border-red-400 focus:ring-red-400/40' => $errors->has('email'),
+                        'border-white/15 focus:border-emerald-400/60 focus:ring-emerald-400/30' => ! $errors->has('email'),
+                    ])
+                >
+            @endif
             @error('email')
+                <p class="mt-2 text-sm font-medium text-red-300" role="alert">{{ $message }}</p>
+            @enderror
+            @error('invitation_token')
                 <p class="mt-2 text-sm font-medium text-red-300" role="alert">{{ $message }}</p>
             @enderror
         </div>
@@ -96,7 +137,7 @@
                     id="register-mls-email"
                     name="mls_email"
                     type="email"
-                    value="{{ old('mls_email', old('email')) }}"
+                    value="{{ old('mls_email', $isInvite ? $inviteEmail : old('email')) }}"
                     required
                     class="mt-2 block w-full rounded-xl border border-white/15 bg-slate-950/50 px-4 py-3 text-slate-100 shadow-sm transition focus:border-emerald-400/60 focus:outline-none focus:ring-2 focus:ring-emerald-400/30 focus:ring-offset-0"
                 >
@@ -144,7 +185,11 @@
             type="submit"
             class="w-full rounded-xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:ring-offset-2 focus:ring-offset-slate-900"
         >
-            Create account
+            @if ($isInvite)
+                Create account
+            @else
+                Create account
+            @endif
         </button>
     </form>
 </div>

@@ -13,6 +13,12 @@
         </div>
     @endif
 
+    @if (session('status'))
+        <div class="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100" role="status">
+            {{ session('status') }}
+        </div>
+    @endif
+
     <form method="POST" action="{{ route('login', [], false) }}" class="space-y-5">
         @csrf
 

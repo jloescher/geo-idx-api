@@ -1,0 +1,57 @@
+# Build and push the Octane API image to GHCR (single tag per workflow).
+# Coolify: deploy pre-built image; web = default CMD; worker/scheduler = same image + command override (see docs/coolify-deployment.md §1.3).
+
+name: Docker publish (octane)
+
+on:
+  push:
+    branches: [main, staging]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
+            type=raw,value=staging,enable=${{ github.ref_name == 'staging' }}
+            type=sha
+
+      - name: Set Dockerfile
+        id: pick
+        run: |
+          if [ "${{ github.ref_name }}" = "staging" ]; then
+            echo "file=Dockerfile.staging" >> "$GITHUB_OUTPUT"
+          else
+            echo "file=Dockerfile.production" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ steps.pick.outputs.file }}
+          target: octane
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

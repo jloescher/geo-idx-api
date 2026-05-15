@@ -96,6 +96,7 @@ class DashboardController extends Controller
             'domainLimit' => null,
             'domainLimitReached' => false,
             'canPurchaseExtraDomainSlots' => false,
+            'canInviteUsers' => $user?->isAdmin() ?? false,
             'mlsCatalogFeedCodes' => $this->mlsFeeds->catalogFeedCodes(),
             'apiPublicUrl' => rtrim((string) config('idx_urls.api_public_url'), '/'),
             'appUrl' => $appUrl,

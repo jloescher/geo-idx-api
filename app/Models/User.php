@@ -19,6 +19,7 @@ use RuntimeException;
     'name',
     'email',
     'password',
+    'is_admin',
     'widget_palette',
     'mls_id',
     'mls_email',
@@ -37,13 +38,14 @@ class User extends Authenticatable implements FilamentUser
     /**
      * Get the attributes that should be cast.
      *
-     * @return array<string, string>
+     * @return array<string, string|bool>
      */
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_admin' => 'boolean',
             'widget_palette' => 'array',
             'assigned_mls_datasets' => 'array',
             'mls_membership_verified_at' => 'datetime',
@@ -54,6 +56,21 @@ class User extends Authenticatable implements FilamentUser
     public function domains(): HasMany
     {
         return $this->hasMany(Domain::class);
+    }
+
+    /**
+     * Invitations created by this user (admin dashboard).
+     *
+     * @return HasMany<UserInvitation, $this>
+     */
+    public function sentInvitations(): HasMany
+    {
+        return $this->hasMany(UserInvitation::class, 'invited_by');
+    }
+
+    public function isAdmin(): bool
+    {
+        return (bool) $this->is_admin;
     }
 
     /**
