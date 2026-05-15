@@ -7,8 +7,8 @@
 #
 # Vite: public/build comes only from the vite stage — never from the git context (.dockerignore).
 
-# Set in Coolify (Build Arguments / env) or: --build-arg FRANKENPHP_BASE_IMAGE=ghcr.io/<owner>/<repo>-frankenphp:production
-ARG FRANKENPHP_BASE_IMAGE
+# Default matches GHA: ghcr.io/<owner>/<repo>-frankenphp:production (override in Coolify if needed).
+ARG FRANKENPHP_BASE_IMAGE=ghcr.io/jloescher/geo-idx-api-frankenphp:production
 
 FROM ${FRANKENPHP_BASE_IMAGE} AS builder-base
 
