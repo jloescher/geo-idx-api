@@ -102,11 +102,13 @@ Scheduled tasks are defined in `routes/console.php`.
 
 ## Migrations
 
-Core migrations live under `database/migrations/`. Run:
+Core migrations live under `database/migrations/`. For a **file-by-file inventory**, PostGIS requirements, and the legacy `dropIfExists` cleanup migration, see **[Database migrations](database-migrations.md)**.
 
 ```bash
-php artisan migrate
+php artisan migrate --force
 ```
+
+On first deploy or after pulling migration changes, run migrate from the API container (or host) against the correct `DB_*` target. Prefer **`migrate:fresh` only on disposable** databases (never shared staging/production unless intentional).
 
 ---
 

@@ -21,10 +21,12 @@ class BridgeHttpService
             abort(503, 'Bridge server token is not configured.');
         }
 
-        return Http::timeout((int) config('bridge.timeout_seconds'))
+        $timeout = (int) config('bridge.timeout_seconds');
+
+        return BridgeUpstreamRetry::run(fn () => Http::timeout($timeout)
             ->withToken($token)
             ->acceptJson()
-            ->get($fullUrl, $query);
+            ->get($fullUrl, $query));
     }
 
     /**
@@ -43,11 +45,13 @@ class BridgeHttpService
             unset($mergedQuery[$internal]);
         }
 
-        return Http::timeout((int) config('bridge.timeout_seconds'))
+        $timeout = (int) config('bridge.timeout_seconds');
+
+        return BridgeUpstreamRetry::run(fn () => Http::timeout($timeout)
             ->withHeaders($this->forwardClientHeaders($incoming))
             ->withToken($token)
             ->acceptJson()
-            ->get($url, $mergedQuery);
+            ->get($url, $mergedQuery));
     }
 
     /**
@@ -64,11 +68,13 @@ class BridgeHttpService
             abort(503, 'Bridge server token is not configured.');
         }
 
-        return Http::timeout((int) config('bridge.timeout_seconds'))
+        $timeout = (int) config('bridge.timeout_seconds');
+
+        return BridgeUpstreamRetry::run(fn () => Http::timeout($timeout)
             ->withHeaders($this->forwardClientHeaders($incoming))
             ->withToken($token)
             ->acceptJson()
-            ->get($url);
+            ->get($url));
     }
 
     /**
@@ -175,13 +181,15 @@ class BridgeHttpService
             abort(503, 'Bridge server token is not configured.');
         }
 
-        return Http::timeout((int) config('bridge.timeout_seconds'))
+        $timeout = (int) config('bridge.timeout_seconds');
+
+        return BridgeUpstreamRetry::run(fn () => Http::timeout($timeout)
             ->withHeaders($this->forwardClientHeaders($incoming))
             ->withToken($token)
             ->withHeaders([
                 'Accept' => 'image/jpeg,image/webp,image/*;q=0.8,*/*;q=0.5',
             ])
-            ->get($url);
+            ->get($url));
     }
 
     /**

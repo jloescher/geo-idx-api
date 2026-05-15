@@ -19,7 +19,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'txt_verification_name',
     'txt_verification_value',
     'txt_verified_at',
-    'ghl_verified_at',
     'verification_checked_at',
     'verification_metadata',
 ])]
@@ -36,7 +35,6 @@ class Domain extends Model
             'allowed_mls_datasets' => 'array',
             'verification_metadata' => 'array',
             'txt_verified_at' => 'datetime',
-            'ghl_verified_at' => 'datetime',
             'verification_checked_at' => 'datetime',
         ];
     }

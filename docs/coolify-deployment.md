@@ -134,6 +134,8 @@ Run inside the **web** container (or any API container with the same code and en
 php artisan migrate --force
 ```
 
+Schema inventory, PostGIS requirements for the listings mirror, and the legacy `dropIfExists` migration are documented in **[database-migrations.md](database-migrations.md)**.
+
 Refresh caches if you changed config or `.env`:
 
 ```bash

@@ -15,6 +15,7 @@ return new class extends Migration
             $table->string('county', 48)->nullable();
             $table->timestampTz('expires_at');
             $table->string('source_used', 96);
+            $table->unsignedBigInteger('source_generation')->default(0);
             $table->timestampsTz();
 
             $table->index('expires_at');

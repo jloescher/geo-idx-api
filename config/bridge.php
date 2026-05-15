@@ -84,6 +84,10 @@ return [
     'sync_incremental_top' => min(200, max(1, (int) env('BRIDGE_SYNC_INCREMENTAL_TOP', 200))),
     'sync_max_replication_pages_per_job' => max(1, (int) env('BRIDGE_SYNC_MAX_REPLICATION_PAGES', 12)),
     'sync_max_incremental_pages_per_job' => max(1, (int) env('BRIDGE_SYNC_MAX_INCREMENTAL_PAGES', 40)),
+    /*
+     * Max retries after HTTP 429 / 503 from Bridge (shared: listing sync, proxy, hybrid search).
+     * Applies only to outbound Bridge requests — not application rate limits for domain/API-key traffic.
+     */
     'sync_max_http_retries' => max(0, (int) env('BRIDGE_SYNC_MAX_HTTP_RETRIES', 4)),
 
     /*

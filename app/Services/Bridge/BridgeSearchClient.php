@@ -4,7 +4,6 @@ namespace App\Services\Bridge;
 
 use App\Http\Responses\Search\ListingResult;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
 final readonly class BridgeSearchClient
@@ -42,11 +41,7 @@ final readonly class BridgeSearchClient
         }
 
         $url = $this->buildResoUrl($dataset);
-        $token = (string) (config('mls.bridge.api_key') ?: config('bridge.server_token', ''));
-        $response = Http::timeout((int) config('bridge.timeout_seconds', 30))
-            ->withToken($token)
-            ->acceptJson()
-            ->get($url, $queryParams);
+        $response = $this->bridge->serverJsonGet($url, $queryParams);
 
         if (! $response->successful()) {
             return [

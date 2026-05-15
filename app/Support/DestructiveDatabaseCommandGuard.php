@@ -66,13 +66,30 @@ final class DestructiveDatabaseCommandGuard
         return $database === ':memory:' || $database === '' || str_starts_with($database, ':memory:');
     }
 
+    /**
+     * True when destructive commands are allowed via config or a live environment variable.
+     *
+     * Reads {@see ALLOW_DESTRUCTIVE_DB_COMMANDS} from the process environment after Dotenv so
+     * maintenance windows still work when `php artisan config:cache` left a stale false in config.
+     */
+    private static function destructiveCommandsExplicitlyAllowed(): bool
+    {
+        if ((bool) (config('debug_audit.allow_destructive_db_commands') ?? false)) {
+            return true;
+        }
+
+        $raw = (string) (getenv('ALLOW_DESTRUCTIVE_DB_COMMANDS') ?: ($_ENV['ALLOW_DESTRUCTIVE_DB_COMMANDS'] ?? $_SERVER['ALLOW_DESTRUCTIVE_DB_COMMANDS'] ?? ''));
+
+        return in_array(strtolower(trim($raw)), ['1', 'true', 'yes', 'on'], true);
+    }
+
     public static function mustRefuse(string $command, ?string $environment = null, ?string $databaseName = null): bool
     {
         if (! in_array($command, self::REFUSE_IN_PRODUCTION, true)) {
             return false;
         }
 
-        if ((bool) (config('debug_audit.allow_destructive_db_commands') ?? false)) {
+        if (self::destructiveCommandsExplicitlyAllowed()) {
             return false;
         }
 
@@ -105,8 +122,10 @@ final class DestructiveDatabaseCommandGuard
     {
         if (self::mustRefuse($command, $environment, $databaseName)) {
             throw new RuntimeException(
-                "Refused to run `{$command}` on a protected database context. ".
-                'Set ALLOW_DESTRUCTIVE_DB_COMMANDS=true only for intentional maintenance windows.'
+                "Refused to run `{$command}` on a protected database context ".
+                '(e.g. `APP_ENV=production`, or `DB_DATABASE` matches a fragment in `PROTECTED_DATABASE_NAME_FRAGMENTS` / `debug_audit.protected_database_name_fragments`, default includes prod, production, staging). '.
+                'Set ALLOW_DESTRUCTIVE_DB_COMMANDS=true in `.env` (not ALLOW_DESTRUCTIVE_TEST_DB) for intentional maintenance, then unset it afterward. '.
+                'If the flag is already set but this still fails, run `php artisan config:clear` (stale `config:cache` can freeze the old value).'
             );
         }
     }

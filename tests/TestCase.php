@@ -35,7 +35,7 @@ abstract class TestCase extends BaseTestCase
 
         throw new RuntimeException(
             sprintf(
-                'Refusing to run tests with DB configuration [%s:%s]. Use a dedicated PostgreSQL database named "testing" or "idx_api_testing" (see phpunit.xml and README), or set ALLOW_DESTRUCTIVE_TEST_DB=true only when you intentionally accept destructive migrations on this database.',
+                'Refusing to run tests with DB configuration [%s:%s]. Use a dedicated PostgreSQL database named "testing" or "idx_api_testing" (set DB_* in .env; phpunit does not override them—see tests/bootstrap.php), or set ALLOW_DESTRUCTIVE_TEST_DB=true when you intentionally target another database (e.g. staging with PostGIS). Warning: many tests use RefreshDatabase, which reapplies migrations and can destroy data—never enable this against a database you cannot reset.',
                 $defaultConnection,
                 $database
             )

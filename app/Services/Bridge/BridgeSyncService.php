@@ -166,7 +166,7 @@ final class BridgeSyncService
             $cursor->save();
         }
 
-        $response = $this->requestWithBackoff($url, $query);
+        $response = $this->http->serverJsonGet($url, $query);
 
         if ($response->status() === 403) {
             Log::warning('bridge.replication.forbidden', ['dataset' => $dataset]);
@@ -230,7 +230,7 @@ final class BridgeSyncService
                 '$select' => $select,
             ];
 
-            $response = $this->requestWithBackoff($url, $query);
+            $response = $this->http->serverJsonGet($url, $query);
 
             if ($response->status() === 400 || $response->status() === 501) {
                 Log::info('bridge.incremental.fallback_bridge_ts', ['dataset' => $dataset]);
@@ -238,7 +238,7 @@ final class BridgeSyncService
                 $orderby = 'BridgeModificationTimestamp asc';
                 $query['$filter'] = $filterLiteral;
                 $query['$orderby'] = $orderby;
-                $response = $this->requestWithBackoff($url, $query);
+                $response = $this->http->serverJsonGet($url, $query);
             }
 
             if (! $response->successful()) {
@@ -649,30 +649,6 @@ final class BridgeSyncService
         }
 
         return null;
-    }
-
-    /**
-     * @param  array<string, scalar|list<string>>  $query
-     */
-    private function requestWithBackoff(string $url, array $query): Response
-    {
-        $attempts = max(1, (int) config('bridge.sync_max_http_retries', 4) + 1);
-        $delayMs = 500;
-        $last = null;
-        for ($i = 0; $i < $attempts; $i++) {
-            $last = $this->http->serverJsonGet($url, $query);
-            if ($last->status() !== 429 && $last->status() !== 503) {
-                return $last;
-            }
-            $retryAfter = $last->header('Retry-After');
-            $sleep = is_numeric($retryAfter) ? (int) $retryAfter * 1000 : $delayMs;
-            usleep(min(30_000_000, $sleep * 1000));
-            $delayMs = min(8000, (int) ($delayMs * 1.8));
-            $jitter = random_int(0, 250);
-            usleep($jitter * 1000);
-        }
-
-        return $last ?? $this->http->serverJsonGet($url, $query);
     }
 
     private function buildPropertyCollectionUrl(string $dataset): string

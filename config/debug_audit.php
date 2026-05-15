@@ -12,7 +12,7 @@ return [
     | (for example staging/prod names).
     |
     */
-    'allow_destructive_db_commands' => (bool) env('ALLOW_DESTRUCTIVE_DB_COMMANDS', false),
+    'allow_destructive_db_commands' => filter_var(env('ALLOW_DESTRUCTIVE_DB_COMMANDS', false), FILTER_VALIDATE_BOOLEAN),
 
     /*
     |--------------------------------------------------------------------------
@@ -37,6 +37,6 @@ return [
     | Set true only for a deliberate maintenance window.
     |
     */
-    'allow_user_deletion_in_production' => (bool) env('ALLOW_USER_DELETION_IN_PRODUCTION', false),
+    'allow_user_deletion_in_production' => filter_var(env('ALLOW_USER_DELETION_IN_PRODUCTION', false), FILTER_VALIDATE_BOOLEAN),
 
 ];

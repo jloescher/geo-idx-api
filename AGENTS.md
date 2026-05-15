@@ -34,7 +34,7 @@ npm run build
 # Development (server + queue + logs + Vite HMR in parallel)
 composer dev
 
-# Run tests (PostgreSQL database `idx_api_testing` or `testing`; see README)
+# Run tests (PostgreSQL from `.env`; see README + tests/bootstrap.php; PostGIS requires Postgres)
 composer test
 
 # Code formatting (Laravel Pint)
@@ -145,8 +145,8 @@ Public ArcGIS feature server proxy for Florida parcel data. Three-tier caching w
 ### Testing Patterns
 - **Feature tests**: `tests/Feature/` — use `RefreshDatabase`, `Http::fake()` for external APIs, assert on JSON
 - **Unit tests**: `tests/Unit/` — pure logic without database where possible
-- **Test safety**: `TestCase::setUp()` refuses non-whitelisted databases unless `ALLOW_DESTRUCTIVE_TEST_DB=true` (allowed: `pgsql` with `DB_DATABASE` `testing` or `idx_api_testing`)
-- **phpunit.xml**: PostgreSQL test database, sync queue, fake Bridge keys, PULSE/TELESCOPE disabled
+- **Test safety**: `TestCase::setUp()` refuses non-whitelisted databases unless `ALLOW_DESTRUCTIVE_TEST_DB=true` (allowed without the flag: `pgsql` with `DB_DATABASE` `testing` or `idx_api_testing`). `DB_*` comes from `.env` via `tests/bootstrap.php`, not from `phpunit.xml`.
+- **phpunit.xml**: `tests/bootstrap.php` loads `.env` for `DB_*`; sync queue, fake Bridge keys, PULSE/TELESCOPE disabled
 - **Factories**: `User::factory()->create()`; direct model creation for seed data
 - **Config setup**: Tests set config values in `setUp()` (bridge host, dataset, tokens)
 
@@ -276,7 +276,7 @@ Dev compose (`docker-compose.dev.yml`) runs **Octane only** in `idx-api-dev` (no
 ## Testing
 
 - **16 test files** across Feature (10) and Unit (4) suites
-- Tests run against **PostgreSQL** using the database name forced in `phpunit.xml` (default `idx_api_testing`) with the **sync** queue driver
+- Tests run against **PostgreSQL** using `DB_*` from **`.env`** (loaded in `tests/bootstrap.php` before PHPUnit) with the **sync** queue driver
 - External APIs faked via `Http::fake()` (Bridge, ArcGIS in GIS tests)
 - `TestCase::setUp()` enforces ephemeral database safety guard
 - Coverage includes Bridge proxy security, image proxy headers, GIS probe/proxy, dashboard and marketing home, domain auth
@@ -284,6 +284,7 @@ Dev compose (`docker-compose.dev.yml`) runs **Octane only** in `idx-api-dev` (no
 ## Additional Resources
 
 - @docs/INDEX.md — Documentation index
+- @docs/database-migrations.md — Migration inventory, PostGIS, legacy drops
 - @docs/coolify-deployment.md — Coolify production & staging (four apps, env, networking, resources)
 - @docs/idx-api-bridge-proxy.md — Bridge proxy architecture, auth flow, cache strategy, image rewrite
 - @docs/bridge-api-documentation.md — Bridge Data Output upstream API reference
@@ -292,7 +293,7 @@ Dev compose (`docker-compose.dev.yml`) runs **Octane only** in `idx-api-dev` (no
 
 ## Skill Usage Guide
 
-When working on tasks involving these technologies, invoke the corresponding skill from [`.cursor/skills/`](.cursor/skills/) (see also [SKILL.md](SKILL.md) at repo root):
+When working on tasks involving these technologies, invoke the corresponding skill from [`.cursor/skills/`](.cursor/skills/) (see the [skills index](.cursor/skills/README.md)):
 
 | Skill | Invoke When |
 |-------|-------------|

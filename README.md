@@ -80,11 +80,21 @@ Start at `docs/INDEX.md` for implementation and operations guides. **Coolify (pr
 
 ## Testing
 
-Create an empty PostgreSQL database for PHPUnit (name must match `phpunit.xml`, default **`idx_api_testing`**, or use **`testing`**). Adjust `DB_HOST`, `DB_USERNAME`, and `DB_PASSWORD` in `phpunit.xml` if your local server differs. `RefreshDatabase` will run migrations on that database each run; `tests/TestCase.php` blocks accidental runs against other database names unless `ALLOW_DESTRUCTIVE_TEST_DB=true`.
+Tests use **PostgreSQL** (PostGIS-backed features are not exercised on SQLite). Database connection settings come from **`.env`** (loaded by [`tests/bootstrap.php`](tests/bootstrap.php) before PHPUnit merges other variables). `phpunit.xml` no longer hardcodes `DB_*`.
+
+- **Recommended:** create a local empty database named **`idx_api_testing`** (or `testing`) and point `DB_*` at it for `php artisan test`. `tests/TestCase.php` allows these names without extra flags.
+- **Staging / shared Postgres:** point `DB_*` at your instance only if you accept the risk from **`RefreshDatabase`** in many feature tests (migrations rerun; data loss). Set **`ALLOW_DESTRUCTIVE_TEST_DB=true`** in the environment (or `.env`) when `DB_DATABASE` is not `testing` or `idx_api_testing`.
 
 ```bash
 createdb idx_api_testing
+# Set DB_DATABASE=idx_api_testing (and host/user/password) in .env, then:
 php artisan test --compact
+```
+
+For a non-whitelisted database name (e.g. staging):
+
+```bash
+ALLOW_DESTRUCTIVE_TEST_DB=true php artisan test --compact
 ```
 
 ## License

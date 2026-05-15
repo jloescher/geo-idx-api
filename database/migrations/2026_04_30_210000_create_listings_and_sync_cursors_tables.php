@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -19,7 +20,21 @@ return new class extends Migration
         $driver = Schema::connection($this->getConnection())->getConnection()->getDriverName();
 
         if ($driver === 'pgsql') {
-            DB::statement('CREATE EXTENSION IF NOT EXISTS postgis');
+            $row = DB::selectOne('select exists(select 1 from pg_extension where extname = ?) as installed', ['postgis']);
+            $postgisInstalled = (bool) ($row->installed ?? false);
+
+            if (! $postgisInstalled) {
+                try {
+                    DB::statement('CREATE EXTENSION IF NOT EXISTS postgis');
+                } catch (QueryException $e) {
+                    throw new RuntimeException(
+                        'PostgreSQL PostGIS is required for listings geography columns. Install it with a superuser '.
+                        '(CREATE EXTENSION postgis) or use a database where PostGIS is already enabled, then re-run migrations.',
+                        0,
+                        $e
+                    );
+                }
+            }
         }
 
         Schema::create('listings', function (Blueprint $table) use ($driver): void {

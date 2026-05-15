@@ -55,6 +55,25 @@ class DestructiveDatabaseCommandGuardTest extends TestCase
     }
 
     #[Test]
+    public function it_respects_allow_flag_from_process_environment_when_config_is_false(): void
+    {
+        config()->set('debug_audit.allow_destructive_db_commands', false);
+        config()->set('debug_audit.protected_database_name_fragments', ['prod', 'staging']);
+
+        putenv('ALLOW_DESTRUCTIVE_DB_COMMANDS=true');
+        $_ENV['ALLOW_DESTRUCTIVE_DB_COMMANDS'] = 'true';
+
+        try {
+            $this->assertFalse(DestructiveDatabaseCommandGuard::mustRefuse('migrate:fresh', 'local', 'geoidxapi_staging'));
+        } finally {
+            putenv('ALLOW_DESTRUCTIVE_DB_COMMANDS=false');
+            $_ENV['ALLOW_DESTRUCTIVE_DB_COMMANDS'] = 'false';
+            $_SERVER['ALLOW_DESTRUCTIVE_DB_COMMANDS'] = 'false';
+            config()->set('debug_audit.allow_destructive_db_commands', false);
+        }
+    }
+
+    #[Test]
     public function it_throws_when_asserting_a_destructive_command_in_protected_context(): void
     {
         config()->set('debug_audit.allow_destructive_db_commands', false);
