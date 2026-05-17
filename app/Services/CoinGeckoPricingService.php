@@ -23,10 +23,11 @@ class CoinGeckoPricingService
     {
         $assetIds = $this->assetIds();
         $vsCurrencies = $this->vsCurrencies();
+        $coingeckoIds = $this->coingeckoApiIds($assetIds);
         $asOf = CarbonImmutable::now();
 
         $query = [
-            'ids' => implode(',', $assetIds),
+            'ids' => implode(',', array_values(array_unique($coingeckoIds))),
             'vs_currencies' => implode(',', $vsCurrencies),
         ];
 
@@ -38,14 +39,12 @@ class CoinGeckoPricingService
 
         $apiKey = (string) config('coingecko.api_key');
         if ($apiKey !== '') {
-            $request = $request->withHeaders([
-                'x-cg-demo-api-key' => $apiKey,
-            ]);
+            $request = $request->withHeaders($this->apiKeyHeaders($apiKey));
         }
 
         $response = $request->get('/simple/price', $query);
         if (! $response->successful()) {
-            throw new RuntimeException('CoinGecko pricing request failed with status '.$response->status());
+            throw new RuntimeException($this->httpFailureMessage($response->status(), $response->body()));
         }
 
         $decoded = $response->json();
@@ -53,7 +52,7 @@ class CoinGeckoPricingService
             throw new RuntimeException('CoinGecko pricing payload is invalid.');
         }
 
-        $quotes = $this->normalizeQuotes($decoded, $assetIds, $vsCurrencies);
+        $quotes = $this->normalizeQuotes($decoded, $assetIds, $coingeckoIds, $vsCurrencies);
         $snapshot = [
             'quotes' => $quotes,
             'as_of' => $asOf->toIso8601String(),
@@ -111,16 +110,20 @@ class CoinGeckoPricingService
     /**
      * @param  array<string, mixed>  $decoded
      * @param  list<string>  $assetIds
+     * @param  array<string, string>  $coingeckoIds  asset id => CoinGecko API id
      * @param  list<string>  $vsCurrencies
      * @return array<string, array<string, float>>
      */
-    private function normalizeQuotes(array $decoded, array $assetIds, array $vsCurrencies): array
+    private function normalizeQuotes(array $decoded, array $assetIds, array $coingeckoIds, array $vsCurrencies): array
     {
         $quotes = [];
         foreach ($assetIds as $assetId) {
-            $row = $decoded[$assetId] ?? null;
+            $coingeckoId = $coingeckoIds[$assetId] ?? $assetId;
+            $row = $decoded[$coingeckoId] ?? null;
             if (! is_array($row)) {
-                throw new RuntimeException('CoinGecko payload missing asset row: '.$assetId);
+                throw new RuntimeException(
+                    'CoinGecko payload missing asset row: '.$assetId.' (api id: '.$coingeckoId.')'
+                );
             }
 
             foreach ($vsCurrencies as $currency) {
@@ -161,6 +164,49 @@ class CoinGeckoPricingService
             ['asset_id', 'vs_currency'],
             ['price', 'as_of', 'payload', 'updated_at'],
         );
+    }
+
+    /**
+     * @param  list<string>  $assetIds
+     * @return array<string, string> internal asset id => CoinGecko API id
+     */
+    private function coingeckoApiIds(array $assetIds): array
+    {
+        /** @var array<string, string> $map */
+        $map = (array) config('coingecko.coingecko_id_map', []);
+
+        $resolved = [];
+        foreach ($assetIds as $assetId) {
+            $resolved[$assetId] = $map[$assetId] ?? $assetId;
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function apiKeyHeaders(string $apiKey): array
+    {
+        $header = (string) config('coingecko.api_key_header', '');
+        if ($header === '') {
+            $baseUrl = (string) config('coingecko.base_url');
+            $header = str_contains($baseUrl, 'pro-api.coingecko.com')
+                ? 'x-cg-pro-api-key'
+                : 'x-cg-demo-api-key';
+        }
+
+        return [$header => $apiKey];
+    }
+
+    private function httpFailureMessage(int $status, string $body): string
+    {
+        $snippet = strlen($body) > 240 ? substr($body, 0, 240).'…' : $body;
+        $hint = $status === 429
+            ? ' Set COINGECKO_API_KEY (demo or pro) for higher limits.'
+            : '';
+
+        return 'CoinGecko pricing request failed with status '.$status.': '.$snippet.$hint;
     }
 
     /**

@@ -28,11 +28,11 @@ class CoinGeckoPriceRefreshCommandTest extends TestCase
     {
         Http::fake([
             'https://api.coingecko.test/*' => Http::response([
-                'btc' => ['usd' => 100000.0, 'cad' => 136000.0, 'eur' => 92000.0, 'gbp' => 78000.0, 'mxn' => 1700000.0],
-                'eth' => ['usd' => 4500.0, 'cad' => 6120.0, 'eur' => 4140.0, 'gbp' => 3510.0, 'mxn' => 76500.0],
-                'sol' => ['usd' => 200.0, 'cad' => 272.0, 'eur' => 184.0, 'gbp' => 156.0, 'mxn' => 3400.0],
-                'xrp' => ['usd' => 2.0, 'cad' => 2.72, 'eur' => 1.84, 'gbp' => 1.56, 'mxn' => 34.0],
-                'ada' => ['usd' => 1.2, 'cad' => 1.63, 'eur' => 1.10, 'gbp' => 0.94, 'mxn' => 20.4],
+                'bitcoin' => ['usd' => 100000.0, 'cad' => 136000.0, 'eur' => 92000.0, 'gbp' => 78000.0, 'mxn' => 1700000.0],
+                'ethereum' => ['usd' => 4500.0, 'cad' => 6120.0, 'eur' => 4140.0, 'gbp' => 3510.0, 'mxn' => 76500.0],
+                'solana' => ['usd' => 200.0, 'cad' => 272.0, 'eur' => 184.0, 'gbp' => 156.0, 'mxn' => 3400.0],
+                'ripple' => ['usd' => 2.0, 'cad' => 2.72, 'eur' => 1.84, 'gbp' => 1.56, 'mxn' => 34.0],
+                'cardano' => ['usd' => 1.2, 'cad' => 1.63, 'eur' => 1.10, 'gbp' => 0.94, 'mxn' => 20.4],
             ], 200),
         ]);
 
