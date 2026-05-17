@@ -184,12 +184,25 @@ Copy from **`.env.example`**. Per application for web, workers, and scheduler.
 
 ---
 
-## 5. Post-deployment
+## 5. Post-deployment (required)
+
+Run migrations **once per environment** before workers can process jobs reliably. Staging/production use `CACHE_STORE=database` and `SESSION_DRIVER=database`, which require the `cache`, `cache_locks`, `sessions`, and `jobs` tables from Laravel’s default migrations.
+
+**On the Octane container** (or any API container with the same `DB_*` env):
 
 ```bash
 php artisan migrate --force
 php artisan optimize
 ```
+
+Verify:
+
+```bash
+php artisan migrate:status | head -20
+php artisan crypto:refresh-prices   # optional smoke test (CoinGecko + cache write)
+```
+
+In Coolify you can use **Execute command** on the web app after deploy, or a **Post-deployment** hook that runs `php artisan migrate --force`.
 
 ---
 
@@ -211,11 +224,26 @@ See [AGENTS.md](../AGENTS.md). Container RAM > PHP `memory_limit` + ~300 MB on w
 2. GHCR read credentials on Coolify.
 3. Three API apps: Dockerfile pack + `FRANKENPHP_BASE_IMAGE` + correct target (§1.3).
 4. idx-images on **8080**, network alias **`idx-api`**.
-5. Shared runtime env; deploy; run §5.
+5. Shared runtime env; deploy; **run `php artisan migrate --force` (§5)** on first deploy and after new migrations.
+6. Redeploy worker/scheduler after migrations if they crashed on missing tables.
 
 ---
 
 ## 9. Troubleshooting
+
+### `relation "cache" does not exist` (workers / queue)
+
+`CACHE_STORE=database` (default in `.env.example`) stores Laravel cache and queue restart signals in PostgreSQL. The **`cache`** and **`cache_locks`** tables come from `database/migrations/0001_01_01_000001_create_cache_table.php`.
+
+**Fix:** run migrations on the staging/production database (§5):
+
+```bash
+php artisan migrate --force
+```
+
+Then restart workers (`queue:restart` happens automatically on next deploy, or redeploy the worker app). `RefreshCryptoPricingJob` also writes to this cache store.
+
+Related: `SESSION_DRIVER=database` needs the **`sessions`** table (`0001_01_01_000000_create_users_table.php`); `QUEUE_CONNECTION=database` needs **`jobs`** (`0001_01_01_000002_create_jobs_table.php`).
 
 ### `base name (${FRANKENPHP_BASE_IMAGE}) should not be blank`
 
