@@ -108,8 +108,10 @@ Build **only** target `octane` on the web app. On worker and scheduler Coolify a
 
 **Worker — production:** `/bin/sh -lc 'exec php -d memory_limit=512M artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=120'`
 
-**Scheduler — staging:** `php -d memory_limit=384M artisan schedule:work`  
-**Scheduler — production:** `php -d memory_limit=256M artisan schedule:work`
+**Scheduler — staging:** `php -d memory_limit=384M artisan schedule:work --whisper`  
+**Scheduler — production:** `php -d memory_limit=256M artisan schedule:work --whisper`
+
+The scheduler image runs `schedule:work` (one `schedule:run` per minute). **`INFO  No scheduled commands are ready to run`** is normal on minutes when nothing is due (e.g. at `:07` only `*/10` and `*/15` tasks are waiting). With `--whisper`, that line is omitted; you will see output when a task actually runs (`Running [coingecko-price-refresh]`, etc.). **Scheduled jobs are pushed to the database queue** — the **worker** container must be running to execute them (scheduler logs ≠ worker logs).
 
 ### 1.6 idx-images (fourth app)
 
@@ -230,6 +232,19 @@ See [AGENTS.md](../AGENTS.md). Container RAM > PHP `memory_limit` + ~300 MB on w
 ---
 
 ## 9. Troubleshooting
+
+### Scheduler repeats “No scheduled commands are ready to run”
+
+**Expected** if you are not using `--whisper` and the current minute is not a due time. Registered tasks (UTC): `coingecko-price-refresh` every **10** min (`:00`, `:10`, …); `mls:refresh-cache` and `bridge-listings-replica-sync` every **15** min (`:00`, `:15`, `:30`, `:45`); daily purge at **03:05**; GIS probe **Monday 06:30**.
+
+**Verify on the scheduler container:**
+
+```bash
+php artisan schedule:list
+php artisan schedule:run -v    # at :00/:10/:15 you should see "Running [...]"
+```
+
+**Workers still idle?** The scheduler only **dispatches** queue jobs. Confirm the **worker** app is healthy, migrations ran (§5), and watch **worker** logs at a due minute — not the scheduler log stream.
 
 ### `relation "cache" does not exist` (workers / queue)
 

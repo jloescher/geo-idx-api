@@ -70,7 +70,7 @@ EXPOSE 8000
 
 USER www-data
 
-CMD ["php", "-d", "memory_limit=384M", "artisan", "schedule:work"]
+CMD ["php", "-d", "memory_limit=384M", "artisan", "schedule:work", "--whisper"]
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD pgrep -f "artisan schedule:work" >/dev/null || exit 1
