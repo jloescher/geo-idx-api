@@ -2,7 +2,8 @@
 # Same targets as Dockerfile.production: octane | queue-worker | scheduler (+ alias stages).
 # Build arg FRANKENPHP_BASE_IMAGE: ghcr.io/<owner>/<repo>-frankenphp:staging
 #
-# Vite: public/build comes only from the vite stage — never from the git context (.dockerignore).
+# Vite: public/build comes only from the vite stage on builder-web (octane) — never from git context (.dockerignore).
+# queue-worker / scheduler use builder-cli (no Node/Vite/Filament).
 
 # Default matches GHA: ghcr.io/<owner>/<repo>-frankenphp:staging (override in Coolify if needed).
 ARG FRANKENPHP_BASE_IMAGE=ghcr.io/jloescher/geo-idx-api-frankenphp:staging
@@ -17,21 +18,7 @@ RUN composer install --no-dev --optimize-autoloader --no-interaction
 
 RUN chown -R www-data:www-data /var/www/html
 
-FROM node:22-alpine AS vite
-
-WORKDIR /app
-
-COPY --from=builder-base /var/www/html /app
-
-RUN mkdir -p storage/framework/views
-
-RUN npm ci && npm run build
-
-FROM builder-base AS builder
-
-COPY --from=vite /app/public/build ./public/build
-
-RUN php artisan filament:assets --no-interaction
+FROM builder-base AS builder-cli
 
 RUN php artisan key:generate --force || true
 
@@ -42,7 +29,31 @@ RUN mkdir -p storage/logs storage/framework/cache/data storage/framework/session
     && chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R u+rwX,g+rwX storage bootstrap/cache
 
-FROM builder AS queue-worker
+FROM node:22-alpine AS vite
+
+WORKDIR /app
+
+COPY --from=builder-base /var/www/html /app
+
+RUN mkdir -p storage/framework/views
+
+RUN npm ci && npm run build
+
+FROM builder-base AS builder-web
+
+COPY --from=vite /app/public/build ./public/build
+
+RUN php artisan filament:assets --no-interaction
+
+RUN php artisan key:generate --force || true
+
+RUN php artisan config:cache
+
+RUN mkdir -p storage/logs storage/framework/cache/data storage/framework/sessions storage/framework/views storage/app/public \
+    && chown -R www-data:www-data storage bootstrap/cache \
+    && chmod -R u+rwX,g+rwX storage bootstrap/cache
+
+FROM builder-cli AS queue-worker
 
 EXPOSE 8000
 
@@ -53,7 +64,7 @@ CMD ["/bin/sh", "-lc", "exec php -d memory_limit=640M artisan queue:work --queue
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD pgrep -f "artisan queue:work" >/dev/null || exit 1
 
-FROM builder AS scheduler
+FROM builder-cli AS scheduler
 
 EXPOSE 8000
 
@@ -68,7 +79,7 @@ FROM queue-worker AS idx-api-worker
 
 FROM scheduler AS idx-api-scheduler
 
-FROM builder AS octane
+FROM builder-web AS octane
 
 EXPOSE 8000
 

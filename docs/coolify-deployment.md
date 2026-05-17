@@ -41,7 +41,7 @@ Workflow: [`.github/workflows/docker-publish.yml`](../.github/workflows/docker-p
 
 **What the base includes:** `dunglas/frankenphp:php8.5-alpine`, `install-php-extensions` (pgsql, gd, opcache, …), staging **Xdebug**, Composer binary, `/var/cache/geoidx` layout.
 
-**What Coolify still builds:** `COPY` app source, `composer install`, `npm ci` / Vite, `filament:assets`, config/view cache — **not** `install-php-extensions` on every deploy.
+**What Coolify still builds:** `COPY` app source, `composer install`, config cache on all targets. **Octane only:** `npm ci` / Vite, `filament:assets`, and (production) `view:cache`. Worker and scheduler targets skip Node/Vite — **not** `install-php-extensions` on every deploy.
 
 ### 1.1 Bootstrap GHCR base images
 
@@ -95,12 +95,12 @@ Build **only** target `octane` on the web app. On worker and scheduler Coolify a
 
 ### 1.4 Canonical Docker build targets
 
-| Target | Purpose |
-|--------|---------|
-| `octane` | Web (FrankenPHP / Octane on **8000**) |
-| `queue-worker` | Queue worker (**pgrep** healthcheck) |
-| `scheduler` | Scheduler (**pgrep** healthcheck) |
-| `idx-api-worker` / `idx-api-scheduler` | Aliases of the above |
+| Target | Build stage | Purpose |
+|--------|-------------|---------|
+| `octane` | `builder-web` | Web (FrankenPHP / Octane on **8000**); includes Vite + Filament assets |
+| `queue-worker` | `builder-cli` | Queue worker (**pgrep** healthcheck); no Vite/Node |
+| `scheduler` | `builder-cli` | Scheduler (**pgrep** healthcheck); no Vite/Node |
+| `idx-api-worker` / `idx-api-scheduler` | same as above | Aliases of the above |
 
 ### 1.5 Command overrides (Option B only)
 
@@ -240,6 +240,8 @@ Coolify is not using the GHCR base — check `FROM ${FRANKENPHP_BASE_IMAGE}` and
 ### Octane: Caddy storage / autosave warnings
 
 Non-fatal FrankenPHP/Caddy noise; **`/up`** on **8000** should still pass.
+
+**Octane deploy log: one failed `curl` then healthy** — normal while Octane binds port 8000 during the healthcheck start period; rolling update should still complete.
 
 ### `ViteManifestNotFoundException`
 
