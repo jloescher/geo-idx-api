@@ -23,7 +23,7 @@ Schedule::command('mls:refresh-cache')
     ->withoutOverlapping();
 
 Schedule::call(function (): void {
-    BridgeSyncJob::dispatch();
+    BridgeSyncJob::dispatch()->onQueue((string) config('bridge.sync_queue', 'bridge-sync'));
 })->everyFifteenMinutes()->name('bridge-listings-replica-sync')->withoutOverlapping();
 
 Schedule::call(function (): void {

@@ -331,7 +331,7 @@ curl -H "X-Domain-Slug: example.com" \
 |-----------|--------|
 | **Listings DB cache** | **Only** `GET /api/v1/listings` when the caller authenticated as a **domain** (not token-only), and the request does **not** include a **`filters`** query (filtered queries always hit Bridge). TTL **`LISTINGS_CACHE_TTL`** seconds (default **900** = 15 minutes). |
 | **Search cache** | `POST /api/v1/search` results cached by fingerprint (dataset + normalized search params) per domain/token. Also caches `GET/POST /api/v1/properties` when no `?filters=` present. TTL **`LISTINGS_CACHE_TTL`** (default **900** = 15 minutes). |
-| **Replica sync** | `BridgeSyncJob` runs every 15 minutes and hydrates `listings` + `listing_sync_cursors` via Bridge replication/incremental feeds. Mirror scope is **Active + Pending** only; Closed/other statuses are purged from replica rows. |
+| **Replica sync** | Every **15 minutes**, `BridgeSyncJob` (kickoff) dispatches `BridgeSyncFetchPageJob` on the **`bridge-sync`** queue. Each fetch job performs one Bridge HTTP page (rate-limited), then `BridgePersistReplicaPageJob` upserts rows and advances `listing_sync_cursors` before chaining the next fetch. Mirror scope is **Active + Pending** only; Closed/other statuses are purged from replica rows. Default queries use `$unselect=Media` unless `BRIDGE_SYNC_INCLUDE_MEDIA=true`. |
 | **Replica purge** | `PurgeClosedListingsJob` runs daily and deletes Closed rows and rows older than the rolling mirror window (`BRIDGE_LOCAL_MIRROR_ROLLING_MONTHS`, default 12). |
 | **Lookups cache** | `GET /api/v1/lookup` responses cached by dataset + query fingerprint (`lookups:{dataset}`). TTL **`BRIDGE_LOOKUPS_CACHE_TTL`** (default **2,592,000** = 30 days). Clear with `php artisan bridge:clear-lookups-cache [--all|--dataset=stellar]`. |
 | **Image edge cache** | `/images/*` responses are streamed from Bridge with immutable cache headers so Cloudflare/browser edges cache aggressively. |
@@ -355,10 +355,15 @@ Set in **`idx-api/.env`** and/or root **`.env`** for Docker Compose. See root **
 | `BRIDGE_TIMEOUT` | No | HTTP timeout seconds. |
 | `LISTINGS_CACHE_TTL` | No | Seconds (default **900**). |
 | `BRIDGE_LOOKUPS_CACHE_TTL` | No | Lookup cache TTL in seconds (default **2,592,000** = 30 days). |
+| `BRIDGE_SYNC_QUEUE` | No | Queue for kickoff, fetch, and persist jobs (default **`bridge-sync`**). Worker must listen to this queue. |
 | `BRIDGE_SYNC_REPLICATION_TOP` | No | Replication `$top` page size (max 2000; default 2000). Must be an integer, not a URL. |
 | `BRIDGE_SYNC_INCREMENTAL_TOP` | No | Incremental `Property` `$top` page size (max 200; default 200). Must be an integer, not a URL. |
-| `BRIDGE_SYNC_MAX_REPLICATION_PAGES` | No | Max replication pages processed per job run (default 12). |
-| `BRIDGE_SYNC_MAX_INCREMENTAL_PAGES` | No | Max incremental pages processed per job run (default 40). |
+| `BRIDGE_SYNC_MAX_CHAINED_FETCH_PAGES` | No | Optional safety cap on chained fetch jobs per kickoff (**0** = unlimited). |
+| `BRIDGE_SYNC_MAX_REQUESTS_PER_MINUTE` | No | Proactive Bridge GET budget per minute (default **280**, max 334 burst). |
+| `BRIDGE_SYNC_MIN_FETCH_INTERVAL_MS` | No | Minimum delay between fetch jobs in milliseconds (default **200**). |
+| `BRIDGE_SYNC_INCLUDE_MEDIA` | No | When **false** (default), sync adds `$unselect=Media` to reduce payload size. |
+| `BRIDGE_SYNC_MAX_REPLICATION_PAGES` | No | **Deprecated** — monolithic job page cap; pipeline chains until cursor clears. |
+| `BRIDGE_SYNC_MAX_INCREMENTAL_PAGES` | No | **Deprecated** — monolithic job page cap. |
 | `BRIDGE_SYNC_MAX_HTTP_RETRIES` | No | Max retry attempts for sync HTTP 429/503 handling (default 4). |
 | `BRIDGE_LOCAL_MIRROR_ROLLING_MONTHS` | No | Rolling replica retention window in months (default 12). |
 | `BRIDGE_SYNC_UPSERT_CHUNK` | No | Upsert chunk size for batched Postgres writes (25-500, default 250). |

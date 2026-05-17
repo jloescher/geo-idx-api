@@ -108,6 +108,8 @@ Build **only** target `octane` on the web app. On worker and scheduler Coolify a
 
 **Worker — production:** `/bin/sh -lc 'exec php -d memory_limit=512M artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=120'`
 
+Set **`WORKER_QUEUES=default,bridge-sync`** on the worker service so Bridge replica fetch/persist jobs run (scheduled kickoff is every 15 minutes via `bridge-listings-replica-sync`). During initial replication catch-up, run **two or more worker replicas** (or a dedicated worker app listening only to `bridge-sync`) so Postgres persist jobs keep up while a single fetch job respects Bridge burst limits.
+
 **Scheduler — staging:** `php -d memory_limit=384M artisan schedule:work --whisper`  
 **Scheduler — production:** `php -d memory_limit=256M artisan schedule:work --whisper`
 
@@ -257,6 +259,8 @@ php artisan migrate --force
 ```
 
 Then restart workers (`queue:restart` happens automatically on next deploy, or redeploy the worker app). `RefreshCryptoPricingJob` also writes to this cache store.
+
+**Symptoms in worker logs:** repeated `SQLSTATE[42P01]: relation "cache" does not exist` on `select * from "cache" where "key" in (...illuminate:queue:restart)` — the worker crashes between jobs when checking the queue restart signal. `BridgeSyncJob` may show **DONE** but you will not see `BridgeSyncFetchPageJob` / `BridgePersistReplicaPageJob` succeed until migrations run (fetch jobs use `BridgeRateLimitGuard`, which writes to the same cache store).
 
 Related: `SESSION_DRIVER=database` needs the **`sessions`** table (`0001_01_01_000000_create_users_table.php`); `QUEUE_CONNECTION=database` needs **`jobs`** (`0001_01_01_000002_create_jobs_table.php`).
 

@@ -286,7 +286,17 @@ The Bridge API requires authentication. Please refer to the Bridge Data Output d
 
 ## Rate Limits
 
-Please refer to the Bridge Data Output terms of service and API documentation for current rate limiting policies.
+Bridge Data Output enforces per-token quotas on RESO Web API traffic. idx-api replica sync and proxy code assume the following (see also [idx-api-bridge-proxy.md](idx-api-bridge-proxy.md)):
+
+| Rule | Limit | idx-api behavior |
+|------|--------|------------------|
+| Standard `Property` OData | `$top` max **200**; paginate with `$skip` | Incremental sync only; **>10,000** rows via `$skip` requires replication catch-up |
+| `Property/replication` | `$top` max **2,000**; **no** `$skip` / `$orderby` | Follow `Link: rel="next"` or `@odata.nextLink` only |
+| Hourly quota | **5,000 requests/hour** per token | Default proactive cap **280 req/min** (`BRIDGE_SYNC_MAX_REQUESTS_PER_MINUTE`) under the **334/min** burst ceiling |
+| Burst | **334 requests/minute** (1/15 of hourly) | Throttle **between page fetches** (`BridgeRateLimitGuard`), not between Postgres persist jobs |
+| Response headers | `Application-RateLimit-*`, `Burst-RateLimit-*` | Parsed after each GET; HTTP **429** retried via `BRIDGE_SYNC_MAX_HTTP_RETRIES` |
+
+Official policy details: [Bridge RESO Web API explorer](https://bridgedataoutput.com/docs/explorer/reso-web-api).
 
 ## Additional Resources
 

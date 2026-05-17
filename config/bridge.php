@@ -78,12 +78,25 @@ return [
 
     /*
      * Revenue impact: honoring Bridge $top limits (200 standard / 2000 replication) prevents
-     * API suspension; bounded pages per job avoids tight retry loops under rate limits.
+     * API suspension; pipeline fetch jobs chain until the cursor clears.
      */
+    'sync_queue' => (string) env('BRIDGE_SYNC_QUEUE', 'bridge-sync'),
+
     'sync_replication_top' => min(2000, max(1, (int) env('BRIDGE_SYNC_REPLICATION_TOP', 2000))),
     'sync_incremental_top' => min(200, max(1, (int) env('BRIDGE_SYNC_INCREMENTAL_TOP', 200))),
+
+    /** Optional safety cap on chained fetch jobs per kickoff (0 = unlimited). */
+    'sync_max_chained_fetch_pages' => max(0, (int) env('BRIDGE_SYNC_MAX_CHAINED_FETCH_PAGES', 0)),
+
+    /** @deprecated Monolithic job page caps; kept for rollback. Pipeline ignores these. */
     'sync_max_replication_pages_per_job' => max(1, (int) env('BRIDGE_SYNC_MAX_REPLICATION_PAGES', 12)),
     'sync_max_incremental_pages_per_job' => max(1, (int) env('BRIDGE_SYNC_MAX_INCREMENTAL_PAGES', 40)),
+
+    'sync_max_requests_per_minute' => min(334, max(1, (int) env('BRIDGE_SYNC_MAX_REQUESTS_PER_MINUTE', 280))),
+
+    'sync_min_fetch_interval_ms' => max(0, (int) env('BRIDGE_SYNC_MIN_FETCH_INTERVAL_MS', 200)),
+
+    'sync_include_media' => filter_var(env('BRIDGE_SYNC_INCLUDE_MEDIA', false), FILTER_VALIDATE_BOOL),
     /*
      * Max retries after HTTP 429 / 503 from Bridge (shared: listing sync, proxy, hybrid search).
      * Applies only to outbound Bridge requests — not application rate limits for domain/API-key traffic.

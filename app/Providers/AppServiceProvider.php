@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\Bridge\BridgeRateLimitGuard;
 use App\Services\Bridge\BridgeSyncService;
 use App\Services\Bridge\HybridReplicaSearchDecision;
 use App\Services\Bridge\HybridSearchService;
@@ -33,6 +34,7 @@ class AppServiceProvider extends ServiceProvider
          * Octane: stateless collaborators; singletons amortize translator wiring and reuse the
          * same hydrated service graphs without request-scoped mutation.
          */
+        $this->app->singleton(BridgeRateLimitGuard::class);
         $this->app->singleton(BridgeSyncService::class);
         $this->app->singleton(PostgisSearchService::class);
         $this->app->singleton(HybridReplicaSearchDecision::class);

@@ -78,61 +78,23 @@ final class BridgeSyncService
 
     public function __construct(
         private readonly BridgeHttpService $http,
+        private readonly BridgeRateLimitGuard $rateLimitGuard,
     ) {}
 
-    public function syncAllDatasets(): void
+    public function cursorForDataset(string $dataset): ListingSyncCursor
     {
-        $datasets = config('bridge.datasets', ['stellar']);
-        $list = is_array($datasets) ? array_values(array_filter(array_map(trim(...), $datasets))) : ['stellar'];
-        foreach ($list as $dataset) {
-            if (is_string($dataset) && $dataset !== '') {
-                $this->syncDataset($dataset);
-            }
-        }
-    }
-
-    public function syncDataset(string $dataset): void
-    {
-        if (DB::connection()->getDriverName() !== 'pgsql') {
-            return;
-        }
-
         /** @var ListingSyncCursor $cursor */
         $cursor = ListingSyncCursor::query()->firstOrCreate(
             ['dataset_slug' => $dataset],
             ['replication_in_progress' => false],
         );
 
-        $replicationPages = 0;
-        $maxRep = (int) config('bridge.sync_max_replication_pages_per_job', 12);
-
-        while ($replicationPages < $maxRep && $this->shouldContinueReplication($cursor)) {
-            $done = $this->runReplicationPage($dataset, $cursor);
-            $replicationPages++;
-            if ($done) {
-                break;
-            }
-        }
-
-        if ($cursor->replication_in_progress && $cursor->replication_next_url === null) {
-            $cursor->replication_in_progress = false;
-            $cursor->save();
-        }
-
-        if (! $cursor->replication_in_progress) {
-            $this->runIncrementalSync($dataset, $cursor);
-        }
-
-        $cursor->last_sync_finished_at = now();
-        $cursor->save();
+        return $cursor;
     }
 
-    private function shouldContinueReplication(ListingSyncCursor $cursor): bool
+    public function shouldRunReplication(ListingSyncCursor $cursor): bool
     {
         if ($cursor->replication_next_url !== null && $cursor->replication_next_url !== '') {
-            $cursor->replication_in_progress = true;
-            $cursor->save();
-
             return true;
         }
 
@@ -140,41 +102,45 @@ final class BridgeSyncService
             return true;
         }
 
-        $count = Listing::query()->where('dataset_slug', $cursor->dataset_slug)->count();
-
-        return $count === 0;
+        return Listing::query()->where('dataset_slug', $cursor->dataset_slug)->count() === 0;
     }
 
-    /**
-     * @return bool True when replication segment is complete (no more pages this run).
-     */
-    private function runReplicationPage(string $dataset, ListingSyncCursor $cursor): bool
+    public function shouldRunIncremental(ListingSyncCursor $cursor): bool
+    {
+        if ($cursor->replication_in_progress) {
+            return false;
+        }
+
+        return $cursor->last_bridge_modification_timestamp !== null;
+    }
+
+    public function fetchReplicationPage(string $dataset, ListingSyncCursor $cursor): BridgeSyncPageResult
     {
         $select = $this->syncSelectList($dataset);
         $top = (int) config('bridge.sync_replication_top', 2000);
+        $replicationStarting = ($cursor->replication_next_url === null || $cursor->replication_next_url === '')
+            && ! $cursor->replication_in_progress
+            && Listing::query()->where('dataset_slug', $dataset)->count() === 0;
 
         if ($cursor->replication_next_url !== null && $cursor->replication_next_url !== '') {
             $url = $cursor->replication_next_url;
             $query = [];
         } else {
             $url = $this->buildPropertyReplicationUrl($dataset);
-            $query = [
+            $query = array_merge([
                 '$top' => $top,
                 '$select' => $select,
-            ];
-            $cursor->replication_in_progress = true;
-            $cursor->save();
+            ], $this->mediaQueryParams());
         }
 
+        $this->rateLimitGuard->acquire();
         $response = $this->http->serverJsonGet($url, $query);
+        $this->rateLimitGuard->recordFromResponse($response);
 
         if ($response->status() === 403) {
             Log::warning('bridge.replication.forbidden', ['dataset' => $dataset]);
-            $cursor->replication_in_progress = false;
-            $cursor->replication_next_url = null;
-            $cursor->save();
 
-            return true;
+            return BridgeSyncPageResult::forbidden();
         }
 
         if (! $response->successful()) {
@@ -183,106 +149,155 @@ final class BridgeSyncService
                 'status' => $response->status(),
             ]);
 
-            return true;
+            return BridgeSyncPageResult::httpError();
         }
 
         $body = $response->json();
         $value = is_array($body['value'] ?? null) ? $body['value'] : [];
-        $maxBridgeTs = $this->hydrateReplicaBatch($dataset, $value);
-        $this->advanceCursorTimestamp($cursor, $maxBridgeTs);
-
         $next = $this->extractNextUrl($response);
-        $cursor->replication_next_url = $next;
-        if ($next === null) {
-            $cursor->replication_in_progress = false;
-        }
-        $cursor->save();
+        $maxBridgeTs = $this->maxBridgeTimestampFromRows($value);
 
-        return $next === null;
+        return new BridgeSyncPageResult(
+            rows: $value,
+            nextReplicationUrl: $next,
+            replicationComplete: $next === null,
+            incrementalHasMore: false,
+            nextIncrementalSkip: 0,
+            maxBridgeTs: $maxBridgeTs,
+            replicationStarting: $replicationStarting,
+        );
     }
 
-    private function runIncrementalSync(string $dataset, ListingSyncCursor $cursor): void
+    public function fetchIncrementalPage(string $dataset, ListingSyncCursor $cursor, int $skip): BridgeSyncPageResult
     {
         if ($cursor->last_bridge_modification_timestamp === null) {
-            return;
+            return new BridgeSyncPageResult(
+                rows: [],
+                nextReplicationUrl: null,
+                replicationComplete: true,
+                incrementalHasMore: false,
+                nextIncrementalSkip: 0,
+                maxBridgeTs: null,
+            );
         }
 
         $top = (int) config('bridge.sync_incremental_top', 200);
-        $maxPages = (int) config('bridge.sync_max_incremental_pages_per_job', 40);
         $select = $this->syncSelectList($dataset);
-
-        $cursorTs = $cursor->last_bridge_modification_timestamp;
-        $filterTs = CarbonImmutable::parse($cursorTs->format(\DateTimeInterface::ATOM));
-
+        $filterTs = CarbonImmutable::parse($cursor->last_bridge_modification_timestamp->format(\DateTimeInterface::ATOM));
         $filterLiteral = "ModificationTimestamp gt datetime'".$filterTs->utc()->format('Y-m-d\TH:i:s\Z')."'";
         $orderby = 'ModificationTimestamp asc';
-
         $url = $this->buildPropertyCollectionUrl($dataset);
-        $pages = 0;
-        $skip = 0;
 
-        while ($pages < $maxPages) {
-            $query = [
+        $query = array_merge([
+            '$filter' => $filterLiteral,
+            '$orderby' => $orderby,
+            '$top' => $top,
+            '$skip' => $skip,
+            '$select' => $select,
+        ], $this->mediaQueryParams());
+
+        $this->rateLimitGuard->acquire();
+        $response = $this->http->serverJsonGet($url, $query);
+        $this->rateLimitGuard->recordFromResponse($response);
+
+        if ($response->status() === 400 || $response->status() === 501) {
+            Log::info('bridge.incremental.fallback_bridge_ts', ['dataset' => $dataset]);
+            $filterLiteral = "BridgeModificationTimestamp gt datetime'".$filterTs->utc()->format('Y-m-d\TH:i:s\Z')."'";
+            $this->rateLimitGuard->acquire();
+            $response = $this->http->serverJsonGet($url, array_merge([
                 '$filter' => $filterLiteral,
-                '$orderby' => $orderby,
+                '$orderby' => 'BridgeModificationTimestamp asc',
                 '$top' => $top,
                 '$skip' => $skip,
                 '$select' => $select,
-            ];
-
-            $response = $this->http->serverJsonGet($url, $query);
-
-            if ($response->status() === 400 || $response->status() === 501) {
-                Log::info('bridge.incremental.fallback_bridge_ts', ['dataset' => $dataset]);
-                $filterLiteral = "BridgeModificationTimestamp gt datetime'".$filterTs->utc()->format('Y-m-d\TH:i:s\Z')."'";
-                $orderby = 'BridgeModificationTimestamp asc';
-                $query['$filter'] = $filterLiteral;
-                $query['$orderby'] = $orderby;
-                $response = $this->http->serverJsonGet($url, $query);
-            }
-
-            if (! $response->successful()) {
-                Log::warning('bridge.incremental.http_error', [
-                    'dataset' => $dataset,
-                    'status' => $response->status(),
-                ]);
-                break;
-            }
-
-            $body = $response->json();
-            $value = is_array($body['value'] ?? null) ? $body['value'] : [];
-            if ($value === []) {
-                break;
-            }
-
-            $maxBridgeTs = $this->hydrateReplicaBatch($dataset, $value);
-            $this->advanceCursorTimestamp($cursor, $maxBridgeTs);
-            $cursor->save();
-
-            $pages++;
-            if (count($value) < $top) {
-                break;
-            }
-
-            $skip += $top;
-            if ($skip >= 10_000) {
-                Log::warning('bridge.incremental.skip_cap', [
-                    'dataset' => $dataset,
-                    'message' => 'Exceeded 10k skip; use replication for catch-up per Bridge docs.',
-                ]);
-                break;
-            }
+            ], $this->mediaQueryParams()));
+            $this->rateLimitGuard->recordFromResponse($response);
         }
+
+        if (! $response->successful()) {
+            Log::warning('bridge.incremental.http_error', [
+                'dataset' => $dataset,
+                'status' => $response->status(),
+            ]);
+
+            return BridgeSyncPageResult::httpError();
+        }
+
+        $body = $response->json();
+        $value = is_array($body['value'] ?? null) ? $body['value'] : [];
+        if ($value === []) {
+            return new BridgeSyncPageResult(
+                rows: [],
+                nextReplicationUrl: null,
+                replicationComplete: true,
+                incrementalHasMore: false,
+                nextIncrementalSkip: $skip,
+                maxBridgeTs: null,
+            );
+        }
+
+        $maxBridgeTs = $this->maxBridgeTimestampFromRows($value);
+        $hasMore = count($value) >= $top;
+        $nextSkip = $skip + $top;
+
+        if ($hasMore && $nextSkip >= 10_000) {
+            Log::warning('bridge.incremental.skip_cap', [
+                'dataset' => $dataset,
+                'message' => 'Exceeded 10k skip; use replication for catch-up per Bridge docs.',
+            ]);
+            $hasMore = false;
+        }
+
+        return new BridgeSyncPageResult(
+            rows: $value,
+            nextReplicationUrl: null,
+            replicationComplete: true,
+            incrementalHasMore: $hasMore,
+            nextIncrementalSkip: $nextSkip,
+            maxBridgeTs: $maxBridgeTs,
+        );
     }
 
     /**
-     * Revenue impact: batch upserts amortize Postgres round trips; per-row deletes for non-Active/Pending rows
-     * keep IDX mirror aligned with teaser scope so local speed never violates lifecycle display rules.
-     *
      * @param  list<array<string, mixed>>  $rows
-     * @return ?CarbonImmutable High-water timestamp from MLS fields for ReplicationTimestamp cursor bookkeeping.
      */
-    private function hydrateReplicaBatch(string $dataset, array $rows): ?CarbonImmutable
+    public function persistChunk(string $dataset, array $rows, ?BridgeReplicaCursorPatch $patch = null): void
+    {
+        if ($rows !== []) {
+            $this->hydrateReplicaBatch($dataset, $rows);
+        }
+
+        if ($patch !== null) {
+            $this->applyCursorPatch($dataset, $patch);
+        }
+    }
+
+    public function applyCursorPatch(string $dataset, BridgeReplicaCursorPatch $patch): void
+    {
+        $cursor = $this->cursorForDataset($dataset);
+
+        if ($patch->applyReplicationState) {
+            $cursor->replication_next_url = $patch->replicationNextUrl;
+            if ($patch->replicationInProgress !== null) {
+                $cursor->replication_in_progress = $patch->replicationInProgress;
+            }
+        }
+
+        if ($patch->maxBridgeTs !== null) {
+            $this->advanceCursorTimestamp($cursor, $patch->maxBridgeTs);
+        }
+
+        if ($patch->markSyncFinished) {
+            $cursor->last_sync_finished_at = now();
+        }
+
+        $cursor->save();
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function maxBridgeTimestampFromRows(array $rows): ?CarbonImmutable
     {
         $maxTs = null;
         foreach ($rows as $row) {
@@ -292,6 +307,29 @@ final class BridgeSyncService
             $maxTs = $this->maxBridgeTimestamp($maxTs, $row);
         }
 
+        return $maxTs;
+    }
+
+    /**
+     * @return array<string, int|string>
+     */
+    private function mediaQueryParams(): array
+    {
+        if (config('bridge.sync_include_media', false)) {
+            return [];
+        }
+
+        return ['$unselect' => 'Media'];
+    }
+
+    /**
+     * Revenue impact: batch upserts amortize Postgres round trips; per-row deletes for non-Active/Pending rows
+     * keep IDX mirror aligned with teaser scope so local speed never violates lifecycle display rules.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function hydrateReplicaBatch(string $dataset, array $rows): void
+    {
         $chunkSize = (int) config('bridge.sync_upsert_chunk_size', 250);
         $pendingUpserts = [];
         $coords = [];
@@ -352,8 +390,6 @@ final class BridgeSyncService
         $this->flushCoordinates($coords);
         $this->flushNullCoordinates($nullCoordKeys);
         $this->flushDeletes($deletesGrouped);
-
-        return $maxTs;
     }
 
     /**
@@ -367,11 +403,29 @@ final class BridgeSyncService
 
         Listing::withoutTimestamps(function () use ($records): void {
             Listing::query()->upsert(
-                $records,
+                $this->encodeJsonColumnsForUpsert($records),
                 ['dataset_slug', 'listing_key'],
                 self::UPSERT_UPDATE_COLUMNS,
             );
         });
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $records
+     * @return list<array<string, mixed>>
+     */
+    private function encodeJsonColumnsForUpsert(array $records): array
+    {
+        foreach ($records as &$record) {
+            foreach (['raw_data', 'custom_fields', 'special_listing_conditions'] as $column) {
+                if (isset($record[$column]) && is_array($record[$column])) {
+                    $record[$column] = json_encode($record[$column], JSON_THROW_ON_ERROR);
+                }
+            }
+        }
+        unset($record);
+
+        return $records;
     }
 
     /**
