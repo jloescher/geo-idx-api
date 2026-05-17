@@ -46,7 +46,10 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}-frankenphp
+          # Canonical: ghcr.io/<owner>/<repo>-frankenphp. Alias geoidx-frankenphp matches local/Coolify env overrides.
+          images: |
+            ${{ env.REGISTRY }}/${{ github.repository }}-frankenphp
+            ${{ env.REGISTRY }}/jloescher/geoidx-frankenphp
           tags: |
             type=raw,value=${{ steps.pick.outputs.tag }}
             type=sha,prefix=sha-

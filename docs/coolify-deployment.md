@@ -62,16 +62,16 @@ Add **GHCR registry credentials** on the Coolify server (read access) so `docker
 | **Docker Build Target** | `octane` (web), `queue-worker`, or `scheduler` per app — see §1.4 | Same |
 | **Port (web only)** | **8000** | **8000** |
 
-**Build argument `FRANKENPHP_BASE_IMAGE`** — baked into [`Dockerfile.staging`](../Dockerfile.staging) / [`.production`](../Dockerfile.production) with defaults for `jloescher/geo-idx-api`. Coolify only needs an override if you published the base under a different name.
+**Build argument `FRANKENPHP_BASE_IMAGE`** — baked into [`Dockerfile.staging`](../Dockerfile.staging) / [`.production`](../Dockerfile.production). **Important:** if Coolify has `FRANKENPHP_BASE_IMAGE` in environment variables with [inject build args](https://coolify.io/docs/builds/packs/dockerfile#inject-build-args-to-dockerfile) enabled, that value **overrides** the Dockerfile default (see your deploy log: `ARG FRANKENPHP_BASE_IMAGE=ghcr.io/jloescher/geoidx-frankenphp:staging`).
 
-| Environment | Default base image (GHA tag) |
-|-------------|------------------------------|
-| Production | `ghcr.io/jloescher/geo-idx-api-frankenphp:production` |
-| Staging | `ghcr.io/jloescher/geo-idx-api-frankenphp:staging` |
+| Environment | Dockerfile default (GHA) | Also published as alias |
+|-------------|--------------------------|-------------------------|
+| Production | `ghcr.io/jloescher/geo-idx-api-frankenphp:production` | `ghcr.io/jloescher/geoidx-frankenphp:production` |
+| Staging | `ghcr.io/jloescher/geo-idx-api-frankenphp:staging` | `ghcr.io/jloescher/geoidx-frankenphp:staging` |
 
-Optional: add `FRANKENPHP_BASE_IMAGE` in Coolify env (with [inject build args](https://coolify.io/docs/builds/packs/dockerfile#inject-build-args-to-dockerfile) enabled) to override the Dockerfile default.
+If you set `FRANKENPHP_BASE_IMAGE` in Coolify, it must match a tag that **exists on GHCR** (run the GHA workflow first). To use the Dockerfile default instead, **remove** `FRANKENPHP_BASE_IMAGE` from Coolify env (or mark it build-time only if your Coolify version supports that).
 
-**Before the first app deploy:** run GHA **Docker publish (FrankenPHP base)** on `staging` / `main` so that tag exists on GHCR, and configure **GHCR read** on the Coolify server so `docker build` can pull it.
+**Before the first app deploy:** run GHA **Docker publish (FrankenPHP base)** on `staging` / `main`, then configure **GHCR read** on the Coolify server.
 
 **Runtime env:** Same `DB_*`, `APP_KEY`, `QUEUE_CONNECTION`, and URLs on web, worker, and scheduler. **Turnstile** keys on **web** only.
 
@@ -221,9 +221,13 @@ See [AGENTS.md](../AGENTS.md). Container RAM > PHP `memory_limit` + ~300 MB on w
 
 Coolify did not pass **`FRANKENPHP_BASE_IMAGE`** and the Dockerfile had no default. Use current `Dockerfile.staging` / `.production` (they include defaults), or set env **`FRANKENPHP_BASE_IMAGE`** in Coolify with inject build args enabled.
 
+### `ghcr.io/jloescher/geoidx-frankenphp:staging: not found`
+
+Coolify injected `FRANKENPHP_BASE_IMAGE=ghcr.io/jloescher/geoidx-frankenphp:staging` from your app env, which overrides the Dockerfile default. That tag only exists after GHA publishes the **alias** (see workflow). **Fix:** run **Docker publish (FrankenPHP base)** on `staging`, **or** delete `FRANKENPHP_BASE_IMAGE` from Coolify env, **or** set it to `ghcr.io/jloescher/geo-idx-api-frankenphp:staging`.
+
 ### `failed to resolve FRANKENPHP_BASE_IMAGE` / `pull access denied`
 
-Run GHA **Docker publish (FrankenPHP base)** first. Add **GHCR read** credentials on the Coolify server. The image name must match GHA: `ghcr.io/jloescher/geo-idx-api-frankenphp:staging` (not a custom local tag unless you override the build arg).
+Run GHA **Docker publish (FrankenPHP base)** first. Add **GHCR read** credentials on the Coolify server.
 
 ### `map has no entry for key "Health"`
 
