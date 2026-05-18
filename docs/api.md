@@ -39,19 +39,20 @@ Refresh pipeline details:
 - The job updates both PostgreSQL (`crypto_price_snapshots`) and Laravel cache (`coingecko.pricing.matrix`).
 - Read path does not call CoinGecko; listing enrichment uses cache/DB only.
 
-### New: Structured Search endpoint (`POST /api/v1/search`)
+### Structured Search endpoint (`POST /api/v1/search`)
 
-The search endpoint accepts JSON payloads with filter criteria, translates them to Bridge RESO OData queries, and returns paginated results with computed statistics.
+The search endpoint accepts JSON payloads with filter criteria and returns paginated results with computed statistics. **Routing is hybrid:** Active/Pending inventory is served from the local PostGIS **`listings`** mirror when possible; **Closed** (and some special filters) use live Bridge OData; requests that mix Active/Pending and Closed merge both sources before pagination.
 
 **Features:**
 - Multi-dataset support (validated against domain's `allowed_mls_datasets`)
 - Structured filters: location (cities, counties, states), price range, beds/baths, property types, features (pool, waterfront), etc.
-- OData cursor pagination via `@odata.nextLink`
+- **Hybrid routing:** mirror for Active/Pending; Bridge for Closed-only or unsupported statuses; split merge when both appear in `status` / `statuses`
+- OData cursor pagination via `@odata.nextLink` (Bridge leg; mirror leg uses SQL offset/limit)
 - 15-minute result caching (same cache mechanism as listings)
 - No plan-based teaser gating (internal deployment)
 - Image URL rewriting to `idx-images` host
 
-See [IDX-API Bridge proxy — Search endpoint](idx-api-bridge-proxy.md#search-endpoint-post-apiv1search) for full request/response format and filter mapping.
+See [IDX-API Bridge proxy — Search endpoint](idx-api-bridge-proxy.md#search-endpoint-post-apiv1search) for request body, filter mapping, and the routing table.
 
 ### How to obtain a Bearer token for `/api/v1`
 

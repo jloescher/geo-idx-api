@@ -29,7 +29,7 @@ Canonical inventory for **`database/migrations/`** (Laravel 13). Billing / CRM-s
 | `2026_04_24_010000_create_gis_cache_table.php` | GIS parcel cache (`query_hash`, `source_generation`) |
 | `2026_04_24_120000_create_gis_source_states_table.php` | Per-source generation / fingerprint for cache invalidation |
 | `2026_04_26_131500_create_crypto_price_snapshots_table.php` | Cached FX / crypto quotes for listing enrichment |
-| `2026_04_30_210000_create_listings_and_sync_cursors_tables.php` | PostGIS `listings` mirror + `listing_sync_cursors` |
+| `2026_04_30_210000_create_listings_and_sync_cursors_tables.php` | PostGIS **`listings`** mirror (Active/Pending bulk replication + incremental updates; Closed on-demand via Bridge only) + **`listing_sync_cursors`** |
 | `2026_05_15_120000_drop_removed_lead_and_agent_tables.php` | **Cleanup only:** `dropIfExists` for legacy agent / saved-search / `quantyra_leads` tables if a database still has them after older migrations were removed from the repo |
 
 ---
@@ -39,6 +39,8 @@ Canonical inventory for **`database/migrations/`** (Laravel 13). Billing / CRM-s
 ### PostGIS
 
 [`2026_04_30_210000_create_listings_and_sync_cursors_tables.php`](../database/migrations/2026_04_30_210000_create_listings_and_sync_cursors_tables.php) requires the **PostGIS** extension for geography columns. The migration skips `CREATE EXTENSION` when PostGIS is already installed; otherwise a superuser must run `CREATE EXTENSION postgis` once on the database (typical on RDS/Coolify managed Postgres).
+
+**Application mirror scope:** scheduled `/Property/replication` sync stores **Active** and **Pending** listings (OData `$filter` on the first replication page). **`Media`** is always requested on replication pages and stored in **`listings.raw_data`**. **`POST /api/v1/search`** reads this table for Active/Pending queries; Closed searches hit Bridge live. See [IDX-API Bridge proxy — Caching & jobs](idx-api-bridge-proxy.md#caching--jobs).
 
 ### Legacy table drop migration
 

@@ -9,6 +9,7 @@ Laravel 13 + Octane service for Quantyra's Bridge MLS proxy and secured image pr
 - Domain/token authorization middleware and proxy audit logging
 - Image proxy flow (`/images/*`) with cache path support and Nginx edge support
 - Listings row cache (`listings_cache`) with `php artisan mls:refresh-cache` (scheduled every 15 minutes; requires `QUEUE_CONNECTION=database` and a queue worker)
+- PostGIS **`listings`** mirror: replication sync (Active/Pending) on **`bridge-sync-fetch`** / **`bridge-sync-persist`** queues; **`POST /api/v1/search`** hybrid routing (see [docs/idx-api-bridge-proxy.md](docs/idx-api-bridge-proxy.md))
 - Supporting migrations, seeders, and automated tests
 - **Invite-only dashboard signup:** administrators send email invitations; `ADMIN_SEED_*` env vars seed a bootstrap admin (see `.env.example`)
 

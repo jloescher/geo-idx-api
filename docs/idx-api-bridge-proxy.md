@@ -218,7 +218,23 @@ Migrations live under `idx-api/database/migrations/` (`2026_04_22_120000` … `1
 
 ## Search endpoint (`POST /api/v1/search`)
 
-The structured search endpoint accepts JSON payloads with filter criteria, translates them to Bridge RESO OData queries, caches results, and returns paginated listings with computed statistics.
+The structured search endpoint accepts JSON payloads with filter criteria and returns paginated listings with computed statistics. **Where the query runs** depends on `status` / `statuses` and a few special filters (see **Hybrid search routing** below). Results are still cached by fingerprint for **15 minutes** (`LISTINGS_CACHE_TTL`).
+
+### Hybrid search routing
+
+`HybridReplicaSearchDecision` classifies each request into one of three modes. Implementation: `HybridSearchService`, `BridgeSearchTranslator`, `HybridReplicaSearchDecision`.
+
+| Mode | When | Data source |
+|------|------|-------------|
+| **Postgres only** | Statuses are **Active** and/or **Pending** only (or omitted with default `active_only: true`) | PostGIS `listings` mirror (`HybridSearchService` local leg) |
+| **Bridge only** | **Closed** only; statuses outside Active/Pending/Closed; or filters that require live Bridge (e.g. `price_reduced_within_days`) | Live Bridge RESO OData |
+| **Split** | Request includes **both** replica statuses (Active/Pending) **and** Closed | Both legs: mirror for AP, Bridge for Closed; results **merged, deduped, sorted, then paginated** |
+
+**Mirror scope:** scheduled replication bulk-loads **Active + Pending** only (`$filter` on `/Property/replication`). **Closed** is never bulk-replicated; Closed inventory is always fetched on demand from Bridge. Daily `PurgeClosedListingsJob` removes stale Closed rows if any were written historically.
+
+**Default when `status` is omitted:** with `active_only` true (default), search uses the mirror for Active inventory only. With `active_only` false and no statuses, search goes to Bridge only.
+
+**Operational note:** if Bridge returns **HTTP 400** on replication with the Active/Pending `$filter`, Stellar may not support `$filter` on `/replication` (undocumented). Treat as an upstream compatibility issue; incremental `Property` sync is unaffected.
 
 ### Request body (SearchRequest)
 
@@ -365,7 +381,7 @@ Set in **`idx-api/.env`** and/or root **`.env`** for Docker Compose. See root **
 | `BRIDGE_SYNC_MAX_REQUESTS_PER_MINUTE` | No | Proactive Bridge GET budget per minute (default **280**, max 334 burst). |
 | `BRIDGE_SYNC_MAX_REQUESTS_PER_HOUR` | No | Proactive hourly cap (default **4800**, under Bridge **5000/hour**). |
 | `BRIDGE_SYNC_MIN_FETCH_INTERVAL_MS` | No | Minimum delay between **fetch** jobs in milliseconds (default **200**); not applied to persist jobs. |
-| `BRIDGE_SYNC_INCLUDE_MEDIA` | No | When **true**, replication/incremental sync includes **`Media`** in `$select` (stored in **`raw_data`**). When **false**, sync adds `$unselect=Media` to reduce payload size. |
+| `BRIDGE_SYNC_INCLUDE_MEDIA` | No | **Incremental** `Property` sync only: when **true**, includes **`Media`** in `$select` (stored in **`raw_data`**); when **false**, adds `$unselect=Media`. **Replication** always includes **`Media`** in `$select` regardless of this flag. |
 | `BRIDGE_SYNC_PERSIST_JOB_CHUNK` | No | Rows per persist queue job (default **100**); lower if workers hit memory limits. Staging Docker workers default to **`memory_limit=768M`** (see [Coolify deployment](coolify-deployment.md) §7). |
 | `BRIDGE_SYNC_MAX_REPLICATION_PAGES` | No | **Deprecated** — monolithic job page cap; pipeline chains until cursor clears. |
 | `BRIDGE_SYNC_MAX_INCREMENTAL_PAGES` | No | **Deprecated** — monolithic job page cap. |

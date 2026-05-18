@@ -273,7 +273,7 @@ Then restart workers (`queue:restart` happens automatically on next deploy, or r
 
 ### `Allowed memory size exhausted` on `BridgePersistReplica*`
 
-Replication pages are up to **2000** listings with large `raw_data` JSON. **`BRIDGE_SYNC_INCLUDE_MEDIA=true`** increases payload size further. Persist work runs as parallel **`BridgePersistReplicaChunkJob`** batches on **`bridge-sync-persist`** (`BRIDGE_SYNC_PERSIST_JOB_CHUNK`; use **25–50** with media). If OOM persists, lower the chunk env, add persist worker replicas, set Coolify worker **Maximum Memory Limit** ≥ **1024 MB**, or raise PHP memory in the worker start command (staging default **768M**).
+Replication pages are up to **2000** listings with large `raw_data` JSON. Replication **always** includes **`Media`** in `$select` (independent of **`BRIDGE_SYNC_INCLUDE_MEDIA`**, which applies to incremental `Property` sync only). Bulk replication is scoped to **Active + Pending** via OData **`$filter`** on the first `/Property/replication` page; **`BRIDGE_SYNC_INCLUDE_MEDIA=true`** still increases incremental sync payload. Persist work runs as parallel **`BridgePersistReplicaChunkJob`** batches on **`bridge-sync-persist`** (`BRIDGE_SYNC_PERSIST_JOB_CHUNK`; use **25–50** with media). If OOM persists, lower the chunk env, add persist worker replicas, set Coolify worker **Maximum Memory Limit** ≥ **1024 MB**, or raise PHP memory in the worker start command (staging default **768M**).
 
 Related: `SESSION_DRIVER=database` needs the **`sessions`** table (`0001_01_01_000000_create_users_table.php`); `QUEUE_CONNECTION=database` needs **`jobs`** (`0001_01_01_000002_create_jobs_table.php`).
 
