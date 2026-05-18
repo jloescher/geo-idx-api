@@ -2,12 +2,22 @@
 
 $idx = require __DIR__.'/idx_urls.php';
 
-$defaultResoBase = rtrim((string) env('SPARK_RESO_BASE_URL', ''), '/');
-if ($defaultResoBase === '') {
-    $host = rtrim((string) env('SPARK_HOST', 'https://replication.sparkapi.com'), '/');
-    $root = trim((string) env('SPARK_RESO_ROOT', 'Reso/OData'), '/');
-    $defaultResoBase = $root !== '' ? "{$host}/{$root}" : $host;
+$replicationHost = rtrim((string) env('SPARK_REPLICATION_HOST', 'https://replication.sparkapi.com'), '/');
+$replicationRoot = trim((string) env('SPARK_REPLICATION_RESO_ROOT', 'Reso/OData'), '/');
+$legacyResoOverride = rtrim((string) env('SPARK_RESO_BASE_URL', ''), '/');
+
+if ($legacyResoOverride !== '') {
+    $replicationResoBase = $legacyResoOverride;
+} else {
+    $replicationResoBase = $replicationRoot !== '' ? "{$replicationHost}/{$replicationRoot}" : $replicationHost;
 }
+
+$apiHost = rtrim((string) env('SPARK_API_HOST', 'https://sparkapi.com'), '/');
+$apiVersion = trim((string) env('SPARK_API_VERSION', 'v1'), '/');
+$liveRoot = trim((string) env('SPARK_LIVE_RESO_ROOT', 'Reso/OData'), '/');
+$liveResoBase = $liveRoot !== ''
+    ? "{$apiHost}/{$apiVersion}/{$liveRoot}"
+    : "{$apiHost}/{$apiVersion}";
 
 return [
 
@@ -16,12 +26,27 @@ return [
     | Spark Platform (Beaches MLS) RESO OData
     |--------------------------------------------------------------------------
     |
-    | Compliance: Bearer token remains server-side; replication host only for keys
-    | with replication permission. See docs/spark-api-documentation.md.
+    | Replication keys must use replication.sparkapi.com (sync jobs only).
+    | Live IDX proxy uses sparkapi.com. See docs/spark/README.md.
     |
     */
 
-    'reso_base_url' => $defaultResoBase,
+    /** @deprecated Use replication_reso_base_url or live_reso_base_url */
+    'reso_base_url' => $replicationResoBase,
+
+    'replication_host' => $replicationHost,
+
+    'replication_reso_root' => $replicationRoot,
+
+    'replication_reso_base_url' => $replicationResoBase,
+
+    'api_host' => $apiHost,
+
+    'api_version' => $apiVersion,
+
+    'live_reso_root' => $liveRoot,
+
+    'live_reso_base_url' => $liveResoBase,
 
     'access_token' => env('SPARK_ACCESS_TOKEN', env('SPARK_API_KEY')),
 

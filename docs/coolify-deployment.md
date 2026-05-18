@@ -110,6 +110,8 @@ Build **only** target `octane` on the web app. On worker and scheduler Coolify a
 
 Set **`WORKER_QUEUES=default,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist`** on the worker service so Bridge and Spark replica jobs run (scheduled kickoffs every 15 minutes via `bridge-listings-replica-sync` and `spark-listings-replica-sync`). During replication catch-up, run **two or more worker replicas** — optionally dedicate one replica to **`bridge-sync-persist,spark-sync-persist`** only and another to **`default,bridge-sync-fetch,spark-sync-fetch`** so parallel Postgres writes keep up while fetch jobs stay rate-limited.
 
+**Spark hosts:** workers and the web container need outbound HTTPS to **`replication.sparkapi.com`** (sync) and **`sparkapi.com`** (live RESO proxy). See [spark/idx-api-integration.md](spark/idx-api-integration.md).
+
 **Scheduler — staging:** `php -d memory_limit=384M artisan schedule:work --whisper`  
 **Scheduler — production:** `php -d memory_limit=256M artisan schedule:work --whisper`
 

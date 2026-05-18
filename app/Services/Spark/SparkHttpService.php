@@ -80,16 +80,28 @@ final class SparkHttpService
         });
     }
 
-    public function propertyCollectionUrl(): string
+    public function replicationPropertyCollectionUrl(): string
     {
-        return rtrim((string) config('spark.reso_base_url'), '/').'/Property';
+        return rtrim((string) config('spark.replication_reso_base_url'), '/').'/Property';
     }
 
-    public function propertyEntityUrl(string $listingKey): string
+    public function replicationPropertyEntityUrl(string $listingKey): string
     {
         $encoded = rawurlencode($listingKey);
 
-        return rtrim((string) config('spark.reso_base_url'), '/')."/Property('{$encoded}')";
+        return rtrim((string) config('spark.replication_reso_base_url'), '/')."/Property('{$encoded}')";
+    }
+
+    public function livePropertyCollectionUrl(): string
+    {
+        return rtrim((string) config('spark.live_reso_base_url'), '/').'/Property';
+    }
+
+    public function livePropertyEntityUrl(string $listingKey): string
+    {
+        $encoded = rawurlencode($listingKey);
+
+        return rtrim((string) config('spark.live_reso_base_url'), '/')."/Property('{$encoded}')";
     }
 
     /**
@@ -97,7 +109,7 @@ final class SparkHttpService
      */
     public function resolveListingPhotoUrl(string $listingKey, string $mediaKey): string
     {
-        $response = $this->serverJsonGet($this->propertyEntityUrl($listingKey), [
+        $response = $this->serverJsonGet($this->livePropertyEntityUrl($listingKey), [
             '$expand' => 'Media',
         ]);
 

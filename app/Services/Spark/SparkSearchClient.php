@@ -34,7 +34,7 @@ final readonly class SparkSearchClient
             $queryParams['$orderby'] = $orderby;
         }
 
-        $url = $this->spark->propertyCollectionUrl();
+        $url = $this->spark->livePropertyCollectionUrl();
         $response = $this->spark->serverJsonGet($url, $queryParams);
 
         if (! $response->successful()) {

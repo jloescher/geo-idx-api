@@ -198,12 +198,17 @@ Public ArcGIS feature server proxy for Florida parcel data. Three-tier caching w
 |----------|----------|-------------|
 | `SPARK_ACCESS_TOKEN` | Yes (Beaches) | Bearer for Spark RESO replication and live proxy |
 | `SPARK_API_FEED_ID` | No | Spark dashboard API Feed ID (audit/logging) |
-| `SPARK_RESO_BASE_URL` | No | OData root (default: `https://replication.sparkapi.com/Reso/OData`) |
+| `SPARK_REPLICATION_HOST` | No | Replication OData host (default: `https://replication.sparkapi.com`) — sync only |
+| `SPARK_REPLICATION_RESO_ROOT` | No | Replication RESO path (default: `Reso/OData`) |
+| `SPARK_API_HOST` | No | Live API host (default: `https://sparkapi.com`) — proxy/search/images |
+| `SPARK_API_VERSION` | No | Live API version prefix (default: `v1`) |
+| `SPARK_LIVE_RESO_ROOT` | No | Live RESO path under version (default: `Reso/OData`) |
+| `SPARK_RESO_BASE_URL` | No | Legacy override for replication base only |
 | `SPARK_DATASETS` | No | Mirror/catalog slugs (default: `beaches`) |
 | `SPARK_SYNC_FETCH_QUEUE` | No | Fetch queue (default: `spark-sync-fetch`) |
 | `SPARK_SYNC_PERSIST_QUEUE` | No | Persist queue (default: `spark-sync-persist`) |
 
-Catalog key `spark_beaches`; mirror partition `beaches`. See @docs/spark-api-documentation.md.
+Catalog key `spark_beaches`; mirror partition `beaches`. See @docs/spark/README.md (integration, RESO reference, compliance).
 
 ### GIS Parcel Proxy
 
@@ -298,6 +303,7 @@ Dev compose (`docker-compose.dev.yml`) runs **Octane only** in `idx-api-dev` (no
 ## Additional Resources
 
 - @docs/INDEX.md — Documentation index
+- @docs/spark/README.md — Spark Platform (BeachesMLS): integration, RESO reference, compliance
 - @docs/database-migrations.md — Migration inventory, PostGIS, legacy drops
 - @docs/coolify-deployment.md — Coolify production & staging (four apps, env, networking, resources)
 - @docs/idx-api-bridge-proxy.md — Bridge proxy architecture, auth flow, cache strategy, image rewrite

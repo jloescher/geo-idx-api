@@ -26,7 +26,7 @@ final readonly class SparkClient
 
     public function propertyCollectionUrl(): string
     {
-        return $this->http->propertyCollectionUrl();
+        return $this->http->livePropertyCollectionUrl();
     }
 
     /**
@@ -34,7 +34,7 @@ final readonly class SparkClient
      */
     public function resoCollectionUrls(string $resource): array
     {
-        $base = rtrim((string) config('spark.reso_base_url'), '/');
+        $base = rtrim((string) config('spark.live_reso_base_url'), '/');
 
         return ["{$base}/{$resource}"];
     }
@@ -45,11 +45,11 @@ final readonly class SparkClient
     public function resoEntityUrls(string $resource, string $key): array
     {
         if (strcasecmp($resource, 'Property') === 0) {
-            return [$this->http->propertyEntityUrl($key)];
+            return [$this->http->livePropertyEntityUrl($key)];
         }
 
         $encoded = rawurlencode($key);
-        $base = rtrim((string) config('spark.reso_base_url'), '/');
+        $base = rtrim((string) config('spark.live_reso_base_url'), '/');
 
         return ["{$base}/{$resource}('{$encoded}')"];
     }

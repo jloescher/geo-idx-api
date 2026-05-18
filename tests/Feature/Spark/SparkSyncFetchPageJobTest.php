@@ -23,7 +23,8 @@ class SparkSyncFetchPageJobTest extends TestCase
         parent::setUp();
 
         config([
-            'spark.reso_base_url' => 'https://replication.sparkapi.com/Reso/OData',
+            'spark.replication_reso_base_url' => 'https://replication.sparkapi.com/Reso/OData',
+            'spark.live_reso_base_url' => 'https://sparkapi.com/v1/Reso/OData',
             'spark.access_token' => 'test-spark-token',
             'spark.sync_fetch_queue' => 'spark-sync-fetch',
             'spark.sync_persist_queue' => 'spark-sync-persist',

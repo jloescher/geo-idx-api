@@ -73,7 +73,7 @@ final class SparkSyncService
             $url = $cursor->replication_next_url;
             $query = [];
         } else {
-            $url = $this->http->propertyCollectionUrl();
+            $url = $this->http->replicationPropertyCollectionUrl();
             $query = $this->replicationQuery($top);
         }
 
@@ -99,7 +99,7 @@ final class SparkSyncService
         } else {
             $windowEnd = $cursor->incremental_window_end ?? CarbonImmutable::now('UTC')->subMinute();
             $windowStart = CarbonImmutable::parse($cursor->last_bridge_modification_timestamp->format(\DateTimeInterface::ATOM));
-            $url = $this->http->propertyCollectionUrl();
+            $url = $this->http->replicationPropertyCollectionUrl();
             $query = $this->incrementalQuery($windowStart, $windowEnd, (int) config('spark.sync_incremental_top', 1000));
         }
 
