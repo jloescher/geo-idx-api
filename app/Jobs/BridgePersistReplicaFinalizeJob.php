@@ -9,20 +9,16 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
 /**
- * Revenue impact: persists a full Bridge page in-order (chunked upserts) before cursor state advances.
+ * Applies cursor state and chains the next fetch when a Bridge page returns zero rows.
  */
-class BridgePersistReplicaPageJob implements ShouldQueue
+class BridgePersistReplicaFinalizeJob implements ShouldQueue
 {
     use Queueable;
 
-    public int $timeout = 600;
+    public int $timeout = 60;
 
-    /**
-     * @param  list<array<string, mixed>>  $rows
-     */
     public function __construct(
         public string $dataset,
-        public array $rows,
         public ?BridgeReplicaCursorPatch $cursorPatch = null,
         public bool $dispatchIncrementalAfter = false,
         public ?string $nextFetchMode = null,
@@ -32,7 +28,9 @@ class BridgePersistReplicaPageJob implements ShouldQueue
 
     public function handle(BridgeSyncService $sync, BridgeRateLimitGuard $rateLimitGuard): void
     {
-        $sync->persistChunk($this->dataset, $this->rows, $this->cursorPatch);
+        if ($this->cursorPatch !== null) {
+            $sync->applyCursorPatch($this->dataset, $this->cursorPatch);
+        }
 
         $queue = (string) config('bridge.sync_queue', 'bridge-sync');
         $delay = $rateLimitGuard->delaySecondsForNextFetch();

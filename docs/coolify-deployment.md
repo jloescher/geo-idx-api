@@ -260,7 +260,11 @@ php artisan migrate --force
 
 Then restart workers (`queue:restart` happens automatically on next deploy, or redeploy the worker app). `RefreshCryptoPricingJob` also writes to this cache store.
 
-**Symptoms in worker logs:** repeated `SQLSTATE[42P01]: relation "cache" does not exist` on `select * from "cache" where "key" in (...illuminate:queue:restart)` — the worker crashes between jobs when checking the queue restart signal. `BridgeSyncJob` may show **DONE** but you will not see `BridgeSyncFetchPageJob` / `BridgePersistReplicaPageJob` succeed until migrations run (fetch jobs use `BridgeRateLimitGuard`, which writes to the same cache store).
+**Symptoms in worker logs:** repeated `SQLSTATE[42P01]: relation "cache" does not exist` on `select * from "cache" where "key" in (...illuminate:queue:restart)` — the worker crashes between jobs when checking the queue restart signal. `BridgeSyncJob` may show **DONE** but you will not see `BridgeSyncFetchPageJob` / `BridgePersistReplicaChunkJob` succeed until migrations run (fetch jobs use `BridgeRateLimitGuard`, which writes to the same cache store).
+
+### `Allowed memory size exhausted` on `BridgePersistReplica*`
+
+Replication pages are up to **2000** listings with large `raw_data` JSON. Persisting an entire page in one job can exceed the worker **`memory_limit`** (staging default **640M**). The app chains **`BridgePersistReplicaChunkJob`** batches (`BRIDGE_SYNC_PERSIST_JOB_CHUNK`, default **100**). If OOM persists, lower that env var (e.g. `50`) or raise worker PHP memory in the Coolify command override.
 
 Related: `SESSION_DRIVER=database` needs the **`sessions`** table (`0001_01_01_000000_create_users_table.php`); `QUEUE_CONNECTION=database` needs **`jobs`** (`0001_01_01_000002_create_jobs_table.php`).
 

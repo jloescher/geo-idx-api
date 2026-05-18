@@ -110,4 +110,7 @@ return [
     'local_mirror_rolling_months' => min(36, max(1, (int) env('BRIDGE_LOCAL_MIRROR_ROLLING_MONTHS', 12))),
 
     'sync_upsert_chunk_size' => min(500, max(25, (int) env('BRIDGE_SYNC_UPSERT_CHUNK', 250))),
+
+    /** Rows per queue persist job (limits jobs.payload size and worker peak RAM). */
+    'sync_persist_job_chunk_size' => min(250, max(25, (int) env('BRIDGE_SYNC_PERSIST_JOB_CHUNK', 100))),
 ];

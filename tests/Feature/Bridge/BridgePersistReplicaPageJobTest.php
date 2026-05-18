@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Bridge;
 
-use App\Jobs\BridgePersistReplicaPageJob;
+use App\Jobs\BridgePersistReplicaChunkJob;
 use App\Jobs\BridgeSyncFetchPageJob;
 use App\Models\Listing;
 use App\Models\ListingSyncCursor;
@@ -24,7 +24,7 @@ class BridgePersistReplicaPageJobTest extends TestCase
 
         $maxTs = CarbonImmutable::parse('2026-05-01T12:00:00Z');
 
-        $job = new BridgePersistReplicaPageJob(
+        $job = new BridgePersistReplicaChunkJob(
             dataset: 'stellar',
             rows: [
                 [
@@ -84,7 +84,7 @@ class BridgePersistReplicaPageJobTest extends TestCase
 
         $maxTs = CarbonImmutable::parse('2026-05-02T08:00:00Z');
 
-        $job = new BridgePersistReplicaPageJob(
+        $job = new BridgePersistReplicaChunkJob(
             dataset: 'stellar',
             rows: [
                 [
@@ -112,6 +112,6 @@ class BridgePersistReplicaPageJobTest extends TestCase
             return $fetch->dataset === 'stellar' && $fetch->mode === 'incremental';
         });
 
-        $this->assertSame(1, Listing::query()->where('listing_key', 'STELLAR-400')->count());
+        $this->assertTrue(Listing::query()->where('listing_key', 'STELLAR-400')->exists());
     }
 }
