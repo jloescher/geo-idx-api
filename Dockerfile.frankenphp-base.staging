@@ -35,6 +35,8 @@ RUN echo "opcache.memory_consumption=256" >> /usr/local/etc/php/conf.d/docker-ph
     && echo "opcache.max_accelerated_files=10000" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini \
     && echo "opcache.enable_cli=1" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini
 
+RUN echo "memory_limit=768M" > /usr/local/etc/php/conf.d/99-memory-limit.ini
+
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html

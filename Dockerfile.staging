@@ -59,7 +59,7 @@ EXPOSE 8000
 
 USER www-data
 
-CMD ["/bin/sh", "-lc", "exec php -d memory_limit=640M artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=120"]
+CMD ["/bin/sh", "-lc", "exec php -d memory_limit=768M artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=120"]
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD pgrep -f "artisan queue:work" >/dev/null || exit 1

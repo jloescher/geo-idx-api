@@ -39,7 +39,7 @@ flowchart LR
 
 Workflow: [`.github/workflows/docker-publish.yml`](../.github/workflows/docker-publish.yml) — **`linux/amd64` only**.
 
-**What the base includes:** `dunglas/frankenphp:php8.5-alpine`, `install-php-extensions` (pgsql, gd, opcache, …), staging **Xdebug**, Composer binary, `/var/cache/geoidx` layout.
+**What the base includes:** `dunglas/frankenphp:php8.5-alpine`, `install-php-extensions` (pgsql, gd, opcache, …), staging **Xdebug**, Composer binary, `/var/cache/geoidx` layout. Staging base sets default **`memory_limit=768M`** in PHP (`Dockerfile.frankenphp-base.staging`); per-process `-d memory_limit=…` in app targets (web/scheduler) can override.
 
 **What Coolify still builds:** `COPY` app source, `composer install`, config cache on all targets. **Octane only:** `npm ci` / Vite, `filament:assets`, and (production) `view:cache`. Worker and scheduler targets skip Node/Vite — **not** `install-php-extensions` on every deploy.
 
@@ -104,7 +104,7 @@ Build **only** target `octane` on the web app. On worker and scheduler Coolify a
 
 ### 1.5 Command overrides (Option B only)
 
-**Worker — staging:** `/bin/sh -lc 'exec php -d memory_limit=640M artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=120'`
+**Worker — staging:** `/bin/sh -lc 'exec php -d memory_limit=768M artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=120'` (matches `Dockerfile.staging` `queue-worker` CMD and staging FrankenPHP base default)
 
 **Worker — production:** `/bin/sh -lc 'exec php -d memory_limit=512M artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=120'`
 
@@ -218,7 +218,16 @@ Omit `route:cache` at image build when multiple `IDX_PLATFORM_HOSTS` share route
 
 ## 7. CPU and memory
 
-See [AGENTS.md](../AGENTS.md). Container RAM > PHP `memory_limit` + ~300 MB on web.
+See [AGENTS.md](../AGENTS.md). **Container maximum memory must exceed PHP `memory_limit` plus headroom** (~250–400 MB on workers for job payloads and extensions; ~300 MB on web for Opcache).
+
+| Service | PHP `memory_limit` (image default) | Coolify **Maximum Memory Limit** (starting point) |
+|---------|-----------------------------------|-----------------------------------------------------|
+| Worker — **staging** | **768M** (`Dockerfile.staging` + `Dockerfile.frankenphp-base.staging`) | **1024 MB** |
+| Worker — production | **512M** | **896–1024 MB** |
+| Scheduler — staging | **384M** | **384–512 MB** |
+| Web (Octane) — staging | **384M** | **1024–1536 MB** |
+
+Set **Number of CPUs** on workers to **0.5–1** during Bridge replication catch-up. Leaving all limits at **`0`** in Coolify means no cgroup cap (container can starve other services on a small VPS).
 
 ---
 
@@ -264,7 +273,7 @@ Then restart workers (`queue:restart` happens automatically on next deploy, or r
 
 ### `Allowed memory size exhausted` on `BridgePersistReplica*`
 
-Replication pages are up to **2000** listings with large `raw_data` JSON. Persisting an entire page in one job can exceed the worker **`memory_limit`** (staging default **640M**). The app chains **`BridgePersistReplicaChunkJob`** batches (`BRIDGE_SYNC_PERSIST_JOB_CHUNK`, default **100**). If OOM persists, lower that env var (e.g. `50`) or raise worker PHP memory in the Coolify command override.
+Replication pages are up to **2000** listings with large `raw_data` JSON. **`BRIDGE_SYNC_INCLUDE_MEDIA=true`** (recommended when you need photo references in **`listings.raw_data`**) increases payload size further. The app chains **`BridgePersistReplicaChunkJob`** batches (`BRIDGE_SYNC_PERSIST_JOB_CHUNK`; use **25–50** with media enabled). If OOM persists, lower the chunk env, set Coolify worker **Maximum Memory Limit** ≥ **1024 MB**, or raise PHP memory in the worker start command (staging default **768M** after rebuild of the FrankenPHP base + app images).
 
 Related: `SESSION_DRIVER=database` needs the **`sessions`** table (`0001_01_01_000000_create_users_table.php`); `QUEUE_CONNECTION=database` needs **`jobs`** (`0001_01_01_000002_create_jobs_table.php`).
 

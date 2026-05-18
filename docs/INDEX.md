@@ -15,7 +15,7 @@ Central index for all documentation in this project. Implementation code lives i
 | [Comps API](comps-api.md) | `POST /api/v1/comps/run` for A–E comps, investor modes (`rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`), BPO mode (`bpo`) with market-derived adjustments, and **home value estimator** (`home_value`) with Google Maps geocoding, condition overlay, and market-scaled renovation credits. |
 | [Database migrations](database-migrations.md) | Inventory of `database/migrations/`, PostGIS, legacy cleanup migration, deploy notes. |
 | [Deployment & operations](deployment-operations.md) | Docker, docker-compose, Dokploy, migrations, queues, scheduling (non–Coolify-specific layout). |
-| [Coolify deployment](coolify-deployment.md) | **Production and staging** on Coolify: four apps per env, Dockerfile targets, ports 8000/8080, PostgreSQL queue, env checklist, post-deploy, `idx-api` / `idx-images` networking, CPU/RAM. |
+| [Coolify deployment](coolify-deployment.md) | **Production and staging** on Coolify: four apps per env, Dockerfile targets, ports 8000/8080, PostgreSQL queue, env checklist, post-deploy, `idx-api` / `idx-images` networking, CPU/RAM (staging workers **768M** PHP / **1024 MB** container). |
 | [Docker builds](../README.md) | Production (`Dockerfile.production`), staging (`Dockerfile.staging`), image edge (`Dockerfile.idx-images`) — project-root build context. |
 
 ---

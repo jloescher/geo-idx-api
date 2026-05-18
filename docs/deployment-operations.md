@@ -86,9 +86,14 @@ php artisan view:cache
 
 **`route:cache`:** skip if your app registers the same route names on multiple `Route::domain()` hosts (see `routes/web.php`); the Docker production image omits route caching at build for that reason.
 
-**Queue worker** (separate service using the **same** API image, Docker target **`queue-worker`** — image runs `php -d memory_limit=512M artisan queue:work`):
+**Queue worker** (separate service using the **same** API image, Docker target **`queue-worker`**):
 
-Use the image default unless your platform requires a custom command. Env **`WORKER_QUEUES`** defaults to `default` (set e.g. `default,gis` if you use a dedicated GIS queue; see `config/gis.php`).
+| Image | Default `queue:work` command |
+|-------|------------------------------|
+| `Dockerfile.production` | `php -d memory_limit=512M artisan queue:work …` |
+| `Dockerfile.staging` | `php -d memory_limit=768M artisan queue:work …` (FrankenPHP staging base also sets **`memory_limit=768M`** in `php.ini`) |
+
+Use the image CMD unless your platform overrides it. Env **`WORKER_QUEUES`** defaults to `default` in the Dockerfile; set **`default,bridge-sync`** on staging/production workers for Bridge replica jobs (see [Coolify deployment](coolify-deployment.md)). Set e.g. `default,gis` if you use a dedicated GIS queue (`config/gis.php`).
 
 **Scheduler** (separate service, target **`scheduler`**, or host cron):
 
