@@ -1,36 +1,27 @@
 # Database migrations (PostgreSQL)
 
-Canonical inventory for **`database/migrations/`** (Laravel 13). Billing / CRM-specific GHL tables are **not** defined in this repository; all schema for this service lives in the paths below.
+Canonical inventory for **`database/migrations/`** (Laravel 13). All application schema lives in this single directory (no secondary `loadMigrationsFrom()` paths).
+
+For a **fresh database**, run `php artisan migrate` (or `migrate:fresh` on disposable dev/test DBs only). Legacy incremental migrations and the old `drop_removed_lead_and_agent_tables` cleanup were consolidated into the files below.
 
 ---
 
-## Layout
+## Migration inventory (run order)
 
-| Path | Role |
-|------|------|
-| [`database/migrations/`](../database/migrations/) | All migrations the app runs (`php artisan migrate`). |
-
----
-
-## Migration inventory (chronological)
-
-| File | Purpose |
-|------|---------|
-| `0001_01_01_000000_create_users_table.php` | `users`, `password_reset_tokens`, `sessions` |
-| `0001_01_01_000001_create_cache_table.php` | Framework cache store |
-| `0001_01_01_000002_create_jobs_table.php` | Queues / failed jobs |
-| `2026_04_22_115800_add_quantyra_user_profile_columns_to_users_table.php` | Fortify 2FA, widget embed key, MLS membership fields, `widget_palette` |
-| `2026_04_22_120000_create_personal_access_tokens_table.php` | Sanctum PATs (`idx:access` / `idx:full`) |
-| `2026_04_22_120100_create_domains_table.php` | `domains` + `bridge_search_cache` (compressed Bridge search payloads) |
-| `2026_04_22_120200_create_listings_cache_table.php` | Row-level `listings_cache` (`compressed_payload` per listing key) |
-| `2026_04_22_120300_create_bridge_proxy_audit_logs_table.php` | MLS proxy audit rows |
-| `2026_04_23_144258_create_telescope_entries_table.php` | Laravel Telescope (dev/diagnostics) |
+| File | Tables / purpose |
+|------|------------------|
+| `0001_01_01_000000_create_users_table.php` | `users` (Fortify 2FA, widget embed, MLS membership, `is_admin`), `password_reset_tokens`, `sessions` |
+| `0001_01_01_000001_create_cache_table.php` | Laravel `cache`, `cache_locks` |
+| `0001_01_01_000002_create_jobs_table.php` | `jobs`, `job_batches`, `failed_jobs` |
+| `2026_01_01_100000_create_idx_auth_tables.php` | `personal_access_tokens`, `user_invitations` |
+| `2026_01_01_200000_create_idx_domain_and_bridge_cache_tables.php` | `domains`, `bridge_search_cache`, `listings_cache`, `bridge_proxy_audit_logs` |
+| `2026_01_01_300000_create_gis_tables.php` | `gis_cache`, `gis_source_states` (+ seed rows for FL parcel sources) |
+| `2026_01_01_400000_create_crypto_price_snapshots_table.php` | `crypto_price_snapshots` |
+| `2026_01_01_500000_create_listings_mirror_tables.php` | PostGIS `listings`, `listing_sync_cursors`, `bridge_replica_pages` |
+| `2026_04_23_144258_create_telescope_entries_table.php` | Laravel Telescope (diagnostics) |
 | `2026_04_23_144551_create_pulse_tables.php` | Laravel Pulse |
-| `2026_04_24_010000_create_gis_cache_table.php` | GIS parcel cache (`query_hash`, `source_generation`) |
-| `2026_04_24_120000_create_gis_source_states_table.php` | Per-source generation / fingerprint for cache invalidation |
-| `2026_04_26_131500_create_crypto_price_snapshots_table.php` | Cached FX / crypto quotes for listing enrichment |
-| `2026_04_30_210000_create_listings_and_sync_cursors_tables.php` | PostGIS **`listings`** mirror (Active/Pending bulk replication + incremental updates; Closed on-demand via Bridge only) + **`listing_sync_cursors`** |
-| `2026_05_15_120000_drop_removed_lead_and_agent_tables.php` | **Cleanup only:** `dropIfExists` for legacy agent / saved-search / `quantyra_leads` tables if a database still has them after older migrations were removed from the repo |
+
+**10 migration files** total (3 framework + 5 IDX domain + 2 observability).
 
 ---
 
@@ -38,26 +29,29 @@ Canonical inventory for **`database/migrations/`** (Laravel 13). Billing / CRM-s
 
 ### PostGIS
 
-[`2026_04_30_210000_create_listings_and_sync_cursors_tables.php`](../database/migrations/2026_04_30_210000_create_listings_and_sync_cursors_tables.php) requires the **PostGIS** extension for geography columns. The migration skips `CREATE EXTENSION` when PostGIS is already installed; otherwise a superuser must run `CREATE EXTENSION postgis` once on the database (typical on RDS/Coolify managed Postgres).
+[`2026_01_01_500000_create_listings_mirror_tables.php`](../database/migrations/2026_01_01_500000_create_listings_mirror_tables.php) enables PostGIS when missing (`CREATE EXTENSION IF NOT EXISTS postgis`). On managed Postgres without superuser, create the extension once before migrating.
 
-**Application mirror scope:** scheduled `/Property/replication` sync stores **Active** and **Pending** listings (OData `$filter` on the first replication page). **`Media`** is always requested on replication pages and stored in **`listings.raw_data`**. **`POST /api/v1/search`** reads this table for Active/Pending queries; Closed searches hit Bridge live. See [IDX-API Bridge proxy — Caching & jobs](idx-api-bridge-proxy.md#caching--jobs).
+**Mirror scope:** replication stores **Active + Pending** in `listings`; **Closed** is on-demand via Bridge. See [IDX-API Bridge proxy](idx-api-bridge-proxy.md).
 
-### Legacy table drop migration
-
-`2026_05_15_120000_drop_removed_lead_and_agent_tables.php` is safe on **new** databases (no-op `dropIfExists`). On databases that previously ran removed migrations, it removes leftover tables in **FK-safe order**; on PostgreSQL the drops run inside a **single transaction** so a failure does not leave a half-removed graph.
-
-### Deploy
+### Fresh install
 
 ```bash
 php artisan migrate --force
 ```
 
-Use a dedicated disposable database for **`migrate:fresh`** in CI and local dev (see `phpunit.xml` / `tests/TestCase.php` for allowed test DB names).
+Use a dedicated database for **`migrate:fresh`** in CI/local dev (`testing` or `idx_api_testing`; see `tests/TestCase.php`).
+
+### Upgrading existing databases
+
+If an environment already ran the **old** per-table migrations, do **not** swap migration files in place on that database. Either:
+
+- Keep the old DB and run only new forward migrations (not applicable after this consolidation), or  
+- **Reset** to a fresh database and run the consolidated set above.
 
 ---
 
 ## Related docs
 
-- [Deployment & operations](deployment-operations.md) — migrate, workers, scheduler.
-- [Coolify deployment](coolify-deployment.md) — production/staging layout.
-- [IDX-API Bridge proxy](idx-api-bridge-proxy.md) — cache and audit behavior at the application layer.
+- [Deployment & operations](deployment-operations.md)
+- [Coolify deployment](coolify-deployment.md)
+- [IDX-API Bridge proxy](idx-api-bridge-proxy.md)

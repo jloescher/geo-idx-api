@@ -278,6 +278,15 @@ final class BridgeImageUrlRewriter
             }
         }
 
+        $sparkExtra = config('spark.image_rewrite_hosts');
+        if (is_array($sparkExtra)) {
+            foreach ($sparkExtra as $h) {
+                if (is_string($h) && $h !== '') {
+                    $hosts[] = strtolower($h);
+                }
+            }
+        }
+
         return array_values(array_unique($hosts));
     }
 }

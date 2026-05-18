@@ -5,6 +5,7 @@ namespace App\Enums;
 enum MlsProvider: string
 {
     case STELLAR = 'stellar';
+    case SPARK = 'spark';
 
     public static function values(): array
     {

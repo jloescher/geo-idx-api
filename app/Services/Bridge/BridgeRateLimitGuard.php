@@ -21,7 +21,7 @@ final class BridgeRateLimitGuard
     {
         $maxPerMinute = max(1, (int) config('bridge.sync_max_requests_per_minute', 280));
         $maxPerHour = max(1, (int) config('bridge.sync_max_requests_per_hour', 4800));
-        $minIntervalMs = max(0, (int) config('bridge.sync_min_fetch_interval_ms', 200));
+        $minIntervalMs = $this->minFetchIntervalMs();
 
         $state = $this->state();
         $nowMs = (int) floor(microtime(true) * 1000);
@@ -109,10 +109,10 @@ final class BridgeRateLimitGuard
     /**
      * Minimum spacing between Bridge GET fetch jobs (not between Postgres persist jobs).
      */
-    public function delaySecondsForNextFetch(): int
+    public function delayMillisecondsForNextFetch(): int
     {
-        $minIntervalMs = max(0, (int) config('bridge.sync_min_fetch_interval_ms', 200));
-        $delay = (int) max(1, (int) ceil($minIntervalMs / 1000));
+        $minIntervalMs = $this->minFetchIntervalMs();
+        $delayMs = max(0, $minIntervalMs);
 
         $state = $this->state();
         $maxPerMinute = max(1, (int) config('bridge.sync_max_requests_per_minute', 280));
@@ -121,21 +121,37 @@ final class BridgeRateLimitGuard
         $minuteBucket = $this->minuteBucket();
         $minuteCount = (int) (($state['minute_bucket'] ?? '') === $minuteBucket ? ($state['minute_request_count'] ?? 0) : 0);
         if ($minuteCount >= $maxPerMinute) {
-            $delay = max($delay, 60 - (int) date('s'));
+            $delayMs = max($delayMs, (60 - (int) date('s')) * 1000);
         }
 
         $hourBucket = $this->hourBucket();
         $hourCount = (int) (($state['hour_bucket'] ?? '') === $hourBucket ? ($state['hour_request_count'] ?? 0) : 0);
         if ($hourCount >= $maxPerHour) {
-            $delay = max($delay, $this->secondsUntilNextHour());
+            $delayMs = max($delayMs, $this->secondsUntilNextHour() * 1000);
         }
 
         $extraMs = (int) ($state['extra_delay_ms'] ?? 0);
         if ($extraMs > 0) {
-            $delay = max($delay, (int) ceil($extraMs / 1000));
+            $delayMs = max($delayMs, $extraMs);
         }
 
-        return $delay;
+        return $delayMs;
+    }
+
+    /**
+     * Minimum spacing between Bridge GET fetch jobs (not between Postgres persist jobs).
+     */
+    public function delaySecondsForNextFetch(): int
+    {
+        return (int) max(1, (int) ceil($this->delayMillisecondsForNextFetch() / 1000));
+    }
+
+    private function minFetchIntervalMs(): int
+    {
+        $configured = max(0, (int) config('bridge.sync_min_fetch_interval_ms', 500));
+        $fromRps = (int) floor(1000 / max(1, (int) config('bridge.sync_max_requests_per_second', 2)));
+
+        return max($configured, $fromRps);
     }
 
     /**

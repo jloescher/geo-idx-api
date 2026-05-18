@@ -15,7 +15,7 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 final class MlsFeedResolver
 {
     /**
-     * Full feed map: internal catalog key => definition (Bridge `bridge_{dataset}` keys only).
+     * Full feed map: internal catalog key => definition (`bridge_{dataset}` or `spark_{dataset}`).
      *
      * @return array<string, array<string, mixed>>
      */
@@ -38,10 +38,69 @@ final class MlsFeedResolver
             $feeds[$internalKey] = [
                 'provider' => MlsProvider::STELLAR->value,
                 'bridge_dataset_id' => $dataset,
+                'label' => 'Stellar MLS (Bridge)',
+            ];
+        }
+
+        $sparkDatasets = config('spark.datasets', ['beaches']);
+        if (! is_array($sparkDatasets) || $sparkDatasets === []) {
+            $sparkDatasets = ['beaches'];
+        }
+        foreach ($sparkDatasets as $dataset) {
+            if (! is_string($dataset)) {
+                continue;
+            }
+            $dataset = trim($dataset);
+            if ($dataset === '') {
+                continue;
+            }
+            $internalKey = 'spark_'.$dataset;
+            $feeds[$internalKey] = [
+                'provider' => MlsProvider::SPARK->value,
+                'spark_dataset_id' => $dataset,
+                'label' => 'Beaches MLS (Spark)',
             ];
         }
 
         return $feeds;
+    }
+
+    /**
+     * Human-readable label for dashboard checkboxes.
+     */
+    public function feedLabel(string $catalogKey): string
+    {
+        $def = $this->feedDefinition($catalogKey);
+
+        return is_array($def) && isset($def['label']) && is_string($def['label'])
+            ? $def['label']
+            : $catalogKey;
+    }
+
+    /**
+     * Postgres mirror partition slug (e.g. stellar, beaches).
+     */
+    public function mirrorDatasetSlug(string $feedCode): string
+    {
+        $key = $this->normalizeWireDatasetToCatalogKey($feedCode);
+        $def = $this->feedDefinition($key);
+        if (! is_array($def)) {
+            throw new HttpException(400, "MLS feed '{$feedCode}' is not available.");
+        }
+
+        if (($def['provider'] ?? '') === MlsProvider::SPARK->value) {
+            return (string) ($def['spark_dataset_id'] ?? 'beaches');
+        }
+
+        return (string) ($def['bridge_dataset_id'] ?? 'stellar');
+    }
+
+    public function providerForFeedCode(string $feedCode): MlsProvider
+    {
+        $def = $this->feedDefinition($this->normalizeWireDatasetToCatalogKey($feedCode));
+        $provider = is_array($def) ? ($def['provider'] ?? '') : '';
+
+        return $provider === MlsProvider::SPARK->value ? MlsProvider::SPARK : MlsProvider::STELLAR;
     }
 
     /**
@@ -56,6 +115,9 @@ final class MlsFeedResolver
             $keys[] = $catalogKey;
             if (($def['provider'] ?? '') === MlsProvider::STELLAR->value && isset($def['bridge_dataset_id'])) {
                 $keys[] = (string) $def['bridge_dataset_id'];
+            }
+            if (($def['provider'] ?? '') === MlsProvider::SPARK->value && isset($def['spark_dataset_id'])) {
+                $keys[] = (string) $def['spark_dataset_id'];
             }
         }
 
@@ -77,9 +139,14 @@ final class MlsFeedResolver
             return $wire;
         }
 
-        $prefixed = 'bridge_'.$wire;
-        if (isset($map[$prefixed])) {
-            return $prefixed;
+        $bridgePrefixed = 'bridge_'.$wire;
+        if (isset($map[$bridgePrefixed])) {
+            return $bridgePrefixed;
+        }
+
+        $sparkPrefixed = 'spark_'.$wire;
+        if (isset($map[$sparkPrefixed])) {
+            return $sparkPrefixed;
         }
 
         throw new HttpException(400, "MLS feed '{$wire}' is not available. Available feeds: ".implode(', ', array_keys($map)));

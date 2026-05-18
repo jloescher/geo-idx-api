@@ -100,9 +100,23 @@ final class DashboardViewData
             'canPurchaseExtraDomainSlots' => false,
             'canInviteUsers' => $user instanceof User && $user->isAdmin(),
             'mlsCatalogFeedCodes' => $this->mlsFeeds->catalogFeedCodes(),
+            'mlsFeedLabels' => $this->mlsFeedLabels(),
             'apiPublicUrl' => rtrim((string) config('idx_urls.api_public_url'), '/'),
             'appUrl' => $appUrl,
             'activePanel' => $activePanel,
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function mlsFeedLabels(): array
+    {
+        $labels = [];
+        foreach ($this->mlsFeeds->catalogFeedCodes() as $code) {
+            $labels[$code] = $this->mlsFeeds->feedLabel($code);
+        }
+
+        return $labels;
     }
 }

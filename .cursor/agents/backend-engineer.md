@@ -23,7 +23,7 @@ You are a senior backend engineer specializing in Laravel 13, PHP 8.5, and real 
 ## Project Context
 
 This is the **Quantyra IDX API** - a Laravel 13 service powering:
-- **Bridge MLS Proxy** (`/api/v1/*`): Domain/token authenticated proxy to Bridge Data Output (Stellar MLS dataset) only — no Spark or other third-party RESO OAuth MLS backends
+- **MLS Proxy** (`/api/v1/*`): Domain/token authenticated RESO proxy — Bridge (Stellar) and Spark (Beaches MLS via `spark_beaches` / mirror `beaches`); provider resolved by `MlsFeedResolver`
 - **GHL Marketplace Integration**: OAuth 2.0 app with widgets, webhooks, lead sync
 - **GIS Parcel Proxy** (`/api/v1/gis`): Florida ArcGIS parcel data with 3-tier caching
 - **Image Proxy** (`/images/*`): Secured Bridge photo proxy with CDN headers

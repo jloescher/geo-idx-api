@@ -8,9 +8,11 @@ use App\Jobs\BridgePersistReplicaFinalizeJob;
 use App\Jobs\BridgeSyncFetchPageJob;
 use App\Models\ListingSyncCursor;
 use App\Services\Bridge\BridgeReplicaCursorPatch;
+use App\Services\Bridge\BridgeReplicaPageStore;
 use App\Services\Bridge\BridgeSyncFetchScheduler;
 use App\Services\Bridge\BridgeSyncService;
 use App\Services\Bridge\BridgeSyncTelemetry;
+use Carbon\CarbonImmutable;
 use Illuminate\Bus\PendingBatch;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -66,7 +68,7 @@ class BridgeSyncFetchPageJobTest extends TestCase
         });
     }
 
-    public function test_replication_fetch_dispatches_parallel_persist_batch_not_fetch(): void
+    public function test_replication_fetch_stages_page_and_dispatches_persist_batch(): void
     {
         $replicationUrl = 'https://bridge.test/OData/stellar/Property/replication';
         $nextUrl = 'https://bridge.test/OData/stellar/Property/replication?page=2';
@@ -85,6 +87,8 @@ class BridgeSyncFetchPageJobTest extends TestCase
 
         $this->runFetchJob('stellar', 'replication');
 
+        $this->assertDatabaseCount('bridge_replica_pages', 1);
+
         Bus::assertBatched(function (PendingBatch $batch): bool {
             if ($batch->jobs->count() !== 1) {
                 return false;
@@ -94,7 +98,7 @@ class BridgeSyncFetchPageJobTest extends TestCase
 
             return $job instanceof BridgePersistReplicaChunkJob
                 && $job->dataset === 'stellar'
-                && count($job->rows) === 1
+                && $job->pageId > 0
                 && $job->queue === 'bridge-sync-persist';
         });
     }
@@ -126,13 +130,16 @@ class BridgeSyncFetchPageJobTest extends TestCase
         });
         $this->assertInstanceOf(BridgePersistReplicaChunkJob::class, $chunkJob);
 
+        $store = app(BridgeReplicaPageStore::class);
         $chunkJob->handle(
             app(BridgeSyncService::class),
             app(BridgeSyncTelemetry::class),
+            $store,
         );
 
         $finalize = new BridgePersistReplicaFinalizeJob(
             dataset: 'stellar',
+            replicaPageId: $chunkJob->pageId,
             cursorPatch: new BridgeReplicaCursorPatch(
                 applyReplicationState: true,
                 replicationNextUrl: $nextUrl,
@@ -147,6 +154,7 @@ class BridgeSyncFetchPageJobTest extends TestCase
         $finalize->handle(
             app(BridgeSyncService::class),
             app(BridgeSyncFetchScheduler::class),
+            $store,
         );
 
         Bus::assertDispatched(BridgeSyncFetchPageJob::class, function (BridgeSyncFetchPageJob $fetch): bool {
@@ -159,6 +167,50 @@ class BridgeSyncFetchPageJobTest extends TestCase
         $this->assertNotNull($cursor);
         $this->assertSame($nextUrl, $cursor->replication_next_url);
         $this->assertTrue($cursor->replication_in_progress);
+        $this->assertDatabaseMissing('bridge_replica_pages', ['id' => $chunkJob->pageId]);
+    }
+
+    public function test_incremental_fetch_uses_modification_timestamp_gt_filter(): void
+    {
+        $propertyUrl = 'https://bridge.test/OData/stellar/Property';
+        $cursorTs = CarbonImmutable::parse('2026-05-10T15:30:00Z');
+
+        ListingSyncCursor::query()->create([
+            'dataset_slug' => 'stellar',
+            'replication_in_progress' => false,
+            'last_bridge_modification_timestamp' => $cursorTs,
+        ]);
+
+        Http::fake([
+            $propertyUrl.'*' => Http::response(['value' => []], 200),
+        ]);
+
+        Bus::fake();
+
+        $this->runFetchJob('stellar', 'incremental');
+
+        Http::assertSent(function (Request $request) use ($cursorTs): bool {
+            $filter = $request->data()['$filter'] ?? '';
+
+            return str_contains($filter, 'ModificationTimestamp gt datetime')
+                && str_contains($filter, $cursorTs->utc()->format('Y-m-d\TH:i:s\Z'));
+        });
+    }
+
+    public function test_incremental_fetch_skipped_while_replication_in_progress(): void
+    {
+        ListingSyncCursor::query()->create([
+            'dataset_slug' => 'stellar',
+            'replication_in_progress' => true,
+            'last_bridge_modification_timestamp' => now(),
+        ]);
+
+        Http::fake();
+        Bus::fake();
+
+        $this->runFetchJob('stellar', 'incremental');
+
+        Http::assertNothingSent();
     }
 
     public function test_replication_fetch_emits_page_fetched_telemetry(): void
@@ -192,6 +244,7 @@ class BridgeSyncFetchPageJobTest extends TestCase
         (new BridgeSyncFetchPageJob($dataset, $mode, 0, 0))->handle(
             app(BridgeSyncService::class),
             app(BridgeSyncTelemetry::class),
+            app(BridgeReplicaPageStore::class),
         );
     }
 

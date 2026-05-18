@@ -25,17 +25,43 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        Schema::create('bridge_search_cache', function (Blueprint $table): void {
+        Schema::create('bridge_search_cache', function (Blueprint $table) {
             $table->string('partition_key', 255);
             $table->string('fingerprint', 64);
             $table->binary('compressed_data');
             $table->timestamp('last_updated');
             $table->primary(['partition_key', 'fingerprint']);
         });
+
+        Schema::create('listings_cache', function (Blueprint $table) {
+            $table->string('domain_slug');
+            $table->string('feed_code', 64);
+            $table->string('listing_key', 191);
+            $table->string('standard_status', 64);
+            $table->binary('compressed_payload');
+            $table->timestamp('first_cached_at');
+            $table->timestamp('last_refreshed_at');
+            $table->primary(['domain_slug', 'feed_code', 'listing_key']);
+            $table->index(['domain_slug', 'feed_code', 'last_refreshed_at'], 'listings_cache_domain_feed_refreshed_idx');
+        });
+
+        Schema::create('bridge_proxy_audit_logs', function (Blueprint $table) {
+            $table->id();
+            $table->timestamp('logged_at')->useCurrent();
+            $table->string('domain_slug')->nullable();
+            $table->string('token_name')->nullable();
+            $table->string('request_type');
+            $table->unsignedInteger('listing_count')->nullable();
+            $table->string('ip_address', 45)->nullable();
+            $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
+            $table->index('logged_at');
+        });
     }
 
     public function down(): void
     {
+        Schema::dropIfExists('bridge_proxy_audit_logs');
+        Schema::dropIfExists('listings_cache');
         Schema::dropIfExists('bridge_search_cache');
         Schema::dropIfExists('domains');
     }

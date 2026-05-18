@@ -13,6 +13,7 @@ final readonly class BridgeReplicaCursorPatch
         public ?string $replicationNextUrl = null,
         public ?bool $replicationInProgress = null,
         public ?CarbonImmutable $maxBridgeTs = null,
+        public ?CarbonImmutable $incrementalWindowEnd = null,
         public bool $markSyncFinished = false,
     ) {}
 }

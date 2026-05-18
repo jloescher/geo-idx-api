@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('crypto_price_snapshots', function (Blueprint $table): void {
+        Schema::create('crypto_price_snapshots', function (Blueprint $table) {
             $table->id();
             $table->string('asset_id', 24);
             $table->string('vs_currency', 12);

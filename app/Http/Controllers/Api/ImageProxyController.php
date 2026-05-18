@@ -2,16 +2,17 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\MlsProvider;
 use App\Http\Controllers\Controller;
-use App\Services\Bridge\BridgeHttpService;
 use App\Services\Bridge\BridgeProxyAuditLogger;
+use App\Services\Mls\MlsClientFactory;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class ImageProxyController extends Controller
 {
     public function __construct(
-        private readonly BridgeHttpService $bridge,
+        private readonly MlsClientFactory $mlsClients,
         private readonly BridgeProxyAuditLogger $audit,
     ) {}
 
@@ -21,8 +22,16 @@ class ImageProxyController extends Controller
      */
     public function show(Request $request, string $listingKey, string $photoId): Response
     {
-        $url = $this->bridge->listingPhotoUrl($listingKey, $photoId);
-        $response = $this->bridge->getBinaryFromUrl($url, $request);
+        if ($this->mlsClients->providerForRequest($request) === MlsProvider::SPARK) {
+            $client = $this->mlsClients->sparkClientFromRequest($request);
+            $imagesBase = rtrim((string) config('spark.images_public_base'), '/');
+        } else {
+            $client = $this->mlsClients->bridgeClientFromRequest($request);
+            $imagesBase = rtrim((string) config('bridge.images_public_base'), '/');
+        }
+
+        $url = $client->listingPhotoUrl($listingKey, $photoId);
+        $response = $client->getBinaryFromUrl($url, $request);
 
         if (! $response->successful()) {
             $this->audit->log(
@@ -42,7 +51,8 @@ class ImageProxyController extends Controller
             $listingKey,
             $photoId,
             $response->body(),
-            $response->header('Content-Type')
+            $response->header('Content-Type'),
+            $imagesBase,
         );
     }
 
@@ -52,6 +62,7 @@ class ImageProxyController extends Controller
         string $photoId,
         string $body,
         ?string $contentType = null,
+        ?string $imagesPublicBase = null,
     ): Response {
         $mime = $contentType ?: 'application/octet-stream';
 
@@ -64,7 +75,8 @@ class ImageProxyController extends Controller
             $request->attributes->get('bridge.user_id'),
         );
 
-        $public = rtrim((string) config('bridge.images_public_base'), '/').'/images/'.$listingKey.'/'.$photoId;
+        $base = $imagesPublicBase ?? rtrim((string) config('bridge.images_public_base'), '/');
+        $public = $base.'/images/'.$listingKey.'/'.$photoId;
 
         return response($body, 200, [
             'Content-Type' => $mime,

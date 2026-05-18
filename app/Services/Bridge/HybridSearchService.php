@@ -2,7 +2,10 @@
 
 namespace App\Services\Bridge;
 
+use App\Enums\MlsProvider;
 use App\Http\Requests\Search\SearchRequest;
+use App\Services\Mls\MlsFeedResolver;
+use App\Services\Spark\SparkSearchClient;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -27,8 +30,10 @@ final readonly class HybridSearchService
     public function __construct(
         private PostgisSearchService $postgisSearch,
         private BridgeSearchClient $bridgeSearch,
+        private SparkSearchClient $sparkSearch,
         private HybridReplicaSearchDecision $decision,
         private BridgeSearchTranslator $searchTranslator,
+        private MlsFeedResolver $feeds,
     ) {}
 
     /**
@@ -41,30 +46,32 @@ final readonly class HybridSearchService
     {
         $validated = $request->validated();
         $mode = $this->decision->routeMode($validated);
+        $mirrorSlug = $this->feeds->mirrorDatasetSlug($dataset);
 
         if ($mode === HybridSearchRouteMode::Split && DB::connection()->getDriverName() === 'pgsql') {
-            return $this->fetchSplitPayload($request, $dataset, $translated, $validated);
+            return $this->fetchSplitPayload($request, $mirrorSlug, $dataset, $translated, $validated);
         }
 
         if ($mode === HybridSearchRouteMode::PostgresOnly && DB::connection()->getDriverName() === 'pgsql') {
             try {
-                $local = $this->postgisSearch->search($validated, $dataset, $translated);
+                $local = $this->postgisSearch->search($validated, $mirrorSlug, $translated);
                 if ($this->decision->geoEmptyShouldRetryBridge($validated, $local['count'])) {
-                    return $this->bridgeSearchDataset($dataset, $translated);
+                    return $this->liveSearchDataset($dataset, $translated);
                 }
 
                 return $local;
             } catch (\Throwable $e) {
                 Log::warning('bridge.hybrid.postgis_failed', [
                     'dataset' => $dataset,
+                    'mirror_slug' => $mirrorSlug,
                     'message' => $e->getMessage(),
                 ]);
 
-                return $this->bridgeSearchDataset($dataset, $translated);
+                return $this->liveSearchDataset($dataset, $translated);
             }
         }
 
-        return $this->bridgeSearchDataset($dataset, $translated);
+        return $this->liveSearchDataset($dataset, $translated);
     }
 
     /**
@@ -74,7 +81,8 @@ final readonly class HybridSearchService
      */
     private function fetchSplitPayload(
         SearchRequest $request,
-        string $dataset,
+        string $mirrorSlug,
+        string $feedCode,
         array $translated,
         array $validated,
     ): array {
@@ -88,31 +96,32 @@ final readonly class HybridSearchService
 
         $translatedReplica = $this->searchTranslator->translate(
             $request,
-            $dataset,
+            $mirrorSlug,
             $replicaSlugs,
             $pageOverride,
         );
 
         $translatedClosed = $this->searchTranslator->translate(
             $request,
-            $dataset,
+            $mirrorSlug,
             ['closed'],
             $pageOverride,
         );
 
         try {
-            $local = $this->postgisSearch->search($validatedReplica, $dataset, $translatedReplica);
+            $local = $this->postgisSearch->search($validatedReplica, $mirrorSlug, $translatedReplica);
         } catch (\Throwable $e) {
             Log::warning('bridge.hybrid.split.postgis_failed', [
-                'dataset' => $dataset,
+                'dataset' => $feedCode,
+                'mirror_slug' => $mirrorSlug,
                 'message' => $e->getMessage(),
             ]);
 
-            return $this->bridgeSearchDataset($dataset, $translated);
+            return $this->liveSearchDataset($feedCode, $translated);
         }
 
-        $closed = $this->bridgeSearch->search(
-            dataset: $dataset,
+        $closed = $this->liveSearch(
+            feedCode: $feedCode,
             filter: $translatedClosed['filter'],
             orderby: $translatedClosed['orderby'],
             top: $translatedClosed['top'],
@@ -259,16 +268,49 @@ final readonly class HybridSearchService
      * @param  array{filter: string, orderby: string, top: int, skip: int, select: string, unselect: string, needsFloodZonePostFilter: bool, lowRiskFloodzone: bool}  $translated
      * @return array{value: list<array<string, mixed>>, count: int, nextLink: ?string}
      */
-    private function bridgeSearchDataset(string $dataset, array $translated): array
+    /**
+     * @param  array{filter: string, orderby: string, top: int, skip: int, select: string, unselect: string, needsFloodZonePostFilter: bool, lowRiskFloodzone: bool}  $translated
+     * @return array{value: list<array<string, mixed>>, count: int, nextLink: ?string}
+     */
+    private function liveSearchDataset(string $feedCode, array $translated): array
     {
-        return $this->bridgeSearch->search(
-            dataset: $dataset,
+        return $this->liveSearch(
+            feedCode: $feedCode,
             filter: $translated['filter'],
             orderby: $translated['orderby'],
             top: $translated['top'],
             skip: $translated['skip'],
             select: $translated['select'],
             unselect: $translated['unselect'],
+        );
+    }
+
+    /**
+     * @return array{value: list<array<string, mixed>>, count: int, nextLink: ?string}
+     */
+    private function liveSearch(
+        string $feedCode,
+        string $filter,
+        string $orderby,
+        int $top,
+        int $skip,
+        string $select,
+        string $unselect,
+    ): array {
+        if ($this->feeds->providerForFeedCode($feedCode) === MlsProvider::SPARK) {
+            return $this->sparkSearch->search($filter, $orderby, $top, $skip);
+        }
+
+        $mirrorSlug = $this->feeds->mirrorDatasetSlug($feedCode);
+
+        return $this->bridgeSearch->search(
+            dataset: $mirrorSlug,
+            filter: $filter,
+            orderby: $orderby,
+            top: $top,
+            skip: $skip,
+            select: $select,
+            unselect: $unselect,
         );
     }
 }

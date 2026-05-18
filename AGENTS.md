@@ -1,6 +1,6 @@
 # Quantyra IDX API
 
-Laravel 13 + Octane service powering Quantyra's Bridge MLS proxy, GIS parcel/geometry proxy, authenticated user dashboard (domains, API keys, MLS feed scope), and secured image proxy delivery. The service sits between real estate MLS data (Bridge Data Output / Stellar MLS), public ArcGIS parcel sources, and customer tooling. Three public surfaces: **idx.quantyralabs.cc** (app/marketing), **idx-api.quantyralabs.cc** (API), **idx-images.quantyralabs.cc** (image proxy).
+Laravel 13 + Octane service powering Quantyra's Bridge MLS proxy, Spark Beaches MLS proxy, GIS parcel/geometry proxy, authenticated user dashboard (domains, API keys, MLS feed scope), and secured image proxy delivery. The service sits between real estate MLS data (Bridge Data Output / Stellar MLS), public ArcGIS parcel sources, and customer tooling. Three public surfaces: **idx.quantyralabs.cc** (app/marketing), **idx-api.quantyralabs.cc** (API), **idx-images.quantyralabs.cc** (image proxy).
 
 ## Tech Stack
 
@@ -191,6 +191,19 @@ Public ArcGIS feature server proxy for Florida parcel data. Three-tier caching w
 | `LISTINGS_CACHE_TTL` | No | Cache TTL in seconds (default: 900) |
 | `IMAGE_CACHE_PATH` | No | Image storage root (Docker: /var/cache/geoidx/images) |
 | `IMAGE_CACHE_TTL` | No | Origin re-fetch TTL (default: 86400) |
+
+### Spark MLS (Beaches)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SPARK_ACCESS_TOKEN` | Yes (Beaches) | Bearer for Spark RESO replication and live proxy |
+| `SPARK_API_FEED_ID` | No | Spark dashboard API Feed ID (audit/logging) |
+| `SPARK_RESO_BASE_URL` | No | OData root (default: `https://replication.sparkapi.com/Reso/OData`) |
+| `SPARK_DATASETS` | No | Mirror/catalog slugs (default: `beaches`) |
+| `SPARK_SYNC_FETCH_QUEUE` | No | Fetch queue (default: `spark-sync-fetch`) |
+| `SPARK_SYNC_PERSIST_QUEUE` | No | Persist queue (default: `spark-sync-persist`) |
+
+Catalog key `spark_beaches`; mirror partition `beaches`. See @docs/spark-api-documentation.md.
 
 ### GIS Parcel Proxy
 

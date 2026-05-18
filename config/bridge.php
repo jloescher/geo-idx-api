@@ -99,11 +99,17 @@ return [
     'sync_max_replication_pages_per_job' => max(1, (int) env('BRIDGE_SYNC_MAX_REPLICATION_PAGES', 12)),
     'sync_max_incremental_pages_per_job' => max(1, (int) env('BRIDGE_SYNC_MAX_INCREMENTAL_PAGES', 40)),
 
-    'sync_max_requests_per_minute' => min(334, max(1, (int) env('BRIDGE_SYNC_MAX_REQUESTS_PER_MINUTE', 280))),
+    /** Max Bridge GETs per second during replication/incremental fetch (persist jobs excluded). */
+    'sync_max_requests_per_second' => min(10, max(1, (int) env('BRIDGE_SYNC_MAX_REQUESTS_PER_SECOND', 2))),
+
+    'sync_max_requests_per_minute' => min(334, max(1, (int) env('BRIDGE_SYNC_MAX_REQUESTS_PER_MINUTE', 120))),
 
     'sync_max_requests_per_hour' => min(5000, max(1, (int) env('BRIDGE_SYNC_MAX_REQUESTS_PER_HOUR', 4800))),
 
-    'sync_min_fetch_interval_ms' => max(0, (int) env('BRIDGE_SYNC_MIN_FETCH_INTERVAL_MS', 200)),
+    'sync_min_fetch_interval_ms' => max(0, (int) env(
+        'BRIDGE_SYNC_MIN_FETCH_INTERVAL_MS',
+        (int) floor(1000 / max(1, (int) env('BRIDGE_SYNC_MAX_REQUESTS_PER_SECOND', 2)))
+    )),
 
     'sync_include_media' => filter_var(env('BRIDGE_SYNC_INCLUDE_MEDIA', false), FILTER_VALIDATE_BOOL),
     /*
@@ -122,4 +128,9 @@ return [
 
     /** Rows per queue persist job (limits jobs.payload size and worker peak RAM). */
     'sync_persist_job_chunk_size' => min(250, max(25, (int) env('BRIDGE_SYNC_PERSIST_JOB_CHUNK', 100))),
+
+    /** Purge completed staging pages older than this many hours (failed rows use failed retention days). */
+    'replica_page_retention_hours' => max(1, (int) env('BRIDGE_REPLICA_PAGE_RETENTION_HOURS', 24)),
+
+    'replica_page_failed_retention_days' => max(1, (int) env('BRIDGE_REPLICA_FAILED_RETENTION_DAYS', 7)),
 ];

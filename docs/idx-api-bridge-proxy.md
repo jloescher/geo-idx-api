@@ -212,7 +212,7 @@ Registered in **`bootstrap/app.php`** `then` routing callback with middleware **
 | `bridge_proxy_audit_logs` | `logged_at`, `domain_slug`, `token_name`, `request_type`, `listing_count`, `ip_address`, `user_id` (nullable FK to `users`). |
 | `personal_access_tokens` | Laravel Sanctum; used for **`geo-web-internal`** and other PATs. |
 
-Migrations live under `idx-api/database/migrations/` (`2026_04_22_120000` … `120300`).
+Migrations live under `database/migrations/` — see [Database migrations](database-migrations.md) (`2026_01_01_200000` domain/cache, `2026_01_01_500000` listings mirror).
 
 ---
 
@@ -347,7 +347,7 @@ curl -H "X-Domain-Slug: example.com" \
 |-----------|--------|
 | **Listings DB cache** | **Only** `GET /api/v1/listings` when the caller authenticated as a **domain** (not token-only), and the request does **not** include a **`filters`** query (filtered queries always hit Bridge). TTL **`LISTINGS_CACHE_TTL`** seconds (default **900** = 15 minutes). |
 | **Search cache** | `POST /api/v1/search` results cached by fingerprint (dataset + normalized search params) per domain/token. Also caches `GET/POST /api/v1/properties` when no `?filters=` present. TTL **`LISTINGS_CACHE_TTL`** (default **900** = 15 minutes). |
-| **Replica sync** | Every **15 minutes**, `BridgeSyncJob` dispatches `BridgeSyncFetchPageJob` on **`bridge-sync-fetch`**. Replication seed uses OData **`$filter`** for **Active + Pending** only and always includes **`Media`** in `$select` (in **`listings.raw_data`**). Persist uses parallel batches on **`bridge-sync-persist`**. **Closed** is not bulk-replicated—use live Bridge for on-demand Closed queries. |
+| **Replica sync** | Every **15 minutes**, `BridgeSyncJob` dispatches `BridgeSyncFetchPageJob` on **`bridge-sync-fetch`** (max **2 Bridge GETs/sec**). Fetched pages are stored in **`bridge_replica_pages`** (gzip JSON) then persisted on **`bridge-sync-persist`**. Replication seed uses OData **`$filter`** for **Active + Pending** only and always includes **`Media`** in `$select`. After catch-up, **incremental** sync uses `ModificationTimestamp gt datetime'{last_bridge_modification_timestamp}'` so pages are not re-requested. **Closed** is not bulk-replicated—use live Bridge for on-demand Closed queries. Completed staging rows are purged on finalize and via `bridge:purge-replica-pages` (daily). |
 | **Hybrid search** | `POST /api/v1/search`: **Active/Pending** → PostGIS mirror; **Closed** → Bridge OData; **mixed** statuses → merge both sources (merge-then-page). |
 | **Replica purge** | `PurgeClosedListingsJob` runs daily and deletes Closed rows and rows older than the rolling mirror window (`BRIDGE_LOCAL_MIRROR_ROLLING_MONTHS`, default 12). |
 | **Replication observability** | Structured logs and Telescope events on staging: `bridge.replication.kickoff`, `bridge.replication.page_fetched` (OData query, `status_counts`, `listings_downloaded`), `bridge.replication.page_persisted` (`upserted`, `deleted`, `skipped`), `bridge.replication.failed`. Set **`TELESCOPE_LOG_LEVEL=info`** on web and worker. Filter Telescope Logs by `bridge.replication`. |
@@ -379,9 +379,12 @@ Set in **`idx-api/.env`** and/or root **`.env`** for Docker Compose. See root **
 | `BRIDGE_SYNC_REPLICATION_TOP` | No | Replication `$top` page size (max 2000; default 2000). Must be an integer, not a URL. |
 | `BRIDGE_SYNC_INCREMENTAL_TOP` | No | Incremental `Property` `$top` page size (max 200; default 200). Must be an integer, not a URL. |
 | `BRIDGE_SYNC_MAX_CHAINED_FETCH_PAGES` | No | Optional safety cap on chained fetch jobs per kickoff (**0** = unlimited). |
-| `BRIDGE_SYNC_MAX_REQUESTS_PER_MINUTE` | No | Proactive Bridge GET budget per minute (default **280**, max 334 burst). |
+| `BRIDGE_SYNC_MAX_REQUESTS_PER_SECOND` | No | Max Bridge GETs per second during fetch chaining (default **2** → 500ms spacing). |
+| `BRIDGE_SYNC_MAX_REQUESTS_PER_MINUTE` | No | Proactive Bridge GET budget per minute (default **120**, max 334 burst). |
 | `BRIDGE_SYNC_MAX_REQUESTS_PER_HOUR` | No | Proactive hourly cap (default **4800**, under Bridge **5000/hour**). |
-| `BRIDGE_SYNC_MIN_FETCH_INTERVAL_MS` | No | Minimum delay between **fetch** jobs in milliseconds (default **200**); not applied to persist jobs. |
+| `BRIDGE_SYNC_MIN_FETCH_INTERVAL_MS` | No | Minimum delay between **fetch** jobs in milliseconds (default **500**); not applied to persist jobs. |
+| `BRIDGE_REPLICA_PAGE_RETENTION_HOURS` | No | Purge **completed** staging pages older than this (default **24**). |
+| `BRIDGE_REPLICA_FAILED_RETENTION_DAYS` | No | Purge **failed** staging pages after this many days (default **7**). |
 | `BRIDGE_SYNC_INCLUDE_MEDIA` | No | **Incremental** `Property` sync only: when **true**, includes **`Media`** in `$select` (stored in **`raw_data`**); when **false**, adds `$unselect=Media`. **Replication** always includes **`Media`** in `$select` regardless of this flag. |
 | `BRIDGE_SYNC_PERSIST_JOB_CHUNK` | No | Rows per persist queue job (default **100**); lower if workers hit memory limits. Staging Docker workers default to **`memory_limit=768M`** (see [Coolify deployment](coolify-deployment.md) §7). |
 | `BRIDGE_SYNC_MAX_REPLICATION_PAGES` | No | **Deprecated** — monolithic job page cap; pipeline chains until cursor clears. |

@@ -6,8 +6,8 @@ use App\Jobs\BridgePersistReplicaChunkJob;
 use App\Jobs\BridgePersistReplicaFinalizeJob;
 use App\Jobs\BridgeSyncFetchPageJob;
 use App\Models\Listing;
-use App\Models\ListingSyncCursor;
 use App\Services\Bridge\BridgeReplicaCursorPatch;
+use App\Services\Bridge\BridgeReplicaPageStore;
 use App\Services\Bridge\BridgeSyncFetchScheduler;
 use App\Services\Bridge\BridgeSyncService;
 use App\Services\Bridge\BridgeSyncTelemetry;
@@ -20,12 +20,14 @@ class BridgePersistReplicaPageJobTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_persist_chunk_upserts_active_listing_without_cursor_patch(): void
+    public function test_persist_chunk_upserts_active_listing_from_staged_page(): void
     {
         $maxTs = CarbonImmutable::parse('2026-05-01T12:00:00Z');
+        $store = app(BridgeReplicaPageStore::class);
 
-        $job = new BridgePersistReplicaChunkJob(
-            dataset: 'stellar',
+        $pageId = $store->storePage(
+            datasetSlug: 'stellar',
+            mode: 'replication',
             rows: [
                 [
                     'ListingKey' => 'STELLAR-300',
@@ -46,11 +48,21 @@ class BridgePersistReplicaPageJobTest extends TestCase
                     'BridgeModificationTimestamp' => $maxTs->toIso8601String(),
                 ],
             ],
+            bridgeUrl: 'https://bridge.test/page',
+            odataQuery: ['$top' => 2000],
+        );
+
+        $job = new BridgePersistReplicaChunkJob(
+            dataset: 'stellar',
+            pageId: $pageId,
+            chunkIndex: 1,
+            chunkTotal: 1,
         );
 
         $job->handle(
             app(BridgeSyncService::class),
             app(BridgeSyncTelemetry::class),
+            $store,
         );
 
         $this->assertDatabaseHas('listings', [
@@ -63,38 +75,41 @@ class BridgePersistReplicaPageJobTest extends TestCase
             'dataset_slug' => 'stellar',
             'listing_key' => 'STELLAR-301',
         ]);
-
-        $this->assertNull(
-            ListingSyncCursor::query()->where('dataset_slug', 'stellar')->value('replication_next_url')
-        );
     }
 
-    public function test_finalize_job_dispatches_incremental_fetch_after_replication_completes(): void
+    public function test_finalize_job_dispatches_incremental_fetch_and_purges_staging_page(): void
     {
         config(['bridge.sync_fetch_queue' => 'bridge-sync-fetch']);
         Queue::fake();
 
         $maxTs = CarbonImmutable::parse('2026-05-02T08:00:00Z');
+        $store = app(BridgeReplicaPageStore::class);
 
-        $chunk = new BridgePersistReplicaChunkJob(
-            dataset: 'stellar',
+        $pageId = $store->storePage(
+            datasetSlug: 'stellar',
+            mode: 'replication',
             rows: [
                 [
                     'ListingKey' => 'STELLAR-400',
                     'StandardStatus' => 'Active',
                     'BridgeModificationTimestamp' => $maxTs->toIso8601String(),
+                    'ModificationTimestamp' => $maxTs->toIso8601String(),
                     'ListPrice' => 300000,
                 ],
             ],
+            bridgeUrl: null,
+            odataQuery: null,
         );
 
-        $chunk->handle(
+        (new BridgePersistReplicaChunkJob('stellar', $pageId, 1, 1))->handle(
             app(BridgeSyncService::class),
             app(BridgeSyncTelemetry::class),
+            $store,
         );
 
         $finalize = new BridgePersistReplicaFinalizeJob(
             dataset: 'stellar',
+            replicaPageId: $pageId,
             cursorPatch: new BridgeReplicaCursorPatch(
                 applyReplicationState: true,
                 replicationNextUrl: null,
@@ -107,6 +122,7 @@ class BridgePersistReplicaPageJobTest extends TestCase
         $finalize->handle(
             app(BridgeSyncService::class),
             app(BridgeSyncFetchScheduler::class),
+            $store,
         );
 
         Queue::assertPushedOn('bridge-sync-fetch', BridgeSyncFetchPageJob::class, function (BridgeSyncFetchPageJob $fetch): bool {
@@ -114,5 +130,6 @@ class BridgePersistReplicaPageJobTest extends TestCase
         });
 
         $this->assertTrue(Listing::query()->where('listing_key', 'STELLAR-400')->exists());
+        $this->assertDatabaseMissing('bridge_replica_pages', ['id' => $pageId]);
     }
 }

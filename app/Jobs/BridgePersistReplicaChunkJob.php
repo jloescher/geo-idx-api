@@ -2,13 +2,14 @@
 
 namespace App\Jobs;
 
+use App\Services\Bridge\BridgeReplicaPageStore;
 use App\Services\Bridge\BridgeSyncService;
 use App\Services\Bridge\BridgeSyncTelemetry;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
 /**
- * Persists one chunk of a Bridge page to Postgres — no Bridge HTTP or fetch chaining.
+ * Persists one chunk of a staged Bridge page to Postgres — no Bridge HTTP or fetch chaining.
  */
 class BridgePersistReplicaChunkJob implements ShouldQueue
 {
@@ -16,14 +17,11 @@ class BridgePersistReplicaChunkJob implements ShouldQueue
 
     public int $timeout = 300;
 
-    /**
-     * @param  list<array<string, mixed>>  $rows
-     */
     public function __construct(
         public string $dataset,
-        public array $rows,
-        public ?int $chunkIndex = null,
-        public ?int $chunkTotal = null,
+        public int $pageId,
+        public int $chunkIndex,
+        public int $chunkTotal,
     ) {
         $this->onQueue((string) config('bridge.sync_persist_queue', 'bridge-sync-persist'));
     }
@@ -36,9 +34,13 @@ class BridgePersistReplicaChunkJob implements ShouldQueue
         return ['bridge-replication', 'dataset:'.$this->dataset, 'persist-chunk'];
     }
 
-    public function handle(BridgeSyncService $sync, BridgeSyncTelemetry $telemetry): void
-    {
-        $stats = $sync->persistChunk($this->dataset, $this->rows);
+    public function handle(
+        BridgeSyncService $sync,
+        BridgeSyncTelemetry $telemetry,
+        BridgeReplicaPageStore $pageStore,
+    ): void {
+        $rows = $pageStore->rowsForChunk($this->pageId, $this->chunkIndex, $this->chunkTotal);
+        $stats = $sync->persistChunk($this->dataset, $rows);
 
         $telemetry->recordPagePersisted(
             dataset: $this->dataset,

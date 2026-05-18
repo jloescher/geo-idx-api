@@ -40,7 +40,7 @@ Canonical **file-by-file migration list**, PostGIS notes, and legacy cleanup: **
 | `listing_sync_cursors` | Bridge replication cursors | Per `dataset_slug` |
 | `crypto_price_snapshots` | Cached FX/crypto quotes | Used for listing pricing enrichment |
 
-**Not in this repo:** separate GHL/CRM migration trees, `quantyra_leads`, Cashier `subscriptions`, or `database/migrations/ghl/`. A forward migration drops legacy agent/lead table names if an old database still has them — see `docs/database-migrations.md`.
+**Not in this repo:** separate GHL/CRM migration trees, `quantyra_leads`, Cashier `subscriptions`, or `database/migrations/ghl/`. Greenfield installs use the consolidated migrations in `docs/database-migrations.md` (no legacy drop migration).
 
 ### GIS tables
 

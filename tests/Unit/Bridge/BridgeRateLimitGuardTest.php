@@ -15,9 +15,10 @@ class BridgeRateLimitGuardTest extends TestCase
 
         Cache::flush();
         config([
-            'bridge.sync_max_requests_per_minute' => 280,
+            'bridge.sync_max_requests_per_second' => 2,
+            'bridge.sync_max_requests_per_minute' => 120,
             'bridge.sync_max_requests_per_hour' => 4800,
-            'bridge.sync_min_fetch_interval_ms' => 200,
+            'bridge.sync_min_fetch_interval_ms' => 500,
         ]);
     }
 
@@ -49,13 +50,17 @@ class BridgeRateLimitGuardTest extends TestCase
         $this->assertGreaterThanOrEqual(2000, (int) ($state['extra_delay_ms'] ?? 0));
     }
 
-    public function test_delay_seconds_for_next_fetch_respects_minimum_interval(): void
+    public function test_delay_milliseconds_for_next_fetch_respects_two_requests_per_second(): void
     {
-        config(['bridge.sync_min_fetch_interval_ms' => 500]);
+        config([
+            'bridge.sync_max_requests_per_second' => 2,
+            'bridge.sync_min_fetch_interval_ms' => 500,
+        ]);
 
         $guard = new BridgeRateLimitGuard;
 
-        $this->assertSame(1, $guard->delaySecondsForNextFetch());
+        $this->assertGreaterThanOrEqual(500, $guard->delayMillisecondsForNextFetch());
+        $this->assertGreaterThanOrEqual(1, $guard->delaySecondsForNextFetch());
     }
 
     public function test_delay_seconds_for_next_fetch_increases_when_hourly_bucket_is_exhausted(): void

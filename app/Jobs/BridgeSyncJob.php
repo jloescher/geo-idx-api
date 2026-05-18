@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Services\Bridge\BridgeReplicaPageStore;
 use App\Services\Bridge\BridgeSyncService;
 use App\Services\Bridge\BridgeSyncTelemetry;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -31,8 +32,11 @@ class BridgeSyncJob implements ShouldQueue
         return ['bridge-replication', 'kickoff'];
     }
 
-    public function handle(BridgeSyncService $sync, BridgeSyncTelemetry $telemetry): void
-    {
+    public function handle(
+        BridgeSyncService $sync,
+        BridgeSyncTelemetry $telemetry,
+        BridgeReplicaPageStore $pageStore,
+    ): void {
         if (DB::connection()->getDriverName() !== 'pgsql') {
             return;
         }
@@ -50,6 +54,10 @@ class BridgeSyncJob implements ShouldQueue
             }
 
             $cursor = $sync->cursorForDataset($dataset);
+
+            if ($pageStore->hasActivePage($dataset)) {
+                continue;
+            }
 
             if ($sync->shouldRunReplication($cursor)) {
                 BridgeSyncFetchPageJob::dispatch($dataset, 'replication', 0, 0)->onQueue($queue);

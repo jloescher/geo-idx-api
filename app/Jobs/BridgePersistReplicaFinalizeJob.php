@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Services\Bridge\BridgeReplicaCursorPatch;
+use App\Services\Bridge\BridgeReplicaPageStore;
 use App\Services\Bridge\BridgeSyncFetchScheduler;
 use App\Services\Bridge\BridgeSyncService;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -19,6 +20,7 @@ class BridgePersistReplicaFinalizeJob implements ShouldQueue
 
     public function __construct(
         public string $dataset,
+        public ?int $replicaPageId = null,
         public ?BridgeReplicaCursorPatch $cursorPatch = null,
         public bool $dispatchIncrementalAfter = false,
         public ?string $nextFetchMode = null,
@@ -36,10 +38,18 @@ class BridgePersistReplicaFinalizeJob implements ShouldQueue
         return ['bridge-replication', 'dataset:'.$this->dataset, 'persist-finalize'];
     }
 
-    public function handle(BridgeSyncService $sync, BridgeSyncFetchScheduler $scheduler): void
-    {
+    public function handle(
+        BridgeSyncService $sync,
+        BridgeSyncFetchScheduler $scheduler,
+        BridgeReplicaPageStore $pageStore,
+    ): void {
         if ($this->cursorPatch !== null) {
             $sync->applyCursorPatch($this->dataset, $this->cursorPatch);
+        }
+
+        if ($this->replicaPageId !== null) {
+            $pageStore->markCompleted($this->replicaPageId);
+            $pageStore->deletePage($this->replicaPageId);
         }
 
         if ($this->dispatchIncrementalAfter) {

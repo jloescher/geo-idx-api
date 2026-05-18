@@ -93,7 +93,7 @@ php artisan view:cache
 | `Dockerfile.production` | `php -d memory_limit=512M artisan queue:work …` |
 | `Dockerfile.staging` | `php -d memory_limit=768M artisan queue:work …` (FrankenPHP staging base also sets **`memory_limit=768M`** in `php.ini`) |
 
-Use the image CMD unless your platform overrides it. Env **`WORKER_QUEUES`** defaults to `default` in the Dockerfile; set **`default,bridge-sync-fetch,bridge-sync-persist`** on staging/production workers for Bridge replica jobs (see [Coolify deployment](coolify-deployment.md)). The scheduler dispatches **`bridge-listings-replica-sync`** every **15 minutes** (`BridgeSyncJob` → fetch on **`bridge-sync-fetch`**, parallel persist on **`bridge-sync-persist`**). Drain any legacy jobs on the old **`bridge-sync`** queue name after deploy. Set e.g. `default,gis` if you use a dedicated GIS queue (`config/gis.php`).
+Use the image CMD unless your platform overrides it. Env **`WORKER_QUEUES`** defaults to `default` in the Dockerfile; set **`default,bridge-sync-fetch,bridge-sync-persist`** on staging/production workers for Bridge replica jobs (see [Coolify deployment](coolify-deployment.md)). The scheduler dispatches **`bridge-listings-replica-sync`** every **15 minutes** (`BridgeSyncJob` → fetch on **`bridge-sync-fetch`**, parallel persist on **`bridge-sync-persist`**). Drain any legacy jobs on the old **`bridge-sync`** queue name after deploy. Set e.g. `default,gis` if you use a dedicated GIS queue (`config/gis.php`). For Beaches MLS (Spark) replication, include **`spark-sync-fetch`** and **`spark-sync-persist`** (see [Spark API documentation](spark-api-documentation.md)).
 
 **Scheduler** (separate service, target **`scheduler`**, or host cron):
 

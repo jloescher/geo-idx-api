@@ -18,11 +18,11 @@ final class BridgeSyncFetchScheduler
     public function dispatchNext(string $dataset, string $mode, int $incrementalSkip = 0, int $chainDepth = 0): void
     {
         $queue = (string) config('bridge.sync_fetch_queue', 'bridge-sync-fetch');
-        $delay = $this->rateLimitGuard->delaySecondsForNextFetch();
+        $delayMs = $this->rateLimitGuard->delayMillisecondsForNextFetch();
 
         BridgeSyncFetchPageJob::dispatch($dataset, $mode, $incrementalSkip, $chainDepth)
             ->onQueue($queue)
-            ->delay(now()->addSeconds($delay));
+            ->delay(now()->addMilliseconds($delayMs));
     }
 
     public function dispatchIncremental(string $dataset): void

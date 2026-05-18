@@ -108,7 +108,7 @@ Build **only** target `octane` on the web app. On worker and scheduler Coolify a
 
 **Worker — production:** `/bin/sh -lc 'exec php -d memory_limit=512M artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=120'`
 
-Set **`WORKER_QUEUES=default,bridge-sync-fetch,bridge-sync-persist`** on the worker service so Bridge replica jobs run (scheduled kickoff every 15 minutes via `bridge-listings-replica-sync`). During replication catch-up, run **two or more worker replicas** — optionally dedicate one replica to **`bridge-sync-persist`** only and another to **`default,bridge-sync-fetch`** so parallel Postgres writes keep up while fetch jobs stay rate-limited.
+Set **`WORKER_QUEUES=default,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist`** on the worker service so Bridge and Spark replica jobs run (scheduled kickoffs every 15 minutes via `bridge-listings-replica-sync` and `spark-listings-replica-sync`). During replication catch-up, run **two or more worker replicas** — optionally dedicate one replica to **`bridge-sync-persist,spark-sync-persist`** only and another to **`default,bridge-sync-fetch,spark-sync-fetch`** so parallel Postgres writes keep up while fetch jobs stay rate-limited.
 
 **Scheduler — staging:** `php -d memory_limit=384M artisan schedule:work --whisper`  
 **Scheduler — production:** `php -d memory_limit=256M artisan schedule:work --whisper`
@@ -262,13 +262,15 @@ Set the **same** observability env on **web (octane)**, **worker**, and **schedu
 
 Workers must use the **same `DB_*`** as web so `telescope_entries` is shared.
 
+**Pulse `/pulse` shows "incomplete object" (Cache card):** Laravel 13 `config/cache.php` `serializable_classes` must allow `stdClass` and `Illuminate\Support\Collection` (Pulse caches aggregated card data in the app cache). This repo configures an allowlist; after deploy run `php artisan cache:clear` once to drop bad entries written while `serializable_classes` was `false`.
+
 ---
 
 ## 10. Troubleshooting
 
 ### Scheduler repeats “No scheduled commands are ready to run”
 
-**Expected** if you are not using `--whisper` and the current minute is not a due time. Registered tasks (UTC): `coingecko-price-refresh` every **10** min (`:00`, `:10`, …); `mls:refresh-cache` and `bridge-listings-replica-sync` every **15** min (`:00`, `:15`, `:30`, `:45`); daily purge at **03:05**; GIS probe **Monday 06:30**.
+**Expected** if you are not using `--whisper` and the current minute is not a due time. Registered tasks (UTC): `coingecko-price-refresh` every **10** min (`:00`, `:10`, …); `mls:refresh-cache` and `bridge-listings-replica-sync` every **15** min (`:00`, `:15`, `:30`, `:45`); `bridge:purge-replica-pages` daily **04:15**; closed-listings purge **03:05**; GIS probe **Monday 06:30**. Bridge fetch jobs target **2 GETs/sec** (`BRIDGE_SYNC_MAX_REQUESTS_PER_SECOND=2`).
 
 **Verify on the scheduler container:**
 

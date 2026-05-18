@@ -2,11 +2,12 @@
 
 namespace App\Services\Bridge;
 
+use App\Enums\ListingMirrorProvider;
 use App\Models\Listing;
 use App\Models\ListingSyncCursor;
+use App\Services\Mls\ListingMirrorWriter;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Response;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -22,63 +23,10 @@ use Illuminate\Support\Facades\Log;
  */
 final class BridgeSyncService
 {
-    /**
-     * Columns refreshed on UPSERT aside from immutable keys (PostgreSQL batches only).
-     *
-     * @var list<string>
-     */
-    private const UPSERT_UPDATE_COLUMNS = [
-        'mls_listing_id',
-        'standard_status',
-        'list_price',
-        'bedrooms_total',
-        'bathrooms_total_decimal',
-        'living_area',
-        'lot_size_acres',
-        'year_built',
-        'stories_total',
-        'city',
-        'county_or_parish',
-        'postal_code',
-        'state_or_province',
-        'property_type',
-        'property_sub_type',
-        'on_market_date',
-        'close_date',
-        'modification_timestamp',
-        'bridge_modification_timestamp',
-        'price_change_timestamp',
-        'previous_list_price',
-        'stellar_flood_zone_code',
-        'stellar_total_monthly_fees',
-        'latitude',
-        'longitude',
-        'waterfront_yn',
-        'pool_private_yn',
-        'dock_yn',
-        'new_construction_yn',
-        'garage_yn',
-        'association_yn',
-        'spa_yn',
-        'fireplace_yn',
-        'senior_community_yn',
-        'subdivision_name',
-        'elementary_school',
-        'middle_or_junior_school',
-        'high_school',
-        'special_listing_conditions',
-        'raw_data',
-        'custom_fields',
-        'street_number',
-        'street_name',
-        'list_agent_mls_id',
-        'list_office_mls_id',
-        'updated_at',
-    ];
-
     public function __construct(
         private readonly BridgeHttpService $http,
         private readonly BridgeSyncTelemetry $telemetry,
+        private readonly ListingMirrorWriter $mirrorWriter,
     ) {}
 
     public function cursorForDataset(string $dataset): ListingSyncCursor
@@ -286,7 +234,7 @@ final class BridgeSyncService
     {
         $stats = $rows === []
             ? new BridgeReplicaPersistStats
-            : $this->hydrateReplicaBatch($dataset, $rows);
+            : $this->mirrorWriter->hydrateReplicaBatch($dataset, $rows, ListingMirrorProvider::Bridge);
 
         if ($patch !== null) {
             $this->applyCursorPatch($dataset, $patch);
@@ -304,6 +252,10 @@ final class BridgeSyncService
             if ($patch->replicationInProgress !== null) {
                 $cursor->replication_in_progress = $patch->replicationInProgress;
             }
+        }
+
+        if ($patch->incrementalWindowEnd !== null) {
+            $cursor->incremental_window_end = $patch->incrementalWindowEnd;
         }
 
         if ($patch->maxBridgeTs !== null) {
@@ -369,348 +321,6 @@ final class BridgeSyncService
         }
 
         return ['$unselect' => 'Media'];
-    }
-
-    /**
-     * Revenue impact: batch upserts amortize Postgres round trips; per-row deletes for non-Active/Pending rows
-     * keep IDX mirror aligned with teaser scope so local speed never violates lifecycle display rules.
-     *
-     * @param  list<array<string, mixed>>  $rows
-     */
-    /**
-     * @param  list<array<string, mixed>>  $rows
-     */
-    private function hydrateReplicaBatch(string $dataset, array $rows): BridgeReplicaPersistStats
-    {
-        $startedAt = hrtime(true);
-        $chunkSize = (int) config('bridge.sync_upsert_chunk_size', 250);
-        $pendingUpserts = [];
-        $coords = [];
-        /** @var array<string, array<string, bool>> $deletesGrouped */
-        $deletesGrouped = [];
-        /** @var array<string, array<string, bool>> $nullCoordKeys */
-        $nullCoordKeys = [];
-        $upserted = 0;
-        $deleted = 0;
-        $skipped = 0;
-
-        foreach ($rows as $row) {
-            if (! is_array($row)) {
-                $skipped++;
-
-                continue;
-            }
-
-            $listingKey = isset($row['ListingKey']) && is_string($row['ListingKey']) ? $row['ListingKey'] : null;
-            if ($listingKey === null || $listingKey === '') {
-                $skipped++;
-
-                continue;
-            }
-
-            $datasetSlug = $this->datasetSlugFromListingKey($listingKey, $dataset);
-
-            $statusNormalized = strtolower(trim((string) ($row['StandardStatus'] ?? '')));
-            if (! in_array($statusNormalized, ['active', 'pending'], true)) {
-                if (! isset($deletesGrouped[$datasetSlug])) {
-                    $deletesGrouped[$datasetSlug] = [];
-                }
-                $deletesGrouped[$datasetSlug][$listingKey] = true;
-                $deleted++;
-
-                continue;
-            }
-
-            $coordsPair = $this->resolveLanLng($row);
-            $lat = $coordsPair['lat'];
-            $lng = $coordsPair['lng'];
-
-            $payload = $this->buildUpsertPayload($dataset, $datasetSlug, $listingKey, $row, $lat, $lng);
-            $pendingUpserts[] = $payload;
-            $upserted++;
-
-            if ($lng !== null && $lat !== null && is_finite($lat) && is_finite($lng)) {
-                $coords[] = [$datasetSlug, $listingKey, $lng, $lat];
-            } else {
-                if (! isset($nullCoordKeys[$datasetSlug])) {
-                    $nullCoordKeys[$datasetSlug] = [];
-                }
-                $nullCoordKeys[$datasetSlug][$listingKey] = true;
-            }
-
-            if (count($pendingUpserts) >= $chunkSize) {
-                $this->flushUpsertChunk($pendingUpserts);
-                $pendingUpserts = [];
-                $this->flushCoordinates($coords);
-                $coords = [];
-            }
-        }
-
-        if ($pendingUpserts !== []) {
-            $this->flushUpsertChunk($pendingUpserts);
-        }
-        $this->flushCoordinates($coords);
-        $this->flushNullCoordinates($nullCoordKeys);
-        $this->flushDeletes($deletesGrouped);
-
-        $durationMs = (int) ((hrtime(true) - $startedAt) / 1_000_000);
-
-        return new BridgeReplicaPersistStats(
-            rowsReceived: count($rows),
-            upserted: $upserted,
-            deleted: $deleted,
-            skipped: $skipped,
-            durationMs: $durationMs,
-        );
-    }
-
-    /**
-     * @param  list<array<string, mixed>>  $records
-     */
-    private function flushUpsertChunk(array $records): void
-    {
-        if ($records === []) {
-            return;
-        }
-
-        Listing::withoutTimestamps(function () use ($records): void {
-            Listing::query()->upsert(
-                $this->encodeJsonColumnsForUpsert($records),
-                ['dataset_slug', 'listing_key'],
-                self::UPSERT_UPDATE_COLUMNS,
-            );
-        });
-    }
-
-    /**
-     * @param  list<array<string, mixed>>  $records
-     * @return list<array<string, mixed>>
-     */
-    private function encodeJsonColumnsForUpsert(array $records): array
-    {
-        foreach ($records as &$record) {
-            foreach (['raw_data', 'custom_fields', 'special_listing_conditions'] as $column) {
-                if (isset($record[$column]) && is_array($record[$column])) {
-                    $record[$column] = json_encode($record[$column], JSON_THROW_ON_ERROR);
-                }
-            }
-        }
-        unset($record);
-
-        return $records;
-    }
-
-    /**
-     * @param  list<array{0: string, 1: string, 2: float, 3: float}>  $pairs
-     */
-    private function flushCoordinates(array $pairs): void
-    {
-        if ($pairs === []) {
-            return;
-        }
-
-        foreach (array_chunk($pairs, (int) config('bridge.sync_upsert_chunk_size', 250)) as $segment) {
-            $sqlParts = [];
-            $bindings = [];
-            foreach ($segment as [$ds, $key, $lng, $lat]) {
-                $sqlParts[] = '(?, ?, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography)';
-                array_push($bindings, $ds, $key, $lng, $lat);
-            }
-            $valuesSql = implode(',', $sqlParts);
-            $updatedAt = now();
-            DB::statement(
-                "UPDATE listings AS l SET coordinates = v.geom, updated_at = ? FROM (VALUES {$valuesSql}) AS v(ds,k,geom) WHERE l.dataset_slug = v.ds AND l.listing_key = v.k",
-                array_merge([$updatedAt], $bindings),
-            );
-        }
-    }
-
-    /**
-     * @param  array<string, array<string, bool>>  $grouped
-     */
-    private function flushNullCoordinates(array $grouped): void
-    {
-        if ($grouped === []) {
-            return;
-        }
-
-        $chunkSize = (int) config('bridge.sync_upsert_chunk_size', 250);
-        foreach ($grouped as $datasetSlug => $keysMap) {
-            $keys = array_keys($keysMap);
-            foreach (array_chunk($keys, $chunkSize) as $segment) {
-                Listing::query()
-                    ->where('dataset_slug', $datasetSlug)
-                    ->whereIn('listing_key', $segment, 'and', false)
-                    ->update([
-                        'coordinates' => null,
-                        'updated_at' => now(),
-                    ]);
-            }
-        }
-    }
-
-    /**
-     * @param  array<string, array<string, bool>>  $groupedNormalized  dataset_slug → listing_key map
-     */
-    private function flushDeletes(array $groupedNormalized): void
-    {
-        if ($groupedNormalized === []) {
-            return;
-        }
-
-        foreach ($groupedNormalized as $datasetSlug => $keysMap) {
-            $keys = array_keys($keysMap);
-            foreach (array_chunk($keys, (int) config('bridge.sync_upsert_chunk_size', 250)) as $segment) {
-                Listing::query()
-                    ->where('dataset_slug', $datasetSlug)
-                    ->whereIn('listing_key', $segment, 'and', false)
-                    ->delete();
-            }
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     * @return array<string, mixed>
-     */
-    private function buildUpsertPayload(
-        string $datasetUpper,
-        string $datasetSlug,
-        string $listingKey,
-        array $row,
-        ?float $lat,
-        ?float $lng,
-    ): array {
-        $u = strtoupper($datasetUpper);
-        $custom = $this->extractExtensionFields($row, $u);
-
-        $extFloodField = "{$u}_FloodZoneCode";
-        $extFeesField = "{$u}_TotalMonthlyFees";
-        $extFlood = $row[$extFloodField] ?? null;
-        $extFees = $row[$extFeesField] ?? null;
-
-        $conditions = null;
-        if (isset($row['SpecialListingConditions']) && is_array($row['SpecialListingConditions'])) {
-            $conditions = array_values(array_filter(
-                array_map(static fn ($c) => is_string($c) ? trim($c) : null, $row['SpecialListingConditions']),
-                static fn (?string $x) => $x !== null && $x !== '',
-            ));
-        }
-
-        $now = now();
-
-        return [
-            'dataset_slug' => $datasetSlug,
-            'listing_key' => $listingKey,
-            'mls_listing_id' => is_string($row['ListingId'] ?? null) ? $row['ListingId'] : (is_numeric($row['ListingId'] ?? null) ? (string) $row['ListingId'] : null),
-            'standard_status' => is_string($row['StandardStatus'] ?? null) ? $row['StandardStatus'] : null,
-            'list_price' => $this->num($row['ListPrice'] ?? null),
-            'bedrooms_total' => $this->intOrNull($row['BedroomsTotal'] ?? null),
-            'bathrooms_total_decimal' => $this->num($row['BathroomsTotalDecimal'] ?? null),
-            'living_area' => $this->intOrNull($row['LivingArea'] ?? null),
-            'lot_size_acres' => $this->num($row['LotSizeAcres'] ?? null),
-            'year_built' => $this->intOrNull($row['YearBuilt'] ?? null),
-            'stories_total' => $this->intOrNull($row['StoriesTotal'] ?? null),
-            'city' => $this->str($row['City'] ?? null),
-            'county_or_parish' => $this->str($row['CountyOrParish'] ?? null),
-            'postal_code' => $this->str($row['PostalCode'] ?? null),
-            'state_or_province' => $this->str($row['StateOrProvince'] ?? null),
-            'property_type' => $this->str($row['PropertyType'] ?? null),
-            'property_sub_type' => $this->str($row['PropertySubType'] ?? null),
-            'on_market_date' => $this->dateStr($row['OnMarketDate'] ?? null),
-            'close_date' => $this->dateStr($row['CloseDate'] ?? null),
-            'modification_timestamp' => $this->toSqlTimestamp($row['ModificationTimestamp'] ?? null),
-            'bridge_modification_timestamp' => $this->toSqlTimestamp($row['BridgeModificationTimestamp'] ?? null),
-            'price_change_timestamp' => $this->toSqlTimestamp($row['PriceChangeTimestamp'] ?? null),
-            'previous_list_price' => $this->num($row['PreviousListPrice'] ?? null),
-            'stellar_flood_zone_code' => is_string($extFlood) ? $extFlood : null,
-            'stellar_total_monthly_fees' => $this->num($extFees),
-            'latitude' => $lat,
-            'longitude' => $lng,
-            'waterfront_yn' => $this->boolOrNull($row['WaterfrontYN'] ?? null),
-            'pool_private_yn' => $this->boolOrNull($row['PoolPrivateYN'] ?? null),
-            'dock_yn' => $this->boolOrNull($row['DockYN'] ?? null),
-            'new_construction_yn' => $this->boolOrNull($row['NewConstructionYN'] ?? null),
-            'garage_yn' => $this->boolOrNull($row['GarageYN'] ?? null),
-            'association_yn' => $this->boolOrNull($row['AssociationYN'] ?? null),
-            'spa_yn' => $this->boolOrNull($row['SpaYN'] ?? null),
-            'fireplace_yn' => $this->boolOrNull($row['FireplaceYN'] ?? null),
-            'senior_community_yn' => $this->boolOrNull($row['SeniorCommunityYN'] ?? null),
-            'subdivision_name' => $this->str($row['SubdivisionName'] ?? null),
-            'elementary_school' => $this->str($row['ElementarySchool'] ?? null),
-            'middle_or_junior_school' => $this->str($row['MiddleOrJuniorSchool'] ?? null),
-            'high_school' => $this->str($row['HighSchool'] ?? null),
-            'special_listing_conditions' => $conditions ?? [],
-            'raw_data' => $row,
-            'custom_fields' => $custom,
-            'street_number' => $this->str($row['StreetNumber'] ?? null),
-            'street_name' => $this->str($row['StreetName'] ?? null),
-            'list_agent_mls_id' => $this->str($row['ListAgentMlsId'] ?? null),
-            'list_office_mls_id' => $this->str($row['ListOfficeMlsId'] ?? null),
-            'created_at' => $now,
-            'updated_at' => $now,
-        ];
-    }
-
-    private function toSqlTimestamp(mixed $v): ?string
-    {
-        if (! is_string($v) || trim($v) === '') {
-            return null;
-        }
-        try {
-            return CarbonImmutable::parse($v)->utc()->format('Y-m-d H:i:s.u');
-        } catch (\Throwable) {
-            return null;
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     * @return array{lat: ?float, lng: ?float}
-     */
-    private function resolveLanLng(array $row): array
-    {
-        $lat = null;
-        $lng = null;
-        if (isset($row['Coordinates']) && is_array($row['Coordinates'])) {
-            $pair = $row['Coordinates']['coordinates'] ?? null;
-            if (is_array($pair) && count($pair) >= 2) {
-                $lng = is_numeric($pair[0]) ? (float) $pair[0] : null;
-                $lat = is_numeric($pair[1]) ? (float) $pair[1] : null;
-            }
-        }
-        if (($lat === null || $lng === null) && isset($row['Latitude'], $row['Longitude'])) {
-            $lat = is_numeric($row['Latitude']) ? (float) $row['Latitude'] : $lat;
-            $lng = is_numeric($row['Longitude']) ? (float) $row['Longitude'] : $lng;
-        }
-
-        return ['lat' => $lat, 'lng' => $lng];
-    }
-
-    private function datasetSlugFromListingKey(string $listingKey, string $fallbackDataset): string
-    {
-        $idx = strpos($listingKey, ':');
-        if ($idx !== false && $idx > 0) {
-            return strtolower(substr($listingKey, 0, $idx));
-        }
-
-        return strtolower($fallbackDataset);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function extractExtensionFields(array $record, string $datasetUpper): array
-    {
-        $prefix = $datasetUpper.'_';
-        $out = [];
-        foreach ($record as $k => $v) {
-            if (is_string($k) && str_starts_with(strtoupper($k), $prefix)) {
-                $out[$k] = $v;
-            }
-        }
-
-        return $out;
     }
 
     private function maxBridgeTimestamp(?CarbonImmutable $current, array $row): ?CarbonImmutable

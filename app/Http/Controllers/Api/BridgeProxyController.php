@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\MlsProvider;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Search\SearchRequest;
 use App\Services\Bridge\BridgeHttpService;
@@ -13,6 +14,7 @@ use App\Services\Bridge\ListingsCacheService;
 use App\Services\Mls\BridgeClient;
 use App\Services\Mls\MlsActivePendingListingsFetcher;
 use App\Services\Mls\MlsClientFactory;
+use App\Services\Mls\SparkClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -200,7 +202,7 @@ class BridgeProxyController extends Controller
 
     public function member(Request $request, string $memberKey): SymfonyResponse
     {
-        $client = $this->requireBridgeClient($request);
+        $client = $this->resoClientFromRequest($request);
         $response = $this->proxyResoWithFallback($request, $client, $client->resoEntityUrls('Member', $memberKey));
 
         if (! $response->successful()) {
@@ -217,7 +219,7 @@ class BridgeProxyController extends Controller
 
     public function resoOffice(Request $request, string $officeKey): SymfonyResponse
     {
-        $client = $this->requireBridgeClient($request);
+        $client = $this->resoClientFromRequest($request);
         $response = $this->proxyResoWithFallback($request, $client, $client->resoEntityUrls('Office', $officeKey));
 
         if (! $response->successful()) {
@@ -234,7 +236,7 @@ class BridgeProxyController extends Controller
 
     public function resoOpenHouse(Request $request, string $openHouseKey): SymfonyResponse
     {
-        $client = $this->requireBridgeClient($request);
+        $client = $this->resoClientFromRequest($request);
         $response = $this->proxyResoWithFallback($request, $client, $client->resoEntityUrls('OpenHouse', $openHouseKey));
 
         if (! $response->successful()) {
@@ -246,7 +248,7 @@ class BridgeProxyController extends Controller
 
     public function lookup(Request $request): SymfonyResponse
     {
-        $client = $this->requireBridgeClient($request);
+        $client = $this->resoClientFromRequest($request);
         $feedCode = (string) $request->attributes->get('mls.feed_code');
         $partitionKey = 'lookups:'.$feedCode;
 
@@ -333,7 +335,7 @@ class BridgeProxyController extends Controller
 
     private function proxyResoCollection(Request $request, string $auditType, string $resource): SymfonyResponse
     {
-        $client = $this->requireBridgeClient($request);
+        $client = $this->resoClientFromRequest($request);
         $response = $this->proxyResoWithFallback($request, $client, $client->resoCollectionUrls($resource));
 
         if (! $response->successful()) {
@@ -348,7 +350,7 @@ class BridgeProxyController extends Controller
      */
     private function proxyResoWithFallback(
         Request $request,
-        BridgeClient $client,
+        BridgeClient|SparkClient $client,
         array $urls,
         array $query = [],
         array $stripQueryKeys = [],
@@ -382,16 +384,25 @@ class BridgeProxyController extends Controller
         return $this->mlsClients->bridgeClientFromRequest($request);
     }
 
+    private function resoClientFromRequest(Request $request): BridgeClient|SparkClient
+    {
+        if ($this->mlsClients->providerForRequest($request) === MlsProvider::SPARK) {
+            return $this->mlsClients->sparkClientFromRequest($request);
+        }
+
+        return $this->mlsClients->bridgeClientFromRequest($request);
+    }
+
     private function propertyCollectionResponse(Request $request, array $query, array $stripKeys): \Illuminate\Http\Client\Response
     {
-        $client = $this->mlsClients->bridgeClientFromRequest($request);
+        $client = $this->resoClientFromRequest($request);
 
         return $this->proxyResoWithFallback($request, $client, $client->resoCollectionUrls('Property'), $query, $stripKeys);
     }
 
     private function propertyEntityResponse(Request $request, string $listingKey): \Illuminate\Http\Client\Response
     {
-        $client = $this->mlsClients->bridgeClientFromRequest($request);
+        $client = $this->resoClientFromRequest($request);
 
         return $this->proxyResoWithFallback($request, $client, $client->resoEntityUrls('Property', $listingKey));
     }

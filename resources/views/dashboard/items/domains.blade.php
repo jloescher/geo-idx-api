@@ -88,7 +88,8 @@
                                                 value="{{ $code }}"
                                                 @checked(in_array($code, $selectedFeeds, true))
                                             >
-                                            <span class="font-mono text-[11px] text-slate-200">{{ $code }}</span>
+                                            <span class="text-[11px] text-slate-200">{{ $mlsFeedLabels[$code] ?? $code }}</span>
+                                            <span class="font-mono text-[10px] text-slate-500">{{ $code }}</span>
                                         </label>
                                     @endforeach
                                 </div>
