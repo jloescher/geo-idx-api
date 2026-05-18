@@ -19,16 +19,32 @@ final readonly class BridgeSearchTranslator
     ];
 
     /**
+     * @param  list<string>|null  $statusOverride  Lowercase RESO statuses (e.g. active, closed) for split/hybrid legs.
+     * @param  array{top?: int, skip?: int}|null  $pageOverride
      * @return array{filter: string, orderby: string, top: int, skip: int, select: string, unselect: string, needsFloodZonePostFilter: bool, lowRiskFloodzone: bool}
      */
-    public function translate(SearchRequest $request, string $dataset): array
-    {
+    public function translate(
+        SearchRequest $request,
+        string $dataset,
+        ?array $statusOverride = null,
+        ?array $pageOverride = null,
+    ): array {
         $clauses = [];
         $params = $request->validated();
 
-        $activeOnly = $params['active_only'] ?? true;
-        if ($activeOnly) {
-            $clauses[] = "tolower(StandardStatus) eq 'active'";
+        if ($statusOverride !== null) {
+            if ($statusOverride !== []) {
+                $statusClauses = array_map(
+                    static fn (string $s): string => "tolower(StandardStatus) eq '".strtolower($s)."'",
+                    $statusOverride,
+                );
+                $clauses[] = '('.implode(' or ', $statusClauses).')';
+            }
+        } else {
+            $activeOnly = $params['active_only'] ?? true;
+            if ($activeOnly) {
+                $clauses[] = "tolower(StandardStatus) eq 'active'";
+            }
         }
 
         if (isset($params['min_price'])) {
@@ -147,7 +163,7 @@ final readonly class BridgeSearchTranslator
             $clauses[] = '('.implode(' or ', $subTypeClauses).')';
         }
 
-        if (! empty($params['statuses'])) {
+        if ($statusOverride === null && ! empty($params['statuses'])) {
             $statusClauses = array_map(
                 static fn ($s) => "tolower(StandardStatus) eq '".strtolower($s)."'",
                 $params['statuses'],
@@ -239,8 +255,8 @@ final readonly class BridgeSearchTranslator
             }
         }
 
-        $top = (int) ($params['page']['limit'] ?? 24);
-        $skip = (int) ($params['page']['skip'] ?? 0);
+        $top = (int) ($pageOverride['top'] ?? $params['page']['limit'] ?? 24);
+        $skip = (int) ($pageOverride['skip'] ?? $params['page']['skip'] ?? 0);
 
         $datasetUpper = strtoupper($dataset);
         $selectFields = [

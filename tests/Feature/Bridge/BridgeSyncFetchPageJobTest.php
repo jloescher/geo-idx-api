@@ -11,6 +11,7 @@ use App\Services\Bridge\BridgeSyncFetchScheduler;
 use App\Services\Bridge\BridgeSyncService;
 use Illuminate\Bus\PendingBatch;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -34,6 +35,33 @@ class BridgeSyncFetchPageJobTest extends TestCase
             'bridge.sync_replication_top' => 2000,
             'bridge.sync_persist_job_chunk_size' => 100,
         ]);
+    }
+
+    public function test_replication_first_page_requests_active_pending_filter_and_media(): void
+    {
+        $replicationUrl = 'https://bridge.test/OData/stellar/Property/replication';
+
+        Http::fake([
+            $replicationUrl.'*' => Http::response(['value' => []], 200),
+        ]);
+
+        Bus::fake();
+
+        (new BridgeSyncFetchPageJob('stellar', 'replication', 0, 0))
+            ->handle(app(BridgeSyncService::class));
+
+        Http::assertSent(function (Request $request) use ($replicationUrl): bool {
+            if (! str_starts_with($request->url(), $replicationUrl)) {
+                return false;
+            }
+
+            $filter = $request->data()['$filter'] ?? '';
+
+            return str_contains($filter, "StandardStatus eq 'Active'")
+                && str_contains($filter, "StandardStatus eq 'Pending'")
+                && str_contains($request->data()['$select'] ?? '', 'Media')
+                && ! array_key_exists('$unselect', $request->data());
+        });
     }
 
     public function test_replication_fetch_dispatches_parallel_persist_batch_not_fetch(): void

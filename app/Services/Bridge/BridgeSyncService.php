@@ -115,7 +115,6 @@ final class BridgeSyncService
 
     public function fetchReplicationPage(string $dataset, ListingSyncCursor $cursor): BridgeSyncPageResult
     {
-        $select = $this->syncSelectList($dataset);
         $top = (int) config('bridge.sync_replication_top', 2000);
         $replicationStarting = ($cursor->replication_next_url === null || $cursor->replication_next_url === '')
             && ! $cursor->replication_in_progress
@@ -127,9 +126,10 @@ final class BridgeSyncService
         } else {
             $url = $this->buildPropertyReplicationUrl($dataset);
             $query = array_merge([
+                '$filter' => $this->replicationActivePendingFilter(),
                 '$top' => $top,
-                '$select' => $select,
-            ], $this->mediaQueryParams());
+                '$select' => $this->replicationSelectList($dataset),
+            ], $this->replicationMediaQueryParams());
         }
 
         $response = $this->http->serverJsonGet($url, $query);
@@ -302,6 +302,32 @@ final class BridgeSyncService
         }
 
         return $maxTs;
+    }
+
+    /**
+     * Revenue impact: replication seeds only IDX-facing inventory; Closed stays on-demand via Bridge API.
+     */
+    private function replicationActivePendingFilter(): string
+    {
+        return "(StandardStatus eq 'Active' or StandardStatus eq 'Pending')";
+    }
+
+    /**
+     * @return array<string, int|string>
+     */
+    private function replicationMediaQueryParams(): array
+    {
+        return [];
+    }
+
+    private function replicationSelectList(string $dataset): string
+    {
+        $fields = explode(',', $this->syncSelectList($dataset));
+        if (! in_array('Media', $fields, true)) {
+            $fields[] = 'Media';
+        }
+
+        return implode(',', $fields);
     }
 
     /**
