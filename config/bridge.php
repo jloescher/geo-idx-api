@@ -80,7 +80,14 @@ return [
      * Revenue impact: honoring Bridge $top limits (200 standard / 2000 replication) prevents
      * API suspension; pipeline fetch jobs chain until the cursor clears.
      */
-    'sync_queue' => (string) env('BRIDGE_SYNC_QUEUE', 'bridge-sync'),
+    /** @deprecated Use sync_fetch_queue — kept for backward-compatible env overrides. */
+    'sync_queue' => (string) env('BRIDGE_SYNC_QUEUE', env('BRIDGE_SYNC_FETCH_QUEUE', 'bridge-sync-fetch')),
+
+    /** Rate-limited Bridge HTTP fetch jobs (kickoff + replication/incremental pages). */
+    'sync_fetch_queue' => (string) env('BRIDGE_SYNC_FETCH_QUEUE', env('BRIDGE_SYNC_QUEUE', 'bridge-sync-fetch')),
+
+    /** Parallel Postgres persist chunk jobs (no Bridge HTTP throttling). */
+    'sync_persist_queue' => (string) env('BRIDGE_SYNC_PERSIST_QUEUE', 'bridge-sync-persist'),
 
     'sync_replication_top' => min(2000, max(1, (int) env('BRIDGE_SYNC_REPLICATION_TOP', 2000))),
     'sync_incremental_top' => min(200, max(1, (int) env('BRIDGE_SYNC_INCREMENTAL_TOP', 200))),
@@ -93,6 +100,8 @@ return [
     'sync_max_incremental_pages_per_job' => max(1, (int) env('BRIDGE_SYNC_MAX_INCREMENTAL_PAGES', 40)),
 
     'sync_max_requests_per_minute' => min(334, max(1, (int) env('BRIDGE_SYNC_MAX_REQUESTS_PER_MINUTE', 280))),
+
+    'sync_max_requests_per_hour' => min(5000, max(1, (int) env('BRIDGE_SYNC_MAX_REQUESTS_PER_HOUR', 4800))),
 
     'sync_min_fetch_interval_ms' => max(0, (int) env('BRIDGE_SYNC_MIN_FETCH_INTERVAL_MS', 200)),
 

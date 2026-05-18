@@ -12,8 +12,8 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Revenue impact: one Bridge page per job respects burst/hourly limits; DB work is delegated
- * to chained BridgePersistReplicaChunkJob batches so HTTP and Postgres scale independently.
+ * Revenue impact: one Bridge page per job respects burst/hourly limits; DB work runs in parallel
+ * persist batches on a dedicated queue so HTTP throttling and Postgres throughput stay independent.
  */
 class BridgeSyncFetchPageJob implements ShouldQueue
 {
@@ -26,7 +26,9 @@ class BridgeSyncFetchPageJob implements ShouldQueue
         public string $mode,
         public int $incrementalSkip = 0,
         public int $chainDepth = 0,
-    ) {}
+    ) {
+        $this->onQueue((string) config('bridge.sync_fetch_queue', 'bridge-sync-fetch'));
+    }
 
     public function handle(BridgeSyncService $sync): void
     {
@@ -46,8 +48,6 @@ class BridgeSyncFetchPageJob implements ShouldQueue
         $result = $this->mode === 'replication'
             ? $sync->fetchReplicationPage($this->dataset, $cursor)
             : $sync->fetchIncrementalPage($this->dataset, $cursor, $this->incrementalSkip);
-
-        $queue = (string) config('bridge.sync_queue', 'bridge-sync');
 
         if ($result->forbidden) {
             $sync->applyCursorPatch($this->dataset, new BridgeReplicaCursorPatch(
@@ -73,8 +73,7 @@ class BridgeSyncFetchPageJob implements ShouldQueue
 
         [$patch, $dispatchIncremental, $nextFetch] = $this->continuationPlan($result);
 
-        $this->dispatchPersistChain(
-            $queue,
+        $this->dispatchPersistBatch(
             $result->rows,
             $patch,
             $dispatchIncremental,
@@ -87,8 +86,7 @@ class BridgeSyncFetchPageJob implements ShouldQueue
     /**
      * @param  list<array<string, mixed>>  $rows
      */
-    private function dispatchPersistChain(
-        string $queue,
+    private function dispatchPersistBatch(
         array $rows,
         ?BridgeReplicaCursorPatch $patch,
         bool $dispatchIncremental,
@@ -96,6 +94,8 @@ class BridgeSyncFetchPageJob implements ShouldQueue
         int $nextIncrementalSkip,
         int $nextChainDepth,
     ): void {
+        $persistQueue = (string) config('bridge.sync_persist_queue', 'bridge-sync-persist');
+
         if ($rows === []) {
             BridgePersistReplicaFinalizeJob::dispatch(
                 $this->dataset,
@@ -104,32 +104,52 @@ class BridgeSyncFetchPageJob implements ShouldQueue
                 $nextFetchMode,
                 $nextIncrementalSkip,
                 $nextChainDepth,
-            )->onQueue($queue);
+            )->onQueue($persistQueue);
 
             return;
         }
 
         $chunkSize = max(1, (int) config('bridge.sync_persist_job_chunk_size', 100));
         $chunks = array_chunk($rows, $chunkSize);
-        $lastIndex = count($chunks) - 1;
+        $jobs = [];
 
-        $chain = [];
-        foreach ($chunks as $index => $chunk) {
-            $isLast = $index === $lastIndex;
-            $chain[] = new BridgePersistReplicaChunkJob(
+        foreach ($chunks as $chunk) {
+            $jobs[] = new BridgePersistReplicaChunkJob(
                 dataset: $this->dataset,
                 rows: $chunk,
-                cursorPatch: $isLast ? $patch : null,
-                dispatchIncrementalAfter: $isLast && $dispatchIncremental,
-                nextFetchMode: $isLast ? $nextFetchMode : null,
-                nextIncrementalSkip: $nextIncrementalSkip,
-                nextChainDepth: $nextChainDepth,
             );
         }
 
-        Bus::chain($chain)
-            ->onQueue($queue)
+        $dataset = $this->dataset;
+
+        Bus::batch($jobs)
+            ->name('bridge-replica-persist:'.$dataset)
+            ->onQueue($persistQueue)
+            ->finally(function () use (
+                $dataset,
+                $patch,
+                $dispatchIncremental,
+                $nextFetchMode,
+                $nextIncrementalSkip,
+                $nextChainDepth,
+                $persistQueue,
+            ): void {
+                BridgePersistReplicaFinalizeJob::dispatch(
+                    $dataset,
+                    $patch,
+                    $dispatchIncremental,
+                    $nextFetchMode,
+                    $nextIncrementalSkip,
+                    $nextChainDepth,
+                )->onQueue($persistQueue);
+            })
             ->dispatch();
+
+        Log::info('bridge.sync.persist_batch_dispatched', [
+            'dataset' => $this->dataset,
+            'chunk_count' => count($chunks),
+            'row_count' => count($rows),
+        ]);
     }
 
     /**

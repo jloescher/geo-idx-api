@@ -8,6 +8,10 @@ use Illuminate\Support\Facades\Http;
 
 class BridgeHttpService
 {
+    public function __construct(
+        private readonly BridgeRateLimitGuard $rateLimitGuard,
+    ) {}
+
     /**
      * Revenue impact: server-driven replication/sync must not depend on an inbound web request;
      * Bearer token stays server-side per Stellar MLS IDX / MLS GRID Rule 11 server-to-server posture.
@@ -16,17 +20,19 @@ class BridgeHttpService
      */
     public function serverJsonGet(string $fullUrl, array $query = []): Response
     {
-        $token = $this->resolveBearerToken();
-        if ($token === null) {
-            abort(503, 'Bridge server token is not configured.');
-        }
+        return $this->rateLimitedRequest(function () use ($fullUrl, $query): Response {
+            $token = $this->resolveBearerToken();
+            if ($token === null) {
+                abort(503, 'Bridge server token is not configured.');
+            }
 
-        $timeout = (int) config('bridge.timeout_seconds');
+            $timeout = (int) config('bridge.timeout_seconds');
 
-        return BridgeUpstreamRetry::run(fn () => Http::timeout($timeout)
-            ->withToken($token)
-            ->acceptJson()
-            ->get($fullUrl, $query));
+            return BridgeUpstreamRetry::run(fn () => Http::timeout($timeout)
+                ->withToken($token)
+                ->acceptJson()
+                ->get($fullUrl, $query));
+        });
     }
 
     /**
@@ -47,11 +53,13 @@ class BridgeHttpService
 
         $timeout = (int) config('bridge.timeout_seconds');
 
-        return BridgeUpstreamRetry::run(fn () => Http::timeout($timeout)
-            ->withHeaders($this->forwardClientHeaders($incoming))
-            ->withToken($token)
-            ->acceptJson()
-            ->get($url, $mergedQuery));
+        return $this->rateLimitedRequest(function () use ($incoming, $url, $token, $mergedQuery, $timeout): Response {
+            return BridgeUpstreamRetry::run(fn () => Http::timeout($timeout)
+                ->withHeaders($this->forwardClientHeaders($incoming))
+                ->withToken($token)
+                ->acceptJson()
+                ->get($url, $mergedQuery));
+        });
     }
 
     /**
@@ -70,11 +78,13 @@ class BridgeHttpService
 
         $timeout = (int) config('bridge.timeout_seconds');
 
-        return BridgeUpstreamRetry::run(fn () => Http::timeout($timeout)
-            ->withHeaders($this->forwardClientHeaders($incoming))
-            ->withToken($token)
-            ->acceptJson()
-            ->get($url));
+        return $this->rateLimitedRequest(function () use ($incoming, $url, $token, $timeout): Response {
+            return BridgeUpstreamRetry::run(fn () => Http::timeout($timeout)
+                ->withHeaders($this->forwardClientHeaders($incoming))
+                ->withToken($token)
+                ->acceptJson()
+                ->get($url));
+        });
     }
 
     /**
@@ -240,6 +250,18 @@ class BridgeHttpService
         }
 
         return trim((string) config('bridge.dataset', 'stellar'), '/');
+    }
+
+    /**
+     * @param  callable(): Response  $request
+     */
+    private function rateLimitedRequest(callable $request): Response
+    {
+        $this->rateLimitGuard->acquire();
+        $response = $request();
+        $this->rateLimitGuard->recordFromResponse($response);
+
+        return $response;
     }
 
     private function resolveBearerToken(): ?string

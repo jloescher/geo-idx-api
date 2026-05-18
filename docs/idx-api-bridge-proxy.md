@@ -331,7 +331,7 @@ curl -H "X-Domain-Slug: example.com" \
 |-----------|--------|
 | **Listings DB cache** | **Only** `GET /api/v1/listings` when the caller authenticated as a **domain** (not token-only), and the request does **not** include a **`filters`** query (filtered queries always hit Bridge). TTL **`LISTINGS_CACHE_TTL`** seconds (default **900** = 15 minutes). |
 | **Search cache** | `POST /api/v1/search` results cached by fingerprint (dataset + normalized search params) per domain/token. Also caches `GET/POST /api/v1/properties` when no `?filters=` present. TTL **`LISTINGS_CACHE_TTL`** (default **900** = 15 minutes). |
-| **Replica sync** | Every **15 minutes**, `BridgeSyncJob` (kickoff) dispatches `BridgeSyncFetchPageJob` on the **`bridge-sync`** queue. Each fetch job performs one Bridge HTTP page (rate-limited), then chains `BridgePersistReplicaChunkJob` batches so worker RAM stays bounded; the last chunk advances `listing_sync_cursors` and chains the next fetch. Mirror scope is **Active + Pending** only; Closed/other statuses are purged from replica rows. Set **`BRIDGE_SYNC_INCLUDE_MEDIA=true`** so each listing’s **`Media`** array is fetched and stored in **`listings.raw_data`** (photo keys/URLs for search and image rewrite). When media is enabled, use a smaller **`BRIDGE_SYNC_PERSIST_JOB_CHUNK`** (e.g. **50**) if workers hit memory limits. |
+| **Replica sync** | Every **15 minutes**, `BridgeSyncJob` (kickoff) dispatches `BridgeSyncFetchPageJob` on **`bridge-sync-fetch`**. Each fetch job performs one Bridge HTTP page (rate-limited via `BridgeRateLimitGuard` on all server Bridge GETs), then dispatches a **parallel** `Bus::batch` of `BridgePersistReplicaChunkJob` jobs on **`bridge-sync-persist`** (no HTTP throttling). `BridgePersistReplicaFinalizeJob` advances `listing_sync_cursors` and schedules the next fetch with API spacing only. MLS listings cache pagination shares the same guard. Mirror scope is **Active + Pending** only. Set **`BRIDGE_SYNC_INCLUDE_MEDIA=true`** for **`Media`** in **`listings.raw_data`**; use a smaller **`BRIDGE_SYNC_PERSIST_JOB_CHUNK`** (e.g. **50**) when workers hit memory limits. |
 | **Replica purge** | `PurgeClosedListingsJob` runs daily and deletes Closed rows and rows older than the rolling mirror window (`BRIDGE_LOCAL_MIRROR_ROLLING_MONTHS`, default 12). |
 | **Lookups cache** | `GET /api/v1/lookup` responses cached by dataset + query fingerprint (`lookups:{dataset}`). TTL **`BRIDGE_LOOKUPS_CACHE_TTL`** (default **2,592,000** = 30 days). Clear with `php artisan bridge:clear-lookups-cache [--all|--dataset=stellar]`. |
 | **Image edge cache** | `/images/*` responses are streamed from Bridge with immutable cache headers so Cloudflare/browser edges cache aggressively. |
@@ -355,12 +355,15 @@ Set in **`idx-api/.env`** and/or root **`.env`** for Docker Compose. See root **
 | `BRIDGE_TIMEOUT` | No | HTTP timeout seconds. |
 | `LISTINGS_CACHE_TTL` | No | Seconds (default **900**). |
 | `BRIDGE_LOOKUPS_CACHE_TTL` | No | Lookup cache TTL in seconds (default **2,592,000** = 30 days). |
-| `BRIDGE_SYNC_QUEUE` | No | Queue for kickoff, fetch, and persist jobs (default **`bridge-sync`**). Worker must listen to this queue. |
+| `BRIDGE_SYNC_FETCH_QUEUE` | No | Queue for kickoff + Bridge HTTP fetch jobs (default **`bridge-sync-fetch`**). |
+| `BRIDGE_SYNC_PERSIST_QUEUE` | No | Queue for parallel Postgres persist chunk/finalize jobs (default **`bridge-sync-persist`**). |
+| `BRIDGE_SYNC_QUEUE` | No | **Deprecated** alias for fetch queue (`BRIDGE_SYNC_FETCH_QUEUE`). |
 | `BRIDGE_SYNC_REPLICATION_TOP` | No | Replication `$top` page size (max 2000; default 2000). Must be an integer, not a URL. |
 | `BRIDGE_SYNC_INCREMENTAL_TOP` | No | Incremental `Property` `$top` page size (max 200; default 200). Must be an integer, not a URL. |
 | `BRIDGE_SYNC_MAX_CHAINED_FETCH_PAGES` | No | Optional safety cap on chained fetch jobs per kickoff (**0** = unlimited). |
 | `BRIDGE_SYNC_MAX_REQUESTS_PER_MINUTE` | No | Proactive Bridge GET budget per minute (default **280**, max 334 burst). |
-| `BRIDGE_SYNC_MIN_FETCH_INTERVAL_MS` | No | Minimum delay between fetch jobs in milliseconds (default **200**). |
+| `BRIDGE_SYNC_MAX_REQUESTS_PER_HOUR` | No | Proactive hourly cap (default **4800**, under Bridge **5000/hour**). |
+| `BRIDGE_SYNC_MIN_FETCH_INTERVAL_MS` | No | Minimum delay between **fetch** jobs in milliseconds (default **200**); not applied to persist jobs. |
 | `BRIDGE_SYNC_INCLUDE_MEDIA` | No | When **true**, replication/incremental sync includes **`Media`** in `$select` (stored in **`raw_data`**). When **false**, sync adds `$unselect=Media` to reduce payload size. |
 | `BRIDGE_SYNC_PERSIST_JOB_CHUNK` | No | Rows per persist queue job (default **100**); lower if workers hit memory limits. Staging Docker workers default to **`memory_limit=768M`** (see [Coolify deployment](coolify-deployment.md) §7). |
 | `BRIDGE_SYNC_MAX_REPLICATION_PAGES` | No | **Deprecated** — monolithic job page cap; pipeline chains until cursor clears. |

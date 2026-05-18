@@ -16,11 +16,12 @@ class BridgeRateLimitGuardTest extends TestCase
         Cache::flush();
         config([
             'bridge.sync_max_requests_per_minute' => 280,
+            'bridge.sync_max_requests_per_hour' => 4800,
             'bridge.sync_min_fetch_interval_ms' => 200,
         ]);
     }
 
-    public function test_acquire_increments_minute_request_count(): void
+    public function test_acquire_increments_minute_and_hour_request_counts(): void
     {
         $guard = new BridgeRateLimitGuard;
 
@@ -29,7 +30,8 @@ class BridgeRateLimitGuardTest extends TestCase
 
         $state = Cache::get('bridge.sync.rate_limit_state');
         $this->assertIsArray($state);
-        $this->assertSame(2, $state['request_count'] ?? null);
+        $this->assertSame(2, $state['minute_request_count'] ?? null);
+        $this->assertSame(2, $state['hour_request_count'] ?? null);
     }
 
     public function test_record_from_response_sets_extra_delay_when_burst_remaining_is_low(): void
@@ -54,5 +56,20 @@ class BridgeRateLimitGuardTest extends TestCase
         $guard = new BridgeRateLimitGuard;
 
         $this->assertSame(1, $guard->delaySecondsForNextFetch());
+    }
+
+    public function test_delay_seconds_for_next_fetch_increases_when_hourly_bucket_is_exhausted(): void
+    {
+        config([
+            'bridge.sync_max_requests_per_hour' => 2,
+            'bridge.sync_min_fetch_interval_ms' => 0,
+        ]);
+
+        $guard = new BridgeRateLimitGuard;
+        $guard->acquire();
+        $guard->acquire();
+
+        $delay = $guard->delaySecondsForNextFetch();
+        $this->assertGreaterThanOrEqual(1, $delay);
     }
 }

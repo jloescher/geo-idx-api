@@ -78,7 +78,6 @@ final class BridgeSyncService
 
     public function __construct(
         private readonly BridgeHttpService $http,
-        private readonly BridgeRateLimitGuard $rateLimitGuard,
     ) {}
 
     public function cursorForDataset(string $dataset): ListingSyncCursor
@@ -133,9 +132,7 @@ final class BridgeSyncService
             ], $this->mediaQueryParams());
         }
 
-        $this->rateLimitGuard->acquire();
         $response = $this->http->serverJsonGet($url, $query);
-        $this->rateLimitGuard->recordFromResponse($response);
 
         if ($response->status() === 403) {
             Log::warning('bridge.replication.forbidden', ['dataset' => $dataset]);
@@ -197,14 +194,11 @@ final class BridgeSyncService
             '$select' => $select,
         ], $this->mediaQueryParams());
 
-        $this->rateLimitGuard->acquire();
         $response = $this->http->serverJsonGet($url, $query);
-        $this->rateLimitGuard->recordFromResponse($response);
 
         if ($response->status() === 400 || $response->status() === 501) {
             Log::info('bridge.incremental.fallback_bridge_ts', ['dataset' => $dataset]);
             $filterLiteral = "BridgeModificationTimestamp gt datetime'".$filterTs->utc()->format('Y-m-d\TH:i:s\Z')."'";
-            $this->rateLimitGuard->acquire();
             $response = $this->http->serverJsonGet($url, array_merge([
                 '$filter' => $filterLiteral,
                 '$orderby' => 'BridgeModificationTimestamp asc',
@@ -212,7 +206,6 @@ final class BridgeSyncService
                 '$skip' => $skip,
                 '$select' => $select,
             ], $this->mediaQueryParams()));
-            $this->rateLimitGuard->recordFromResponse($response);
         }
 
         if (! $response->successful()) {

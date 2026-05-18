@@ -93,7 +93,7 @@ php artisan view:cache
 | `Dockerfile.production` | `php -d memory_limit=512M artisan queue:work …` |
 | `Dockerfile.staging` | `php -d memory_limit=768M artisan queue:work …` (FrankenPHP staging base also sets **`memory_limit=768M`** in `php.ini`) |
 
-Use the image CMD unless your platform overrides it. Env **`WORKER_QUEUES`** defaults to `default` in the Dockerfile; set **`default,bridge-sync`** on staging/production workers for Bridge replica jobs (see [Coolify deployment](coolify-deployment.md)). Set e.g. `default,gis` if you use a dedicated GIS queue (`config/gis.php`).
+Use the image CMD unless your platform overrides it. Env **`WORKER_QUEUES`** defaults to `default` in the Dockerfile; set **`default,bridge-sync-fetch,bridge-sync-persist`** on staging/production workers for Bridge replica jobs (see [Coolify deployment](coolify-deployment.md)). Set e.g. `default,gis` if you use a dedicated GIS queue (`config/gis.php`).
 
 **Scheduler** (separate service, target **`scheduler`**, or host cron):
 

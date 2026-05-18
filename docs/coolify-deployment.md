@@ -108,7 +108,7 @@ Build **only** target `octane` on the web app. On worker and scheduler Coolify a
 
 **Worker — production:** `/bin/sh -lc 'exec php -d memory_limit=512M artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=120'`
 
-Set **`WORKER_QUEUES=default,bridge-sync`** on the worker service so Bridge replica fetch/persist jobs run (scheduled kickoff is every 15 minutes via `bridge-listings-replica-sync`). During initial replication catch-up, run **two or more worker replicas** (or a dedicated worker app listening only to `bridge-sync`) so Postgres persist jobs keep up while a single fetch job respects Bridge burst limits.
+Set **`WORKER_QUEUES=default,bridge-sync-fetch,bridge-sync-persist`** on the worker service so Bridge replica jobs run (scheduled kickoff every 15 minutes via `bridge-listings-replica-sync`). During replication catch-up, run **two or more worker replicas** — optionally dedicate one replica to **`bridge-sync-persist`** only and another to **`default,bridge-sync-fetch`** so parallel Postgres writes keep up while fetch jobs stay rate-limited.
 
 **Scheduler — staging:** `php -d memory_limit=384M artisan schedule:work --whisper`  
 **Scheduler — production:** `php -d memory_limit=256M artisan schedule:work --whisper`
@@ -273,7 +273,7 @@ Then restart workers (`queue:restart` happens automatically on next deploy, or r
 
 ### `Allowed memory size exhausted` on `BridgePersistReplica*`
 
-Replication pages are up to **2000** listings with large `raw_data` JSON. **`BRIDGE_SYNC_INCLUDE_MEDIA=true`** (recommended when you need photo references in **`listings.raw_data`**) increases payload size further. The app chains **`BridgePersistReplicaChunkJob`** batches (`BRIDGE_SYNC_PERSIST_JOB_CHUNK`; use **25–50** with media enabled). If OOM persists, lower the chunk env, set Coolify worker **Maximum Memory Limit** ≥ **1024 MB**, or raise PHP memory in the worker start command (staging default **768M** after rebuild of the FrankenPHP base + app images).
+Replication pages are up to **2000** listings with large `raw_data` JSON. **`BRIDGE_SYNC_INCLUDE_MEDIA=true`** increases payload size further. Persist work runs as parallel **`BridgePersistReplicaChunkJob`** batches on **`bridge-sync-persist`** (`BRIDGE_SYNC_PERSIST_JOB_CHUNK`; use **25–50** with media). If OOM persists, lower the chunk env, add persist worker replicas, set Coolify worker **Maximum Memory Limit** ≥ **1024 MB**, or raise PHP memory in the worker start command (staging default **768M**).
 
 Related: `SESSION_DRIVER=database` needs the **`sessions`** table (`0001_01_01_000000_create_users_table.php`); `QUEUE_CONNECTION=database` needs **`jobs`** (`0001_01_01_000002_create_jobs_table.php`).
 

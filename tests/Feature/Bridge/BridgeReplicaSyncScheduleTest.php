@@ -9,9 +9,9 @@ use Tests\TestCase;
 
 class BridgeReplicaSyncScheduleTest extends TestCase
 {
-    public function test_schedule_run_dispatches_bridge_sync_kickoff_on_bridge_sync_queue(): void
+    public function test_schedule_run_dispatches_bridge_sync_kickoff_on_fetch_queue(): void
     {
-        config(['bridge.sync_queue' => 'bridge-sync']);
+        config(['bridge.sync_fetch_queue' => 'bridge-sync-fetch']);
         Queue::fake();
 
         Carbon::setTestNow(Carbon::create(2026, 5, 15, 12, 15, 0, 'UTC'));
@@ -19,7 +19,7 @@ class BridgeReplicaSyncScheduleTest extends TestCase
         $this->artisan('schedule:run')->assertSuccessful();
 
         Queue::assertPushed(BridgeSyncJob::class);
-        Queue::assertPushedOn('bridge-sync', BridgeSyncJob::class);
+        Queue::assertPushedOn('bridge-sync-fetch', BridgeSyncJob::class);
 
         Carbon::setTestNow();
     }

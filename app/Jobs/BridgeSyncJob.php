@@ -19,7 +19,7 @@ class BridgeSyncJob implements ShouldQueue
 
     public function __construct()
     {
-        $this->onQueue((string) config('bridge.sync_queue', 'bridge-sync'));
+        $this->onQueue((string) config('bridge.sync_fetch_queue', 'bridge-sync-fetch'));
     }
 
     public function handle(BridgeSyncService $sync): void
@@ -30,7 +30,7 @@ class BridgeSyncJob implements ShouldQueue
 
         $datasets = config('bridge.datasets', ['stellar']);
         $list = is_array($datasets) ? array_values(array_filter(array_map(trim(...), $datasets))) : ['stellar'];
-        $queue = (string) config('bridge.sync_queue', 'bridge-sync');
+        $queue = (string) config('bridge.sync_fetch_queue', 'bridge-sync-fetch');
 
         foreach ($list as $dataset) {
             if (! is_string($dataset) || $dataset === '') {

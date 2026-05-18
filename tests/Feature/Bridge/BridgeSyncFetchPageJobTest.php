@@ -3,10 +3,13 @@
 namespace Tests\Feature\Bridge;
 
 use App\Jobs\BridgePersistReplicaChunkJob;
+use App\Jobs\BridgePersistReplicaFinalizeJob;
 use App\Jobs\BridgeSyncFetchPageJob;
 use App\Models\ListingSyncCursor;
-use App\Services\Bridge\BridgeRateLimitGuard;
+use App\Services\Bridge\BridgeReplicaCursorPatch;
+use App\Services\Bridge\BridgeSyncFetchScheduler;
 use App\Services\Bridge\BridgeSyncService;
+use Illuminate\Bus\PendingBatch;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
@@ -25,14 +28,15 @@ class BridgeSyncFetchPageJobTest extends TestCase
             'bridge.path_prefix' => '',
             'bridge.reso_root' => '',
             'bridge.server_token' => 'test-token',
-            'bridge.sync_queue' => 'bridge-sync',
+            'bridge.sync_fetch_queue' => 'bridge-sync-fetch',
+            'bridge.sync_persist_queue' => 'bridge-sync-persist',
             'bridge.sync_include_media' => false,
             'bridge.sync_replication_top' => 2000,
             'bridge.sync_persist_job_chunk_size' => 100,
         ]);
     }
 
-    public function test_replication_fetch_dispatches_chained_persist_chunks_not_fetch(): void
+    public function test_replication_fetch_dispatches_parallel_persist_batch_not_fetch(): void
     {
         $replicationUrl = 'https://bridge.test/OData/stellar/Property/replication';
         $nextUrl = 'https://bridge.test/OData/stellar/Property/replication?page=2';
@@ -52,18 +56,21 @@ class BridgeSyncFetchPageJobTest extends TestCase
         (new BridgeSyncFetchPageJob('stellar', 'replication', 0, 0))
             ->handle(app(BridgeSyncService::class));
 
-        Bus::assertChained([
-            function (BridgePersistReplicaChunkJob $persist): bool {
-                return $persist->dataset === 'stellar'
-                    && count($persist->rows) === 1
-                    && $persist->nextFetchMode === 'replication'
-                    && $persist->nextChainDepth === 1
-                    && $persist->cursorPatch?->replicationNextUrl === 'https://bridge.test/OData/stellar/Property/replication?page=2';
-            },
-        ]);
+        Bus::assertBatched(function (PendingBatch $batch): bool {
+            if ($batch->jobs->count() !== 1) {
+                return false;
+            }
+
+            $job = $batch->jobs->first();
+
+            return $job instanceof BridgePersistReplicaChunkJob
+                && $job->dataset === 'stellar'
+                && count($job->rows) === 1
+                && $job->queue === 'bridge-sync-persist';
+        });
     }
 
-    public function test_last_persist_chunk_chains_next_replication_fetch_after_cursor_is_written(): void
+    public function test_finalize_after_persist_batch_schedules_next_replication_fetch(): void
     {
         $replicationUrl = 'https://bridge.test/OData/stellar/Property/replication';
         $nextUrl = 'https://bridge.test/OData/stellar/Property/replication?page=2';
@@ -83,21 +90,32 @@ class BridgeSyncFetchPageJobTest extends TestCase
         (new BridgeSyncFetchPageJob('stellar', 'replication', 0, 0))
             ->handle(app(BridgeSyncService::class));
 
-        $persistJob = null;
-        Bus::assertChained([
-            function (BridgePersistReplicaChunkJob $persist) use (&$persistJob): bool {
-                $persistJob = $persist;
+        $chunkJob = null;
+        Bus::assertBatched(function (PendingBatch $batch) use (&$chunkJob): bool {
+            $chunkJob = $batch->jobs->first();
 
-                return true;
-            },
-        ]);
-        $this->assertInstanceOf(BridgePersistReplicaChunkJob::class, $persistJob);
+            return $chunkJob instanceof BridgePersistReplicaChunkJob;
+        });
+        $this->assertInstanceOf(BridgePersistReplicaChunkJob::class, $chunkJob);
+
+        $chunkJob->handle(app(BridgeSyncService::class));
+
+        $finalize = new BridgePersistReplicaFinalizeJob(
+            dataset: 'stellar',
+            cursorPatch: new BridgeReplicaCursorPatch(
+                applyReplicationState: true,
+                replicationNextUrl: $nextUrl,
+                replicationInProgress: true,
+            ),
+            nextFetchMode: 'replication',
+            nextChainDepth: 1,
+        );
 
         Bus::fake();
 
-        $persistJob->handle(
+        $finalize->handle(
             app(BridgeSyncService::class),
-            app(BridgeRateLimitGuard::class),
+            app(BridgeSyncFetchScheduler::class),
         );
 
         Bus::assertDispatched(BridgeSyncFetchPageJob::class, function (BridgeSyncFetchPageJob $fetch): bool {

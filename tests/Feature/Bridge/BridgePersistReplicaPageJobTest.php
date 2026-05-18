@@ -3,11 +3,12 @@
 namespace Tests\Feature\Bridge;
 
 use App\Jobs\BridgePersistReplicaChunkJob;
+use App\Jobs\BridgePersistReplicaFinalizeJob;
 use App\Jobs\BridgeSyncFetchPageJob;
 use App\Models\Listing;
 use App\Models\ListingSyncCursor;
-use App\Services\Bridge\BridgeRateLimitGuard;
 use App\Services\Bridge\BridgeReplicaCursorPatch;
+use App\Services\Bridge\BridgeSyncFetchScheduler;
 use App\Services\Bridge\BridgeSyncService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -18,10 +19,8 @@ class BridgePersistReplicaPageJobTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_persist_chunk_upserts_active_listing_and_updates_cursor_on_last_page(): void
+    public function test_persist_chunk_upserts_active_listing_without_cursor_patch(): void
     {
-        config(['bridge.sync_queue' => 'bridge-sync']);
-
         $maxTs = CarbonImmutable::parse('2026-05-01T12:00:00Z');
 
         $job = new BridgePersistReplicaChunkJob(
@@ -46,18 +45,9 @@ class BridgePersistReplicaPageJobTest extends TestCase
                     'BridgeModificationTimestamp' => $maxTs->toIso8601String(),
                 ],
             ],
-            cursorPatch: new BridgeReplicaCursorPatch(
-                applyReplicationState: true,
-                replicationNextUrl: null,
-                replicationInProgress: false,
-                maxBridgeTs: $maxTs,
-            ),
         );
 
-        $job->handle(
-            app(BridgeSyncService::class),
-            app(BridgeRateLimitGuard::class),
-        );
+        $job->handle(app(BridgeSyncService::class));
 
         $this->assertDatabaseHas('listings', [
             'dataset_slug' => 'stellar',
@@ -70,21 +60,19 @@ class BridgePersistReplicaPageJobTest extends TestCase
             'listing_key' => 'STELLAR-301',
         ]);
 
-        $cursor = ListingSyncCursor::query()->where('dataset_slug', 'stellar')->first();
-        $this->assertNotNull($cursor);
-        $this->assertNull($cursor->replication_next_url);
-        $this->assertFalse($cursor->replication_in_progress);
-        $this->assertNotNull($cursor->last_bridge_modification_timestamp);
+        $this->assertNull(
+            ListingSyncCursor::query()->where('dataset_slug', 'stellar')->value('replication_next_url')
+        );
     }
 
-    public function test_persist_job_dispatches_incremental_fetch_after_replication_completes(): void
+    public function test_finalize_job_dispatches_incremental_fetch_after_replication_completes(): void
     {
-        config(['bridge.sync_queue' => 'bridge-sync']);
+        config(['bridge.sync_fetch_queue' => 'bridge-sync-fetch']);
         Queue::fake();
 
         $maxTs = CarbonImmutable::parse('2026-05-02T08:00:00Z');
 
-        $job = new BridgePersistReplicaChunkJob(
+        $chunk = new BridgePersistReplicaChunkJob(
             dataset: 'stellar',
             rows: [
                 [
@@ -94,6 +82,12 @@ class BridgePersistReplicaPageJobTest extends TestCase
                     'ListPrice' => 300000,
                 ],
             ],
+        );
+
+        $chunk->handle(app(BridgeSyncService::class));
+
+        $finalize = new BridgePersistReplicaFinalizeJob(
+            dataset: 'stellar',
             cursorPatch: new BridgeReplicaCursorPatch(
                 applyReplicationState: true,
                 replicationNextUrl: null,
@@ -103,12 +97,12 @@ class BridgePersistReplicaPageJobTest extends TestCase
             dispatchIncrementalAfter: true,
         );
 
-        $job->handle(
+        $finalize->handle(
             app(BridgeSyncService::class),
-            app(BridgeRateLimitGuard::class),
+            app(BridgeSyncFetchScheduler::class),
         );
 
-        Queue::assertPushed(BridgeSyncFetchPageJob::class, function (BridgeSyncFetchPageJob $fetch): bool {
+        Queue::assertPushedOn('bridge-sync-fetch', BridgeSyncFetchPageJob::class, function (BridgeSyncFetchPageJob $fetch): bool {
             return $fetch->dataset === 'stellar' && $fetch->mode === 'incremental';
         });
 

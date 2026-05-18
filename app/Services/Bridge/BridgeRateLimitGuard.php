@@ -15,11 +15,12 @@ final class BridgeRateLimitGuard
 {
     private const CACHE_KEY = 'bridge.sync.rate_limit_state';
 
-    private const CACHE_TTL_SECONDS = 120;
+    private const CACHE_TTL_SECONDS = 7200;
 
     public function acquire(): void
     {
         $maxPerMinute = max(1, (int) config('bridge.sync_max_requests_per_minute', 280));
+        $maxPerHour = max(1, (int) config('bridge.sync_max_requests_per_hour', 4800));
         $minIntervalMs = max(0, (int) config('bridge.sync_min_fetch_interval_ms', 200));
 
         $state = $this->state();
@@ -33,16 +34,29 @@ final class BridgeRateLimitGuard
             }
         }
 
-        $bucket = $this->minuteBucket();
-        $count = (int) (($state['minute_bucket'] ?? '') === $bucket ? ($state['request_count'] ?? 0) : 0);
+        $minuteBucket = $this->minuteBucket();
+        $minuteCount = (int) (($state['minute_bucket'] ?? '') === $minuteBucket ? ($state['minute_request_count'] ?? 0) : 0);
 
-        if ($count >= $maxPerMinute) {
+        if ($minuteCount >= $maxPerMinute) {
             $sleepSeconds = 60 - (int) date('s');
             if ($sleepSeconds > 0) {
                 sleep($sleepSeconds);
             }
-            $bucket = $this->minuteBucket();
-            $count = 0;
+            $minuteBucket = $this->minuteBucket();
+            $minuteCount = 0;
+            $nowMs = (int) floor(microtime(true) * 1000);
+        }
+
+        $hourBucket = $this->hourBucket();
+        $hourCount = (int) (($state['hour_bucket'] ?? '') === $hourBucket ? ($state['hour_request_count'] ?? 0) : 0);
+
+        if ($hourCount >= $maxPerHour) {
+            $sleepSeconds = $this->secondsUntilNextHour();
+            if ($sleepSeconds > 0) {
+                sleep($sleepSeconds);
+            }
+            $hourBucket = $this->hourBucket();
+            $hourCount = 0;
             $nowMs = (int) floor(microtime(true) * 1000);
         }
 
@@ -53,8 +67,10 @@ final class BridgeRateLimitGuard
         }
 
         $this->putState([
-            'minute_bucket' => $bucket,
-            'request_count' => $count + 1,
+            'minute_bucket' => $minuteBucket,
+            'minute_request_count' => $minuteCount + 1,
+            'hour_bucket' => $hourBucket,
+            'hour_request_count' => $hourCount + 1,
             'last_acquire_ms' => $nowMs,
             'extra_delay_ms' => 0,
         ]);
@@ -90,15 +106,40 @@ final class BridgeRateLimitGuard
         }
     }
 
+    /**
+     * Minimum spacing between Bridge GET fetch jobs (not between Postgres persist jobs).
+     */
     public function delaySecondsForNextFetch(): int
     {
         $minIntervalMs = max(0, (int) config('bridge.sync_min_fetch_interval_ms', 200));
+        $delay = (int) max(1, (int) ceil($minIntervalMs / 1000));
 
-        return (int) max(1, (int) ceil($minIntervalMs / 1000));
+        $state = $this->state();
+        $maxPerMinute = max(1, (int) config('bridge.sync_max_requests_per_minute', 280));
+        $maxPerHour = max(1, (int) config('bridge.sync_max_requests_per_hour', 4800));
+
+        $minuteBucket = $this->minuteBucket();
+        $minuteCount = (int) (($state['minute_bucket'] ?? '') === $minuteBucket ? ($state['minute_request_count'] ?? 0) : 0);
+        if ($minuteCount >= $maxPerMinute) {
+            $delay = max($delay, 60 - (int) date('s'));
+        }
+
+        $hourBucket = $this->hourBucket();
+        $hourCount = (int) (($state['hour_bucket'] ?? '') === $hourBucket ? ($state['hour_request_count'] ?? 0) : 0);
+        if ($hourCount >= $maxPerHour) {
+            $delay = max($delay, $this->secondsUntilNextHour());
+        }
+
+        $extraMs = (int) ($state['extra_delay_ms'] ?? 0);
+        if ($extraMs > 0) {
+            $delay = max($delay, (int) ceil($extraMs / 1000));
+        }
+
+        return $delay;
     }
 
     /**
-     * @return array{minute_bucket?: string, request_count?: int, last_acquire_ms?: int, extra_delay_ms?: int}
+     * @return array{minute_bucket?: string, minute_request_count?: int, hour_bucket?: string, hour_request_count?: int, last_acquire_ms?: int, extra_delay_ms?: int}
      */
     private function state(): array
     {
@@ -108,7 +149,7 @@ final class BridgeRateLimitGuard
     }
 
     /**
-     * @param  array{minute_bucket?: string, request_count?: int, last_acquire_ms?: int, extra_delay_ms?: int}  $state
+     * @param  array{minute_bucket?: string, minute_request_count?: int, hour_bucket?: string, hour_request_count?: int, last_acquire_ms?: int, extra_delay_ms?: int}  $state
      */
     private function putState(array $state): void
     {
@@ -118,6 +159,16 @@ final class BridgeRateLimitGuard
     private function minuteBucket(): string
     {
         return date('Y-m-d-H-i');
+    }
+
+    private function hourBucket(): string
+    {
+        return date('Y-m-d-H');
+    }
+
+    private function secondsUntilNextHour(): int
+    {
+        return 3600 - ((int) date('i') * 60 + (int) date('s'));
     }
 
     private function headerInt(Response $response, string $name): ?int
