@@ -102,7 +102,7 @@ final class BridgeSyncService
             return true;
         }
 
-        return Listing::query()->where('dataset_slug', $cursor->dataset_slug)->count() === 0;
+        return ! Listing::query()->where('dataset_slug', $cursor->dataset_slug)->exists();
     }
 
     public function shouldRunIncremental(ListingSyncCursor $cursor): bool
@@ -120,7 +120,7 @@ final class BridgeSyncService
         $top = (int) config('bridge.sync_replication_top', 2000);
         $replicationStarting = ($cursor->replication_next_url === null || $cursor->replication_next_url === '')
             && ! $cursor->replication_in_progress
-            && Listing::query()->where('dataset_slug', $dataset)->count() === 0;
+            && ! Listing::query()->where('dataset_slug', $dataset)->exists();
 
         if ($cursor->replication_next_url !== null && $cursor->replication_next_url !== '') {
             $url = $cursor->replication_next_url;
@@ -147,6 +147,7 @@ final class BridgeSyncService
             Log::warning('bridge.replication.http_error', [
                 'dataset' => $dataset,
                 'status' => $response->status(),
+                'url' => $url,
             ]);
 
             return BridgeSyncPageResult::httpError();
@@ -468,7 +469,7 @@ final class BridgeSyncService
             foreach (array_chunk($keys, $chunkSize) as $segment) {
                 Listing::query()
                     ->where('dataset_slug', $datasetSlug)
-                    ->whereIn('listing_key', $segment)
+                    ->whereIn('listing_key', $segment, 'and', false)
                     ->update([
                         'coordinates' => null,
                         'updated_at' => now(),
@@ -491,7 +492,7 @@ final class BridgeSyncService
             foreach (array_chunk($keys, (int) config('bridge.sync_upsert_chunk_size', 250)) as $segment) {
                 Listing::query()
                     ->where('dataset_slug', $datasetSlug)
-                    ->whereIn('listing_key', $segment)
+                    ->whereIn('listing_key', $segment, 'and', false)
                     ->delete();
             }
         }
@@ -737,7 +738,7 @@ final class BridgeSyncService
     {
         $datasetUpper = strtoupper($dataset);
 
-        return implode(',', array_unique(array_merge([
+        $fields = array_unique(array_merge([
             'ListingKey',
             'ListingId',
             'BridgeModificationTimestamp',
@@ -766,7 +767,6 @@ final class BridgeSyncService
             'Coordinates',
             'WaterfrontYN',
             'PoolPrivateYN',
-            'DockYN',
             'NewConstructionYN',
             'GarageYN',
             'AssociationYN',
@@ -786,7 +786,16 @@ final class BridgeSyncService
         ], [
             "{$datasetUpper}_FloodZoneCode",
             "{$datasetUpper}_TotalMonthlyFees",
-        ])));
+        ]));
+
+        if (! config('bridge.sync_include_media', false)) {
+            $fields = array_values(array_filter($fields, static fn (string $field): bool => $field !== 'Media'));
+        }
+
+        // Stellar replication OData rejects DockYN in $select (HTTP 400).
+        $fields = array_values(array_filter($fields, static fn (string $field): bool => $field !== 'DockYN'));
+
+        return implode(',', $fields);
     }
 
     private function str(mixed $v): ?string
