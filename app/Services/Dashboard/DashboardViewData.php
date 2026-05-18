@@ -1,23 +1,25 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Services\Dashboard;
 
 use App\Models\Domain;
+use App\Models\User;
 use App\Services\Mls\MlsFeedResolver;
-use Illuminate\Contracts\View\View;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 
-class DashboardController extends Controller
+final class DashboardViewData
 {
+    private const PANELS = ['dashboard', 'onboarding', 'domains', 'api'];
+
     public function __construct(
         private readonly MlsFeedResolver $mlsFeeds,
     ) {}
 
     /**
-     * Dashboard for authenticated users: domains, MLS dataset scope per domain, and API tokens.
+     * @return array<string, mixed>
      */
-    public function __invoke(Request $request): View
+    public function forRequest(Request $request): array
     {
         $user = $request->user();
 
@@ -82,11 +84,11 @@ class DashboardController extends Controller
         $appUrl = rtrim((string) config('app.url'), '/');
 
         $activePanel = (string) $request->query('panel', 'dashboard');
-        if (! in_array($activePanel, ['dashboard', 'onboarding', 'domains', 'api'], true)) {
+        if (! in_array($activePanel, self::PANELS, true)) {
             $activePanel = 'dashboard';
         }
 
-        return view('dashboard.index', [
+        return [
             'hasApiAccess' => true,
             'apiTokens' => $apiTokens,
             'activeDomains' => $activeDomains,
@@ -96,11 +98,11 @@ class DashboardController extends Controller
             'domainLimit' => null,
             'domainLimitReached' => false,
             'canPurchaseExtraDomainSlots' => false,
-            'canInviteUsers' => $user?->isAdmin() ?? false,
+            'canInviteUsers' => $user instanceof User && $user->isAdmin(),
             'mlsCatalogFeedCodes' => $this->mlsFeeds->catalogFeedCodes(),
             'apiPublicUrl' => rtrim((string) config('idx_urls.api_public_url'), '/'),
             'appUrl' => $appUrl,
             'activePanel' => $activePanel,
-        ]);
+        ];
     }
 }

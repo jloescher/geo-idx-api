@@ -9,7 +9,7 @@
                 </p>
                 <form method="POST" action="{{ route('dashboard.domains.store', [], false) }}" class="mt-4 space-y-2">
                     @csrf
-                    <label for="dashboard-domain-slug" class="text-xs font-semibold uppercase tracking-wide text-slate-400">Add domain</label>
+                    <label for="dashboard-domain-slug" class="text-xs font-semibold uppercase tracking-wide text-slate-300">Add domain</label>
                     <div class="flex flex-col gap-2 sm:flex-row">
                         <input id="dashboard-domain-slug" name="domain_slug" type="text" value="{{ old('domain_slug') }}" placeholder="example.com" class="w-full rounded-lg border border-white/20 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none" required>
                         <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-cyan-400">Add Domain</button>
@@ -43,7 +43,7 @@
                         <p class="text-slate-400">No domains yet.</p>
                     @endforelse
                 </div>
-                <a wire:navigate href="{{ route('dashboard.index', ['panel' => 'domains'], false) }}" class="mt-4 inline-flex text-xs font-semibold text-cyan-300 hover:text-cyan-200">Open Domains tab</a>
+                <a wire:navigate href="{{ \App\Support\DashboardUrl::panel('domains') }}" class="mt-4 inline-flex text-xs font-semibold text-cyan-200 hover:text-cyan-100">Open Domains tab</a>
             </section>
         </div>
 

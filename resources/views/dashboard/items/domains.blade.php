@@ -11,15 +11,15 @@
             <p class="mt-1 text-sm text-slate-300">Verify hostnames with DNS TXT, then choose which MLS feeds each domain may call through the API.</p>
             <div class="mt-5 grid gap-4 sm:grid-cols-3">
                 <div class="rounded-xl border border-white/10 bg-slate-950/70 p-4">
-                    <p class="text-xs uppercase tracking-wide text-slate-400">Active domains</p>
+                    <p class="text-xs uppercase tracking-wide text-slate-300">Active domains</p>
                     <p class="mt-1 text-2xl font-semibold text-white">{{ number_format($activeDomains->count()) }}</p>
                 </div>
                 <div class="rounded-xl border border-white/10 bg-slate-950/70 p-4">
-                    <p class="text-xs uppercase tracking-wide text-slate-400">Verified</p>
+                    <p class="text-xs uppercase tracking-wide text-slate-300">Verified</p>
                     <p class="mt-1 text-2xl font-semibold text-emerald-300">{{ number_format($verifiedDomainCount) }}</p>
                 </div>
                 <div class="rounded-xl border border-white/10 bg-slate-950/70 p-4">
-                    <p class="text-xs uppercase tracking-wide text-slate-400">Pending verification</p>
+                    <p class="text-xs uppercase tracking-wide text-slate-300">Pending verification</p>
                     <p class="mt-1 text-2xl font-semibold text-amber-300">{{ number_format($pendingDomainCount) }}</p>
                 </div>
             </div>
@@ -35,7 +35,7 @@
             </p>
             <form method="POST" action="{{ route('dashboard.domains.store', [], false) }}" class="mt-4 space-y-2">
                 @csrf
-                <label for="domains-tab-domain-slug" class="text-xs font-semibold uppercase tracking-wide text-slate-400">Domain hostname</label>
+                <label for="domains-tab-domain-slug" class="text-xs font-semibold uppercase tracking-wide text-slate-300">Domain hostname</label>
                 <div class="flex flex-col gap-2 sm:flex-row">
                     <input id="domains-tab-domain-slug" name="domain_slug" type="text" value="{{ old('domain_slug') }}" placeholder="example.com" class="w-full rounded-lg border border-white/20 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none" required>
                     <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-cyan-400">Add Domain</button>
@@ -78,7 +78,7 @@
                             <form method="POST" action="{{ route('dashboard.domains.mls.update', ['domain' => $domain->id], false) }}" class="mt-2 space-y-3 border-t border-white/10 pt-3">
                                 @csrf
                                 @method('PUT')
-                                <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Allowed MLS feeds</p>
+                                <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-300">Allowed MLS feeds</p>
                                 <div class="flex flex-wrap gap-2">
                                     @foreach ($mlsCatalogFeedCodes as $code)
                                         <label class="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-slate-900/80 px-2 py-1">
@@ -92,7 +92,7 @@
                                         </label>
                                     @endforeach
                                 </div>
-                                <label class="block text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                                <label class="block text-[11px] font-semibold uppercase tracking-wide text-slate-300">
                                     Default feed (when <span class="font-mono">?dataset=</span> omitted)
                                     <select name="mls_dataset" class="mt-1 w-full rounded-md border border-white/20 bg-slate-950 px-2 py-1.5 text-sm text-slate-100">
                                         @foreach ($selectedFeeds as $code)
@@ -100,7 +100,7 @@
                                         @endforeach
                                     </select>
                                 </label>
-                                <button type="submit" class="inline-flex min-h-9 items-center rounded-lg bg-violet-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-400">Save MLS access</button>
+                                <button type="submit" class="idx-btn-primary inline-flex min-h-9 items-center px-3 py-1.5 text-xs font-semibold">Save MLS access</button>
                             </form>
                         @endif
                     </div>

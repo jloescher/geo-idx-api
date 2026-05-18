@@ -16,7 +16,7 @@
         <div class="mt-10 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
             @auth
                 <a
-                    href="{{ route('dashboard.index', [], false) }}"
+                    href="{{ \App\Support\DashboardUrl::panel() }}"
                     class="inline-flex min-h-12 items-center justify-center rounded-full bg-cyan-400 px-8 py-3 text-base font-semibold text-slate-950 hover:bg-cyan-300"
                 >
                     Open dashboard

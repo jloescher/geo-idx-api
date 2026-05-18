@@ -2,7 +2,7 @@
 
 namespace App\Filament\Pages;
 
-use App\Http\Controllers\DashboardController;
+use App\Services\Dashboard\DashboardViewData;
 use Filament\Pages\Page;
 use Filament\Support\Enums\Width;
 use Illuminate\Contracts\View\View;
@@ -25,9 +25,8 @@ class UserDashboard extends Page
 
     public function render(): View
     {
-        /** @var \Illuminate\View\View $legacyView */
-        $legacyView = app(DashboardController::class)->__invoke(request());
-
-        return parent::render()->with($legacyView->getData());
+        return parent::render()->with(
+            app(DashboardViewData::class)->forRequest(request()),
+        );
     }
 }

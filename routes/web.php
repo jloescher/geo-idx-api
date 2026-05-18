@@ -2,7 +2,6 @@
 
 use App\Http\Controllers\Auth\RegisterInvitationController;
 use App\Http\Controllers\DashboardApiTokenController;
-use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardDomainController;
 use App\Http\Controllers\DashboardDomainMlsController;
 use App\Http\Controllers\DashboardUserInvitationController;
@@ -54,8 +53,16 @@ foreach ($platformHosts as $platformHost) {
                 ->name('register.store');
         });
 
+        Route::get('/filament-dashboard', function (Request $request): RedirectResponse {
+            $target = '/dashboard';
+            if ($request->getQueryString() !== null && $request->getQueryString() !== '') {
+                $target .= '?'.$request->getQueryString();
+            }
+
+            return redirect()->to($target, 301);
+        })->middleware('web');
+
         Route::middleware('auth')->group(function (): void {
-            Route::get('/dashboard', DashboardController::class)->name('dashboard.index');
             Route::post('/dashboard/domains', [DashboardDomainController::class, 'store'])->name('dashboard.domains.store');
             Route::delete('/dashboard/domains/{domain}', [DashboardDomainController::class, 'destroy'])->name('dashboard.domains.destroy');
             Route::post('/dashboard/domains/{domain}/verify-txt', [DashboardDomainController::class, 'verifyTxt'])->name('dashboard.domains.verify-txt');

@@ -88,7 +88,7 @@ new class extends Component {
     }
 }; ?>
 
-<div class="mt-8 rounded-2xl border border-white/10 bg-slate-900/70 p-6">
+<div class="idx-card mt-8 p-6">
     <h2 class="text-xl font-semibold text-white">API Keys</h2>
     <p class="mt-1 text-sm text-slate-300">
         Manage tokens for the Bridge and GIS JSON API. Send <span class="font-mono text-xs">Authorization: Bearer …</span> together with
@@ -157,7 +157,7 @@ new class extends Component {
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div class="min-w-0">
                         <p class="truncate text-sm font-semibold text-slate-100">{{ $t['name'] }}</p>
-                        <p class="text-xs text-slate-400">
+                        <p class="text-xs text-slate-300">
                             Last used: {{ $t['last_used_at'] ?? 'Never' }}
                             · Created: {{ $t['created_at'] ?? '—' }}
                         </p>
@@ -191,7 +191,7 @@ new class extends Component {
                 </div>
             </div>
         @empty
-            <p class="text-sm text-slate-400">No API keys created yet. Generate one above to get started.</p>
+            <p class="text-sm text-slate-300">No API keys created yet. Generate one above to get started.</p>
         @endforelse
     </div>
 </div>

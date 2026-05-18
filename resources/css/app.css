@@ -8,6 +8,16 @@
 @theme {
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+    --color-idx-primary: var(--idx-text-primary);
+    --color-idx-secondary: var(--idx-text-secondary);
+    --color-idx-muted: var(--idx-text-muted);
+    --color-idx-accent: var(--idx-accent);
+    --color-idx-accent-strong: var(--idx-accent-strong);
+    --color-idx-shell: var(--idx-shell-bg);
+    --color-idx-panel: var(--idx-shell-panel);
+    --color-idx-success: var(--idx-success);
+    --color-idx-warning: var(--idx-warning);
+    --color-idx-danger: var(--idx-danger);
 }
 
 :root {
@@ -74,9 +84,19 @@
         background-color: color-mix(in srgb, var(--idx-accent) 14%, var(--idx-shell-panel));
     }
 
+    .fi-sidebar-item-label,
+    .fi-sidebar-item-btn > .fi-icon {
+        color: var(--idx-text-secondary);
+    }
+
     .fi-sidebar-item.fi-active > .fi-sidebar-item-btn > .fi-sidebar-item-label,
     .fi-sidebar-item.fi-active > .fi-sidebar-item-btn > .fi-icon {
         color: var(--idx-accent-strong);
+    }
+
+    .dark .fi-sidebar-item-label,
+    .dark .fi-sidebar-item-btn > .fi-icon {
+        color: var(--idx-text-muted);
     }
 
     .dark .fi-sidebar-item.fi-active > .fi-sidebar-item-btn > .fi-sidebar-item-label,
@@ -275,6 +295,10 @@
         color: var(--idx-text-secondary);
     }
 
+    .idx-dashboard-shell .text-slate-100 {
+        color: var(--idx-text-primary);
+    }
+
     .idx-dashboard-shell .text-slate-400 {
         color: var(--idx-text-muted);
     }
@@ -283,10 +307,20 @@
         color: color-mix(in srgb, var(--idx-text-muted) 85%, transparent);
     }
 
+    .idx-dashboard-shell .text-slate-950 {
+        color: var(--idx-shell-panel);
+    }
+
     .idx-dashboard-shell .text-cyan-100,
     .idx-dashboard-shell .text-cyan-200,
-    .idx-dashboard-shell .text-cyan-300 {
+    .idx-dashboard-shell .text-cyan-300,
+    .idx-dashboard-shell .hover\:text-cyan-100:hover,
+    .idx-dashboard-shell .hover\:text-cyan-200:hover {
         color: var(--idx-accent-strong);
+    }
+
+    .idx-dashboard-shell .text-cyan-200\/90 {
+        color: color-mix(in srgb, var(--idx-accent-strong) 92%, transparent);
     }
 
     .idx-dashboard-shell .text-emerald-100,
@@ -347,6 +381,41 @@
         background-color: color-mix(in srgb, var(--idx-surface) 88%, transparent);
     }
 
+    .idx-dashboard-shell .bg-slate-900\/80 {
+        background-color: color-mix(in srgb, var(--idx-surface) 84%, transparent);
+    }
+
+    .idx-dashboard-shell .bg-cyan-500 {
+        background-color: var(--idx-accent-strong);
+    }
+
+    .idx-dashboard-shell .bg-cyan-500\/10,
+    .idx-dashboard-shell .hover\:bg-cyan-500\/10:hover {
+        background-color: color-mix(in srgb, var(--idx-accent) 12%, transparent);
+    }
+
+    .idx-dashboard-shell .hover\:bg-cyan-400:hover {
+        background-color: color-mix(in srgb, var(--idx-accent) 88%, white 12%);
+    }
+
+    .idx-dashboard-shell .border-cyan-400\/20,
+    .idx-dashboard-shell .border-cyan-400\/25,
+    .idx-dashboard-shell .border-cyan-400\/30,
+    .idx-dashboard-shell .border-cyan-400\/40,
+    .idx-dashboard-shell .border-cyan-400\/60 {
+        border-color: color-mix(in srgb, var(--idx-accent) 38%, transparent);
+    }
+
+    .idx-dashboard-shell .bg-violet-500,
+    .idx-dashboard-shell .hover\:bg-violet-400:hover {
+        background-color: var(--idx-accent-strong);
+    }
+
+    .idx-dashboard-shell .text-violet-200,
+    .idx-dashboard-shell .text-violet-300 {
+        color: var(--idx-accent-strong);
+    }
+
     .idx-dashboard-shell .bg-gradient-to-br {
         background-image: linear-gradient(to bottom right, color-mix(in srgb, var(--idx-surface) 90%, transparent), color-mix(in srgb, var(--idx-surface-elevated) 96%, transparent));
     }
@@ -382,5 +451,14 @@
     .idx-dashboard-shell :is(button, a, input, select, textarea):focus-visible {
         @apply outline-none ring-2 ring-cyan-500 ring-offset-2;
         ring-offset-color: var(--idx-surface-elevated);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .idx-dashboard-shell [x-show],
+        .idx-dashboard-shell .animate-spin,
+        .idx-dashboard-shell .transition {
+            animation: none !important;
+            transition: none !important;
+        }
     }
 }

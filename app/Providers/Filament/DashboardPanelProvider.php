@@ -3,6 +3,7 @@
 namespace App\Providers\Filament;
 
 use App\Filament\Pages\UserDashboard;
+use App\Support\DashboardUrl;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -26,7 +27,7 @@ class DashboardPanelProvider extends PanelProvider
         return $panel
             ->default()
             ->id('dashboard')
-            ->path('filament-dashboard')
+            ->path('dashboard')
             ->viteTheme('resources/css/filament-dashboard.css')
             ->login()
             ->colors([
@@ -47,22 +48,22 @@ class DashboardPanelProvider extends PanelProvider
                 NavigationItem::make('Dashboard')
                     ->group('Dashboard')
                     ->icon('heroicon-o-home')
-                    ->url('/filament-dashboard?panel=dashboard')
+                    ->url(DashboardUrl::panel('dashboard'))
                     ->isActiveWhen(fn (): bool => request()->query('panel', 'dashboard') === 'dashboard'),
                 NavigationItem::make('Onboarding')
                     ->group('Dashboard')
                     ->icon('heroicon-o-rocket-launch')
-                    ->url('/filament-dashboard?panel=onboarding')
+                    ->url(DashboardUrl::panel('onboarding'))
                     ->isActiveWhen(fn (): bool => request()->query('panel') === 'onboarding'),
                 NavigationItem::make('Domains')
                     ->group('Dashboard')
                     ->icon('heroicon-o-globe-alt')
-                    ->url('/filament-dashboard?panel=domains')
+                    ->url(DashboardUrl::panel('domains'))
                     ->isActiveWhen(fn (): bool => request()->query('panel') === 'domains'),
                 NavigationItem::make('API')
                     ->group('Dashboard')
                     ->icon('heroicon-o-command-line')
-                    ->url('/filament-dashboard?panel=api')
+                    ->url(DashboardUrl::panel('api'))
                     ->isActiveWhen(fn (): bool => request()->query('panel') === 'api'),
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')

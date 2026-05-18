@@ -2,32 +2,41 @@
 
 namespace Tests\Feature;
 
-use App\Http\Controllers\DashboardController;
 use App\Models\User;
+use App\Services\Dashboard\DashboardViewData;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
-use Illuminate\View\View;
 use Tests\TestCase;
 
 class DashboardControllerTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_dashboard_controller_returns_expected_view_data(): void
+    public function test_dashboard_view_data_returns_expected_keys(): void
     {
         $user = User::factory()->createOne();
         $request = Request::create('/dashboard', 'GET');
         $request->setUserResolver(static fn (): User => $user);
 
-        $response = app(DashboardController::class)->__invoke($request);
+        $data = app(DashboardViewData::class)->forRequest($request);
 
-        $this->assertInstanceOf(View::class, $response);
-        $this->assertSame('dashboard.index', $response->name());
-        $this->assertTrue($response->getData()['hasApiAccess']);
-        $this->assertIsIterable($response->getData()['apiTokens']);
-        $this->assertFalse($response->getData()['canPurchaseExtraDomainSlots']);
-        $this->assertFalse($response->getData()['canInviteUsers']);
-        $this->assertSame(0, $response->getData()['verifiedDomainCount']);
-        $this->assertIsArray($response->getData()['mlsCatalogFeedCodes']);
+        $this->assertTrue($data['hasApiAccess']);
+        $this->assertIsIterable($data['apiTokens']);
+        $this->assertFalse($data['canPurchaseExtraDomainSlots']);
+        $this->assertFalse($data['canInviteUsers']);
+        $this->assertSame(0, $data['verifiedDomainCount']);
+        $this->assertIsArray($data['mlsCatalogFeedCodes']);
+        $this->assertSame('dashboard', $data['activePanel']);
+    }
+
+    public function test_dashboard_view_data_normalizes_unknown_panel(): void
+    {
+        $user = User::factory()->createOne();
+        $request = Request::create('/dashboard?panel=unknown', 'GET');
+        $request->setUserResolver(static fn (): User => $user);
+
+        $data = app(DashboardViewData::class)->forRequest($request);
+
+        $this->assertSame('dashboard', $data['activePanel']);
     }
 }

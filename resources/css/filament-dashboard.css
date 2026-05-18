@@ -1,5 +1,75 @@
 @import '../../vendor/filament/filament/resources/css/theme.css';
 
+/* IDX semantic tokens for Filament dashboard chrome (aligned with resources/css/app.css). */
+:root {
+    --idx-shell-bg: #f1f5f9;
+    --idx-shell-panel: #ffffff;
+    --idx-surface: #e2e8f0;
+    --idx-surface-elevated: #f8fafc;
+    --idx-surface-strong: #cbd5e1;
+    --idx-border: #94a3b8;
+    --idx-text-primary: #0f172a;
+    --idx-text-secondary: #1e293b;
+    --idx-text-muted: #374151;
+    --idx-accent: #0e7490;
+    --idx-accent-strong: #155e75;
+    --idx-success: #047857;
+    --idx-warning: #92400e;
+    --idx-danger: #991b1b;
+}
+
+.dark {
+    --idx-shell-bg: #020617;
+    --idx-shell-panel: #0f172a;
+    --idx-surface: #334155;
+    --idx-surface-elevated: #0f172a;
+    --idx-surface-strong: #1e293b;
+    --idx-border: #475569;
+    --idx-text-primary: #f8fafc;
+    --idx-text-secondary: #e2e8f0;
+    --idx-text-muted: #d1d5db;
+    --idx-accent: #22d3ee;
+    --idx-accent-strong: #06b6d4;
+    --idx-success: #34d399;
+    --idx-warning: #fbbf24;
+    --idx-danger: #fca5a5;
+}
+
+.fi-main,
+.fi-main-ctn {
+    background-color: var(--idx-shell-bg);
+}
+
+.fi-sidebar {
+    background-color: var(--idx-shell-panel);
+    border-color: color-mix(in srgb, var(--idx-border) 45%, transparent);
+}
+
+.fi-sidebar-item-label,
+.fi-sidebar-item-btn > .fi-icon {
+    color: var(--idx-text-secondary);
+}
+
+.fi-sidebar-item.fi-active > .fi-sidebar-item-btn > .fi-sidebar-item-label,
+.fi-sidebar-item.fi-active > .fi-sidebar-item-btn > .fi-icon {
+    color: var(--idx-accent-strong);
+}
+
+.dark .fi-sidebar-item-label,
+.dark .fi-sidebar-item-btn > .fi-icon {
+    color: var(--idx-text-muted);
+}
+
+.dark .fi-sidebar-item.fi-active > .fi-sidebar-item-btn > .fi-sidebar-item-label,
+.dark .fi-sidebar-item.fi-active > .fi-sidebar-item-btn > .fi-icon {
+    color: var(--idx-accent);
+}
+
+.fi-topbar {
+    background-color: color-mix(in srgb, var(--idx-shell-panel) 82%, transparent);
+    border-color: color-mix(in srgb, var(--idx-border) 45%, transparent);
+}
+
 @source '../../app/Filament';
 @source '../../resources/views/filament';
 
