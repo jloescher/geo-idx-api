@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
 use Laravel\Telescope\IncomingEntry;
 use Laravel\Telescope\Telescope;
@@ -18,16 +19,43 @@ class TelescopeServiceProvider extends TelescopeApplicationServiceProvider
 
         $this->hideSensitiveRequestDetails();
 
-        $isLocal = $this->app->environment('local');
+        $recordAll = $this->shouldRecordAllEntries();
 
-        Telescope::filter(function (IncomingEntry $entry) use ($isLocal) {
-            return $isLocal ||
-                   $entry->isReportableException() ||
+        Telescope::filter(function (IncomingEntry $entry) use ($recordAll) {
+            if ($recordAll) {
+                return true;
+            }
+
+            return $entry->isReportableException() ||
                    $entry->isFailedRequest() ||
                    $entry->isFailedJob() ||
                    $entry->isScheduledTask() ||
+                   $entry->isSlowQuery() ||
                    $entry->hasMonitoredTag();
         });
+
+        Telescope::filterBatch(function (Collection $entries) use ($recordAll) {
+            if ($recordAll) {
+                return true;
+            }
+
+            return $entries->contains(function (IncomingEntry $entry) {
+                return $entry->isReportableException() ||
+                    $entry->isFailedJob() ||
+                    $entry->isScheduledTask() ||
+                    $entry->isSlowQuery() ||
+                    $entry->hasMonitoredTag();
+            });
+        });
+    }
+
+    protected function shouldRecordAllEntries(): bool
+    {
+        if ($this->app->environment(['local', 'staging'])) {
+            return true;
+        }
+
+        return filter_var(env('TELESCOPE_RECORD_ALL', false), FILTER_VALIDATE_BOOL);
     }
 
     /**
@@ -35,7 +63,7 @@ class TelescopeServiceProvider extends TelescopeApplicationServiceProvider
      */
     protected function hideSensitiveRequestDetails(): void
     {
-        if ($this->app->environment('local')) {
+        if ($this->app->environment(['local', 'staging'])) {
             return;
         }
 

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Bridge;
 
+use App\Events\Bridge\BridgeReplicationPageFetched;
 use App\Jobs\BridgePersistReplicaChunkJob;
 use App\Jobs\BridgePersistReplicaFinalizeJob;
 use App\Jobs\BridgeSyncFetchPageJob;
@@ -9,10 +10,12 @@ use App\Models\ListingSyncCursor;
 use App\Services\Bridge\BridgeReplicaCursorPatch;
 use App\Services\Bridge\BridgeSyncFetchScheduler;
 use App\Services\Bridge\BridgeSyncService;
+use App\Services\Bridge\BridgeSyncTelemetry;
 use Illuminate\Bus\PendingBatch;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -47,8 +50,7 @@ class BridgeSyncFetchPageJobTest extends TestCase
 
         Bus::fake();
 
-        (new BridgeSyncFetchPageJob('stellar', 'replication', 0, 0))
-            ->handle(app(BridgeSyncService::class));
+        $this->runFetchJob('stellar', 'replication');
 
         Http::assertSent(function (Request $request) use ($replicationUrl): bool {
             if (! str_starts_with($request->url(), $replicationUrl)) {
@@ -81,8 +83,7 @@ class BridgeSyncFetchPageJobTest extends TestCase
 
         Bus::fake();
 
-        (new BridgeSyncFetchPageJob('stellar', 'replication', 0, 0))
-            ->handle(app(BridgeSyncService::class));
+        $this->runFetchJob('stellar', 'replication');
 
         Bus::assertBatched(function (PendingBatch $batch): bool {
             if ($batch->jobs->count() !== 1) {
@@ -115,8 +116,7 @@ class BridgeSyncFetchPageJobTest extends TestCase
 
         Bus::fake();
 
-        (new BridgeSyncFetchPageJob('stellar', 'replication', 0, 0))
-            ->handle(app(BridgeSyncService::class));
+        $this->runFetchJob('stellar', 'replication');
 
         $chunkJob = null;
         Bus::assertBatched(function (PendingBatch $batch) use (&$chunkJob): bool {
@@ -126,7 +126,10 @@ class BridgeSyncFetchPageJobTest extends TestCase
         });
         $this->assertInstanceOf(BridgePersistReplicaChunkJob::class, $chunkJob);
 
-        $chunkJob->handle(app(BridgeSyncService::class));
+        $chunkJob->handle(
+            app(BridgeSyncService::class),
+            app(BridgeSyncTelemetry::class),
+        );
 
         $finalize = new BridgePersistReplicaFinalizeJob(
             dataset: 'stellar',
@@ -156,6 +159,40 @@ class BridgeSyncFetchPageJobTest extends TestCase
         $this->assertNotNull($cursor);
         $this->assertSame($nextUrl, $cursor->replication_next_url);
         $this->assertTrue($cursor->replication_in_progress);
+    }
+
+    public function test_replication_fetch_emits_page_fetched_telemetry(): void
+    {
+        $replicationUrl = 'https://bridge.test/OData/stellar/Property/replication';
+
+        Http::fake([
+            $replicationUrl.'*' => Http::response([
+                'value' => [
+                    $this->sampleListingRow('STELLAR-100'),
+                    array_merge($this->sampleListingRow('STELLAR-101'), ['StandardStatus' => 'Pending']),
+                ],
+            ], 200),
+        ]);
+
+        Bus::fake();
+        Event::fake([BridgeReplicationPageFetched::class]);
+
+        $this->runFetchJob('stellar', 'replication');
+
+        Event::assertDispatched(BridgeReplicationPageFetched::class, function (BridgeReplicationPageFetched $event): bool {
+            return $event->listingsDownloaded === 2
+                && $event->statusCounts['active'] === 1
+                && $event->statusCounts['pending'] === 1
+                && isset($event->odataQuery['$filter']);
+        });
+    }
+
+    private function runFetchJob(string $dataset, string $mode): void
+    {
+        (new BridgeSyncFetchPageJob($dataset, $mode, 0, 0))->handle(
+            app(BridgeSyncService::class),
+            app(BridgeSyncTelemetry::class),
+        );
     }
 
     /**

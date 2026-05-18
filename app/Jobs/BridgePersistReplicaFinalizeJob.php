@@ -28,6 +28,14 @@ class BridgePersistReplicaFinalizeJob implements ShouldQueue
         $this->onQueue((string) config('bridge.sync_persist_queue', 'bridge-sync-persist'));
     }
 
+    /**
+     * @return list<string>
+     */
+    public function tags(): array
+    {
+        return ['bridge-replication', 'dataset:'.$this->dataset, 'persist-finalize'];
+    }
+
     public function handle(BridgeSyncService $sync, BridgeSyncFetchScheduler $scheduler): void
     {
         if ($this->cursorPatch !== null) {

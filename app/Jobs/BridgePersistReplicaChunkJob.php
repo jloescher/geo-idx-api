@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Services\Bridge\BridgeSyncService;
+use App\Services\Bridge\BridgeSyncTelemetry;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
@@ -21,12 +22,29 @@ class BridgePersistReplicaChunkJob implements ShouldQueue
     public function __construct(
         public string $dataset,
         public array $rows,
+        public ?int $chunkIndex = null,
+        public ?int $chunkTotal = null,
     ) {
         $this->onQueue((string) config('bridge.sync_persist_queue', 'bridge-sync-persist'));
     }
 
-    public function handle(BridgeSyncService $sync): void
+    /**
+     * @return list<string>
+     */
+    public function tags(): array
     {
-        $sync->persistChunk($this->dataset, $this->rows);
+        return ['bridge-replication', 'dataset:'.$this->dataset, 'persist-chunk'];
+    }
+
+    public function handle(BridgeSyncService $sync, BridgeSyncTelemetry $telemetry): void
+    {
+        $stats = $sync->persistChunk($this->dataset, $this->rows);
+
+        $telemetry->recordPagePersisted(
+            dataset: $this->dataset,
+            stats: $stats,
+            chunkIndex: $this->chunkIndex,
+            chunkTotal: $this->chunkTotal,
+        );
     }
 }

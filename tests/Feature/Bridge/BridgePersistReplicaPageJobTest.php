@@ -10,6 +10,7 @@ use App\Models\ListingSyncCursor;
 use App\Services\Bridge\BridgeReplicaCursorPatch;
 use App\Services\Bridge\BridgeSyncFetchScheduler;
 use App\Services\Bridge\BridgeSyncService;
+use App\Services\Bridge\BridgeSyncTelemetry;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -47,7 +48,10 @@ class BridgePersistReplicaPageJobTest extends TestCase
             ],
         );
 
-        $job->handle(app(BridgeSyncService::class));
+        $job->handle(
+            app(BridgeSyncService::class),
+            app(BridgeSyncTelemetry::class),
+        );
 
         $this->assertDatabaseHas('listings', [
             'dataset_slug' => 'stellar',
@@ -84,7 +88,10 @@ class BridgePersistReplicaPageJobTest extends TestCase
             ],
         );
 
-        $chunk->handle(app(BridgeSyncService::class));
+        $chunk->handle(
+            app(BridgeSyncService::class),
+            app(BridgeSyncTelemetry::class),
+        );
 
         $finalize = new BridgePersistReplicaFinalizeJob(
             dataset: 'stellar',

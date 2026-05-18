@@ -242,7 +242,29 @@ Set **Number of CPUs** on workers to **0.5–1** during Bridge replication catch
 
 ---
 
-## 9. Troubleshooting
+## 9. Telescope / Pulse (staging diagnostics)
+
+Set the **same** observability env on **web (octane)**, **worker**, and **scheduler**:
+
+| Variable | Staging value |
+|----------|----------------|
+| `TELESCOPE_ENABLED` | `true` |
+| `TELESCOPE_LOG_LEVEL` | `info` (required for `bridge.replication.*` logs in Telescope **Logs**) |
+| `PULSE_ENABLED` | `true` (optional queue metrics at `/pulse`) |
+
+**Post-deploy:** if you change `TELESCOPE_*` at runtime, run `php artisan config:cache` (or `config:clear`) on each container so values are not frozen from image build.
+
+**Bridge replication in Telescope** (`/telescope` on the platform host, HTTP Basic Auth in production only):
+
+- **Logs** — filter `bridge.replication` (`page_fetched`, `page_persisted`, `failed`, `kickoff`)
+- **Events** — `BridgeReplicationPageFetched`, `BridgeReplicationPagePersisted`, `BridgeReplicationBatchFailed`
+- **Jobs** / **Batches** — `BridgeSyncFetchPageJob`, `bridge-replica-persist:{dataset}`
+
+Workers must use the **same `DB_*`** as web so `telescope_entries` is shared.
+
+---
+
+## 10. Troubleshooting
 
 ### Scheduler repeats “No scheduled commands are ready to run”
 

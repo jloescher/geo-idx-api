@@ -24,10 +24,17 @@ final readonly class BridgeSyncPageResult
         public bool $replicationStarting = false,
         public bool $forbidden = false,
         public bool $httpError = false,
+        public ?string $bridgeUrl = null,
+        /** @var array<string, mixed> */
+        public array $odataQuery = [],
+        public int $httpStatus = 200,
     ) {}
 
-    public static function forbidden(): self
-    {
+    public static function forbidden(
+        ?string $bridgeUrl = null,
+        array $odataQuery = [],
+        int $httpStatus = 403,
+    ): self {
         return new self(
             rows: [],
             nextReplicationUrl: null,
@@ -36,11 +43,17 @@ final readonly class BridgeSyncPageResult
             nextIncrementalSkip: 0,
             maxBridgeTs: null,
             forbidden: true,
+            bridgeUrl: $bridgeUrl,
+            odataQuery: $odataQuery,
+            httpStatus: $httpStatus,
         );
     }
 
-    public static function httpError(): self
-    {
+    public static function httpError(
+        ?string $bridgeUrl = null,
+        array $odataQuery = [],
+        int $httpStatus = 0,
+    ): self {
         return new self(
             rows: [],
             nextReplicationUrl: null,
@@ -49,6 +62,9 @@ final readonly class BridgeSyncPageResult
             nextIncrementalSkip: 0,
             maxBridgeTs: null,
             httpError: true,
+            bridgeUrl: $bridgeUrl,
+            odataQuery: $odataQuery,
+            httpStatus: $httpStatus,
         );
     }
 }

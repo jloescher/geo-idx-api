@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Services\Bridge\BridgeSyncService;
+use App\Services\Bridge\BridgeSyncTelemetry;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +23,15 @@ class BridgeSyncJob implements ShouldQueue
         $this->onQueue((string) config('bridge.sync_fetch_queue', 'bridge-sync-fetch'));
     }
 
-    public function handle(BridgeSyncService $sync): void
+    /**
+     * @return list<string>
+     */
+    public function tags(): array
+    {
+        return ['bridge-replication', 'kickoff'];
+    }
+
+    public function handle(BridgeSyncService $sync, BridgeSyncTelemetry $telemetry): void
     {
         if (DB::connection()->getDriverName() !== 'pgsql') {
             return;
@@ -31,6 +40,9 @@ class BridgeSyncJob implements ShouldQueue
         $datasets = config('bridge.datasets', ['stellar']);
         $list = is_array($datasets) ? array_values(array_filter(array_map(trim(...), $datasets))) : ['stellar'];
         $queue = (string) config('bridge.sync_fetch_queue', 'bridge-sync-fetch');
+        $persistQueue = (string) config('bridge.sync_persist_queue', 'bridge-sync-persist');
+
+        $telemetry->recordKickoff($list, $queue, $persistQueue);
 
         foreach ($list as $dataset) {
             if (! is_string($dataset) || $dataset === '') {

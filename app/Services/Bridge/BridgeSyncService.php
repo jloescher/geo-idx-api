@@ -78,6 +78,7 @@ final class BridgeSyncService
 
     public function __construct(
         private readonly BridgeHttpService $http,
+        private readonly BridgeSyncTelemetry $telemetry,
     ) {}
 
     public function cursorForDataset(string $dataset): ListingSyncCursor
@@ -135,19 +136,31 @@ final class BridgeSyncService
         $response = $this->http->serverJsonGet($url, $query);
 
         if ($response->status() === 403) {
-            Log::warning('bridge.replication.forbidden', ['dataset' => $dataset]);
+            $this->telemetry->recordPageFailed(
+                dataset: $dataset,
+                mode: 'replication',
+                failureType: 'forbidden',
+                message: 'Bridge replication returned 403',
+                httpStatus: 403,
+                bridgeUrl: $url,
+                odataQuery: $query,
+            );
 
-            return BridgeSyncPageResult::forbidden();
+            return BridgeSyncPageResult::forbidden($url, $query, 403);
         }
 
         if (! $response->successful()) {
-            Log::warning('bridge.replication.http_error', [
-                'dataset' => $dataset,
-                'status' => $response->status(),
-                'url' => $url,
-            ]);
+            $this->telemetry->recordPageFailed(
+                dataset: $dataset,
+                mode: 'replication',
+                failureType: 'http_error',
+                message: 'Bridge replication HTTP error',
+                httpStatus: $response->status(),
+                bridgeUrl: $url,
+                odataQuery: $query,
+            );
 
-            return BridgeSyncPageResult::httpError();
+            return BridgeSyncPageResult::httpError($url, $query, $response->status());
         }
 
         $body = $response->json();
@@ -163,6 +176,9 @@ final class BridgeSyncService
             nextIncrementalSkip: 0,
             maxBridgeTs: $maxBridgeTs,
             replicationStarting: $replicationStarting,
+            bridgeUrl: $url,
+            odataQuery: $query,
+            httpStatus: $response->status(),
         );
     }
 
@@ -209,12 +225,17 @@ final class BridgeSyncService
         }
 
         if (! $response->successful()) {
-            Log::warning('bridge.incremental.http_error', [
-                'dataset' => $dataset,
-                'status' => $response->status(),
-            ]);
+            $this->telemetry->recordPageFailed(
+                dataset: $dataset,
+                mode: 'incremental',
+                failureType: 'http_error',
+                message: 'Bridge incremental HTTP error',
+                httpStatus: $response->status(),
+                bridgeUrl: $url,
+                odataQuery: $query,
+            );
 
-            return BridgeSyncPageResult::httpError();
+            return BridgeSyncPageResult::httpError($url, $query, $response->status());
         }
 
         $body = $response->json();
@@ -227,6 +248,9 @@ final class BridgeSyncService
                 incrementalHasMore: false,
                 nextIncrementalSkip: $skip,
                 maxBridgeTs: null,
+                bridgeUrl: $url,
+                odataQuery: $query,
+                httpStatus: $response->status(),
             );
         }
 
@@ -249,21 +273,26 @@ final class BridgeSyncService
             incrementalHasMore: $hasMore,
             nextIncrementalSkip: $nextSkip,
             maxBridgeTs: $maxBridgeTs,
+            bridgeUrl: $url,
+            odataQuery: $query,
+            httpStatus: $response->status(),
         );
     }
 
     /**
      * @param  list<array<string, mixed>>  $rows
      */
-    public function persistChunk(string $dataset, array $rows, ?BridgeReplicaCursorPatch $patch = null): void
+    public function persistChunk(string $dataset, array $rows, ?BridgeReplicaCursorPatch $patch = null): BridgeReplicaPersistStats
     {
-        if ($rows !== []) {
-            $this->hydrateReplicaBatch($dataset, $rows);
-        }
+        $stats = $rows === []
+            ? new BridgeReplicaPersistStats
+            : $this->hydrateReplicaBatch($dataset, $rows);
 
         if ($patch !== null) {
             $this->applyCursorPatch($dataset, $patch);
         }
+
+        return $stats;
     }
 
     public function applyCursorPatch(string $dataset, BridgeReplicaCursorPatch $patch): void
@@ -348,8 +377,12 @@ final class BridgeSyncService
      *
      * @param  list<array<string, mixed>>  $rows
      */
-    private function hydrateReplicaBatch(string $dataset, array $rows): void
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function hydrateReplicaBatch(string $dataset, array $rows): BridgeReplicaPersistStats
     {
+        $startedAt = hrtime(true);
         $chunkSize = (int) config('bridge.sync_upsert_chunk_size', 250);
         $pendingUpserts = [];
         $coords = [];
@@ -357,14 +390,21 @@ final class BridgeSyncService
         $deletesGrouped = [];
         /** @var array<string, array<string, bool>> $nullCoordKeys */
         $nullCoordKeys = [];
+        $upserted = 0;
+        $deleted = 0;
+        $skipped = 0;
 
         foreach ($rows as $row) {
             if (! is_array($row)) {
+                $skipped++;
+
                 continue;
             }
 
             $listingKey = isset($row['ListingKey']) && is_string($row['ListingKey']) ? $row['ListingKey'] : null;
             if ($listingKey === null || $listingKey === '') {
+                $skipped++;
+
                 continue;
             }
 
@@ -376,6 +416,7 @@ final class BridgeSyncService
                     $deletesGrouped[$datasetSlug] = [];
                 }
                 $deletesGrouped[$datasetSlug][$listingKey] = true;
+                $deleted++;
 
                 continue;
             }
@@ -386,6 +427,7 @@ final class BridgeSyncService
 
             $payload = $this->buildUpsertPayload($dataset, $datasetSlug, $listingKey, $row, $lat, $lng);
             $pendingUpserts[] = $payload;
+            $upserted++;
 
             if ($lng !== null && $lat !== null && is_finite($lat) && is_finite($lng)) {
                 $coords[] = [$datasetSlug, $listingKey, $lng, $lat];
@@ -410,6 +452,16 @@ final class BridgeSyncService
         $this->flushCoordinates($coords);
         $this->flushNullCoordinates($nullCoordKeys);
         $this->flushDeletes($deletesGrouped);
+
+        $durationMs = (int) ((hrtime(true) - $startedAt) / 1_000_000);
+
+        return new BridgeReplicaPersistStats(
+            rowsReceived: count($rows),
+            upserted: $upserted,
+            deleted: $deleted,
+            skipped: $skipped,
+            durationMs: $durationMs,
+        );
     }
 
     /**
