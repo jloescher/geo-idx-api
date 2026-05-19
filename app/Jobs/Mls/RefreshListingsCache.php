@@ -48,9 +48,8 @@ class RefreshListingsCache implements ShouldQueue
             return;
         }
 
-        $incoming = Request::create('/api/v1/listings', 'GET', [
-            'limit' => 200,
-        ]);
+        // Do not pass Web-style `limit` — Bridge OData rejects it alongside $top (see BridgeProxyController).
+        $incoming = Request::create('/api/v1/listings', 'GET');
         $incoming->attributes->set('bridge.domain', $domain);
         $incoming->attributes->set('bridge.domain_slug', $domain->domain_slug);
         $incoming->attributes->set('mls.feed_code', $this->internalFeedCode);

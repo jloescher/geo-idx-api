@@ -48,7 +48,8 @@ final readonly class MlsActivePendingListingsFetcher
      */
     private function fetchBridgePropertyMerged(BridgeClient $client, Request $incoming): array
     {
-        $pageSize = max(50, min(2000, (int) config('mls.listings_sync_page_size', 500)));
+        // Bridge standard Property OData allows $top max 200 (replication allows 2000 on /replication only).
+        $pageSize = max(50, min(200, (int) config('mls.listings_sync_page_size', 200)));
         $maxPages = max(1, min(5000, (int) config('mls.listings_sync_max_pages', 500)));
         $maxRows = max(1000, min(500000, (int) config('mls.listings_sync_max_rows', 100000)));
         $since = now()->subYear()->utc()->format('Y-m-d\TH:i:s\Z');
@@ -78,7 +79,7 @@ final readonly class MlsActivePendingListingsFetcher
      */
     private function firstSuccessfulBridgePropertyResponse(BridgeClient $client, Request $incoming, array $urls, array $query): Response
     {
-        $last = $client->getJsonFromUrl($urls[0], $incoming, $query);
+        $last = $client->getJsonFromUrl($urls[0], $incoming, $query, ['limit']);
         if ($last->successful()) {
             return $last;
         }
@@ -88,7 +89,7 @@ final readonly class MlsActivePendingListingsFetcher
                 break;
             }
 
-            $candidate = $client->getJsonFromUrl($url, $incoming, $query);
+            $candidate = $client->getJsonFromUrl($url, $incoming, $query, ['limit']);
             if ($candidate->successful()) {
                 return $candidate;
             }
