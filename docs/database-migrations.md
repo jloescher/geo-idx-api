@@ -33,6 +33,12 @@ For a **fresh database**, run `php artisan migrate` (or `migrate:fresh` on dispo
 
 **Mirror scope:** replication stores **Active + Pending** in `listings`; **Closed** is on-demand via live MLS API (Bridge or Spark). See [IDX-API Bridge proxy](idx-api-bridge-proxy.md).
 
+**Provider-neutral extension columns on `listings`:** `flood_zone_code`, `estimated_total_monthly_fees` (replaces legacy `stellar_flood_zone_code` / `stellar_total_monthly_fees` on fresh installs). Beaches monthly fees are derived from association fee pairs at persist time — see [Spark integration](spark/idx-api-integration.md#normalized-mirror-columns-persist--replication-updates).
+
+**Partial index (PostgreSQL):** `listings_ap_flood_zone_idx` on `(dataset_slug, flood_zone_code)` for Active/Pending rows where `flood_zone_code IS NOT NULL`.
+
+**Services:** `AssociationFeeMonthlyNormalizer`, `ListingResoFieldResolver`, `ListingMirrorWriter` (replication create/update), `PostgisSearchService` (search mirror leg), `BridgeSearchClient` / `BridgeCompsService` (OData and `raw_data` mapping).
+
 ### Fresh install
 
 ```bash

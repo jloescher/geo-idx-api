@@ -263,6 +263,8 @@ The structured search endpoint accepts JSON payloads with filter criteria and re
 
 **Operational note:** if Bridge returns **HTTP 400** on replication with the Active/Pending `$filter`, Stellar may not support `$filter` on `/replication` (undocumented). Treat as an upstream compatibility issue; incremental `Property` sync is unaffected.
 
+**PostGIS mirror filters:** `low_risk_floodzone` reads `listings.flood_zone_code`; `min_monthly_fees` / `max_monthly_fees` read `listings.estimated_total_monthly_fees` (Beaches: sum of association fees normalized to monthly at persist time).
+
 ### Request body (SearchRequest)
 
 ```json
@@ -290,26 +292,32 @@ The structured search endpoint accepts JSON payloads with filter criteria and re
 }
 ```
 
-### Filter to OData mapping
+### Filter mapping (`SearchRequest`)
 
-| Search Filter | Bridge OData Field |
-|---------------|-------------------|
-| `cities` | `City` (case-insensitive `contains`) |
-| `counties_or_parishes` | `CountyOrParish` |
-| `state_or_province` | `StateOrProvince` |
-| `price_min/max` | `ListPrice` |
-| `bedrooms_min` | `BedroomsTotal` |
-| `bathrooms_min` (full) | `BathroomsFull` |
-| `bathrooms_min` (total) | `BathroomsTotal` |
-| `property_types` | `PropertyType` |
-| `status` / `statuses` | `StandardStatus` |
-| `waterfront` | `WaterfrontYN` |
-| `pool` | `PoolPrivateYN` |
-| `garage_spaces_min` | `GarageSpaces` |
-| `year_built_min` | `YearBuilt` |
-| `sqft_min` | `LivingArea` |
-| `lot_size_min` | `LotSizeSquareFeet` |
-| `flood_zones` | `FloodZone` (post-filtered if unsupported upstream) |
+**PostGIS mirror leg** (Active/Pending local query — see `PostgisSearchService`):
+
+| Request field | Mirror column / behavior |
+|---------------|-------------------------|
+| `min_price` / `max_price` | `list_price` |
+| `min_beds` / `max_beds` | `bedrooms_total` |
+| `min_baths` / `max_baths` | `bathrooms_total_decimal` |
+| `min_sqft` / `max_sqft` | `living_area` |
+| `min_lot_size_acres` / `max_lot_size_acres` | `lot_size_acres` |
+| `min_year_built` / `max_year_built` | `year_built` |
+| `min_monthly_fees` / `max_monthly_fees` | `estimated_total_monthly_fees` |
+| `low_risk_floodzone` | `flood_zone_code` contains `x` (case-insensitive) |
+| `waterfront`, `pool_private`, `dock`, etc. | matching `*_yn` boolean columns |
+| `city`, `state`, `county`, `postal_code` | address columns |
+| `property_types`, `property_sub_types`, `statuses` | `property_type`, `property_sub_type`, `standard_status` |
+
+**Live Bridge OData leg** (Closed-only, special filters, or Bridge fallback — see `BridgeSearchTranslator`):
+
+| Request field | Bridge OData / post-filter |
+|---------------|---------------------------|
+| Price, beds, baths, property type, status, geo, etc. | Standard RESO fields on `Property` |
+| `low_risk_floodzone` | `{DATASET}_FloodZoneCode` OData filter + post-filter when needed (e.g. `STELLAR_FloodZoneCode` for Stellar) |
+
+Normalized mirror columns (`flood_zone_code`, `estimated_total_monthly_fees`) are populated at replication persist by `ListingMirrorWriter` + `ListingResoFieldResolver` for **both** Stellar and Beaches. Stellar flood source: `STELLAR_FloodZoneCode` (fallback `FloodZoneCode`). Beaches flood: `Location_sp_and_sp_Legal_co_Flood_sp_Zone2`. Monthly fees: Stellar `{DATASET}_TotalMonthlyFees` when present; Beaches sum of `AssociationFee` / `AssociationFee2` converted by frequency — [Spark integration](spark/idx-api-integration.md#normalized-mirror-columns-persist--replication-updates).
 
 ### Dataset restrictions
 

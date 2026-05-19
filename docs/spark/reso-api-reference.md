@@ -106,9 +106,19 @@ Returns **403** if feed not enabled for domain/token.
 
 - Standard RESO fields per [beaches_metadata.xml](beaches_metadata.xml).
 - `BathroomsTotalInteger` and `BathroomsTotalDecimal` — mirror uses decimal for `bathrooms_total_decimal`.
+- `LivingArea` — indexed as `living_area`; falls back to `BuildingAreaTotal` when `LivingArea` is missing.
 - `ModificationTimestamp` — cursor driver (no `BridgeModificationTimestamp`).
 - Encoded custom field names (`*_sp_*`, `*_co_*`) — stored in `listings.custom_fields`; human labels in metadata `MLS.OData.Metadata.LocalName` annotations.
 - `Media` expanded on replication — full media array in `listings.raw_data`.
+
+### Normalized mirror columns (idx-api)
+
+| `listings` column | Beaches RESO inputs |
+|-------------------|---------------------|
+| `flood_zone_code` | `Location_sp_and_sp_Legal_co_Flood_sp_Zone2` |
+| `estimated_total_monthly_fees` | `AssociationFee` + `AssociationFeeFrequency`, `AssociationFee2` + `AssociationFee2Frequency` (monthly equivalent sum; see [idx-api-integration.md](idx-api-integration.md#normalized-mirror-columns-persist--replication-updates)) |
+
+**Association fee frequencies:** `Monthly`, `Annually`, `Semi-Annually`, `Quarterly`, `Weekly`, `Daily`, `One Time` (exact MLS strings). Null frequency or `One Time` does not contribute to the monthly total.
 
 Sample replication page: [beaches_50_listings.json](beaches_50_listings.json).
 

@@ -543,7 +543,10 @@
                       "living_area_sqft": { "type": "integer", "example": 1850 },
                       "lot_size_sqft": { "type": "integer", "example": 8500 },
                       "garage_spaces": { "type": "integer", "example": 2 },
-                      "monthly_fees": { "type": "number", "example": 250 }
+                      "monthly_fees": { "type": "number", "example": 250 },
+                      "flood_zone_code": { "type": "string", "example": "X", "description": "Provider-neutral flood zone (CSV allowed). Deprecated alias: stellar_flood_zone_code." },
+                      "stellar_flood_zone_code": { "type": "string", "deprecated": true, "description": "Merged into flood_zone_code when flood_zone_code omitted." },
+                      "stellar_total_monthly_fees": { "type": "number", "deprecated": true, "description": "Merged into monthly_fees when monthly_fees omitted." }
                     }
                   },
                   "mode": {
@@ -687,7 +690,7 @@
       "post": {
         "tags": ["MLS Data - Search"],
         "summary": "Structured MLS Search",
-        "description": "Searches Bridge RESO Property data through the proxy with request-level caching (15 minute TTL), teaser gating when the resolved token/context is not `idx:full`, and domain dataset restrictions.\n\nUse `?dataset=` to select a dataset when enabled for the domain/site.",
+        "description": "Hybrid MLS search: Active/Pending from PostGIS `listings` mirror when possible; Closed and special filters from live Bridge/Spark OData. Mirror leg: `low_risk_floodzone` filters `listings.flood_zone_code`; `min_monthly_fees`/`max_monthly_fees` filter `listings.estimated_total_monthly_fees`. Request-level caching (15 minute TTL), teaser gating when not `idx:full`, domain dataset restrictions.\n\nUse `?dataset=` to select a dataset when enabled for the domain/site.",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           {
@@ -715,7 +718,9 @@
                     "items": { "type": "string" },
                     "example": ["Active"]
                   },
-                  "low_risk_floodzone": { "type": "boolean", "example": true },
+                  "low_risk_floodzone": { "type": "boolean", "example": true, "description": "PostGIS leg: flood_zone_code contains x (case-insensitive)." },
+                  "min_monthly_fees": { "type": "number", "example": 100, "description": "PostGIS leg: estimated_total_monthly_fees >= value." },
+                  "max_monthly_fees": { "type": "number", "example": 700, "description": "PostGIS leg: estimated_total_monthly_fees <= value." },
                   "sort": { "type": "string", "example": "list_price" },
                   "sort_dir": { "type": "string", "example": "desc" },
                   "page": {

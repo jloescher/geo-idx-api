@@ -40,5 +40,8 @@ class ListingMirrorWriterTest extends TestCase
         $this->assertNotNull($listing->longitude);
         $this->assertIsArray($listing->raw_data);
         $this->assertArrayHasKey('Media', $listing->raw_data);
+        $this->assertNull($listing->flood_zone_code);
+        $this->assertEquals(500.22, (float) $listing->estimated_total_monthly_fees);
+        $this->assertSame(840, $listing->living_area);
     }
 }

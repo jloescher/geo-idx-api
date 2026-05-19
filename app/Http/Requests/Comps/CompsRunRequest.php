@@ -6,6 +6,32 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class CompsRunRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $subject = $this->input('subject');
+        if (! is_array($subject)) {
+            return;
+        }
+
+        if (
+            ! array_key_exists('flood_zone_code', $subject)
+            && isset($subject['stellar_flood_zone_code'])
+            && is_string($subject['stellar_flood_zone_code'])
+        ) {
+            $subject['flood_zone_code'] = $subject['stellar_flood_zone_code'];
+        }
+
+        if (
+            ! array_key_exists('monthly_fees', $subject)
+            && isset($subject['stellar_total_monthly_fees'])
+            && is_numeric($subject['stellar_total_monthly_fees'])
+        ) {
+            $subject['monthly_fees'] = $subject['stellar_total_monthly_fees'];
+        }
+
+        $this->merge(['subject' => $subject]);
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -42,6 +68,8 @@ class CompsRunRequest extends FormRequest
             'subject.monthly_fees' => ['nullable', 'numeric', 'min:0'],
             'subject.asking_price' => ['nullable', 'numeric', 'min:0'],
             'subject.flood_zone_code' => ['nullable', 'string', 'max:200'],
+            'subject.stellar_flood_zone_code' => ['nullable', 'string', 'max:200'],
+            'subject.stellar_total_monthly_fees' => ['nullable', 'numeric', 'min:0'],
 
             'mode' => ['required', 'string', 'in:A,B,C,D,E,rent_hold_cashflow,flip_vs_hold,appraiser_simulation,bpo,home_value'],
 

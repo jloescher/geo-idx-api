@@ -64,8 +64,8 @@ return new class extends Migration
 
             $table->decimal('previous_list_price', 14, 2)->nullable();
 
-            $table->string('stellar_flood_zone_code', 80)->nullable();
-            $table->decimal('stellar_total_monthly_fees', 14, 2)->nullable();
+            $table->string('flood_zone_code', 80)->nullable();
+            $table->decimal('estimated_total_monthly_fees', 14, 2)->nullable();
 
             $table->double('latitude')->nullable();
             $table->double('longitude')->nullable();
@@ -115,6 +115,7 @@ return new class extends Migration
             DB::statement("CREATE INDEX IF NOT EXISTS listings_ap_ds_price_idx ON listings (dataset_slug, list_price) WHERE {$ap}");
             DB::statement("CREATE INDEX IF NOT EXISTS listings_ap_ds_beds_idx ON listings (dataset_slug, bedrooms_total) WHERE {$ap}");
             DB::statement("CREATE INDEX IF NOT EXISTS listings_ap_ds_mod_ts_idx ON listings (dataset_slug, modification_timestamp DESC) WHERE {$ap} AND modification_timestamp IS NOT NULL");
+            DB::statement("CREATE INDEX IF NOT EXISTS listings_ap_flood_zone_idx ON listings (dataset_slug, flood_zone_code) WHERE {$ap} AND flood_zone_code IS NOT NULL");
         } else {
             Schema::table('listings', function (Blueprint $table): void {
                 $table->index(['dataset_slug', 'list_price'], 'listings_ds_price_sqlite_idx');
@@ -162,6 +163,7 @@ return new class extends Migration
 
         $driver = Schema::connection($this->getConnection())->getConnection()->getDriverName();
         if ($driver === 'pgsql') {
+            DB::statement('DROP INDEX IF EXISTS listings_ap_flood_zone_idx');
             DB::statement('DROP INDEX IF EXISTS listings_ap_ds_mod_ts_idx');
             DB::statement('DROP INDEX IF EXISTS listings_ap_ds_beds_idx');
             DB::statement('DROP INDEX IF EXISTS listings_ap_ds_price_idx');

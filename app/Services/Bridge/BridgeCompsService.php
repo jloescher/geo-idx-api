@@ -3,6 +3,7 @@
 namespace App\Services\Bridge;
 
 use App\Services\Geocoding\GoogleGeocodingService;
+use App\Services\Mls\ListingResoFieldResolver;
 use App\Services\Mls\MlsProxyAuditLogger;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -22,6 +23,7 @@ final readonly class BridgeCompsService
         private BpoMarketExtractor $bpoExtractor,
         private BpoAdjustmentEngine $bpoEngine,
         private GoogleGeocodingService $geocodingService,
+        private ListingResoFieldResolver $resoFieldResolver,
     ) {}
 
     /**
@@ -238,9 +240,9 @@ final readonly class BridgeCompsService
     private function subjectFromPropertyRecord(array $record, string $dataset): array
     {
         $coords = $this->parseCoordinates($record);
-        $u = strtoupper($dataset);
-        $floodField = "{$u}_FloodZoneCode";
-        $feesField = "{$u}_TotalMonthlyFees";
+        $datasetSlug = strtolower($dataset);
+        $floodZoneRaw = $this->resoFieldResolver->resolveFloodZoneCodeForDataset($record, $datasetSlug);
+        $monthlyFees = $this->resoFieldResolver->resolveEstimatedTotalMonthlyFeesForDataset($record, $datasetSlug);
 
         return [
             'listing_key' => (string) ($record['ListingKey'] ?? ''),
@@ -260,11 +262,11 @@ final readonly class BridgeCompsService
             'subdivision_name' => $this->stringOrNull($record['SubdivisionName'] ?? null),
             'mls_area_major' => $this->stringOrNull($record['MLSAreaMajor'] ?? null),
             'view_yn' => $this->boolOrNull($record['ViewYN'] ?? null),
-            'monthly_fees' => $this->floatOrNull($record[$feesField] ?? null),
+            'monthly_fees' => $monthlyFees,
             'list_price' => $this->floatOrNull($record['ListPrice'] ?? null),
             'property_type' => $this->stringOrNull($record['PropertyType'] ?? null),
             'property_sub_type' => $this->stringOrNull($record['PropertySubType'] ?? null),
-            'flood_zone_codes' => $this->floodCodesFromCsvString($record[$floodField] ?? null),
+            'flood_zone_codes' => $this->floodCodesFromCsvString($floodZoneRaw),
             'address' => $this->formatAddress($record),
         ];
     }
@@ -734,8 +736,8 @@ final readonly class BridgeCompsService
 
         $compRowForAdj = $this->rowToAdjustmentShape($row);
         $dataset = (string) ($subject['_dataset'] ?? '');
-        $floodField = $dataset !== '' ? strtoupper($dataset).'_FloodZoneCode' : '';
-        $floodCodes = $floodField !== '' ? $this->floodCodesFromCsvString($row[$floodField] ?? null) : [];
+        $floodCodes = $this->floodCodesFromCompRow($row, $dataset);
+        $monthlyFees = $this->monthlyFeesFromCompRow($row, $dataset);
 
         return [
             'listing_id' => Str::afterLast($listingKey, ':'),
@@ -769,7 +771,7 @@ final readonly class BridgeCompsService
             'property_sub_type' => $this->stringOrNull($row['PropertySubType'] ?? null),
             'subdivision_name' => $this->stringOrNull($row['SubdivisionName'] ?? null),
             'mls_area_major' => $this->stringOrNull($row['MLSAreaMajor'] ?? null),
-            'monthly_fees' => $dataset !== '' ? $this->floatOrNull($row[strtoupper($dataset).'_TotalMonthlyFees'] ?? null) : null,
+            'monthly_fees' => $monthlyFees,
             'adjustments' => $close !== null ? $this->adjustmentGrid($subject, $compRowForAdj, $medianPpsf, $filters) : null,
             'flood_zone_codes' => $floodCodes,
             'flood_zone' => $floodCodes[0] ?? null,
@@ -792,8 +794,8 @@ final readonly class BridgeCompsService
         $c = $this->parseCoordinates($row);
 
         $dataset = (string) ($subject['_dataset'] ?? '');
-        $floodField = $dataset !== '' ? strtoupper($dataset).'_FloodZoneCode' : '';
-        $floodCodes = $floodField !== '' ? $this->floodCodesFromCsvString($row[$floodField] ?? null) : [];
+        $floodCodes = $this->floodCodesFromCompRow($row, $dataset);
+        $monthlyFees = $this->monthlyFeesFromCompRow($row, $dataset);
 
         return [
             'listing_id' => Str::afterLast($listingKey, ':'),
@@ -824,10 +826,37 @@ final readonly class BridgeCompsService
             'property_sub_type' => $this->stringOrNull($row['PropertySubType'] ?? null),
             'subdivision_name' => $this->stringOrNull($row['SubdivisionName'] ?? null),
             'mls_area_major' => $this->stringOrNull($row['MLSAreaMajor'] ?? null),
-            'monthly_fees' => $dataset !== '' ? $this->floatOrNull($row[strtoupper($dataset).'_TotalMonthlyFees'] ?? null) : null,
+            'monthly_fees' => $monthlyFees,
             'flood_zone_codes' => $floodCodes,
             'flood_zone' => $floodCodes[0] ?? null,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return list<string>
+     */
+    private function floodCodesFromCompRow(array $row, string $dataset): array
+    {
+        if ($dataset === '') {
+            return [];
+        }
+
+        $raw = $this->resoFieldResolver->resolveFloodZoneCodeForDataset($row, strtolower($dataset));
+
+        return $this->floodCodesFromCsvString($raw);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function monthlyFeesFromCompRow(array $row, string $dataset): ?float
+    {
+        if ($dataset === '') {
+            return null;
+        }
+
+        return $this->resoFieldResolver->resolveEstimatedTotalMonthlyFeesForDataset($row, strtolower($dataset));
     }
 
     /**

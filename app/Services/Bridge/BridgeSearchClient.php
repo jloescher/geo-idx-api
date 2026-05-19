@@ -3,6 +3,7 @@
 namespace App\Services\Bridge;
 
 use App\Http\Responses\Search\ListingResult;
+use App\Services\Mls\ListingResoFieldResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -10,6 +11,7 @@ final readonly class BridgeSearchClient
 {
     public function __construct(
         private BridgeHttpService $bridge,
+        private ListingResoFieldResolver $resoFieldResolver,
     ) {}
 
     /**
@@ -134,8 +136,6 @@ final readonly class BridgeSearchClient
      */
     public function mapToListingResult(array $record, string $dataset): ListingResult
     {
-        $datasetUpper = strtoupper($dataset);
-
         $listingKey = (string) ($record['ListingKey'] ?? '');
         $mediaSources = $this->extractPrimaryImageSources($record, $listingKey);
 
@@ -195,17 +195,9 @@ final readonly class BridgeSearchClient
             }
         }
 
-        // Flood zone code (dataset-specific field)
-        $floodZoneField = "{$datasetUpper}_FloodZoneCode";
-        $floodZoneCode = is_string($record[$floodZoneField] ?? null) && $record[$floodZoneField] !== ''
-            ? $record[$floodZoneField]
-            : null;
-
-        // Monthly fees (dataset-specific field)
-        $monthlyFeesField = "{$datasetUpper}_TotalMonthlyFees";
-        $monthlyFees = is_numeric($record[$monthlyFeesField] ?? null)
-            ? (float) $record[$monthlyFeesField]
-            : null;
+        $datasetSlug = strtolower($dataset);
+        $floodZoneCode = $this->resoFieldResolver->resolveFloodZoneCodeForDataset($record, $datasetSlug);
+        $monthlyFees = $this->resoFieldResolver->resolveEstimatedTotalMonthlyFeesForDataset($record, $datasetSlug);
 
         return new ListingResult(
             listingId: Str::afterLast($listingKey, ':'),

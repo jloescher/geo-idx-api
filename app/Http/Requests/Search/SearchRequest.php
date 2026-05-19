@@ -2,8 +2,14 @@
 
 namespace App\Http\Requests\Search;
 
+use App\Services\Bridge\PostgisSearchService;
 use Illuminate\Foundation\Http\FormRequest;
 
+/**
+ * PostGIS mirror leg: {@see PostgisSearchService} filters
+ * {@code low_risk_floodzone} on {@code listings.flood_zone_code} and
+ * {@code min_monthly_fees}/{@code max_monthly_fees} on {@code listings.estimated_total_monthly_fees}.
+ */
 class SearchRequest extends FormRequest
 {
     public function authorize(): bool

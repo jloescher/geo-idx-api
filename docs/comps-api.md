@@ -25,6 +25,8 @@ Top-level keys:
 - Optional subject enrichments now supported:
   - `garage_spaces`, `carport_spaces`, `covered_spaces`, `open_parking_spaces`, `parking_stalls_total`
   - `subdivision_name`, `mls_area_major`, `view_yn`, `monthly_fees`, `flood_zone_code`
+- **Deprecated** (still accepted; merged before validation): `subject.stellar_flood_zone_code` → `flood_zone_code`, `subject.stellar_total_monthly_fees` → `monthly_fees`
+- **`subject.type: mls`:** flood zone and monthly fees are resolved from the upstream Property row via `ListingResoFieldResolver` (same rules as the Postgres mirror: Stellar `STELLAR_FloodZoneCode` / `STELLAR_TotalMonthlyFees`; Beaches association-fee frequency math)
 
 ### Modes
 
@@ -88,6 +90,7 @@ Mode-specific additions:
 
 ## Implementation notes
 
+- Comp and subject payloads expose `monthly_fees`, `flood_zone`, and `flood_zone_codes` derived from the same `ListingResoFieldResolver` logic as mirror persist (not only `{DATASET}_TotalMonthlyFees` / `{DATASET}_FloodZoneCode` OData fields).
 - Coordinates normalization supports all Bridge shapes used in Stellar:
   - GeoJSON-like: `Coordinates.coordinates`
   - tuple array: `Coordinates: [lng, lat]`

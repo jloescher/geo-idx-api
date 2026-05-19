@@ -292,7 +292,7 @@ Bridge Data Output enforces per-token quotas on RESO Web API traffic. idx-api re
 |------|--------|------------------|
 | Standard `Property` OData | `$top` max **200**; paginate with `$skip` | Incremental sync only; **>10,000** rows via `$skip` requires replication catch-up |
 | `Property/replication` | `$top` max **2,000**; **no** `$skip` / `$orderby` | Follow `Link: rel="next"` or `@odata.nextLink` only |
-| Replication mirror (idx-api) | Same endpoint; optional OData **`$filter`** | idx-api seeds with **`(StandardStatus eq 'Active' or StandardStatus eq 'Pending')`** on the **first** page only; **`Media`** always in `$select`. **Closed** is not bulk-replicated. |
+| Replication mirror (idx-api) | Same endpoint; optional OData **`$filter`** | idx-api seeds with **`(StandardStatus eq 'Active' or StandardStatus eq 'Pending')`** on the **first** page only; **`Media`** always in `$select`. **Closed** is not bulk-replicated. Persist maps `STELLAR_FloodZoneCode` → `listings.flood_zone_code`, `STELLAR_TotalMonthlyFees` → `listings.estimated_total_monthly_fees` (or association-fee math when extension fields are absent). |
 | Hourly quota | **5,000 requests/hour** per token | Default proactive cap **4800 req/hour** (`BRIDGE_SYNC_MAX_REQUESTS_PER_HOUR`) plus **280 req/min** (`BRIDGE_SYNC_MAX_REQUESTS_PER_MINUTE`) under the **334/min** burst ceiling |
 | Burst | **334 requests/minute** (1/15 of hourly) | `BridgeRateLimitGuard` on every server Bridge GET (sync, MLS cache, proxy); **no** throttle on Postgres persist jobs (`bridge-sync-persist` queue) |
 | Response headers | `Application-RateLimit-*`, `Burst-RateLimit-*` | Parsed after each GET; HTTP **429** retried via `BRIDGE_SYNC_MAX_HTTP_RETRIES` |

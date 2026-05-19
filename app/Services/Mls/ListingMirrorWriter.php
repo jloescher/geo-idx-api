@@ -16,6 +16,10 @@ use Illuminate\Support\Facades\DB;
  */
 final class ListingMirrorWriter
 {
+    public function __construct(
+        private readonly ListingResoFieldResolver $resoFieldResolver,
+    ) {}
+
     /**
      * @var list<string>
      */
@@ -41,8 +45,8 @@ final class ListingMirrorWriter
         'bridge_modification_timestamp',
         'price_change_timestamp',
         'previous_list_price',
-        'stellar_flood_zone_code',
-        'stellar_total_monthly_fees',
+        'flood_zone_code',
+        'estimated_total_monthly_fees',
         'latitude',
         'longitude',
         'waterfront_yn',
@@ -328,11 +332,9 @@ final class ListingMirrorWriter
             ListingMirrorProvider::Bridge => $this->extractBridgeExtensionFields($row, strtoupper($datasetUpper)),
         };
 
-        $u = strtoupper($datasetUpper);
-        $extFloodField = "{$u}_FloodZoneCode";
-        $extFeesField = "{$u}_TotalMonthlyFees";
-        $extFlood = $provider === ListingMirrorProvider::Bridge ? ($row[$extFloodField] ?? null) : null;
-        $extFees = $provider === ListingMirrorProvider::Bridge ? ($row[$extFeesField] ?? null) : null;
+        $datasetUpperNorm = strtoupper($datasetUpper);
+        $floodZoneCode = $this->resoFieldResolver->resolveFloodZoneCode($row, $provider, $datasetUpperNorm);
+        $estimatedTotalMonthlyFees = $this->resoFieldResolver->resolveEstimatedTotalMonthlyFees($row, $provider, $datasetUpperNorm);
 
         $conditions = null;
         if (isset($row['SpecialListingConditions']) && is_array($row['SpecialListingConditions'])) {
@@ -370,8 +372,8 @@ final class ListingMirrorWriter
                 : null,
             'price_change_timestamp' => $this->toSqlTimestamp($row['PriceChangeTimestamp'] ?? null),
             'previous_list_price' => $this->num($row['PreviousListPrice'] ?? null),
-            'stellar_flood_zone_code' => is_string($extFlood) ? $extFlood : null,
-            'stellar_total_monthly_fees' => $this->num($extFees),
+            'flood_zone_code' => $floodZoneCode,
+            'estimated_total_monthly_fees' => $estimatedTotalMonthlyFees,
             'latitude' => $lat,
             'longitude' => $lng,
             'waterfront_yn' => $this->boolOrNull($row['WaterfrontYN'] ?? null),
@@ -418,6 +420,9 @@ final class ListingMirrorWriter
     private function livingArea(array $row): ?int
     {
         $area = $row['LivingArea'] ?? null;
+        if (! is_numeric($area)) {
+            $area = $row['BuildingAreaTotal'] ?? null;
+        }
         if (! is_numeric($area)) {
             return null;
         }
@@ -521,7 +526,8 @@ final class ListingMirrorWriter
         return [
             'ListingKey', 'ListingId', 'StandardStatus', 'ListPrice', 'ClosePrice', 'PreviousListPrice',
             'PriceChangeTimestamp', 'ModificationTimestamp', 'BridgeModificationTimestamp',
-            'BedroomsTotal', 'BathroomsTotalDecimal', 'BathroomsTotalInteger', 'LivingArea', 'LotSizeAcres',
+            'BedroomsTotal', 'BathroomsTotalDecimal', 'BathroomsTotalInteger', 'LivingArea', 'BuildingAreaTotal', 'LotSizeAcres',
+            'AssociationFee', 'AssociationFeeFrequency', 'AssociationFee2', 'AssociationFee2Frequency',
             'YearBuilt', 'StoriesTotal', 'City', 'CountyOrParish', 'PostalCode', 'StateOrProvince',
             'PropertyType', 'PropertySubType', 'OnMarketDate', 'CloseDate', 'Latitude', 'Longitude',
             'Coordinates', 'WaterfrontYN', 'PoolPrivateYN', 'DockYN', 'NewConstructionYN', 'GarageYN',

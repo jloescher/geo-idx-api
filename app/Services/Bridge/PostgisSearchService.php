@@ -107,10 +107,10 @@ final class PostgisSearchService
         }
 
         if (isset($validated['min_monthly_fees'])) {
-            $query->whereRaw('COALESCE(stellar_total_monthly_fees, 0) >= ?', [(float) $validated['min_monthly_fees']]);
+            $query->whereRaw('COALESCE(estimated_total_monthly_fees, 0) >= ?', [(float) $validated['min_monthly_fees']]);
         }
         if (isset($validated['max_monthly_fees'])) {
-            $query->whereRaw('COALESCE(stellar_total_monthly_fees, 0) <= ?', [(float) $validated['max_monthly_fees']]);
+            $query->whereRaw('COALESCE(estimated_total_monthly_fees, 0) <= ?', [(float) $validated['max_monthly_fees']]);
         }
 
         $boolColumns = [
@@ -135,7 +135,7 @@ final class PostgisSearchService
         }
 
         if (! empty($validated['low_risk_floodzone'])) {
-            $query->whereRaw('LOWER(COALESCE(stellar_flood_zone_code, \'\')) LIKE ?', ['%x%']);
+            $query->whereRaw('LOWER(COALESCE(flood_zone_code, \'\')) LIKE ?', ['%x%']);
         }
 
         if (! empty($validated['city'])) {

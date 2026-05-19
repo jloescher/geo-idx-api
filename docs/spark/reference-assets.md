@@ -22,8 +22,8 @@ Use to look up field types, navigation properties (`Media`, `Room`, `Unit`, `Ope
 
 Used by:
 
-- `tests/Feature/Spark/ListingMirrorWriterTest` — persist smoke test
-- Manual inspection of field shapes and `MediaURL` patterns
+- `tests/Feature/Spark/ListingMirrorWriterTest` — persist smoke test (`estimated_total_monthly_fees` from first row: `AssociationFee` Monthly + null-frequency `AssociationFee2`)
+- Manual inspection of field shapes, association-fee frequencies, and `MediaURL` patterns
 
 Upstream context URL in sample: `https://replication.sparkapi.com/Reso/OData/Property`.
 

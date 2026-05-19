@@ -102,6 +102,19 @@ Bridge feeds remain `bridge_{dataset}` (e.g. `bridge_stellar` → `stellar`).
 
 Domains enable feeds via **Allowed MLS datasets** during domain registration on the Setup panel, or by editing verified domain cards (`domains.allowed_mls_datasets`). Label shown: **Beaches MLS (Spark)**.
 
+### Normalized mirror columns (persist + replication updates)
+
+| `listings` column | Beaches RESO source | Notes |
+|-------------------|---------------------|--------|
+| `flood_zone_code` | `Location_sp_and_sp_Legal_co_Flood_sp_Zone2` | Provider-neutral; also used by PostGIS `low_risk_floodzone` filter |
+| `estimated_total_monthly_fees` | `AssociationFee` + `AssociationFeeFrequency`, `AssociationFee2` + `AssociationFee2Frequency` | Each fee converted to a monthly equivalent and summed |
+
+**Association fee frequencies** (exact MLS strings): `Monthly`, `Annually`, `Semi-Annually`, `Quarterly`, `Weekly`, `Daily`, `One Time`. Null frequency or `One Time` does not contribute to the monthly total. If both association pairs yield no recurring total, fallback: `Financial_sp_Information_co_Estimated_sp_Monthly_sp_Assoc_sp_Recurring_sp_Fee3`.
+
+**Conversion:** Monthly = fee; Annually = fee÷12; Semi-Annually = fee÷6; Quarterly = fee÷3; Weekly = fee×52÷12; Daily = fee×365÷12.
+
+Stellar (Bridge) uses `{DATASET}_TotalMonthlyFees` when present, else the same association-fee math. Implemented in `ListingMirrorWriter` + `ListingResoFieldResolver` on every replication upsert.
+
 ---
 
 ## Domain listings cache (Active + Pending)
@@ -134,7 +147,7 @@ StandardStatus eq 'Active' or StandardStatus eq 'Pending'
 
 **Staging:** gzip JSON in `replica_pages` with `provider = spark` (multi-part payload when rows exceed persist chunk size).
 
-**Persist:** `ListingMirrorWriter` with `ListingMirrorProvider::Spark` — full row in `raw_data`; indexed columns from standard RESO fields; Beaches encoded fields in `custom_fields`.
+**Persist:** `ListingMirrorWriter` with `ListingMirrorProvider::Spark` — full row in `raw_data`; indexed columns from standard RESO fields (including `flood_zone_code`, `estimated_total_monthly_fees` via `ListingResoFieldResolver`); Beaches encoded fields in `custom_fields`. Every replication upsert (create or update) recomputes normalized flood and monthly-fee columns.
 
 **Purge:** `mls:purge-replica-pages` (alias `bridge:purge-replica-pages`; shared table; Spark retention via `SPARK_REPLICA_PAGE_RETENTION_HOURS`).
 
