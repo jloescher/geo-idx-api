@@ -91,9 +91,9 @@ class BridgeLookupCacheTest extends TestCase
         $this->assertSame('Single Family Residence', $response1->json('value.0.LookupValue'));
         $this->assertSame(1, $callCount);
 
-        // Verify row was written to bridge_search_cache
-        $this->assertSame(1, DB::table('bridge_search_cache')
-            ->where('partition_key', 'lookups:stellar')
+        // Verify row was written to mls_search_cache
+        $this->assertSame(1, DB::table('mls_search_cache')
+            ->where('partition_key', 'lookups:bridge_stellar')
             ->count());
 
         // Second call: should return cached data without hitting Bridge
@@ -145,8 +145,8 @@ class BridgeLookupCacheTest extends TestCase
         $this->assertSame(2, $callCount);
 
         // Both cache entries should exist
-        $this->assertSame(2, DB::table('bridge_search_cache')
-            ->where('partition_key', 'lookups:stellar')
+        $this->assertSame(2, DB::table('mls_search_cache')
+            ->where('partition_key', 'lookups:bridge_stellar')
             ->count());
 
         // Third call: same filter as first — should be cached
@@ -196,30 +196,30 @@ class BridgeLookupCacheTest extends TestCase
             'X-Domain-Slug' => 'searchtampabayhouses.com',
         ])->assertOk();
 
-        $this->assertSame(1, DB::table('bridge_search_cache')
-            ->where('partition_key', 'lookups:stellar')
+        $this->assertSame(1, DB::table('mls_search_cache')
+            ->where('partition_key', 'lookups:bridge_stellar')
             ->count());
 
         // Insert a non-lookup cache entry to verify it's not deleted
-        DB::table('bridge_search_cache')->insert([
+        DB::table('mls_search_cache')->insert([
             'partition_key' => 'user:1',
             'fingerprint' => 'abc123',
-            'compressed_data' => gzencode('{}', 9),
+            'compressed_data' => DB::raw("decode('".bin2hex(gzencode('{}', 9))."', 'hex')"),
             'last_updated' => now(),
         ]);
 
         // Run the clear command with --dataset=stellar
-        $this->artisan('bridge:clear-lookups-cache', ['--dataset' => 'stellar'])
+        $this->artisan('mls:clear-lookups-cache', ['--dataset' => 'stellar'])
             ->assertSuccessful()
             ->expectsOutputToContain('Deleted 1 cached lookup response(s)');
 
         // Lookup cache should be gone
-        $this->assertSame(0, DB::table('bridge_search_cache')
-            ->where('partition_key', 'lookups:stellar')
+        $this->assertSame(0, DB::table('mls_search_cache')
+            ->where('partition_key', 'lookups:bridge_stellar')
             ->count());
 
         // Non-lookup cache entry should still exist
-        $this->assertSame(1, DB::table('bridge_search_cache')
+        $this->assertSame(1, DB::table('mls_search_cache')
             ->where('partition_key', 'user:1')
             ->count());
     }
@@ -229,31 +229,31 @@ class BridgeLookupCacheTest extends TestCase
         $this->createDomain();
 
         // Insert lookup cache entries for two datasets
-        DB::table('bridge_search_cache')->insert([
-            'partition_key' => 'lookups:stellar',
+        DB::table('mls_search_cache')->insert([
+            'partition_key' => 'lookups:bridge_stellar',
             'fingerprint' => 'aaa',
-            'compressed_data' => gzencode('{}', 9),
+            'compressed_data' => DB::raw("decode('".bin2hex(gzencode('{}', 9))."', 'hex')"),
             'last_updated' => now(),
         ]);
-        DB::table('bridge_search_cache')->insert([
+        DB::table('mls_search_cache')->insert([
             'partition_key' => 'lookups:mfrmls',
             'fingerprint' => 'bbb',
-            'compressed_data' => gzencode('{}', 9),
+            'compressed_data' => DB::raw("decode('".bin2hex(gzencode('{}', 9))."', 'hex')"),
             'last_updated' => now(),
         ]);
 
-        $this->artisan('bridge:clear-lookups-cache', ['--all' => true])
+        $this->artisan('mls:clear-lookups-cache', ['--all' => true])
             ->assertSuccessful()
             ->expectsOutputToContain('Deleted 2 cached lookup response(s)');
 
-        $this->assertSame(0, DB::table('bridge_search_cache')
+        $this->assertSame(0, DB::table('mls_search_cache')
             ->where('partition_key', 'like', 'lookups:%')
             ->count());
     }
 
     public function test_lookup_clear_cache_command_requires_flag(): void
     {
-        $this->artisan('bridge:clear-lookups-cache')
+        $this->artisan('mls:clear-lookups-cache')
             ->assertFailed()
             ->expectsOutputToContain('Specify --all or --dataset=');
     }

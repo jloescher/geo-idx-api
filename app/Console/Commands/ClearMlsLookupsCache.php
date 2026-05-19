@@ -2,18 +2,22 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Mls\MlsFeedResolver;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
-class ClearBridgeLookupsCache extends Command
+class ClearMlsLookupsCache extends Command
 {
-    protected $signature = 'bridge:clear-lookups-cache
+    protected $signature = 'mls:clear-lookups-cache
                             {--dataset= : Only clear cached lookups for this dataset (e.g. stellar)}
                             {--all : Clear all cached lookup responses}';
 
-    protected $description = 'Clear cached Bridge Lookup API responses from bridge_search_cache';
+    /** @var list<string> */
+    protected $aliases = ['bridge:clear-lookups-cache'];
 
-    public function handle(): int
+    protected $description = 'Clear cached MLS Lookup API responses from mls_search_cache';
+
+    public function handle(MlsFeedResolver $feeds): int
     {
         if (! $this->option('all') && ! $this->option('dataset')) {
             $this->error('Specify --all or --dataset=<dataset>');
@@ -21,8 +25,10 @@ class ClearBridgeLookupsCache extends Command
             return self::INVALID;
         }
 
+        $table = (string) config('mls.search_cache_table', 'mls_search_cache');
+
         if ($this->option('all')) {
-            $deleted = DB::table('bridge_search_cache')
+            $deleted = DB::table($table)
                 ->where('partition_key', 'like', 'lookups:%')
                 ->delete();
 
@@ -32,11 +38,12 @@ class ClearBridgeLookupsCache extends Command
         }
 
         $dataset = (string) $this->option('dataset');
-        $deleted = DB::table('bridge_search_cache')
-            ->where('partition_key', 'lookups:'.$dataset)
+        $catalogKey = $feeds->normalizeWireDatasetToCatalogKey($dataset);
+        $deleted = DB::table($table)
+            ->where('partition_key', 'lookups:'.$catalogKey)
             ->delete();
 
-        $this->info("Deleted {$deleted} cached lookup response(s) for dataset={$dataset}.");
+        $this->info("Deleted {$deleted} cached lookup response(s) for dataset={$dataset} (partition lookups:{$catalogKey}).");
 
         return self::SUCCESS;
     }

@@ -104,6 +104,16 @@ Domains enable feeds via **Allowed MLS datasets** during domain registration on 
 
 ---
 
+## Domain listings cache (Active + Pending)
+
+**Schedule:** `mls:refresh-cache` every 15 minutes dispatches `RefreshListingsCache` per domain × enabled feed (including `spark_beaches`).
+
+**Upstream:** live `sparkapi.com` Property OData via `MlsActivePendingListingsFetcher` — **not** the replication host. Filter: Active + Pending with a rolling `ModificationTimestamp` window (parity with Bridge Stellar).
+
+**Storage:** row-level gzip in `listings_cache` (`feed_code = spark_beaches`). Structured search / properties / lookup fingerprints use **`mls_search_cache`**. **Closed** listings are not persisted in `listings_cache`; hybrid search fetches Closed via live API (`SparkSearchClient`) and caches the response in `mls_search_cache` when applicable.
+
+---
+
 ## Replication pipeline
 
 **Schedule:** `spark-listings-replica-sync` every 15 minutes → `SparkSyncJob` on queue `spark-sync-fetch`.

@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\MlsProvider;
 use App\Http\Controllers\Controller;
-use App\Services\Bridge\BridgeProxyAuditLogger;
 use App\Services\Mls\MlsClientFactory;
+use App\Services\Mls\MlsProxyAuditLogger;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -13,7 +13,7 @@ class ImageProxyController extends Controller
 {
     public function __construct(
         private readonly MlsClientFactory $mlsClients,
-        private readonly BridgeProxyAuditLogger $audit,
+        private readonly MlsProxyAuditLogger $audit,
     ) {}
 
     /**

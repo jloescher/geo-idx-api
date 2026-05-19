@@ -53,6 +53,8 @@ return [
         'api_secret' => env('BRIDGE_API_SECRET'),
     ],
 
+    'search_cache_table' => 'mls_search_cache',
+
     'listings_row_retention_days' => max(1, min(366, (int) env('MLS_LISTINGS_CACHE_RETENTION_DAYS', 365))),
 
     'listings_sync_page_size' => max(50, min(200, (int) env('MLS_LISTINGS_SYNC_PAGE_SIZE', 200))),

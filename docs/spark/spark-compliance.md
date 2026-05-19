@@ -172,7 +172,7 @@ Replication best practice ([Spark replication](https://sparkplatform.com/docs/su
 
 - Keep `SPARK_ACCESS_TOKEN` server-side only.
 - Enforce domain and token MLS allowlists (`spark_beaches` / `beaches`).
-- Log proxied requests in `bridge_proxy_audit_logs` where enabled.
+- Log proxied requests in `mls_proxy_audit_logs` where enabled.
 - Use **replication host only** in queue workers for sync jobs.
 - Use **live host** for user-facing RESO proxy, hybrid live search, and image resolution.
 - Passthrough upstream JSON including `DisplayCompliance` without filtering.

@@ -30,9 +30,9 @@ Canonical **file-by-file migration list**, PostGIS notes, and legacy cleanup: **
 |-------|---------|----------------|
 | `users` | Subscriber accounts | Fortify 2FA columns, widget embed key, MLS membership fields (`2026_04_22_115800_*`) |
 | `domains` | Domain authorization | `domain_slug` unique, verification columns, `allowed_mls_datasets` JSON |
-| `bridge_search_cache` | Compressed Bridge search responses | Composite PK `partition_key` + `fingerprint`, binary payload |
-| `listings_cache` | Row-level MLS collection cache | PK `(domain_slug, feed_code, listing_key)`, `compressed_payload` binary |
-| `bridge_proxy_audit_logs` | MLS proxy audit | Append-only style usage at app layer |
+| `mls_search_cache` | Compressed MLS search/lookup/properties responses (Bridge + Spark) | Composite PK `partition_key` + `fingerprint`, binary payload |
+| `listings_cache` | Row-level MLS collection cache (Active/Pending per feed) | PK `(domain_slug, feed_code, listing_key)`, `compressed_payload` binary |
+| `mls_proxy_audit_logs` | MLS proxy audit | Append-only style usage at app layer |
 | `personal_access_tokens` | Sanctum PATs | Abilities e.g. `idx:access`, `idx:full` |
 | `gis_cache` | GeoJSON parcel cache | `query_hash` PK, `source_generation` for invalidation |
 | `gis_source_states` | Per-source generation / fingerprint | Bumped when ArcGIS metadata changes |
@@ -69,7 +69,7 @@ Application treats stale rows when source_generation != current generation for t
 ### Binary compression for large payloads
 
 ```text
-listings_cache.compressed_payload and bridge_search_cache.compressed_data store gzipped payloads
+listings_cache.compressed_payload and mls_search_cache.compressed_data store gzipped payloads
 Decompress in the service layer before JSON decode; apply teaser limits for non-full tokens
 ```
 
@@ -90,7 +90,7 @@ Decompress in the service layer before JSON decode; apply teaser limits for non-
 
 ### Security and compliance
 
-- Audit MLS access via `bridge_proxy_audit_logs` at the application layer
+- Audit MLS access via `mls_proxy_audit_logs` at the application layer
 - Do not log full Sanctum secrets; token names and domain slugs are enough for audit rows
 - Domain slugs are effectively case-sensitive in storage — normalize (`strtolower`) at lookup boundaries
 
@@ -126,7 +126,7 @@ GisCache::query()
 
 1. **PostGIS** must be available before `2026_04_30_210000_create_listings_and_sync_cursors_tables` can succeed (extension pre-created or migration path that handles hosted roles — see migration source).
 2. **GIS cache invalidation** uses `gis_source_states.generation` — prefer bumping generation over bulk-deleting cache rows unless a product decision says otherwise.
-3. **Audit** proxy traffic where the product requires it; `bridge_proxy_audit_logs` is the primary table in this codebase.
+3. **Audit** proxy traffic where the product requires it; `mls_proxy_audit_logs` is the primary table in this codebase.
 4. **Multi-step schema changes** that must succeed or fail together: wrap PostgreSQL DDL in `DB::transaction()` when order matters (e.g. dropping a graph of legacy tables).
 
 ## Migration checklist

@@ -3,6 +3,7 @@
 namespace App\Services\Bridge;
 
 use App\Services\Geocoding\GoogleGeocodingService;
+use App\Services\Mls\MlsProxyAuditLogger;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -17,7 +18,7 @@ final readonly class BridgeCompsService
     public function __construct(
         private BridgeSearchClient $searchClient,
         private MlsDatasetResolver $resolver,
-        private BridgeProxyAuditLogger $audit,
+        private MlsProxyAuditLogger $audit,
         private BpoMarketExtractor $bpoExtractor,
         private BpoAdjustmentEngine $bpoEngine,
         private GoogleGeocodingService $geocodingService,

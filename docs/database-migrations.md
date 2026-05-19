@@ -14,7 +14,7 @@ For a **fresh database**, run `php artisan migrate` (or `migrate:fresh` on dispo
 | `0001_01_01_000001_create_cache_table.php` | Laravel `cache`, `cache_locks` |
 | `0001_01_01_000002_create_jobs_table.php` | `jobs`, `job_batches`, `failed_jobs` |
 | `2026_01_01_100000_create_idx_auth_tables.php` | `personal_access_tokens`, `user_invitations` |
-| `2026_01_01_200000_create_idx_domain_and_bridge_cache_tables.php` | `domains`, `bridge_search_cache`, `listings_cache`, `bridge_proxy_audit_logs` |
+| `2026_01_01_200000_create_idx_domain_and_mls_cache_tables.php` | `domains`, `mls_search_cache`, `listings_cache`, `mls_proxy_audit_logs` |
 | `2026_01_01_300000_create_gis_tables.php` | `gis_cache`, `gis_source_states` (+ seed rows for FL parcel sources) |
 | `2026_01_01_400000_create_crypto_price_snapshots_table.php` | `crypto_price_snapshots` |
 | `2026_01_01_500000_create_listings_mirror_tables.php` | PostGIS `listings`, `listing_sync_cursors`, `replica_pages` (Bridge + Spark staging) |
@@ -31,7 +31,7 @@ For a **fresh database**, run `php artisan migrate` (or `migrate:fresh` on dispo
 
 [`2026_01_01_500000_create_listings_mirror_tables.php`](../database/migrations/2026_01_01_500000_create_listings_mirror_tables.php) enables PostGIS when missing (`CREATE EXTENSION IF NOT EXISTS postgis`). On managed Postgres without superuser, create the extension once before migrating.
 
-**Mirror scope:** replication stores **Active + Pending** in `listings`; **Closed** is on-demand via Bridge. See [IDX-API Bridge proxy](idx-api-bridge-proxy.md).
+**Mirror scope:** replication stores **Active + Pending** in `listings`; **Closed** is on-demand via live MLS API (Bridge or Spark). See [IDX-API Bridge proxy](idx-api-bridge-proxy.md).
 
 ### Fresh install
 

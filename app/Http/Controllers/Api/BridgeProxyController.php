@@ -7,13 +7,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Search\SearchRequest;
 use App\Services\Bridge\BridgeHttpService;
 use App\Services\Bridge\BridgeImageUrlRewriter;
-use App\Services\Bridge\BridgeProxyAuditLogger;
 use App\Services\Bridge\BridgeSearchAction;
 use App\Services\Bridge\ListingPriceConversionService;
 use App\Services\Bridge\ListingsCacheService;
 use App\Services\Mls\BridgeClient;
 use App\Services\Mls\MlsActivePendingListingsFetcher;
 use App\Services\Mls\MlsClientFactory;
+use App\Services\Mls\MlsProxyAuditLogger;
 use App\Services\Mls\SparkClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,7 +27,7 @@ class BridgeProxyController extends Controller
         private readonly BridgeHttpService $bridge,
         private readonly MlsClientFactory $mlsClients,
         private readonly ListingsCacheService $listingsCache,
-        private readonly BridgeProxyAuditLogger $audit,
+        private readonly MlsProxyAuditLogger $audit,
         private readonly BridgeImageUrlRewriter $imageUrlRewriter,
         private readonly ListingPriceConversionService $listingPricing,
         private readonly BridgeSearchAction $bridgeSearchAction,

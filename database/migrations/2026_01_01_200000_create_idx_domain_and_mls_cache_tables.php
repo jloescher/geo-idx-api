@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('domains', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
-            $table->string('domain_slug')->unique()->comment('Hostname registered for Stellar MLS Exhibit A routing');
+            $table->string('domain_slug')->unique()->comment('Hostname registered for MLS domain authorization');
             $table->boolean('is_active')->default(true);
             $table->string('mls_dataset')->nullable();
             $table->json('allowed_mls_datasets')->nullable();
@@ -25,7 +25,7 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        Schema::create('bridge_search_cache', function (Blueprint $table) {
+        Schema::create('mls_search_cache', function (Blueprint $table) {
             $table->string('partition_key', 255);
             $table->string('fingerprint', 64);
             $table->binary('compressed_data');
@@ -45,7 +45,7 @@ return new class extends Migration
             $table->index(['domain_slug', 'feed_code', 'last_refreshed_at'], 'listings_cache_domain_feed_refreshed_idx');
         });
 
-        Schema::create('bridge_proxy_audit_logs', function (Blueprint $table) {
+        Schema::create('mls_proxy_audit_logs', function (Blueprint $table) {
             $table->id();
             $table->timestamp('logged_at')->useCurrent();
             $table->string('domain_slug')->nullable();
@@ -60,9 +60,9 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('bridge_proxy_audit_logs');
+        Schema::dropIfExists('mls_proxy_audit_logs');
         Schema::dropIfExists('listings_cache');
-        Schema::dropIfExists('bridge_search_cache');
+        Schema::dropIfExists('mls_search_cache');
         Schema::dropIfExists('domains');
     }
 };

@@ -5,8 +5,10 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class BridgeProxyAuditLog extends Model
+class MlsProxyAuditLog extends Model
 {
+    protected $table = 'mls_proxy_audit_logs';
+
     public $timestamps = false;
 
     protected $fillable = [
@@ -20,7 +22,7 @@ class BridgeProxyAuditLog extends Model
     ];
 
     /**
-     * Revenue impact: immutable audit trail supports Stellar MLS compliance
+     * Revenue impact: immutable audit trail supports MLS compliance
      * investigations without service downtime (reduces legal/revocation risk).
      */
     protected function casts(): array
@@ -31,7 +33,7 @@ class BridgeProxyAuditLog extends Model
     }
 
     /**
-     * @return BelongsTo<User, BridgeProxyAuditLog>
+     * @return BelongsTo<User, MlsProxyAuditLog>
      */
     public function user(): BelongsTo
     {

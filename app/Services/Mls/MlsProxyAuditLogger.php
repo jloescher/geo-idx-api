@@ -1,15 +1,15 @@
 <?php
 
-namespace App\Services\Bridge;
+namespace App\Services\Mls;
 
-use App\Models\BridgeProxyAuditLog;
+use App\Models\MlsProxyAuditLog;
 use Illuminate\Http\Request;
 
-class BridgeProxyAuditLogger
+class MlsProxyAuditLogger
 {
     /**
      * Revenue impact: per-request MLS audit rows make compliance responses cheap,
-     * avoiding revenue-killing suspension during Stellar MLS audits.
+     * avoiding revenue-killing suspension during MLS audits.
      */
     public function log(
         Request $request,
@@ -19,7 +19,7 @@ class BridgeProxyAuditLogger
         ?string $tokenName,
         ?int $userId,
     ): void {
-        BridgeProxyAuditLog::query()->create([
+        MlsProxyAuditLog::query()->create([
             'logged_at' => now(),
             'domain_slug' => $domainSlug,
             'token_name' => $tokenName,

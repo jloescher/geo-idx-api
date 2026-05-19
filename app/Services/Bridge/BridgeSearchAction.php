@@ -7,6 +7,7 @@ use App\Http\Requests\Search\SearchRequest;
 use App\Http\Responses\Search\ListingResult;
 use App\Http\Responses\Search\SearchResult;
 use App\Http\Responses\Search\SearchStats;
+use App\Services\Mls\MlsProxyAuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -18,7 +19,7 @@ final readonly class BridgeSearchAction
 {
     public function __construct(
         private ListingsCacheService $listingsCache,
-        private BridgeProxyAuditLogger $audit,
+        private MlsProxyAuditLogger $audit,
         private BridgeSearchClient $searchClient,
         private BridgeSearchTranslator $searchTranslator,
         private MlsDatasetResolver $resolver,

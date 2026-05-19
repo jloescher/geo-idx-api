@@ -35,7 +35,7 @@ class ListingsCacheService
 
     /**
      * Revenue impact: gzip-backed search cache mirrors collection TTL so identical
-     * structured searches avoid duplicate Bridge OData round trips across subscribers.
+     * structured searches avoid duplicate MLS OData round trips across subscribers.
      *
      * @param  callable(): array{value: list<array<string, mixed>>, count: int, nextLink: ?string}  $supplier
      * @return array{value: list<array<string, mixed>>, count: int, nextLink: ?string}
@@ -44,7 +44,7 @@ class ListingsCacheService
     {
         $ttlSeconds = (int) config('bridge.listings_cache_ttl_seconds');
 
-        $row = DB::table('bridge_search_cache')
+        $row = DB::table($this->searchCacheTable())
             ->where('partition_key', $partitionKey)
             ->where('fingerprint', $fingerprint)
             ->first();
@@ -54,7 +54,7 @@ class ListingsCacheService
             : null;
 
         if ($row !== null && $this->isFresh($lastUpdated, $ttlSeconds)) {
-            $decoded = @gzdecode((string) $row->compressed_data);
+            $decoded = $this->decompressFromColumn($row->compressed_data);
             if (is_string($decoded) && $decoded !== '') {
                 $parsed = json_decode($decoded, true);
                 if (is_array($parsed)) {
@@ -66,15 +66,10 @@ class ListingsCacheService
         /** @var array{value: list<array<string, mixed>>, count: int, nextLink: ?string} $payload */
         $payload = $supplier();
 
-        DB::table('bridge_search_cache')->updateOrInsert(
-            [
-                'partition_key' => $partitionKey,
-                'fingerprint' => $fingerprint,
-            ],
-            [
-                'compressed_data' => gzencode(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 9),
-                'last_updated' => now(),
-            ],
+        $this->upsertSearchCacheRow(
+            $partitionKey,
+            $fingerprint,
+            gzencode(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 9),
         );
 
         return $payload;
@@ -89,7 +84,7 @@ class ListingsCacheService
     {
         $ttlSeconds = (int) config('bridge.listings_cache_ttl_seconds');
 
-        $row = DB::table('bridge_search_cache')
+        $row = DB::table($this->searchCacheTable())
             ->where('partition_key', $partitionKey)
             ->where('fingerprint', $fingerprint)
             ->first();
@@ -99,7 +94,7 @@ class ListingsCacheService
             : null;
 
         if ($row !== null && $this->isFresh($lastUpdated, $ttlSeconds)) {
-            $decoded = @gzdecode((string) $row->compressed_data);
+            $decoded = $this->decompressFromColumn($row->compressed_data);
             if (is_string($decoded) && $decoded !== '') {
                 return $decoded;
             }
@@ -107,16 +102,7 @@ class ListingsCacheService
 
         $payload = $supplier();
 
-        DB::table('bridge_search_cache')->updateOrInsert(
-            [
-                'partition_key' => $partitionKey,
-                'fingerprint' => $fingerprint,
-            ],
-            [
-                'compressed_data' => gzencode($payload, 9),
-                'last_updated' => now(),
-            ],
-        );
+        $this->upsertSearchCacheRow($partitionKey, $fingerprint, gzencode($payload, 9));
 
         return $payload;
     }
@@ -146,7 +132,7 @@ class ListingsCacheService
     }
 
     /**
-     * Cache Bridge Lookup API responses for 30 days.
+     * Cache MLS Lookup API responses for 30 days (Bridge-backed feeds today).
      *
      * Lookup data (field enums, PropertySubType values, etc.) changes rarely,
      * so a long TTL avoids repeated upstream calls for metadata that is essentially static.
@@ -157,7 +143,7 @@ class ListingsCacheService
     {
         $ttlSeconds = (int) config('bridge.lookups_cache_ttl_seconds');
 
-        $row = DB::table('bridge_search_cache')
+        $row = DB::table($this->searchCacheTable())
             ->where('partition_key', $partitionKey)
             ->where('fingerprint', $fingerprint)
             ->first();
@@ -167,7 +153,7 @@ class ListingsCacheService
             : null;
 
         if ($row !== null && $this->isFresh($lastUpdated, $ttlSeconds)) {
-            $decoded = @gzdecode((string) $row->compressed_data);
+            $decoded = $this->decompressFromColumn($row->compressed_data);
             if (is_string($decoded) && $decoded !== '') {
                 return $decoded;
             }
@@ -175,16 +161,7 @@ class ListingsCacheService
 
         $payload = $supplier();
 
-        DB::table('bridge_search_cache')->updateOrInsert(
-            [
-                'partition_key' => $partitionKey,
-                'fingerprint' => $fingerprint,
-            ],
-            [
-                'compressed_data' => gzencode($payload, 9),
-                'last_updated' => now(),
-            ],
-        );
+        $this->upsertSearchCacheRow($partitionKey, $fingerprint, gzencode($payload, 9));
 
         return $payload;
     }
@@ -381,5 +358,60 @@ class ListingsCacheService
             ->where('feed_code', $feedCode)
             ->where('first_cached_at', '<', now()->subDays($retentionDays))
             ->delete();
+    }
+
+    private function searchCacheTable(): string
+    {
+        return (string) config('mls.search_cache_table', 'mls_search_cache');
+    }
+
+    private function upsertSearchCacheRow(string $partitionKey, string $fingerprint, string $gzip): void
+    {
+        $table = DB::connection()->getQueryGrammar()->wrapTable($this->searchCacheTable());
+        $updated = now();
+
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement(
+                "INSERT INTO {$table} (partition_key, fingerprint, compressed_data, last_updated)
+                VALUES (?, ?, decode(?, 'hex'), ?)
+                ON CONFLICT (partition_key, fingerprint) DO UPDATE SET
+                    compressed_data = EXCLUDED.compressed_data,
+                    last_updated = EXCLUDED.last_updated",
+                [$partitionKey, $fingerprint, bin2hex($gzip), $updated],
+            );
+
+            return;
+        }
+
+        DB::table($table)->updateOrInsert(
+            [
+                'partition_key' => $partitionKey,
+                'fingerprint' => $fingerprint,
+            ],
+            [
+                'compressed_data' => $gzip,
+                'last_updated' => $updated,
+            ],
+        );
+    }
+
+    private function decompressFromColumn(mixed $compressed): ?string
+    {
+        if (is_resource($compressed)) {
+            $compressed = stream_get_contents($compressed);
+        }
+
+        if (! is_string($compressed) || $compressed === '') {
+            return null;
+        }
+
+        if (str_starts_with($compressed, '\\x')) {
+            $binary = hex2bin(substr($compressed, 2));
+            $compressed = is_string($binary) ? $binary : $compressed;
+        }
+
+        $decoded = @gzdecode($compressed);
+
+        return is_string($decoded) && $decoded !== '' ? $decoded : null;
     }
 }

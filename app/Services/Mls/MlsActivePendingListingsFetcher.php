@@ -4,16 +4,18 @@ namespace App\Services\Mls;
 
 use App\Enums\MlsProvider;
 use App\Services\Bridge\BridgeHttpService;
+use App\Services\Spark\SparkHttpService;
+use Closure;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
 use JsonException;
 
 /**
- * Revenue impact: full Active+Pending pagination avoids cache rows being mass-deleted after a 200-item
- * partial refresh, keeping IDX pages monetizable and conversion-ready during MLS traffic spikes.
+ * Revenue impact: full Active+Pending pagination avoids cache rows being mass-deleted after a partial
+ * refresh, keeping IDX pages monetizable and conversion-ready during MLS traffic spikes.
  *
- * Compliance: MLS GRID IDX + Stellar Data Access Agreement — only Active/Pending RESO slices are merged;
- * closed inventory is never synthesized here; upstream remains authoritative for historical status.
+ * Compliance: MLS GRID IDX — only Active/Pending RESO slices are merged; closed inventory is never
+ * synthesized here; upstream live API remains authoritative for historical status.
  */
 final readonly class MlsActivePendingListingsFetcher
 {
@@ -21,6 +23,7 @@ final readonly class MlsActivePendingListingsFetcher
         private MlsClientFactory $mlsClients,
         private MlsFeedResolver $feeds,
         private BridgeHttpService $bridgeHttp,
+        private SparkHttpService $sparkHttp,
     ) {}
 
     /**
@@ -33,14 +36,27 @@ final readonly class MlsActivePendingListingsFetcher
             $internalFeedCode = $this->feeds->resolveFeedCode($incoming);
         }
 
-        $def = $this->feeds->feedDefinition($internalFeedCode);
-        if (! is_array($def) || ($def['provider'] ?? '') !== MlsProvider::STELLAR->value) {
+        $catalogKey = $this->feeds->normalizeWireDatasetToCatalogKey($internalFeedCode);
+        $def = $this->feeds->feedDefinition($catalogKey);
+        if (! is_array($def)) {
             return ['body' => json_encode(['value' => []], JSON_THROW_ON_ERROR), 'etag' => null];
         }
 
-        $client = $this->mlsClients->bridgeClientForFeed($internalFeedCode);
+        $provider = (string) ($def['provider'] ?? '');
 
-        return $this->fetchBridgePropertyMerged($client, $incoming);
+        if ($provider === MlsProvider::STELLAR->value) {
+            $client = $this->mlsClients->bridgeClientForFeed($internalFeedCode);
+
+            return $this->fetchBridgePropertyMerged($client, $incoming);
+        }
+
+        if ($provider === MlsProvider::SPARK->value) {
+            $client = $this->mlsClients->sparkClientForFeed($internalFeedCode);
+
+            return $this->fetchSparkPropertyMerged($client, $incoming);
+        }
+
+        return ['body' => json_encode(['value' => []], JSON_THROW_ON_ERROR), 'etag' => null];
     }
 
     /**
@@ -48,7 +64,6 @@ final readonly class MlsActivePendingListingsFetcher
      */
     private function fetchBridgePropertyMerged(BridgeClient $client, Request $incoming): array
     {
-        // Bridge standard Property OData allows $top max 200 (replication allows 2000 on /replication only).
         $pageSize = max(50, min(200, (int) config('mls.listings_sync_page_size', 200)));
         $maxPages = max(1, min(5000, (int) config('mls.listings_sync_max_pages', 500)));
         $maxRows = max(1000, min(500000, (int) config('mls.listings_sync_max_rows', 100000)));
@@ -65,7 +80,47 @@ final readonly class MlsActivePendingListingsFetcher
             return ['body' => $response->body(), 'etag' => $response->header('ETag')];
         }
 
-        $merged = $this->mergeODataPages($incoming, $response, $maxPages, $maxRows);
+        $merged = $this->mergeODataPages(
+            $response,
+            $maxPages,
+            $maxRows,
+            fn (string $url): Response => $this->bridgeHttp->getAuthorizedJson($url, $incoming),
+        );
+        $etag = $response->header('ETag');
+
+        return [
+            'body' => json_encode(['value' => $merged], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'etag' => is_string($etag) && $etag !== '' ? $etag : null,
+        ];
+    }
+
+    /**
+     * @return array{body: string, etag: ?string}
+     */
+    private function fetchSparkPropertyMerged(SparkClient $client, Request $incoming): array
+    {
+        $pageSize = max(50, min(1000, (int) config('mls.listings_sync_page_size', 200)));
+        $maxPages = max(1, min(5000, (int) config('mls.listings_sync_max_pages', 500)));
+        $maxRows = max(1000, min(500000, (int) config('mls.listings_sync_max_rows', 100000)));
+        $since = now()->subYear()->utc()->format('Y-m-d\TH:i:s\Z');
+        $filter = "(StandardStatus eq 'Active' or StandardStatus eq 'Pending') and ModificationTimestamp ge datetime'{$since}'";
+        $query = [
+            '$filter' => $filter,
+            '$top' => $pageSize,
+        ];
+
+        $url = $client->propertyCollectionUrl();
+        $response = $client->getJsonFromUrl($url, $incoming, $query, ['limit', 'domain', 'teaser']);
+        if (! $response->successful()) {
+            return ['body' => $response->body(), 'etag' => $response->header('ETag')];
+        }
+
+        $merged = $this->mergeODataPages(
+            $response,
+            $maxPages,
+            $maxRows,
+            fn (string $nextUrl): Response => $this->sparkHttp->getAuthorizedJson($nextUrl, $incoming),
+        );
         $etag = $response->header('ETag');
 
         return [
@@ -101,9 +156,10 @@ final readonly class MlsActivePendingListingsFetcher
     }
 
     /**
+     * @param  Closure(string): Response  $fetchNextPage
      * @return list<array<string, mixed>>
      */
-    private function mergeODataPages(Request $incoming, Response $first, int $maxPages, int $maxRows): array
+    private function mergeODataPages(Response $first, int $maxPages, int $maxRows, Closure $fetchNextPage): array
     {
         $merged = [];
         $response = $first;
@@ -128,7 +184,7 @@ final readonly class MlsActivePendingListingsFetcher
                 break;
             }
 
-            $response = $this->bridgeHttp->getAuthorizedJson($next, $incoming);
+            $response = $fetchNextPage($next);
             if (! $response->successful()) {
                 break;
             }
