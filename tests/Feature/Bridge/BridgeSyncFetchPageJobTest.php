@@ -7,11 +7,12 @@ use App\Jobs\BridgePersistReplicaChunkJob;
 use App\Jobs\BridgePersistReplicaFinalizeJob;
 use App\Jobs\BridgeSyncFetchPageJob;
 use App\Models\ListingSyncCursor;
-use App\Services\Bridge\BridgeReplicaCursorPatch;
-use App\Services\Bridge\BridgeReplicaPageStore;
 use App\Services\Bridge\BridgeSyncFetchScheduler;
 use App\Services\Bridge\BridgeSyncService;
 use App\Services\Bridge\BridgeSyncTelemetry;
+use App\Services\Mls\MlsDatasetRegistry;
+use App\Services\Replication\ReplicaPageStore;
+use App\Services\Replication\ReplicationCursorPatch;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\PendingBatch;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -87,7 +88,7 @@ class BridgeSyncFetchPageJobTest extends TestCase
 
         $this->runFetchJob('stellar', 'replication');
 
-        $this->assertDatabaseCount('bridge_replica_pages', 1);
+        $this->assertDatabaseCount('replica_pages', 1);
 
         Bus::assertBatched(function (PendingBatch $batch): bool {
             if ($batch->jobs->count() !== 1) {
@@ -130,7 +131,7 @@ class BridgeSyncFetchPageJobTest extends TestCase
         });
         $this->assertInstanceOf(BridgePersistReplicaChunkJob::class, $chunkJob);
 
-        $store = app(BridgeReplicaPageStore::class);
+        $store = app(ReplicaPageStore::class);
         $chunkJob->handle(
             app(BridgeSyncService::class),
             app(BridgeSyncTelemetry::class),
@@ -140,7 +141,7 @@ class BridgeSyncFetchPageJobTest extends TestCase
         $finalize = new BridgePersistReplicaFinalizeJob(
             dataset: 'stellar',
             replicaPageId: $chunkJob->pageId,
-            cursorPatch: new BridgeReplicaCursorPatch(
+            cursorPatch: new ReplicationCursorPatch(
                 applyReplicationState: true,
                 replicationNextUrl: $nextUrl,
                 replicationInProgress: true,
@@ -167,7 +168,7 @@ class BridgeSyncFetchPageJobTest extends TestCase
         $this->assertNotNull($cursor);
         $this->assertSame($nextUrl, $cursor->replication_next_url);
         $this->assertTrue($cursor->replication_in_progress);
-        $this->assertDatabaseMissing('bridge_replica_pages', ['id' => $chunkJob->pageId]);
+        $this->assertDatabaseMissing('replica_pages', ['id' => $chunkJob->pageId]);
     }
 
     public function test_incremental_fetch_uses_modification_timestamp_gt_filter(): void
@@ -244,7 +245,8 @@ class BridgeSyncFetchPageJobTest extends TestCase
         (new BridgeSyncFetchPageJob($dataset, $mode, 0, 0))->handle(
             app(BridgeSyncService::class),
             app(BridgeSyncTelemetry::class),
-            app(BridgeReplicaPageStore::class),
+            app(ReplicaPageStore::class),
+            app(MlsDatasetRegistry::class),
         );
     }
 

@@ -6,11 +6,11 @@ use App\Jobs\BridgePersistReplicaChunkJob;
 use App\Jobs\BridgePersistReplicaFinalizeJob;
 use App\Jobs\BridgeSyncFetchPageJob;
 use App\Models\Listing;
-use App\Services\Bridge\BridgeReplicaCursorPatch;
-use App\Services\Bridge\BridgeReplicaPageStore;
 use App\Services\Bridge\BridgeSyncFetchScheduler;
 use App\Services\Bridge\BridgeSyncService;
 use App\Services\Bridge\BridgeSyncTelemetry;
+use App\Services\Replication\ReplicaPageStore;
+use App\Services\Replication\ReplicationCursorPatch;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -23,7 +23,7 @@ class BridgePersistReplicaPageJobTest extends TestCase
     public function test_persist_chunk_upserts_active_listing_from_staged_page(): void
     {
         $maxTs = CarbonImmutable::parse('2026-05-01T12:00:00Z');
-        $store = app(BridgeReplicaPageStore::class);
+        $store = app(ReplicaPageStore::class);
 
         $pageId = $store->storePage(
             datasetSlug: 'stellar',
@@ -83,7 +83,7 @@ class BridgePersistReplicaPageJobTest extends TestCase
         Queue::fake();
 
         $maxTs = CarbonImmutable::parse('2026-05-02T08:00:00Z');
-        $store = app(BridgeReplicaPageStore::class);
+        $store = app(ReplicaPageStore::class);
 
         $pageId = $store->storePage(
             datasetSlug: 'stellar',
@@ -110,7 +110,7 @@ class BridgePersistReplicaPageJobTest extends TestCase
         $finalize = new BridgePersistReplicaFinalizeJob(
             dataset: 'stellar',
             replicaPageId: $pageId,
-            cursorPatch: new BridgeReplicaCursorPatch(
+            cursorPatch: new ReplicationCursorPatch(
                 applyReplicationState: true,
                 replicationNextUrl: null,
                 replicationInProgress: false,
@@ -130,6 +130,6 @@ class BridgePersistReplicaPageJobTest extends TestCase
         });
 
         $this->assertTrue(Listing::query()->where('listing_key', 'STELLAR-400')->exists());
-        $this->assertDatabaseMissing('bridge_replica_pages', ['id' => $pageId]);
+        $this->assertDatabaseMissing('replica_pages', ['id' => $pageId]);
     }
 }

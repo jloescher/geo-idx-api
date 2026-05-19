@@ -1,10 +1,9 @@
 <?php
 
-use App\Jobs\BridgeSyncJob;
+use App\Jobs\MlsReplicationKickoffJob;
 use App\Jobs\PurgeClosedListingsJob;
 use App\Jobs\RefreshCryptoPricingJob;
 use App\Jobs\RefreshGisSourceMetadataJob;
-use App\Jobs\SparkSyncJob;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -24,16 +23,15 @@ Schedule::command('mls:refresh-cache')
     ->withoutOverlapping();
 
 Schedule::call(function (): void {
-    BridgeSyncJob::dispatch()->onQueue((string) config('bridge.sync_fetch_queue', 'bridge-sync-fetch'));
-})->everyFifteenMinutes()->name('bridge-listings-replica-sync')->withoutOverlapping();
+    MlsReplicationKickoffJob::dispatch();
+})
+    ->everyMinute()
+    ->name('mls-replication-catch-up-kickoff')
+    ->withoutOverlapping();
 
-Schedule::call(function (): void {
-    SparkSyncJob::dispatch()->onQueue((string) config('spark.sync_fetch_queue', 'spark-sync-fetch'));
-})->everyFifteenMinutes()->name('spark-listings-replica-sync')->withoutOverlapping();
-
-Schedule::command('bridge:purge-replica-pages')
+Schedule::command('mls:purge-replica-pages')
     ->dailyAt('04:15')
-    ->name('bridge-replica-pages-purge')
+    ->name('mls-replica-pages-purge')
     ->withoutOverlapping();
 
 Schedule::call(function (): void {

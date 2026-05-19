@@ -17,11 +17,11 @@ For a **fresh database**, run `php artisan migrate` (or `migrate:fresh` on dispo
 | `2026_01_01_200000_create_idx_domain_and_bridge_cache_tables.php` | `domains`, `bridge_search_cache`, `listings_cache`, `bridge_proxy_audit_logs` |
 | `2026_01_01_300000_create_gis_tables.php` | `gis_cache`, `gis_source_states` (+ seed rows for FL parcel sources) |
 | `2026_01_01_400000_create_crypto_price_snapshots_table.php` | `crypto_price_snapshots` |
-| `2026_01_01_500000_create_listings_mirror_tables.php` | PostGIS `listings`, `listing_sync_cursors`, `bridge_replica_pages` |
+| `2026_01_01_500000_create_listings_mirror_tables.php` | PostGIS `listings`, `listing_sync_cursors`, `replica_pages` (Bridge + Spark staging) |
 | `2026_04_23_144258_create_telescope_entries_table.php` | Laravel Telescope (diagnostics) |
 | `2026_04_23_144551_create_pulse_tables.php` | Laravel Pulse |
 
-**10 migration files** total (3 framework + 5 IDX domain + 2 observability).
+**9 migration files** total (3 framework + 5 IDX domain + 2 observability).
 
 ---
 
@@ -43,10 +43,7 @@ Use a dedicated database for **`migrate:fresh`** in CI/local dev (`testing` or `
 
 ### Upgrading existing databases
 
-If an environment already ran the **old** per-table migrations, do **not** swap migration files in place on that database. Either:
-
-- Keep the old DB and run only new forward migrations (not applicable after this consolidation), or  
-- **Reset** to a fresh database and run the consolidated set above.
+If an environment already ran migrations that created `bridge_replica_pages` or `2026_05_18_155700_extend_listing_sync_and_replica_pages_for_spark.php`, do **not** swap migration files in place. **Reset** to a fresh database (`migrate:fresh` on disposable dev/staging only) and run the consolidated set above.
 
 ---
 

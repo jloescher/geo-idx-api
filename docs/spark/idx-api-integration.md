@@ -122,11 +122,11 @@ StandardStatus eq 'Active' or StandardStatus eq 'Pending'
 - Incremental: `ModificationTimestamp gt {cursor} and ModificationTimestamp lt {window_end}`; upper bound in `listing_sync_cursors.incremental_window_end`
 - Pagination: `@odata.nextLink` → `listing_sync_cursors.replication_next_url` (follow absolute URL; do not rewrite host)
 
-**Staging:** gzip JSON in `bridge_replica_pages` with `provider = spark`.
+**Staging:** gzip JSON in `replica_pages` with `provider = spark` (multi-part payload when rows exceed persist chunk size).
 
 **Persist:** `ListingMirrorWriter` with `ListingMirrorProvider::Spark` — full row in `raw_data`; indexed columns from standard RESO fields; Beaches encoded fields in `custom_fields`.
 
-**Purge:** `bridge:purge-replica-pages` (shared table; Spark retention via `SPARK_REPLICA_PAGE_RETENTION_HOURS`).
+**Purge:** `mls:purge-replica-pages` (alias `bridge:purge-replica-pages`; shared table; Spark retention via `SPARK_REPLICA_PAGE_RETENTION_HOURS`).
 
 ### Key code
 

@@ -6,6 +6,9 @@ use App\Enums\ListingMirrorProvider;
 use App\Models\Listing;
 use App\Models\ListingSyncCursor;
 use App\Services\Mls\ListingMirrorWriter;
+use App\Services\Replication\MlsReplicationService;
+use App\Services\Replication\ReplicationCursorPatch;
+use App\Services\Replication\ReplicationPageResult;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Log;
@@ -21,7 +24,7 @@ use Illuminate\Support\Facades\Log;
  * Mirror policy: indexed rows are Active + Pending only; Closed / other statuses reconcile via
  * delete batches so teaser surfaces never leak wrong lifecycle states from local cache.
  */
-final class BridgeSyncService
+final class BridgeSyncService extends MlsReplicationService
 {
     public function __construct(
         private readonly BridgeHttpService $http,
@@ -29,40 +32,7 @@ final class BridgeSyncService
         private readonly ListingMirrorWriter $mirrorWriter,
     ) {}
 
-    public function cursorForDataset(string $dataset): ListingSyncCursor
-    {
-        /** @var ListingSyncCursor $cursor */
-        $cursor = ListingSyncCursor::query()->firstOrCreate(
-            ['dataset_slug' => $dataset],
-            ['replication_in_progress' => false],
-        );
-
-        return $cursor;
-    }
-
-    public function shouldRunReplication(ListingSyncCursor $cursor): bool
-    {
-        if ($cursor->replication_next_url !== null && $cursor->replication_next_url !== '') {
-            return true;
-        }
-
-        if ($cursor->replication_in_progress) {
-            return true;
-        }
-
-        return ! Listing::query()->where('dataset_slug', $cursor->dataset_slug)->exists();
-    }
-
-    public function shouldRunIncremental(ListingSyncCursor $cursor): bool
-    {
-        if ($cursor->replication_in_progress) {
-            return false;
-        }
-
-        return $cursor->last_bridge_modification_timestamp !== null;
-    }
-
-    public function fetchReplicationPage(string $dataset, ListingSyncCursor $cursor): BridgeSyncPageResult
+    public function fetchReplicationPage(string $dataset, ListingSyncCursor $cursor): ReplicationPageResult
     {
         $top = (int) config('bridge.sync_replication_top', 2000);
         $replicationStarting = ($cursor->replication_next_url === null || $cursor->replication_next_url === '')
@@ -94,7 +64,7 @@ final class BridgeSyncService
                 odataQuery: $query,
             );
 
-            return BridgeSyncPageResult::forbidden($url, $query, 403);
+            return ReplicationPageResult::forbidden($url, $query, 403);
         }
 
         if (! $response->successful()) {
@@ -108,7 +78,7 @@ final class BridgeSyncService
                 odataQuery: $query,
             );
 
-            return BridgeSyncPageResult::httpError($url, $query, $response->status());
+            return ReplicationPageResult::httpError($url, $query, $response->status());
         }
 
         $body = $response->json();
@@ -116,7 +86,7 @@ final class BridgeSyncService
         $next = $this->extractNextUrl($response);
         $maxBridgeTs = $this->maxBridgeTimestampFromRows($value);
 
-        return new BridgeSyncPageResult(
+        return new ReplicationPageResult(
             rows: $value,
             nextReplicationUrl: $next,
             replicationComplete: $next === null,
@@ -130,10 +100,10 @@ final class BridgeSyncService
         );
     }
 
-    public function fetchIncrementalPage(string $dataset, ListingSyncCursor $cursor, int $skip): BridgeSyncPageResult
+    public function fetchIncrementalPage(string $dataset, ListingSyncCursor $cursor, int $skip): ReplicationPageResult
     {
         if ($cursor->last_bridge_modification_timestamp === null) {
-            return new BridgeSyncPageResult(
+            return new ReplicationPageResult(
                 rows: [],
                 nextReplicationUrl: null,
                 replicationComplete: true,
@@ -183,13 +153,13 @@ final class BridgeSyncService
                 odataQuery: $query,
             );
 
-            return BridgeSyncPageResult::httpError($url, $query, $response->status());
+            return ReplicationPageResult::httpError($url, $query, $response->status());
         }
 
         $body = $response->json();
         $value = is_array($body['value'] ?? null) ? $body['value'] : [];
         if ($value === []) {
-            return new BridgeSyncPageResult(
+            return new ReplicationPageResult(
                 rows: [],
                 nextReplicationUrl: null,
                 replicationComplete: true,
@@ -214,7 +184,7 @@ final class BridgeSyncService
             $hasMore = false;
         }
 
-        return new BridgeSyncPageResult(
+        return new ReplicationPageResult(
             rows: $value,
             nextReplicationUrl: null,
             replicationComplete: true,
@@ -230,7 +200,7 @@ final class BridgeSyncService
     /**
      * @param  list<array<string, mixed>>  $rows
      */
-    public function persistChunk(string $dataset, array $rows, ?BridgeReplicaCursorPatch $patch = null): BridgeReplicaPersistStats
+    public function persistChunk(string $dataset, array $rows, ?ReplicationCursorPatch $patch = null): BridgeReplicaPersistStats
     {
         $stats = $rows === []
             ? new BridgeReplicaPersistStats
@@ -241,32 +211,6 @@ final class BridgeSyncService
         }
 
         return $stats;
-    }
-
-    public function applyCursorPatch(string $dataset, BridgeReplicaCursorPatch $patch): void
-    {
-        $cursor = $this->cursorForDataset($dataset);
-
-        if ($patch->applyReplicationState) {
-            $cursor->replication_next_url = $patch->replicationNextUrl;
-            if ($patch->replicationInProgress !== null) {
-                $cursor->replication_in_progress = $patch->replicationInProgress;
-            }
-        }
-
-        if ($patch->incrementalWindowEnd !== null) {
-            $cursor->incremental_window_end = $patch->incrementalWindowEnd;
-        }
-
-        if ($patch->maxBridgeTs !== null) {
-            $this->advanceCursorTimestamp($cursor, $patch->maxBridgeTs);
-        }
-
-        if ($patch->markSyncFinished) {
-            $cursor->last_sync_finished_at = now();
-        }
-
-        $cursor->save();
     }
 
     /**
@@ -352,17 +296,6 @@ final class BridgeSyncService
         }
 
         return $current;
-    }
-
-    private function advanceCursorTimestamp(ListingSyncCursor $cursor, ?CarbonImmutable $maxBridgeTs): void
-    {
-        if ($maxBridgeTs === null) {
-            return;
-        }
-        $existing = $cursor->last_bridge_modification_timestamp;
-        if (! $existing instanceof \DateTimeInterface || CarbonImmutable::parse($existing->format(\DateTimeInterface::ATOM))->lt($maxBridgeTs)) {
-            $cursor->last_bridge_modification_timestamp = $maxBridgeTs;
-        }
     }
 
     private function extractNextUrl(Response $response): ?string

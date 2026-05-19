@@ -2,15 +2,16 @@
 
 namespace App\Jobs;
 
-use App\Services\Bridge\BridgeReplicaPageStore;
 use App\Services\Bridge\BridgeSyncService;
 use App\Services\Bridge\BridgeSyncTelemetry;
+use App\Services\Replication\ReplicaPageStore;
 use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Log;
 
 /**
- * Persists one chunk of a staged Bridge page to Postgres — no Bridge HTTP or fetch chaining.
+ * Persists one chunk of a staged replica page to Postgres — no Bridge HTTP or fetch chaining.
  */
 class BridgePersistReplicaChunkJob implements ShouldQueue
 {
@@ -39,7 +40,7 @@ class BridgePersistReplicaChunkJob implements ShouldQueue
     public function handle(
         BridgeSyncService $sync,
         BridgeSyncTelemetry $telemetry,
-        BridgeReplicaPageStore $pageStore,
+        ReplicaPageStore $pageStore,
     ): void {
         $rows = $pageStore->rowsForChunk($this->pageId, $this->chunkIndex, $this->chunkTotal);
         $stats = $sync->persistChunk($this->dataset, $rows);
@@ -50,5 +51,18 @@ class BridgePersistReplicaChunkJob implements ShouldQueue
             chunkIndex: $this->chunkIndex,
             chunkTotal: $this->chunkTotal,
         );
+
+        $peakMb = round(memory_get_peak_usage(true) / 1024 / 1024, 2);
+        Log::info('replication.persist.memory', [
+            'provider' => 'bridge',
+            'dataset' => $this->dataset,
+            'chunk_index' => $this->chunkIndex,
+            'chunk_total' => $this->chunkTotal,
+            'row_count' => count($rows),
+            'peak_mb' => $peakMb,
+        ]);
+
+        unset($rows);
+        gc_collect_cycles();
     }
 }

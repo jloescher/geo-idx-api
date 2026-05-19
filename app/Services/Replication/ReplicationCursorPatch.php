@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Services\Bridge;
+namespace App\Services\Replication;
 
 use Carbon\CarbonImmutable;
 
-final readonly class BridgeReplicaCursorPatch
+final readonly class ReplicationCursorPatch
 {
     public function __construct(
         public bool $applyReplicationState = false,

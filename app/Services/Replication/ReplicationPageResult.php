@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace App\Services\Bridge;
+namespace App\Services\Replication;
 
 use Carbon\CarbonImmutable;
 
 /**
  * @phpstan-type Row array<string, mixed>
  */
-final readonly class BridgeSyncPageResult
+final readonly class ReplicationPageResult
 {
     /**
      * @param  list<Row>  $rows

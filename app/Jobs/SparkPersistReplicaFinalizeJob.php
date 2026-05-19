@@ -2,8 +2,8 @@
 
 namespace App\Jobs;
 
-use App\Services\Bridge\BridgeReplicaCursorPatch;
-use App\Services\Bridge\BridgeReplicaPageStore;
+use App\Services\Replication\ReplicaPageStore;
+use App\Services\Replication\ReplicationCursorPatch;
 use App\Services\Spark\SparkSyncFetchScheduler;
 use App\Services\Spark\SparkSyncService;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -18,7 +18,7 @@ class SparkPersistReplicaFinalizeJob implements ShouldQueue
     public function __construct(
         public string $dataset,
         public ?int $replicaPageId = null,
-        public ?BridgeReplicaCursorPatch $cursorPatch = null,
+        public ?ReplicationCursorPatch $cursorPatch = null,
         public bool $dispatchIncrementalAfter = false,
         public ?string $nextFetchMode = null,
         public int $nextChainDepth = 0,
@@ -37,7 +37,7 @@ class SparkPersistReplicaFinalizeJob implements ShouldQueue
     public function handle(
         SparkSyncService $sync,
         SparkSyncFetchScheduler $scheduler,
-        BridgeReplicaPageStore $pageStore,
+        ReplicaPageStore $pageStore,
     ): void {
         if ($this->cursorPatch !== null) {
             $sync->applyCursorPatch($this->dataset, $this->cursorPatch);
@@ -49,7 +49,7 @@ class SparkPersistReplicaFinalizeJob implements ShouldQueue
         }
 
         if ($this->dispatchIncrementalAfter) {
-            $scheduler->dispatchIncremental($this->dataset);
+            $scheduler->dispatchIncremental($this->dataset, idlePoll: false);
 
             return;
         }
@@ -60,7 +60,14 @@ class SparkPersistReplicaFinalizeJob implements ShouldQueue
                 $this->nextFetchMode,
                 0,
                 $this->nextChainDepth,
+                idlePoll: false,
             );
+
+            return;
+        }
+
+        if ($this->cursorPatch?->markSyncFinished) {
+            $scheduler->dispatchIncremental($this->dataset, idlePoll: true);
         }
     }
 }

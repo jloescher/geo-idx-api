@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * PostGIS listings mirror, replication cursors, and Bridge page staging for fetch/persist workers.
+ * PostGIS listings mirror, replication cursors, and provider-agnostic replica page staging for fetch/persist workers.
  */
 return new class extends Migration
 {
@@ -126,34 +126,38 @@ return new class extends Migration
         Schema::create('listing_sync_cursors', function (Blueprint $table): void {
             $table->string('dataset_slug', 64)->primary();
             $table->timestampTz('last_bridge_modification_timestamp')->nullable();
+            $table->timestampTz('incremental_window_end')->nullable();
             $table->text('replication_next_url')->nullable();
             $table->boolean('replication_in_progress')->default(false);
             $table->timestampTz('last_sync_finished_at')->nullable();
             $table->timestamps();
         });
 
-        Schema::create('bridge_replica_pages', function (Blueprint $table): void {
+        Schema::create('replica_pages', function (Blueprint $table): void {
             $table->id();
+            $table->string('provider', 16)->default('bridge');
             $table->string('dataset_slug', 64);
             $table->string('mode', 32);
             $table->string('status', 32)->default('pending');
-            $table->text('compressed_payload')->nullable()->comment('Base64-encoded gzip JSON page payload');
+            $table->text('compressed_payload')->nullable()->comment('Base64-encoded gzip JSON (v2 multi-part or legacy page payload)');
             $table->unsignedInteger('row_count')->default(0);
             $table->text('bridge_url')->nullable();
+            $table->text('upstream_url')->nullable();
             $table->jsonb('odata_query')->nullable();
             $table->uuid('batch_id')->nullable();
             $table->timestampTz('fetched_at');
             $table->timestampTz('processed_at')->nullable();
             $table->timestamps();
 
-            $table->index(['status', 'processed_at'], 'bridge_replica_pages_status_processed_idx');
-            $table->index(['dataset_slug', 'status'], 'bridge_replica_pages_dataset_status_idx');
+            $table->index(['status', 'processed_at'], 'replica_pages_status_processed_idx');
+            $table->index(['dataset_slug', 'status'], 'replica_pages_dataset_status_idx');
+            $table->index(['provider', 'dataset_slug', 'status'], 'replica_pages_provider_dataset_status_idx');
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('bridge_replica_pages');
+        Schema::dropIfExists('replica_pages');
         Schema::dropIfExists('listing_sync_cursors');
 
         $driver = Schema::connection($this->getConnection())->getConnection()->getDriverName();

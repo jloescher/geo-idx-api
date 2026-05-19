@@ -54,9 +54,11 @@ return [
 
     'timeout_seconds' => (int) env('SPARK_TIMEOUT', 30),
 
-    'datasets' => array_values(array_filter(array_map(
-        trim(...),
-        explode(',', (string) env('SPARK_DATASETS', 'beaches'))
+    'datasets' => array_values(array_keys(array_filter(
+        config('mls.datasets', []),
+        static fn (mixed $def): bool => is_array($def)
+            && ($def['provider'] ?? '') === 'spark'
+            && ($def['enabled'] ?? true) !== false,
     ))),
 
     'images_public_base' => $idx['images_public_url'],
@@ -74,7 +76,7 @@ return [
 
     'sync_incremental_top' => min(1000, max(1, (int) env('SPARK_SYNC_INCREMENTAL_TOP', 1000))),
 
-    'sync_incremental_poll_minutes' => max(1, (int) env('SPARK_SYNC_INCREMENTAL_POLL_MINUTES', 10)),
+    'sync_incremental_poll_minutes' => max(1, (int) env('SPARK_SYNC_INCREMENTAL_POLL_MINUTES', env('MLS_STEADY_INCREMENTAL_POLL_MINUTES', 15))),
 
     /** OData $expand for replication (Media, Unit, Room, OpenHouse). */
     'sync_expand' => (string) env('SPARK_SYNC_EXPAND', 'Media,Unit,Room,OpenHouse'),
@@ -92,7 +94,7 @@ return [
 
     'sync_upsert_chunk_size' => min(500, max(25, (int) env('SPARK_SYNC_UPSERT_CHUNK', 250))),
 
-    'sync_persist_job_chunk_size' => min(250, max(25, (int) env('SPARK_SYNC_PERSIST_JOB_CHUNK', 50))),
+    'sync_persist_job_chunk_size' => min(250, max(25, (int) env('SPARK_SYNC_PERSIST_JOB_CHUNK', 25))),
 
     'replica_page_retention_hours' => max(1, (int) env('SPARK_REPLICA_PAGE_RETENTION_HOURS', 24)),
 

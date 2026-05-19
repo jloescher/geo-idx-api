@@ -2,10 +2,10 @@
 
 namespace App\Jobs;
 
-use App\Services\Bridge\BridgeReplicaCursorPatch;
-use App\Services\Bridge\BridgeReplicaPageStore;
 use App\Services\Bridge\BridgeSyncFetchScheduler;
 use App\Services\Bridge\BridgeSyncService;
+use App\Services\Replication\ReplicaPageStore;
+use App\Services\Replication\ReplicationCursorPatch;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
@@ -21,7 +21,7 @@ class BridgePersistReplicaFinalizeJob implements ShouldQueue
     public function __construct(
         public string $dataset,
         public ?int $replicaPageId = null,
-        public ?BridgeReplicaCursorPatch $cursorPatch = null,
+        public ?ReplicationCursorPatch $cursorPatch = null,
         public bool $dispatchIncrementalAfter = false,
         public ?string $nextFetchMode = null,
         public int $nextIncrementalSkip = 0,
@@ -41,7 +41,7 @@ class BridgePersistReplicaFinalizeJob implements ShouldQueue
     public function handle(
         BridgeSyncService $sync,
         BridgeSyncFetchScheduler $scheduler,
-        BridgeReplicaPageStore $pageStore,
+        ReplicaPageStore $pageStore,
     ): void {
         if ($this->cursorPatch !== null) {
             $sync->applyCursorPatch($this->dataset, $this->cursorPatch);
@@ -53,7 +53,7 @@ class BridgePersistReplicaFinalizeJob implements ShouldQueue
         }
 
         if ($this->dispatchIncrementalAfter) {
-            $scheduler->dispatchIncremental($this->dataset);
+            $scheduler->dispatchIncremental($this->dataset, idlePoll: false);
 
             return;
         }
@@ -64,7 +64,14 @@ class BridgePersistReplicaFinalizeJob implements ShouldQueue
                 $this->nextFetchMode,
                 $this->nextIncrementalSkip,
                 $this->nextChainDepth,
+                idlePoll: false,
             );
+
+            return;
+        }
+
+        if ($this->cursorPatch?->markSyncFinished) {
+            $scheduler->dispatchIncremental($this->dataset, idlePoll: true);
         }
     }
 }

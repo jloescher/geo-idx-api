@@ -2,10 +2,11 @@
 
 namespace App\Jobs;
 
-use App\Services\Bridge\BridgeReplicaCursorPatch;
-use App\Services\Bridge\BridgeReplicaPageStore;
-use App\Services\Bridge\BridgeSyncPageResult;
 use App\Services\Bridge\BridgeSyncTelemetry;
+use App\Services\Mls\MlsDatasetRegistry;
+use App\Services\Replication\ReplicaPageStore;
+use App\Services\Replication\ReplicationCursorPatch;
+use App\Services\Replication\ReplicationPageResult;
 use App\Services\Spark\SparkSyncService;
 use Illuminate\Bus\Batch;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -40,7 +41,8 @@ class SparkSyncFetchPageJob implements ShouldQueue
     public function handle(
         SparkSyncService $sync,
         BridgeSyncTelemetry $telemetry,
-        BridgeReplicaPageStore $pageStore,
+        ReplicaPageStore $pageStore,
+        MlsDatasetRegistry $datasets,
     ): void {
         $maxChain = (int) config('spark.sync_max_chained_fetch_pages', 0);
         if ($maxChain > 0 && $this->chainDepth >= $maxChain) {
@@ -70,7 +72,7 @@ class SparkSyncFetchPageJob implements ShouldQueue
             : $sync->fetchIncrementalPage($this->dataset, $cursor, $this->incrementalSkip);
 
         if ($result->forbidden) {
-            $sync->applyCursorPatch($this->dataset, new BridgeReplicaCursorPatch(
+            $sync->applyCursorPatch($this->dataset, new ReplicationCursorPatch(
                 applyReplicationState: true,
                 replicationNextUrl: null,
                 replicationInProgress: false,
@@ -99,7 +101,7 @@ class SparkSyncFetchPageJob implements ShouldQueue
         }
 
         if ($result->rows === [] && $this->mode === 'incremental' && $result->replicationComplete) {
-            $sync->applyCursorPatch($this->dataset, new BridgeReplicaCursorPatch(
+            $sync->applyCursorPatch($this->dataset, new ReplicationCursorPatch(
                 markSyncFinished: true,
             ));
 
@@ -116,17 +118,19 @@ class SparkSyncFetchPageJob implements ShouldQueue
             $nextFetch['chain'] ?? 0,
             $telemetry,
             $pageStore,
+            $datasets,
         );
     }
 
     private function dispatchPersistBatch(
-        BridgeSyncPageResult $result,
-        ?BridgeReplicaCursorPatch $patch,
+        ReplicationPageResult $result,
+        ?ReplicationCursorPatch $patch,
         bool $dispatchIncremental,
         ?string $nextFetchMode,
         int $nextChainDepth,
         BridgeSyncTelemetry $telemetry,
-        BridgeReplicaPageStore $pageStore,
+        ReplicaPageStore $pageStore,
+        MlsDatasetRegistry $datasets,
     ): void {
         $persistQueue = (string) config('spark.sync_persist_queue', 'spark-sync-persist');
 
@@ -152,12 +156,11 @@ class SparkSyncFetchPageJob implements ShouldQueue
             provider: 'spark',
         );
 
-        $chunkSize = max(1, (int) config('spark.sync_persist_job_chunk_size', 50));
-        $chunkTotal = (int) max(1, (int) ceil(count($result->rows) / $chunkSize));
-        $jobs = [];
+        $chunkTotal = $pageStore->chunkCountForPage($pageId);
+        $chunkJobs = [];
 
         for ($index = 0; $index < $chunkTotal; $index++) {
-            $jobs[] = new SparkPersistReplicaChunkJob(
+            $chunkJobs[] = new SparkPersistReplicaChunkJob(
                 dataset: $this->dataset,
                 pageId: $pageId,
                 chunkIndex: $index + 1,
@@ -165,29 +168,32 @@ class SparkSyncFetchPageJob implements ShouldQueue
             );
         }
 
+        $finalizeJob = new SparkPersistReplicaFinalizeJob(
+            dataset: $this->dataset,
+            replicaPageId: $pageId,
+            cursorPatch: $patch,
+            dispatchIncrementalAfter: $dispatchIncremental,
+            nextFetchMode: $nextFetchMode,
+            nextChainDepth: $nextChainDepth,
+        );
+
         $dataset = $this->dataset;
         $mode = $this->mode;
 
-        $batch = Bus::batch($jobs)
+        if ($datasets->persistSequential($dataset)) {
+            $chainJobs = $chunkJobs;
+            $chainJobs[] = $finalizeJob;
+            Bus::chain($chainJobs)->onQueue($persistQueue)->dispatch();
+            $pageStore->markProcessing($pageId);
+
+            return;
+        }
+
+        $batch = Bus::batch($chunkJobs)
             ->name('spark-replica-persist:'.$dataset)
             ->onQueue($persistQueue)
-            ->then(function () use (
-                $dataset,
-                $pageId,
-                $patch,
-                $dispatchIncremental,
-                $nextFetchMode,
-                $nextChainDepth,
-                $persistQueue,
-            ): void {
-                SparkPersistReplicaFinalizeJob::dispatch(
-                    dataset: $dataset,
-                    replicaPageId: $pageId,
-                    cursorPatch: $patch,
-                    dispatchIncrementalAfter: $dispatchIncremental,
-                    nextFetchMode: $nextFetchMode,
-                    nextChainDepth: $nextChainDepth,
-                )->onQueue($persistQueue);
+            ->then(function () use ($finalizeJob, $persistQueue): void {
+                dispatch($finalizeJob)->onQueue($persistQueue);
             })
             ->catch(function (Batch $batch, Throwable $e) use ($dataset, $mode, $pageId, $telemetry, $pageStore): void {
                 $pageStore->markFailed($pageId);
@@ -205,12 +211,12 @@ class SparkSyncFetchPageJob implements ShouldQueue
     }
 
     /**
-     * @return array{0: ?BridgeReplicaCursorPatch, 1: bool, 2: ?array{mode: string, chain: int}}
+     * @return array{0: ?ReplicationCursorPatch, 1: bool, 2: ?array{mode: string, chain: int}}
      */
-    private function continuationPlan(BridgeSyncPageResult $result): array
+    private function continuationPlan(ReplicationPageResult $result): array
     {
         if ($this->mode === 'replication') {
-            $patch = new BridgeReplicaCursorPatch(
+            $patch = new ReplicationCursorPatch(
                 applyReplicationState: true,
                 replicationNextUrl: $result->nextReplicationUrl,
                 replicationInProgress: ! $result->replicationComplete,
@@ -229,7 +235,7 @@ class SparkSyncFetchPageJob implements ShouldQueue
             return [$patch, $dispatchIncremental, null];
         }
 
-        $patch = new BridgeReplicaCursorPatch(
+        $patch = new ReplicationCursorPatch(
             applyReplicationState: true,
             replicationNextUrl: $result->replicationComplete ? null : $result->nextReplicationUrl,
             replicationInProgress: false,

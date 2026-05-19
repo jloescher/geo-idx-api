@@ -63,9 +63,11 @@ return [
      * Available MLS datasets (comma-separated). Each dataset maps to a Bridge Data Output
      * data source. The first value is the default.
      */
-    'datasets' => array_values(array_filter(array_map(
-        trim(...),
-        explode(',', (string) env('BRIDGE_DATASETS', 'stellar'))
+    'datasets' => array_values(array_keys(array_filter(
+        config('mls.datasets', []),
+        static fn (mixed $def): bool => is_array($def)
+            && ($def['provider'] ?? '') === 'bridge'
+            && ($def['enabled'] ?? true) !== false,
     ))),
 
     'images_public_base' => $idx['images_public_url'],
@@ -129,7 +131,7 @@ return [
     'sync_upsert_chunk_size' => min(500, max(25, (int) env('BRIDGE_SYNC_UPSERT_CHUNK', 250))),
 
     /** Rows per queue persist job (limits jobs.payload size and worker peak RAM). */
-    'sync_persist_job_chunk_size' => min(250, max(25, (int) env('BRIDGE_SYNC_PERSIST_JOB_CHUNK', 100))),
+    'sync_persist_job_chunk_size' => min(250, max(25, (int) env('BRIDGE_SYNC_PERSIST_JOB_CHUNK', 50))),
 
     /** Purge completed staging pages older than this many hours (failed rows use failed retention days). */
     'replica_page_retention_hours' => max(1, (int) env('BRIDGE_REPLICA_PAGE_RETENTION_HOURS', 24)),

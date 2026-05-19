@@ -2,12 +2,13 @@
 
 namespace App\Jobs;
 
-use App\Services\Bridge\BridgeReplicaPageStore;
 use App\Services\Bridge\BridgeSyncTelemetry;
+use App\Services\Replication\ReplicaPageStore;
 use App\Services\Spark\SparkSyncService;
 use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Log;
 
 class SparkPersistReplicaChunkJob implements ShouldQueue
 {
@@ -36,7 +37,7 @@ class SparkPersistReplicaChunkJob implements ShouldQueue
     public function handle(
         SparkSyncService $sync,
         BridgeSyncTelemetry $telemetry,
-        BridgeReplicaPageStore $pageStore,
+        ReplicaPageStore $pageStore,
     ): void {
         $rows = $pageStore->rowsForChunk($this->pageId, $this->chunkIndex, $this->chunkTotal);
         $stats = $sync->persistChunk($this->dataset, $rows);
@@ -47,5 +48,18 @@ class SparkPersistReplicaChunkJob implements ShouldQueue
             chunkIndex: $this->chunkIndex,
             chunkTotal: $this->chunkTotal,
         );
+
+        $peakMb = round(memory_get_peak_usage(true) / 1024 / 1024, 2);
+        Log::info('replication.persist.memory', [
+            'provider' => 'spark',
+            'dataset' => $this->dataset,
+            'chunk_index' => $this->chunkIndex,
+            'chunk_total' => $this->chunkTotal,
+            'row_count' => count($rows),
+            'peak_mb' => $peakMb,
+        ]);
+
+        unset($rows);
+        gc_collect_cycles();
     }
 }

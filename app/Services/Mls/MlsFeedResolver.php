@@ -22,44 +22,35 @@ final class MlsFeedResolver
     public function feedsMap(): array
     {
         $feeds = [];
-        $bridgeDatasets = config('bridge.datasets', ['stellar']);
-        if (! is_array($bridgeDatasets) || $bridgeDatasets === []) {
-            $bridgeDatasets = ['stellar'];
-        }
-        foreach ($bridgeDatasets as $dataset) {
-            if (! is_string($dataset)) {
-                continue;
-            }
-            $dataset = trim($dataset);
-            if ($dataset === '') {
-                continue;
-            }
-            $internalKey = 'bridge_'.$dataset;
-            $feeds[$internalKey] = [
-                'provider' => MlsProvider::STELLAR->value,
-                'bridge_dataset_id' => $dataset,
-                'label' => 'Stellar MLS (Bridge)',
-            ];
+        $datasets = config('mls.datasets', []);
+        if (! is_array($datasets)) {
+            return $feeds;
         }
 
-        $sparkDatasets = config('spark.datasets', ['beaches']);
-        if (! is_array($sparkDatasets) || $sparkDatasets === []) {
-            $sparkDatasets = ['beaches'];
-        }
-        foreach ($sparkDatasets as $dataset) {
-            if (! is_string($dataset)) {
+        foreach ($datasets as $slug => $def) {
+            if (! is_string($slug) || $slug === '' || ! is_array($def)) {
                 continue;
             }
-            $dataset = trim($dataset);
-            if ($dataset === '') {
+            if (($def['enabled'] ?? true) === false) {
                 continue;
             }
-            $internalKey = 'spark_'.$dataset;
-            $feeds[$internalKey] = [
-                'provider' => MlsProvider::SPARK->value,
-                'spark_dataset_id' => $dataset,
-                'label' => 'Beaches MLS (Spark)',
-            ];
+            $provider = (string) ($def['provider'] ?? '');
+            $label = (string) ($def['label'] ?? $slug);
+            if ($provider === 'bridge') {
+                $internalKey = 'bridge_'.$slug;
+                $feeds[$internalKey] = [
+                    'provider' => MlsProvider::STELLAR->value,
+                    'bridge_dataset_id' => $slug,
+                    'label' => $label,
+                ];
+            } elseif ($provider === 'spark') {
+                $internalKey = 'spark_'.$slug;
+                $feeds[$internalKey] = [
+                    'provider' => MlsProvider::SPARK->value,
+                    'spark_dataset_id' => $slug,
+                    'label' => $label,
+                ];
+            }
         }
 
         return $feeds;

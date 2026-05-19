@@ -3,11 +3,12 @@
 namespace Tests\Feature\Spark;
 
 use App\Jobs\SparkPersistReplicaChunkJob;
+use App\Jobs\SparkPersistReplicaFinalizeJob;
 use App\Jobs\SparkSyncFetchPageJob;
-use App\Services\Bridge\BridgeReplicaPageStore;
 use App\Services\Bridge\BridgeSyncTelemetry;
+use App\Services\Mls\MlsDatasetRegistry;
+use App\Services\Replication\ReplicaPageStore;
 use App\Services\Spark\SparkSyncService;
-use Illuminate\Bus\PendingBatch;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Bus;
@@ -47,7 +48,8 @@ class SparkSyncFetchPageJobTest extends TestCase
         (new SparkSyncFetchPageJob('beaches', 'replication', 0, 0))->handle(
             app(SparkSyncService::class),
             app(BridgeSyncTelemetry::class),
-            app(BridgeReplicaPageStore::class),
+            app(ReplicaPageStore::class),
+            app(MlsDatasetRegistry::class),
         );
 
         Http::assertSent(function (Request $request) use ($collectionUrl): bool {
@@ -87,23 +89,20 @@ class SparkSyncFetchPageJobTest extends TestCase
         (new SparkSyncFetchPageJob('beaches', 'replication', 0, 0))->handle(
             app(SparkSyncService::class),
             app(BridgeSyncTelemetry::class),
-            app(BridgeReplicaPageStore::class),
+            app(ReplicaPageStore::class),
+            app(MlsDatasetRegistry::class),
         );
 
-        $this->assertDatabaseCount('bridge_replica_pages', 1);
-        $this->assertTrue(app(BridgeReplicaPageStore::class)->hasActivePage('beaches', 'spark'));
+        $this->assertDatabaseCount('replica_pages', 1);
+        $this->assertTrue(app(ReplicaPageStore::class)->hasActivePage('beaches', 'spark'));
 
-        Bus::assertBatched(function (PendingBatch $batch): bool {
-            if ($batch->jobs->count() !== 1) {
-                return false;
-            }
-
-            $job = $batch->jobs->first();
-
-            return $job instanceof SparkPersistReplicaChunkJob
-                && $job->dataset === 'beaches'
-                && $job->pageId > 0
-                && $job->queue === 'spark-sync-persist';
-        });
+        Bus::assertChained([
+            function (SparkPersistReplicaChunkJob $job): bool {
+                return $job->dataset === 'beaches'
+                    && $job->pageId > 0
+                    && $job->queue === 'spark-sync-persist';
+            },
+            SparkPersistReplicaFinalizeJob::class,
+        ]);
     }
 }

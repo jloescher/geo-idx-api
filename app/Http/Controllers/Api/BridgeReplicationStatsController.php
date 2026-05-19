@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Listing;
 use App\Models\ListingSyncCursor;
 use App\Services\Bridge\MlsDatasetResolver;
+use App\Services\Mls\MlsDatasetRegistry;
 use App\Services\Mls\MlsFeedResolver;
+use App\Services\Replication\ReplicationFreshness;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -19,6 +21,8 @@ class BridgeReplicationStatsController extends Controller
     public function __construct(
         private readonly MlsDatasetResolver $datasets,
         private readonly MlsFeedResolver $feeds,
+        private readonly ReplicationFreshness $freshness,
+        private readonly MlsDatasetRegistry $registry,
     ) {}
 
     public function __invoke(): JsonResponse
@@ -30,9 +34,15 @@ class BridgeReplicationStatsController extends Controller
             $mirrorSlug = $this->feeds->mirrorDatasetSlug($feedCode);
             $cursor = ListingSyncCursor::query()->find($mirrorSlug);
 
+            $provider = $this->registry->provider($mirrorSlug);
+
             $datasets[] = [
                 'feed' => $feedCode,
                 'slug' => $mirrorSlug,
+                'provider' => $provider,
+                'replication_mode' => $this->freshness->mode($mirrorSlug, $provider),
+                'freshness_threshold_minutes' => $this->freshness->freshnessThresholdMinutes(),
+                'minutes_behind_mls' => $this->freshness->minutesBehindMls($mirrorSlug),
                 'listing_count_total' => Listing::query()->where('dataset_slug', $mirrorSlug)->count(),
                 'listing_count_active_pending' => Listing::query()
                     ->where('dataset_slug', $mirrorSlug)

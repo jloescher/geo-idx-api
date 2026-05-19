@@ -2,11 +2,12 @@
 
 namespace App\Jobs;
 
-use App\Services\Bridge\BridgeReplicaCursorPatch;
-use App\Services\Bridge\BridgeReplicaPageStore;
-use App\Services\Bridge\BridgeSyncPageResult;
 use App\Services\Bridge\BridgeSyncService;
 use App\Services\Bridge\BridgeSyncTelemetry;
+use App\Services\Mls\MlsDatasetRegistry;
+use App\Services\Replication\ReplicaPageStore;
+use App\Services\Replication\ReplicationCursorPatch;
+use App\Services\Replication\ReplicationPageResult;
 use Illuminate\Bus\Batch;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -15,8 +16,8 @@ use Illuminate\Support\Facades\Bus;
 use Throwable;
 
 /**
- * Revenue impact: one Bridge page per job respects burst/hourly limits; DB work runs in parallel
- * persist batches on a dedicated queue so HTTP throttling and Postgres throughput stay independent.
+ * Revenue impact: one Bridge page per job respects burst/hourly limits; DB work runs on a dedicated
+ * persist queue so HTTP throttling and Postgres throughput stay independent.
  */
 class BridgeSyncFetchPageJob implements ShouldQueue
 {
@@ -44,7 +45,8 @@ class BridgeSyncFetchPageJob implements ShouldQueue
     public function handle(
         BridgeSyncService $sync,
         BridgeSyncTelemetry $telemetry,
-        BridgeReplicaPageStore $pageStore,
+        ReplicaPageStore $pageStore,
+        MlsDatasetRegistry $datasets,
     ): void {
         $maxChain = (int) config('bridge.sync_max_chained_fetch_pages', 0);
         if ($maxChain > 0 && $this->chainDepth >= $maxChain) {
@@ -69,7 +71,7 @@ class BridgeSyncFetchPageJob implements ShouldQueue
             : $sync->fetchIncrementalPage($this->dataset, $cursor, $this->incrementalSkip);
 
         if ($result->forbidden) {
-            $sync->applyCursorPatch($this->dataset, new BridgeReplicaCursorPatch(
+            $sync->applyCursorPatch($this->dataset, new ReplicationCursorPatch(
                 applyReplicationState: true,
                 replicationNextUrl: null,
                 replicationInProgress: false,
@@ -100,7 +102,7 @@ class BridgeSyncFetchPageJob implements ShouldQueue
         }
 
         if ($result->rows === [] && $this->mode === 'incremental' && ! $result->incrementalHasMore) {
-            $sync->applyCursorPatch($this->dataset, new BridgeReplicaCursorPatch(
+            $sync->applyCursorPatch($this->dataset, new ReplicationCursorPatch(
                 markSyncFinished: true,
             ));
 
@@ -118,18 +120,20 @@ class BridgeSyncFetchPageJob implements ShouldQueue
             $nextFetch['chain'] ?? 0,
             $telemetry,
             $pageStore,
+            $datasets,
         );
     }
 
     private function dispatchPersistBatch(
-        BridgeSyncPageResult $result,
-        ?BridgeReplicaCursorPatch $patch,
+        ReplicationPageResult $result,
+        ?ReplicationCursorPatch $patch,
         bool $dispatchIncremental,
         ?string $nextFetchMode,
         int $nextIncrementalSkip,
         int $nextChainDepth,
         BridgeSyncTelemetry $telemetry,
-        BridgeReplicaPageStore $pageStore,
+        ReplicaPageStore $pageStore,
+        MlsDatasetRegistry $datasets,
     ): void {
         $persistQueue = (string) config('bridge.sync_persist_queue', 'bridge-sync-persist');
 
@@ -155,12 +159,11 @@ class BridgeSyncFetchPageJob implements ShouldQueue
             odataQuery: $result->odataQuery,
         );
 
-        $chunkSize = max(1, (int) config('bridge.sync_persist_job_chunk_size', 100));
-        $chunkTotal = (int) max(1, (int) ceil(count($result->rows) / $chunkSize));
-        $jobs = [];
+        $chunkTotal = $pageStore->chunkCountForPage($pageId);
+        $chunkJobs = [];
 
         for ($index = 0; $index < $chunkTotal; $index++) {
-            $jobs[] = new BridgePersistReplicaChunkJob(
+            $chunkJobs[] = new BridgePersistReplicaChunkJob(
                 dataset: $this->dataset,
                 pageId: $pageId,
                 chunkIndex: $index + 1,
@@ -168,31 +171,33 @@ class BridgeSyncFetchPageJob implements ShouldQueue
             );
         }
 
+        $finalizeJob = new BridgePersistReplicaFinalizeJob(
+            dataset: $this->dataset,
+            replicaPageId: $pageId,
+            cursorPatch: $patch,
+            dispatchIncrementalAfter: $dispatchIncremental,
+            nextFetchMode: $nextFetchMode,
+            nextIncrementalSkip: $nextIncrementalSkip,
+            nextChainDepth: $nextChainDepth,
+        );
+
         $dataset = $this->dataset;
         $mode = $this->mode;
 
-        $batch = Bus::batch($jobs)
+        if ($datasets->persistSequential($dataset)) {
+            $chainJobs = $chunkJobs;
+            $chainJobs[] = $finalizeJob;
+            Bus::chain($chainJobs)->onQueue($persistQueue)->dispatch();
+            $pageStore->markProcessing($pageId);
+
+            return;
+        }
+
+        $batch = Bus::batch($chunkJobs)
             ->name('bridge-replica-persist:'.$dataset)
             ->onQueue($persistQueue)
-            ->then(function () use (
-                $dataset,
-                $pageId,
-                $patch,
-                $dispatchIncremental,
-                $nextFetchMode,
-                $nextIncrementalSkip,
-                $nextChainDepth,
-                $persistQueue,
-            ): void {
-                BridgePersistReplicaFinalizeJob::dispatch(
-                    dataset: $dataset,
-                    replicaPageId: $pageId,
-                    cursorPatch: $patch,
-                    dispatchIncrementalAfter: $dispatchIncremental,
-                    nextFetchMode: $nextFetchMode,
-                    nextIncrementalSkip: $nextIncrementalSkip,
-                    nextChainDepth: $nextChainDepth,
-                )->onQueue($persistQueue);
+            ->then(function () use ($finalizeJob, $persistQueue): void {
+                dispatch($finalizeJob)->onQueue($persistQueue);
             })
             ->catch(function (Batch $batch, Throwable $e) use ($dataset, $mode, $pageId, $telemetry, $pageStore): void {
                 $pageStore->markFailed($pageId);
@@ -210,12 +215,12 @@ class BridgeSyncFetchPageJob implements ShouldQueue
     }
 
     /**
-     * @return array{0: ?BridgeReplicaCursorPatch, 1: bool, 2: ?array{mode: string, skip: int, chain: int}}
+     * @return array{0: ?ReplicationCursorPatch, 1: bool, 2: ?array{mode: string, skip: int, chain: int}}
      */
-    private function continuationPlan(BridgeSyncPageResult $result): array
+    private function continuationPlan(ReplicationPageResult $result): array
     {
         if ($this->mode === 'replication') {
-            $patch = new BridgeReplicaCursorPatch(
+            $patch = new ReplicationCursorPatch(
                 applyReplicationState: true,
                 replicationNextUrl: $result->nextReplicationUrl,
                 replicationInProgress: ! $result->replicationComplete,
@@ -235,7 +240,7 @@ class BridgeSyncFetchPageJob implements ShouldQueue
             return [$patch, $dispatchIncremental, null];
         }
 
-        $patch = new BridgeReplicaCursorPatch(
+        $patch = new ReplicationCursorPatch(
             maxBridgeTs: $result->maxBridgeTs,
             markSyncFinished: ! $result->incrementalHasMore,
         );

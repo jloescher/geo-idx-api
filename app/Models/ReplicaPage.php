@@ -19,7 +19,7 @@ use Illuminate\Database\Eloquent\Model;
     'fetched_at',
     'processed_at',
 ])]
-class BridgeReplicaPage extends Model
+class ReplicaPage extends Model
 {
     public const STATUS_PENDING = 'pending';
 
@@ -29,7 +29,7 @@ class BridgeReplicaPage extends Model
 
     public const STATUS_FAILED = 'failed';
 
-    protected $table = 'bridge_replica_pages';
+    protected $table = 'replica_pages';
 
     /**
      * @return array<string, string>

@@ -81,6 +81,14 @@ FROM scheduler AS idx-api-scheduler
 
 FROM builder-web AS octane
 
+ENV XDG_CONFIG_HOME=/var/www/html/storage/caddy/config \
+    XDG_DATA_HOME=/var/www/html/storage/caddy/data \
+    FRANKENPHP_CONFIG_DIR=/var/www/html/storage/caddy/config \
+    OCTANE_SERVER=frankenphp
+
+RUN mkdir -p storage/caddy/config storage/caddy/data \
+    && chown -R www-data:www-data storage/caddy
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
