@@ -23,6 +23,8 @@ RUN chown -R www-data:www-data /var/www/html
 
 FROM builder-base AS builder-cli
 
+RUN apk add --no-cache procps
+
 RUN php artisan key:generate --force || true
 
 RUN php artisan config:cache
@@ -62,25 +64,21 @@ RUN mkdir -p storage/logs storage/framework/cache/data storage/framework/session
 
 FROM builder-cli AS queue-worker
 
-EXPOSE 8000
-
 USER www-data
 
 CMD ["/bin/sh", "-lc", "exec php -d memory_limit=512M artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=120"]
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD pgrep -f "artisan queue:work" >/dev/null || exit 1
+HEALTHCHECK --interval=15s --timeout=5s --start-period=120s --retries=5 \
+    CMD ["/bin/sh", "-c", "pgrep -af 'artisan queue:work' >/dev/null || exit 1"]
 
 FROM builder-cli AS scheduler
-
-EXPOSE 8000
 
 USER www-data
 
 CMD ["php", "-d", "memory_limit=256M", "artisan", "schedule:work", "--whisper"]
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD pgrep -f "artisan schedule:work" >/dev/null || exit 1
+HEALTHCHECK --interval=15s --timeout=5s --start-period=120s --retries=5 \
+    CMD ["/bin/sh", "-c", "pgrep -af 'artisan schedule:work' >/dev/null || exit 1"]
 
 # Alias stages: some operators use the Coolify service name as `docker build --target`.
 FROM queue-worker AS idx-api-worker
