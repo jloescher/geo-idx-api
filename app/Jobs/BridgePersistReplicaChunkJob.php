@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Services\Bridge\BridgeReplicaPageStore;
 use App\Services\Bridge\BridgeSyncService;
 use App\Services\Bridge\BridgeSyncTelemetry;
+use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
@@ -13,6 +14,7 @@ use Illuminate\Foundation\Queue\Queueable;
  */
 class BridgePersistReplicaChunkJob implements ShouldQueue
 {
+    use Batchable;
     use Queueable;
 
     public int $timeout = 300;
