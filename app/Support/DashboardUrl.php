@@ -4,9 +4,9 @@ namespace App\Support;
 
 final class DashboardUrl
 {
-    public static function panel(string $panel = 'dashboard'): string
+    public static function panel(string $panel = 'setup'): string
     {
-        if ($panel === 'dashboard') {
+        if ($panel === 'setup' || $panel === 'dashboard') {
             return '/dashboard';
         }
 

@@ -8,7 +8,7 @@ Central index for all documentation in this project. Implementation code lives i
 
 | Document | Description |
 |----------|-------------|
-| [idx-api HTTP API overview](api.md) | `/api/v1` and GIS entrypoints; how dashboard Sanctum keys relate to `domain.token`. |
+| [idx-api HTTP API overview](api.md) | `/api/v1` and GIS entrypoints; how dashboard Sanctum keys (Production/Staging auto-provisioned on domain verify) relate to `domain.token`. |
 | [OpenAPI spec document](yaak-api-collection.json) | Canonical OpenAPI `3.1.0` document used by Swagger UI (`/swagger`) and served at `/openapi.json`. |
 | [Bridge / MLS API](bridge-api-documentation.md) | Bridge Data Output API reference (Stellar MLS proxy usage). |
 | [Spark Platform (Beaches MLS)](spark/README.md) | Index: platform overview, idx-api integration, RESO reference, compliance, fixtures. |

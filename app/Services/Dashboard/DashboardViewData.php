@@ -10,7 +10,13 @@ use Illuminate\Http\Request;
 
 final class DashboardViewData
 {
-    private const PANELS = ['dashboard', 'onboarding', 'domains', 'api'];
+    private const PANELS = ['setup', 'api'];
+
+    private const LEGACY_PANEL_MAP = [
+        'dashboard' => 'setup',
+        'onboarding' => 'setup',
+        'domains' => 'setup',
+    ];
 
     public function __construct(
         private readonly MlsFeedResolver $mlsFeeds,
@@ -47,54 +53,43 @@ final class DashboardViewData
             $activeDomains = collect();
         }
 
-        $verifiedDomainCount = $activeDomains
-            ->whereIn('verification_status', ['verified', 'verified_ghl'])
-            ->count();
-
-        $hasVerifiedDomain = $activeDomains
-            ->whereIn('verification_status', ['verified', 'verified_ghl'])
-            ->isNotEmpty();
-
         $verifiedDomains = $activeDomains->whereIn('verification_status', ['verified', 'verified_ghl']);
-        $allVerifiedDomainsHaveMlsScope = $verifiedDomains->isNotEmpty() && $verifiedDomains->every(function (Domain $domain): bool {
-            $allowed = $domain->getAllowedMlsDatasets();
+        $verifiedDomainCount = $verifiedDomains->count();
+        $hasVerifiedDomain = $verifiedDomains->isNotEmpty();
 
-            return $allowed !== null && $allowed !== [];
-        });
+        $primaryVerifiedDomain = $verifiedDomains->first();
+        $primaryVerifiedDomainSlug = $primaryVerifiedDomain?->domain_slug;
 
-        $onboardingSteps = [
-            [
-                'key' => 'domains',
-                'label' => 'Register and verify at least one domain (DNS TXT)',
-                'done' => $hasVerifiedDomain,
-            ],
-            [
-                'key' => 'mls_scope',
-                'label' => 'Confirm MLS feed access on each verified domain (Domains tab)',
-                'done' => ! $hasVerifiedDomain || $allVerifiedDomainsHaveMlsScope,
-            ],
-            [
-                'key' => 'api',
-                'label' => 'Create an API token and call the API with Authorization + X-Domain-Slug',
-                'done' => $apiTokens->isNotEmpty(),
-            ],
-        ];
-        $onboardingCompletedCount = collect($onboardingSteps)->where('done', true)->count();
+        $pendingDomains = $activeDomains->whereNotIn('verification_status', ['verified', 'verified_ghl']);
+
+        $setupPhase = match (true) {
+            $hasVerifiedDomain => 'ready',
+            $activeDomains->isNotEmpty() => 'verify',
+            default => 'register',
+        };
+
+        $tokenNames = $apiTokens->pluck('name')->map(fn (string $name): string => mb_strtolower(trim($name)))->all();
+        $hasProductionToken = in_array('production', $tokenNames, true);
+        $hasStagingToken = in_array('staging', $tokenNames, true);
+        $canCreateStagingToken = $hasVerifiedDomain && ! $hasStagingToken;
 
         $appUrl = rtrim((string) config('app.url'), '/');
 
-        $activePanel = (string) $request->query('panel', 'dashboard');
-        if (! in_array($activePanel, self::PANELS, true)) {
-            $activePanel = 'dashboard';
-        }
+        $requestedPanel = (string) $request->query('panel', 'setup');
+        $activePanel = $this->resolvePanel($requestedPanel);
 
         return [
             'hasApiAccess' => true,
             'apiTokens' => $apiTokens,
             'activeDomains' => $activeDomains,
             'verifiedDomainCount' => $verifiedDomainCount,
-            'onboardingSteps' => $onboardingSteps,
-            'onboardingCompletedCount' => $onboardingCompletedCount,
+            'hasVerifiedDomain' => $hasVerifiedDomain,
+            'primaryVerifiedDomainSlug' => $primaryVerifiedDomainSlug,
+            'pendingDomains' => $pendingDomains,
+            'setupPhase' => $setupPhase,
+            'hasProductionToken' => $hasProductionToken,
+            'hasStagingToken' => $hasStagingToken,
+            'canCreateStagingToken' => $canCreateStagingToken,
             'domainLimit' => null,
             'domainLimitReached' => false,
             'canPurchaseExtraDomainSlots' => false,
@@ -105,6 +100,19 @@ final class DashboardViewData
             'appUrl' => $appUrl,
             'activePanel' => $activePanel,
         ];
+    }
+
+    private function resolvePanel(string $requested): string
+    {
+        if (isset(self::LEGACY_PANEL_MAP[$requested])) {
+            return self::LEGACY_PANEL_MAP[$requested];
+        }
+
+        if (in_array($requested, self::PANELS, true)) {
+            return $requested;
+        }
+
+        return 'setup';
     }
 
     /**

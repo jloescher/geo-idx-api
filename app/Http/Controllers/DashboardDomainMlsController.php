@@ -47,7 +47,7 @@ class DashboardDomainMlsController extends Controller
             'mls_dataset' => $default,
         ])->save();
 
-        return redirect('/dashboard?panel=domains')
+        return redirect('/dashboard')
             ->with('dashboard_status', 'MLS feed access updated for '.$domain->domain_slug.'.');
     }
 }

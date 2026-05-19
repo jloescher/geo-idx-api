@@ -53,7 +53,7 @@ idx-api/
 │   │   ├── Controllers/
 │   │   │   ├── Api/              # BridgeProxyController, ImageProxyController
 │   │   │   ├── Marketing/        # SalesPageController → marketing home
-│   │   │   ├── Dashboard*.php    # User dashboard + domains + MLS scope + API tokens
+│   │   │   ├── Dashboard*.php    # User dashboard Setup (domain + MLS + API keys)
 │   │   │   └── GisProxyController.php
 │   │   ├── Middleware/           # DomainOrTokenAuth, mls.access, ProtectMonitoringDashboard
 │   │   └── Requests/
@@ -89,7 +89,7 @@ Public ArcGIS feature server proxy for Florida parcel data. Three-tier caching w
 ### 3. Platform & user dashboard
 
 - **Marketing home** (`/`) on platform hosts — static Blade intro and links to login / dashboard
-- **User dashboard** (`/dashboard` and Filament `/filament-dashboard`) — domains, TXT verification, MLS datasets per domain, Sanctum API tokens
+- **User dashboard** (`/dashboard`) — simplified three-step Setup flow: register domain + MLS, verify DNS TXT, connect with auto-issued Production API key. Optional Staging key for preview sites. API Keys panel for revoke and additional named tokens.
 
 ```
 ┌──────────────┐        ┌──────────────┐        ┌──────────────┐
@@ -117,6 +117,9 @@ Public ArcGIS feature server proxy for Florida parcel data. Three-tier caching w
 | `GisProxyService` | `app/Services/` | Multi-tier GIS proxy, cache, failover, teaser |
 | `BridgeHttpService` | `app/Services/Bridge/` | HTTP client, URL building, timeouts |
 | `DomainOrTokenAuth` | `app/Http/Middleware/` | Domain slug and/or Sanctum token auth |
+| `DashboardViewData` | `app/Services/Dashboard/` | Setup phase resolution, token flags, panel routing |
+| `DashboardDomainController` | `app/Http/Controllers/` | Domain registration (with MLS), TXT verify, auto-token |
+| `DashboardApiTokenController` | `app/Http/Controllers/` | Production auto-issue, Staging token, custom named tokens |
 
 ## Development Guidelines
 
@@ -294,11 +297,11 @@ Dev compose (`docker-compose.dev.yml`) runs **Octane only** in `idx-api-dev` (no
 
 ## Testing
 
-- **16 test files** across Feature (10) and Unit (4) suites
+- Tests across Feature and Unit suites run against **PostgreSQL**
 - Tests run against **PostgreSQL** using `DB_*` from **`.env`** (loaded in `tests/bootstrap.php` before PHPUnit) with the **sync** queue driver
 - External APIs faked via `Http::fake()` (Bridge, ArcGIS in GIS tests)
 - `TestCase::setUp()` enforces ephemeral database safety guard
-- Coverage includes Bridge proxy security, image proxy headers, GIS probe/proxy, dashboard and marketing home, domain auth
+- Coverage includes Bridge proxy security, image proxy headers, GIS probe/proxy, dashboard Setup (domain + MLS + auto-token + staging key), marketing home, domain auth
 
 ## Additional Resources
 

@@ -100,7 +100,7 @@ curl -sS -H "Authorization: Bearer $SPARK_ACCESS_TOKEN" -H "Accept: application/
 
 Bridge feeds remain `bridge_{dataset}` (e.g. `bridge_stellar` → `stellar`).
 
-Domains enable feeds via **Allowed MLS datasets** on the dashboard (`domains.allowed_mls_datasets`). Label shown: **Beaches MLS (Spark)**.
+Domains enable feeds via **Allowed MLS datasets** during domain registration on the Setup panel, or by editing verified domain cards (`domains.allowed_mls_datasets`). Label shown: **Beaches MLS (Spark)**.
 
 ---
 

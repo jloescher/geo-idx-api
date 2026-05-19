@@ -68,6 +68,7 @@ foreach ($platformHosts as $platformHost) {
             Route::post('/dashboard/domains/{domain}/verify-txt', [DashboardDomainController::class, 'verifyTxt'])->name('dashboard.domains.verify-txt');
             Route::put('/dashboard/domains/{domain}/mls', [DashboardDomainMlsController::class, 'update'])->name('dashboard.domains.mls.update');
             Route::post('/dashboard/api-tokens', [DashboardApiTokenController::class, 'store'])->name('dashboard.api-tokens.store');
+            Route::post('/dashboard/api-tokens/staging', [DashboardApiTokenController::class, 'storeStaging'])->name('dashboard.api-tokens.staging');
             Route::delete('/dashboard/api-tokens/{token}', [DashboardApiTokenController::class, 'destroy'])->name('dashboard.api-tokens.destroy');
             Route::post('/dashboard/invitations', [DashboardUserInvitationController::class, 'store'])
                 ->middleware(['admin', 'throttle:dashboard-invitations'])

@@ -45,24 +45,14 @@ class DashboardPanelProvider extends PanelProvider
                 NavigationGroup::make('Dashboard'),
             ])
             ->navigationItems([
-                NavigationItem::make('Dashboard')
+                NavigationItem::make('Setup')
                     ->group('Dashboard')
                     ->icon('heroicon-o-home')
-                    ->url(DashboardUrl::panel('dashboard'))
-                    ->isActiveWhen(fn (): bool => request()->query('panel', 'dashboard') === 'dashboard'),
-                NavigationItem::make('Onboarding')
+                    ->url(DashboardUrl::panel('setup'))
+                    ->isActiveWhen(fn (): bool => in_array(request()->query('panel', 'setup'), ['setup', 'dashboard', 'onboarding', 'domains'], true)),
+                NavigationItem::make('API Keys')
                     ->group('Dashboard')
-                    ->icon('heroicon-o-rocket-launch')
-                    ->url(DashboardUrl::panel('onboarding'))
-                    ->isActiveWhen(fn (): bool => request()->query('panel') === 'onboarding'),
-                NavigationItem::make('Domains')
-                    ->group('Dashboard')
-                    ->icon('heroicon-o-globe-alt')
-                    ->url(DashboardUrl::panel('domains'))
-                    ->isActiveWhen(fn (): bool => request()->query('panel') === 'domains'),
-                NavigationItem::make('API')
-                    ->group('Dashboard')
-                    ->icon('heroicon-o-command-line')
+                    ->icon('heroicon-o-key')
                     ->url(DashboardUrl::panel('api'))
                     ->isActiveWhen(fn (): bool => request()->query('panel') === 'api'),
             ])

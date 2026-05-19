@@ -97,15 +97,29 @@ Invalid or ability-missing tokens → **403**.
 
 ### Dashboard API keys
 
-Authenticated users can create **personal access tokens** from the **GeoIDX dashboard** (`ApiTokenManager` Livewire component or `POST /dashboard/api-tokens`). New tokens are minted with **`idx:full`**. Every **`Authorization: Bearer …`** call to **`/api/v1/*`** must also send **`X-Domain-Slug`** or **`?domain=`** for a **TXT-verified** domain on the same account (same binding rules as `DomainOrTokenAuth`).
+The **GeoIDX dashboard** (`/dashboard`) presents a unified Setup flow for new users:
+
+1. **Add your site** — register a domain hostname and select MLS feeds in one step
+2. **Verify ownership** — publish a DNS TXT record; the dashboard polls and shows verification status
+3. **Connect your app** — a **Production** API key is auto-generated on first successful domain verification and shown once for copying
+
+**Key behavior:**
+
+- On first TXT verification, a **Production** token (`name: Production`, ability: `idx:full`) is created automatically and flashed to the session for one-time display
+- A **Staging** token (`name: Staging`, ability: `idx:full`) can be generated from the Setup panel or via `POST /dashboard/api-tokens/staging`; only one Staging token per user (rejects duplicates)
+- Additional named tokens can be created from the **API Keys** panel (`/dashboard?panel=api`) via the Livewire `ApiTokenManager` component
+- All tokens use ability **`idx:full`**
+- Every **`Authorization: Bearer …`** call to **`/api/v1/*`** must also send **`X-Domain-Slug`** or **`?domain=`** for a **TXT-verified** domain on the same account (same binding rules as `DomainOrTokenAuth`)
 
 | Token source | Abilities | Bridge / GIS behavior |
 |--------------|-----------|------------------------|
-| **Dashboard PAT** | `idx:full` | Full Bridge / GIS JSON for authenticated requests. |
+| **Auto-issued Production** (first domain verify) | `idx:full` | Full Bridge / GIS JSON for authenticated requests. |
+| **Staging** (one-click from Setup or `POST /dashboard/api-tokens/staging`) | `idx:full` | Same as Production — use for staging/preview frontends with the same domain slug. |
+| **Custom named** (`POST /dashboard/api-tokens` or API Keys panel) | `idx:full` | Full Bridge / GIS JSON for authenticated requests. |
 | **`POST /api/auth/token`** | `idx:full` | Same as dashboard PATs when used with domain identification (machine clients / scripts). |
-| **Geo-web internal** | `idx:full` | Created via **`php artisan idx-api:issue-geo-web-token`** or **`GeoWebInternalTokenSeeder`**; pair with **`IDX_API_INTERNAL_TOKEN`** and a verified domain slug on requests. |
+| **Geo-web internal** | `idx:full` | Created via **`php artisan idx-api:issue-geo-web-token`**; pair with **`IDX_API_INTERNAL_TOKEN`** and a verified domain slug on requests. |
 
-After generation, the dashboard shows the raw token **once**; store it securely. Revocation: `DELETE /dashboard/api-tokens/{token}` from the dashboard UI.
+After generation, the dashboard shows the raw token **once**; store it securely. Revocation: **API Keys** panel (`/dashboard?panel=api`) or `DELETE /dashboard/api-tokens/{token}`.
 
 ---
 

@@ -58,10 +58,12 @@ See [IDX-API Bridge proxy — Search endpoint](idx-api-bridge-proxy.md#search-en
 
 | Source | Abilities | Works with `domain.token`? |
 |--------|-----------|----------------------------|
-| **Dashboard** (GeoIDX → API Keys) | **`idx:full`** | Yes — PATs for server or tooling calls to `/api/v1/*` (send **`X-Domain-Slug`** or **`?domain=`** with a verified domain on the same account). |
+| **Auto-issued Production** (GeoIDX Setup — first domain verification) | **`idx:full`** | Yes — auto-created on first TXT verify; shown once in Setup panel. |
+| **Staging** (Setup panel or `POST /dashboard/api-tokens/staging`) | **`idx:full`** | Yes — one-click Staging key for preview/staging sites (same domain slug, different Bearer). |
+| **Custom named** (API Keys panel or `POST /dashboard/api-tokens`) | **`idx:full`** | Yes — for additional server or tooling calls to `/api/v1/*`. |
 | **`POST /api/auth/token`** (email + password + `device_name`) | **`idx:full`** | Yes for `/api/v1/*` when paired with domain identification as above (same as other PATs). |
 
-Dashboard PATs are minted with **`idx:full`**. Details: [IDX-API Bridge proxy — Dashboard API keys](idx-api-bridge-proxy.md#dashboard-api-keys).
+All tokens require **`X-Domain-Slug`** or **`?domain=`** with a verified domain on the same account. Dashboard PATs are minted with **`idx:full`**. Details: [IDX-API Bridge proxy — Dashboard API keys](idx-api-bridge-proxy.md#dashboard-api-keys).
 
 ## GIS public overlay (`/api/v1/gis`)
 

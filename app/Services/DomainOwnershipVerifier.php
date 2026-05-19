@@ -4,7 +4,7 @@ namespace App\Services;
 
 use App\Models\Domain;
 
-final class DomainOwnershipVerifier
+class DomainOwnershipVerifier
 {
     public function issueTxtChallenge(Domain $domain): Domain
     {

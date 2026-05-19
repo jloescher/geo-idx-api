@@ -32,7 +32,33 @@ new class extends Component {
         /** @var User $user */
         $user = auth()->user();
 
-        $token = $user->createToken(Str::of($validated['tokenName'])->trim()->value(), ['idx:full']);
+        $name = Str::of($validated['tokenName'])->trim()->value();
+
+        $token = $user->createToken($name, ['idx:full']);
+
+        $this->newToken = $token->plainTextToken;
+        $this->tokenName = '';
+
+        $this->loadTokens($user);
+        $this->dispatch('token-created');
+    }
+
+    public function createStagingToken(): void
+    {
+        /** @var User $user */
+        $user = auth()->user();
+
+        $alreadyExists = $user->tokens()
+            ->whereRaw('LOWER(name) = ?', ['staging'])
+            ->exists();
+
+        if ($alreadyExists) {
+            $this->addError('tokenName', 'A Staging key already exists. Revoke it first if you need a new one.');
+
+            return;
+        }
+
+        $token = $user->createToken('Staging', ['idx:full']);
 
         $this->newToken = $token->plainTextToken;
         $this->tokenName = '';
@@ -63,9 +89,6 @@ new class extends Component {
     /** @return array{abilitiesLabels: array<string, string>} */
     public function with(): array
     {
-        /** @var User $user */
-        $user = auth()->user();
-
         $abilitiesLabels = ['idx:full' => 'Full API access'];
 
         return ['abilitiesLabels' => $abilitiesLabels];
@@ -91,8 +114,7 @@ new class extends Component {
 <div class="idx-card mt-8 p-6">
     <h2 class="text-xl font-semibold text-white">API Keys</h2>
     <p class="mt-1 text-sm text-slate-300">
-        Manage tokens for the Bridge and GIS JSON API. Send <span class="font-mono text-xs">Authorization: Bearer …</span> together with
-        <span class="font-mono text-xs">X-Domain-Slug: your-verified-domain.com</span> on every request (or <span class="font-mono text-xs">?domain=</span>).
+        Manage tokens for the MLS and GIS JSON API. Each environment (production, staging) should use its own key — both send the same <span class="font-mono text-xs">X-Domain-Slug</span> header.
     </p>
 
     {{-- Token creation form --}}
@@ -100,7 +122,7 @@ new class extends Component {
         <input
             type="text"
             wire:model.lazy="tokenName"
-            placeholder="Token name (e.g. IDX Production Key)"
+            placeholder="Token name (e.g. Preview Deploy)"
             maxlength="60"
             class="min-h-11 w-full rounded-lg border border-white/15 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-cyan-400/50 focus:outline-none focus:ring-1 focus:ring-cyan-400/30"
         />
@@ -115,7 +137,7 @@ new class extends Component {
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                 </svg>
-                <span class="ml-2">Creating…</span>
+                <span class="ml-2">Creating...</span>
             </span>
         </button>
     </form>
@@ -127,7 +149,7 @@ new class extends Component {
     {{-- One-time new token alert --}}
     @if ($newToken)
         <div class="mt-4 rounded-xl border border-amber-400/40 bg-amber-900/20 p-4" x-data="{ copied: false }">
-            <p class="text-sm font-semibold text-amber-100">New API token created — shown once only</p>
+            <p class="text-sm font-semibold text-amber-100">New API token created — copy now, it will not be shown again</p>
             <p class="mt-2 break-all font-mono text-xs text-amber-50/90">{{ $newToken }}</p>
             <button
                 type="button"
@@ -153,7 +175,7 @@ new class extends Component {
     {{-- Token list --}}
     <div class="mt-5 space-y-3">
         @forelse ($tokens as $t)
-            <div class="rounded-lg border border-white/10 bg-slate-950/70 p-3" x-data="{ visible: false }">
+            <div class="rounded-lg border border-white/10 bg-slate-950/70 p-3">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div class="min-w-0">
                         <p class="truncate text-sm font-semibold text-slate-100">{{ $t['name'] }}</p>
@@ -171,7 +193,6 @@ new class extends Component {
                     </div>
 
                     <div class="flex items-center gap-2">
-                        {{-- Revoke token --}}
                         <button
                             type="button"
                             wire:click="revokeToken({{ $t['id'] }})"
@@ -191,7 +212,7 @@ new class extends Component {
                 </div>
             </div>
         @empty
-            <p class="text-sm text-slate-300">No API keys created yet. Generate one above to get started.</p>
+            <p class="text-sm text-slate-300">No API keys yet. Generate one above to get started.</p>
         @endforelse
     </div>
 </div>
