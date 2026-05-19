@@ -93,8 +93,8 @@ return [
     /** Parallel Postgres persist chunk jobs (no Bridge HTTP throttling). */
     'sync_persist_queue' => BridgeSyncQueueNames::persistQueue(),
 
-    'sync_replication_top' => min(2000, max(1, (int) env('BRIDGE_SYNC_REPLICATION_TOP', 2000))),
-    'sync_incremental_top' => min(200, max(1, (int) env('BRIDGE_SYNC_INCREMENTAL_TOP', 200))),
+    'sync_replication_top' => min(2000, max(1, (int) env('MLS_STELLAR_REPLICATION_TOP', env('BRIDGE_SYNC_REPLICATION_TOP', 2000)))),
+    'sync_incremental_top' => min(200, max(1, (int) env('MLS_STELLAR_INCREMENTAL_TOP', env('BRIDGE_SYNC_INCREMENTAL_TOP', 200)))),
 
     /** Optional safety cap on chained fetch jobs per kickoff (0 = unlimited). */
     'sync_max_chained_fetch_pages' => max(0, (int) env('BRIDGE_SYNC_MAX_CHAINED_FETCH_PAGES', 0)),
@@ -104,7 +104,7 @@ return [
     'sync_max_incremental_pages_per_job' => max(1, (int) env('BRIDGE_SYNC_MAX_INCREMENTAL_PAGES', 40)),
 
     /** Max Bridge GETs per second during replication/incremental fetch (persist jobs excluded). */
-    'sync_max_requests_per_second' => min(10, max(1, (int) env('BRIDGE_SYNC_MAX_REQUESTS_PER_SECOND', 2))),
+    'sync_max_requests_per_second' => min(10, max(1, (int) env('MLS_STELLAR_RATE_LIMIT_RPS', env('BRIDGE_SYNC_MAX_REQUESTS_PER_SECOND', 2)))),
 
     'sync_max_requests_per_minute' => min(334, max(1, (int) env('BRIDGE_SYNC_MAX_REQUESTS_PER_MINUTE', 120))),
 
@@ -126,15 +126,24 @@ return [
      * Rolling mirror window — rows older than this (by MLS ModificationTimestamp) are purged
      * nightly; PostGIS searches also constrain to this window for parity with mirror scope.
      */
-    'local_mirror_rolling_months' => min(36, max(1, (int) env('BRIDGE_LOCAL_MIRROR_ROLLING_MONTHS', 12))),
+    'local_mirror_rolling_months' => min(48, max(1, (int) env(
+        'MLS_LOCAL_MIRROR_ROLLING_MONTHS',
+        env('BRIDGE_LOCAL_MIRROR_ROLLING_MONTHS', env('SPARK_LOCAL_MIRROR_ROLLING_MONTHS', 12))
+    ))),
 
-    'sync_upsert_chunk_size' => min(500, max(25, (int) env('BRIDGE_SYNC_UPSERT_CHUNK', 250))),
+    'sync_upsert_chunk_size' => min(500, max(25, (int) env('MLS_STELLAR_UPSERT_CHUNK_SIZE', env('BRIDGE_SYNC_UPSERT_CHUNK', 250)))),
 
     /** Rows per queue persist job (limits jobs.payload size and worker peak RAM). */
-    'sync_persist_job_chunk_size' => min(250, max(25, (int) env('BRIDGE_SYNC_PERSIST_JOB_CHUNK', 50))),
+    'sync_persist_job_chunk_size' => min(250, max(25, (int) env('MLS_STELLAR_PERSIST_CHUNK_SIZE', env('BRIDGE_SYNC_PERSIST_JOB_CHUNK', 50)))),
 
     /** Purge completed staging pages older than this many hours (failed rows use failed retention days). */
-    'replica_page_retention_hours' => max(1, (int) env('BRIDGE_REPLICA_PAGE_RETENTION_HOURS', 24)),
+    'replica_page_retention_hours' => max(1, (int) env(
+        'MLS_REPLICA_PAGE_RETENTION_HOURS',
+        env('BRIDGE_REPLICA_PAGE_RETENTION_HOURS', env('SPARK_REPLICA_PAGE_RETENTION_HOURS', 24))
+    )),
 
-    'replica_page_failed_retention_days' => max(1, (int) env('BRIDGE_REPLICA_FAILED_RETENTION_DAYS', 7)),
+    'replica_page_failed_retention_days' => max(1, (int) env(
+        'MLS_REPLICA_PAGE_FAILED_RETENTION_DAYS',
+        env('BRIDGE_REPLICA_FAILED_RETENTION_DAYS', env('SPARK_REPLICA_FAILED_RETENTION_DAYS', 7))
+    )),
 ];

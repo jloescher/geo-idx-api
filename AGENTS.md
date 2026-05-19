@@ -179,7 +179,22 @@ Public ArcGIS feature server proxy for Florida parcel data. Three-tier caching w
 | `IDX_PLATFORM_HOSTS` | Dev | Comma-separated allowed hosts for platform |
 | `IDX_API_HOSTS` | Dev | Comma-separated allowed hosts for API |
 
-### Bridge MLS
+### MLS (provider-agnostic)
+
+Use **`MLS_*`** for mirror retention, replication scheduling, listings-cache sync limits, and per-feed sync tuning (`MLS_STELLAR_*`, `MLS_BEACHES_*`). Keep **`BRIDGE_*`** / **`SPARK_*`** only for platform hosts, credentials, RESO paths, and Spark-only options (e.g. `SPARK_SYNC_EXPAND`). Consumers: `MlsMirrorRollingWindow`, `PostgisSearchService`, `PurgeClosedListingsJob`, `MlsActivePendingListingsFetcher`.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `MLS_LOCAL_MIRROR_ROLLING_MONTHS` | No | Active/Pending mirror window for purge, PostGIS search, listings-cache OData (default **12**; staging often **3**) |
+| `MLS_REPLICA_PAGE_RETENTION_HOURS` | No | Completed replication staging page TTL (default 24) |
+| `MLS_REPLICA_PAGE_FAILED_RETENTION_DAYS` | No | Failed staging page retention (default 7) |
+| `MLS_REPLICATION_FRESHNESS_MINUTES` | No | Catch-up vs steady incremental threshold (default 15) |
+| `MLS_LISTINGS_SYNC_*` | No | Listings collection cache pagination caps |
+| `MLS_STELLAR_*` / `MLS_BEACHES_*` | No | Per-feed replication `$top`, persist/upsert chunks, rate limit, API key overrides |
+
+Deprecated aliases (one release): `BRIDGE_LOCAL_MIRROR_ROLLING_MONTHS`, `SPARK_LOCAL_MIRROR_ROLLING_MONTHS`, `BRIDGE_REPLICA_PAGE_*`, `SPARK_REPLICA_PAGE_*`.
+
+### Bridge MLS (platform)
 
 | Variable | Required | Description |
 |----------|----------|-------------|
@@ -195,7 +210,7 @@ Public ArcGIS feature server proxy for Florida parcel data. Three-tier caching w
 | `IMAGE_CACHE_PATH` | No | Image storage root (Docker: /var/cache/geoidx/images) |
 | `IMAGE_CACHE_TTL` | No | Origin re-fetch TTL (default: 86400) |
 
-### Spark MLS (Beaches)
+### Spark MLS (Beaches — platform)
 
 | Variable | Required | Description |
 |----------|----------|-------------|

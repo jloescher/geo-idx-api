@@ -121,7 +121,7 @@ Stellar (Bridge) uses `{DATASET}_TotalMonthlyFees` when present, else the same a
 
 **Schedule:** `mls:refresh-cache` every 15 minutes dispatches `RefreshListingsCache` per domain × enabled feed (including `spark_beaches`).
 
-**Upstream:** live `sparkapi.com` Property OData via `MlsActivePendingListingsFetcher` — **not** the replication host. Filter: Active + Pending with a rolling `ModificationTimestamp` window (parity with Bridge Stellar).
+**Upstream:** live `sparkapi.com` Property OData via `MlsActivePendingListingsFetcher` — **not** the replication host. Filter: Active + Pending with a rolling `ModificationTimestamp` window from **`MLS_LOCAL_MIRROR_ROLLING_MONTHS`** (`MlsMirrorRollingWindow`; default **12**, staging often **3** — parity with Bridge Stellar).
 
 **Storage:** row-level gzip in `listings_cache` (`feed_code = spark_beaches`). Structured search / properties / lookup fingerprints use **`mls_search_cache`**. **Closed** listings are not persisted in `listings_cache`; hybrid search fetches Closed via live API (`SparkSearchClient`) and caches the response in `mls_search_cache` when applicable.
 

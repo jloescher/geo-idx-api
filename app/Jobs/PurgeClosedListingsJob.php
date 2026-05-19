@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Listing;
+use App\Services\Mls\MlsMirrorRollingWindow;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
@@ -16,14 +17,13 @@ class PurgeClosedListingsJob implements ShouldQueue
 {
     use Queueable;
 
-    public function handle(): void
+    public function handle(MlsMirrorRollingWindow $rollingWindow): void
     {
         /*
          * Revenue impact: trims cold rows so Postgres buffer cache stays biased toward monetized map views;
          * rolling window aligns with BRIN / partial indexes on Active+Pending ingestion paths.
          */
-        $months = max(1, min(48, (int) config('bridge.local_mirror_rolling_months', 12)));
-        $cutoff = now()->subMonths($months)->startOfDay();
+        $cutoff = $rollingWindow->cutoffUtc()->startOfDay();
 
         Listing::query()
             ->where(function ($q) use ($cutoff): void {

@@ -24,6 +24,7 @@ final readonly class MlsActivePendingListingsFetcher
         private MlsFeedResolver $feeds,
         private BridgeHttpService $bridgeHttp,
         private SparkHttpService $sparkHttp,
+        private MlsMirrorRollingWindow $rollingWindow,
     ) {}
 
     /**
@@ -67,7 +68,7 @@ final readonly class MlsActivePendingListingsFetcher
         $pageSize = max(50, min(200, (int) config('mls.listings_sync_page_size', 200)));
         $maxPages = max(1, min(5000, (int) config('mls.listings_sync_max_pages', 500)));
         $maxRows = max(1000, min(500000, (int) config('mls.listings_sync_max_rows', 100000)));
-        $since = now()->subYear()->utc()->format('Y-m-d\TH:i:s\Z');
+        $since = $this->rollingWindow->modificationTimestampFilterIso();
         $filter = "(StandardStatus eq 'Active' or StandardStatus eq 'Pending') and ModificationTimestamp ge datetime'{$since}'";
         $query = [
             '$filter' => $filter,
@@ -102,7 +103,7 @@ final readonly class MlsActivePendingListingsFetcher
         $pageSize = max(50, min(1000, (int) config('mls.listings_sync_page_size', 200)));
         $maxPages = max(1, min(5000, (int) config('mls.listings_sync_max_pages', 500)));
         $maxRows = max(1000, min(500000, (int) config('mls.listings_sync_max_rows', 100000)));
-        $since = now()->subYear()->utc()->format('Y-m-d\TH:i:s\Z');
+        $since = $this->rollingWindow->modificationTimestampFilterIso();
         $filter = "(StandardStatus eq 'Active' or StandardStatus eq 'Pending') and ModificationTimestamp ge datetime'{$since}'";
         $query = [
             '$filter' => $filter,

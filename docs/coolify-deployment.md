@@ -186,6 +186,9 @@ Copy from **`.env.example`**. Per application for web, workers, and scheduler.
 |----------|--------|
 | `FRANKENPHP_BASE_IMAGE` | **Build-time** on Coolify (§1.2) |
 | `DB_*`, `APP_KEY`, `QUEUE_CONNECTION` | Runtime, all API apps |
+| `MLS_LOCAL_MIRROR_ROLLING_MONTHS` | **Staging `3`**, production **`12`** (default) on web, workers, scheduler — mirror purge, PostGIS search, listings-cache OData |
+| `MLS_REPLICA_PAGE_*`, `MLS_REPLICATION_*` | Provider-agnostic replication scheduling (see `.env.example` MLS block) |
+| `BRIDGE_*` / `SPARK_*` | Platform hosts, API keys, RESO paths only — not mirror window |
 | `CLOUDFLARE_TURNSTILE_*` | Web app only |
 
 ---

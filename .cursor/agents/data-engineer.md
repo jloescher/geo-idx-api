@@ -36,7 +36,7 @@ Canonical **file-by-file migration list**, PostGIS notes, and legacy cleanup: **
 | `personal_access_tokens` | Sanctum PATs | Abilities e.g. `idx:access`, `idx:full` |
 | `gis_cache` | GeoJSON parcel cache | `query_hash` PK, `source_generation` for invalidation |
 | `gis_source_states` | Per-source generation / fingerprint | Bumped when ArcGIS metadata changes |
-| `listings` | IDX-facing listing mirror (PostgreSQL) | PostGIS geography, jsonb, partial indexes; provider-neutral `flood_zone_code`, `estimated_total_monthly_fees` (Beaches: `AssociationFee`/`AssociationFee2` + frequency → monthly sum at persist); AP partial index on `flood_zone_code` — requires PostGIS extension |
+| `listings` | IDX-facing listing mirror (PostgreSQL) | PostGIS geography, jsonb, partial indexes; provider-neutral `flood_zone_code`, `estimated_total_monthly_fees` (Beaches: `AssociationFee`/`AssociationFee2` + frequency → monthly sum at persist); AP partial index on `flood_zone_code` — requires PostGIS extension. Rolling retention/search window: **`MLS_LOCAL_MIRROR_ROLLING_MONTHS`** via `App\Services\Mls\MlsMirrorRollingWindow` (purge, PostGIS, listings-cache OData) |
 | `listing_sync_cursors` | Bridge replication cursors | Per `dataset_slug` |
 | `crypto_price_snapshots` | Cached FX/crypto quotes | Used for listing pricing enrichment |
 

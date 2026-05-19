@@ -153,6 +153,7 @@ JSON responses must rewrite Bridge photo URLs to `IDX_IMAGES_PUBLIC_URL`:
 8. **PostgreSQL in production**: Use proper migrations, no raw SQL without parameterization
 9. **Revenue impact comments**: Mark business logic affecting monetization
 10. **Config file pattern**: Use `env()` directly (not `config()`) when required from other config files
+11. **MLS env naming**: `MLS_*` for cross-provider mirror/replication (`MLS_LOCAL_MIRROR_ROLLING_MONTHS`, `MLS_STELLAR_*`, `MLS_BEACHES_*`); `BRIDGE_*` / `SPARK_*` only for platform hosts, credentials, RESO paths, Spark `$expand`
 
 ## Environment-Specific Defaults
 

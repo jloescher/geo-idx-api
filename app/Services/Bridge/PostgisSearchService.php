@@ -3,7 +3,7 @@
 namespace App\Services\Bridge;
 
 use App\Models\Listing;
-use Carbon\CarbonImmutable;
+use App\Services\Mls\MlsMirrorRollingWindow;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -16,6 +16,10 @@ use Illuminate\Database\Eloquent\Builder;
  */
 final class PostgisSearchService
 {
+    public function __construct(
+        private readonly MlsMirrorRollingWindow $rollingWindow,
+    ) {}
+
     private const SORT_COLUMN_MAP = [
         'list_price' => 'list_price',
         'on_market_date' => 'on_market_date',
@@ -40,8 +44,7 @@ final class PostgisSearchService
         $datasetLower = strtolower($dataset);
         $query = Listing::query()->where('dataset_slug', $datasetLower);
 
-        $months = max(1, min(48, (int) config('bridge.local_mirror_rolling_months', 12)));
-        $rollingCutoff = CarbonImmutable::now('UTC')->subMonths($months);
+        $rollingCutoff = $this->rollingWindow->cutoffUtc();
         $query->whereRaw('LOWER(TRIM(COALESCE(standard_status, \'\'))) IN (\'active\', \'pending\')');
         $query->where(function (Builder $qRolling) use ($rollingCutoff): void {
             $qRolling->where('modification_timestamp', '>=', $rollingCutoff)

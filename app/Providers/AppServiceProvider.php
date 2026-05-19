@@ -8,6 +8,7 @@ use App\Services\Bridge\HybridReplicaSearchDecision;
 use App\Services\Bridge\HybridSearchService;
 use App\Services\Bridge\PostgisSearchService;
 use App\Services\Geocoding\GoogleGeocodingService;
+use App\Services\Mls\MlsMirrorRollingWindow;
 use App\Support\DestructiveDatabaseCommandGuard;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Support\Facades\Event;
@@ -34,6 +35,7 @@ class AppServiceProvider extends ServiceProvider
          * Octane: stateless collaborators; singletons amortize translator wiring and reuse the
          * same hydrated service graphs without request-scoped mutation.
          */
+        $this->app->singleton(MlsMirrorRollingWindow::class);
         $this->app->singleton(BridgeRateLimitGuard::class);
         $this->app->singleton(BridgeSyncService::class);
         $this->app->singleton(PostgisSearchService::class);
