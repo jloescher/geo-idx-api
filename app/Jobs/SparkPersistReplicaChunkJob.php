@@ -5,11 +5,13 @@ namespace App\Jobs;
 use App\Services\Bridge\BridgeReplicaPageStore;
 use App\Services\Bridge\BridgeSyncTelemetry;
 use App\Services\Spark\SparkSyncService;
+use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
 class SparkPersistReplicaChunkJob implements ShouldQueue
 {
+    use Batchable;
     use Queueable;
 
     public int $timeout = 600;
