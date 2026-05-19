@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\BridgeSyncQueueNames;
+
 $idx = require __DIR__.'/idx_urls.php';
 
 return [
@@ -80,14 +82,14 @@ return [
      * Revenue impact: honoring Bridge $top limits (200 standard / 2000 replication) prevents
      * API suspension; pipeline fetch jobs chain until the cursor clears.
      */
-    /** @deprecated Use sync_fetch_queue — kept for backward-compatible env overrides. */
-    'sync_queue' => (string) env('BRIDGE_SYNC_QUEUE', env('BRIDGE_SYNC_FETCH_QUEUE', 'bridge-sync-fetch')),
+    /** @deprecated Use sync_fetch_queue — alias of resolved fetch queue name. */
+    'sync_queue' => BridgeSyncQueueNames::fetchQueue(),
 
     /** Rate-limited Bridge HTTP fetch jobs (kickoff + replication/incremental pages). */
-    'sync_fetch_queue' => (string) env('BRIDGE_SYNC_FETCH_QUEUE', env('BRIDGE_SYNC_QUEUE', 'bridge-sync-fetch')),
+    'sync_fetch_queue' => BridgeSyncQueueNames::fetchQueue(),
 
     /** Parallel Postgres persist chunk jobs (no Bridge HTTP throttling). */
-    'sync_persist_queue' => (string) env('BRIDGE_SYNC_PERSIST_QUEUE', 'bridge-sync-persist'),
+    'sync_persist_queue' => BridgeSyncQueueNames::persistQueue(),
 
     'sync_replication_top' => min(2000, max(1, (int) env('BRIDGE_SYNC_REPLICATION_TOP', 2000))),
     'sync_incremental_top' => min(200, max(1, (int) env('BRIDGE_SYNC_INCREMENTAL_TOP', 200))),

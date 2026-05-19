@@ -59,7 +59,7 @@ FROM builder-cli AS queue-worker
 
 USER www-data
 
-CMD ["/bin/sh", "-lc", "exec php -d memory_limit=768M artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=120"]
+CMD ["/bin/sh", "-lc", "exec php -d memory_limit=768M artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=600"]
 
 # Revenue impact: reliable health during deploy keeps replication workers online for teaser cache.
 # Coolify rolls back on "unhealthy" even when jobs run; use explicit shell + long start-period.

@@ -66,7 +66,7 @@ FROM builder-cli AS queue-worker
 
 USER www-data
 
-CMD ["/bin/sh", "-lc", "exec php -d memory_limit=512M artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=120"]
+CMD ["/bin/sh", "-lc", "exec php -d memory_limit=512M artisan queue:work --queue=${WORKER_QUEUES:-default} --sleep=1 --tries=3 --timeout=600"]
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=120s --retries=5 \
     CMD ["/bin/sh", "-c", "pgrep -af 'artisan queue:work' >/dev/null || exit 1"]
