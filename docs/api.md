@@ -1,6 +1,6 @@
 # idx-api HTTP API overview
 
-This document summarizes **versioned JSON APIs** exposed by the Laravel idx-api service (Octane + FrankenPHP ready).
+This document summarizes **versioned JSON APIs** exposed by the **Go** idx-api service (Fiber on port **8000**).
 
 ## OpenAPI 3.1 + Swagger UI
 
@@ -12,7 +12,7 @@ The Swagger page loads the canonical `openapi: "3.1.0"` document served by the A
 
 ## Authenticated IDX / Bridge proxy (`/api/v1`)
 
-All routes in `routes/api.php` under the `v1` prefix use the `domain.token` middleware (domain header / referer host **or** Sanctum bearer with `idx:access` or `idx:full`, plus domain binding for token calls). Authenticated `/api/v1` traffic receives **full** Bridge and GIS payloads (no subscription-tier teaser caps).
+All routes under `/api/v1` use **domain + token** middleware (`internal/api/middleware/domain_token.go`): domain header / Referer host **or** Bearer PAT with `idx:access` or `idx:full`, plus domain binding for token calls. Authenticated `/api/v1` traffic receives **full** Bridge and GIS payloads (no subscription-tier teaser caps).
 
 Core resources: listings, agents, offices, RESO Property, members, public parcels bridge, **structured search**, etc. See [`docs/idx-api-bridge-proxy.md`](idx-api-bridge-proxy.md) and [`docs/bridge-api-documentation.md`](bridge-api-documentation.md).
 
@@ -35,8 +35,8 @@ Listings responses now include:
 - `pricing_converted` on each listing item with fiat + digital asset conversions derived from `ListPrice`.
 
 Refresh pipeline details:
-- CoinGecko quotes are refreshed every 10 minutes by scheduled dispatch of `RefreshCryptoPricingJob`.
-- The job updates both PostgreSQL (`crypto_price_snapshots`) and Laravel cache (`coingecko.pricing.matrix`).
+- CoinGecko quotes are refreshed on a schedule via queue job `crypto.refresh_pricing` (`cmd/scheduler` → `cmd/worker`).
+- Snapshots stored in PostgreSQL `crypto_price_snapshots`.
 - Read path does not call CoinGecko; listing enrichment uses cache/DB only.
 
 ### Structured Search endpoint (`POST /api/v1/search`)

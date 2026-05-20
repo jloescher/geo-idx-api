@@ -27,7 +27,7 @@ Quantyra integrates **BeachesMLS** through the [Spark Platform](https://sparkapi
 | Mirror fee / flood columns | `estimated_total_monthly_fees`, `flood_zone_code` — [normalized columns](idx-api-integration.md#normalized-mirror-columns-persist--replication-updates) |
 | Replication RESO base | `https://replication.sparkapi.com/Reso/OData` |
 | Live RESO base | `https://sparkapi.com/v1/Reso/OData` |
-| Scheduled sync | `spark-listings-replica-sync` every 15 min |
+| Scheduled sync | `cmd/scheduler` → `mls.replication_kickoff` / `spark.fetch_page` |
 | Worker queues | `spark-sync-fetch`, `spark-sync-persist` |
 
 ---

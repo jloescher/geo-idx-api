@@ -17,10 +17,10 @@ flowchart TB
     API[API consumers]
   end
   subgraph idx [idx-api]
-    Proxy[BridgeProxyController + SparkClient]
-    Hybrid[HybridSearchService]
-    Images[ImageProxyController]
-    Sync[SparkSyncJob / fetch / persist]
+    Proxy[internal/handler/bridge + Spark client]
+    Hybrid[internal/service/search]
+    Images[internal/handler/images]
+    Sync[spark.fetch_page / persist jobs]
     Mirror[(listings dataset_slug beaches)]
   end
   subgraph spark_live [sparkapi.com]
@@ -55,18 +55,12 @@ Server-side only (`.env`, never committed):
 | `SPARK_ACCESS_TOKEN` | Bearer for all Spark HTTP |
 | `SPARK_API_FEED_ID` | Spark dashboard API Feed ID (logging/audit) |
 
-Legacy: `SPARK_API_KEY` aliases to `SPARK_ACCESS_TOKEN` in `config/spark.php`.
+Configured in [`internal/config/config.go`](../../internal/config/config.go) (`SparkConfig`):
 
----
-
-## API hosts
-
-Configured in [`config/spark.php`](../../config/spark.php):
-
-| Config key | Default | Used by |
-|------------|---------|---------|
-| `replication_reso_base_url` | `https://replication.sparkapi.com/Reso/OData` | `SparkSyncService`, fetch jobs |
-| `live_reso_base_url` | `https://sparkapi.com/v1/Reso/OData` | `SparkClient`, `SparkSearchClient`, image proxy |
+| Setting | Default | Used by |
+|---------|---------|---------|
+| Replication base | `SPARK_REPLICATION_HOST` + `SPARK_REPLICATION_RESO_ROOT` | `internal/service/sync` Spark worker |
+| Live RESO base | `SPARK_API_HOST` + `SPARK_API_VERSION` + `SPARK_LIVE_RESO_ROOT` | Bridge handler, live search, images |
 
 | Env variable | Role |
 |--------------|------|
@@ -95,7 +89,7 @@ curl -sS -H "Authorization: Bearer $SPARK_ACCESS_TOKEN" -H "Accept: application/
 
 | Catalog key (`?dataset=`) | `listings.dataset_slug` | Resolver |
 |---------------------------|-------------------------|----------|
-| `spark_beaches` | `beaches` | `MlsFeedResolver` |
+| `spark_beaches` | `beaches` | `internal/service/mls` feed resolver |
 | `beaches` (wire alias) | `beaches` | Normalized to `spark_beaches` |
 
 Bridge feeds remain `bridge_{dataset}` (e.g. `bridge_stellar` → `stellar`).
@@ -119,9 +113,9 @@ Stellar (Bridge) uses `{DATASET}_TotalMonthlyFees` when present, else the same a
 
 ## Domain listings cache (Active + Pending)
 
-**Schedule:** `mls:refresh-cache` every 15 minutes dispatches `RefreshListingsCache` per domain × enabled feed (including `spark_beaches`).
+**Schedule:** `cmd/scheduler` enqueues `mls.listings_cache_refresh` every 15 minutes (per domain × feed, including `spark_beaches`).
 
-**Upstream:** live `sparkapi.com` Property OData via `MlsActivePendingListingsFetcher` — **not** the replication host. Filter: Active + Pending with a rolling `ModificationTimestamp` window from **`MLS_LOCAL_MIRROR_ROLLING_MONTHS`** (`MlsMirrorRollingWindow`; default **12**, staging often **3** — parity with Bridge Stellar).
+**Upstream:** live `sparkapi.com` Property OData — **not** the replication host. Filter: Active + Pending with rolling window **`MLS_LOCAL_MIRROR_ROLLING_MONTHS`** (default **12**, staging often **3**).
 
 **Storage:** row-level gzip in `listings_cache` (`feed_code = spark_beaches`). Structured search / properties / lookup fingerprints use **`mls_search_cache`**. **Closed** listings are not persisted in `listings_cache`; hybrid search fetches Closed via live API (`SparkSearchClient`) and caches the response in `mls_search_cache` when applicable.
 
@@ -129,7 +123,7 @@ Stellar (Bridge) uses `{DATASET}_TotalMonthlyFees` when present, else the same a
 
 ## Replication pipeline
 
-**Schedule:** `spark-listings-replica-sync` every 15 minutes → `SparkSyncJob` on queue `spark-sync-fetch`.
+**Schedule:** replication kickoff via scheduler → `spark.fetch_page` jobs on queue **`spark-sync-fetch`** (env `SPARK_SYNC_FETCH_QUEUE`).
 
 **Scope:** Active and Pending only:
 
@@ -151,21 +145,20 @@ StandardStatus eq 'Active' or StandardStatus eq 'Pending'
 
 **Purge:** `mls:purge-replica-pages` (alias `bridge:purge-replica-pages`; shared table; Spark retention via `SPARK_REPLICA_PAGE_RETENTION_HOURS`).
 
-### Key code
+### Key code (Go)
 
 | Component | Location |
 |-----------|----------|
-| Sync orchestration | `app/Services/Spark/SparkSyncService.php` |
-| HTTP (replication URLs) | `app/Services/Spark/SparkHttpService.php` |
-| Fetch job | `app/Jobs/SparkSyncFetchPageJob.php` |
-| Persist jobs | `SparkPersistReplicaChunkJob`, `SparkPersistReplicaFinalizeJob` |
-| Feed resolution | `app/Services/Mls/MlsFeedResolver.php` |
+| Sync orchestration | `internal/service/sync` (`SparkWorker`, kickoff) |
+| Queue handlers | `internal/job/registry.go` (`spark.fetch_page`, `spark.persist_chunk`, …) |
+| MLS proxy | `internal/handler/bridge` |
+| Feed resolution | `internal/service/mls/feed.go` |
 
 ---
 
 ## Live API proxy
 
-When `MlsFeedResolver` resolves `spark_beaches`, `BridgeProxyController` uses `SparkClient` (live host):
+When the feed resolver selects `spark_beaches`, the bridge handler uses the **live** Spark host:
 
 - RESO Property, Member, Office, OpenHouse, Lookup
 - Same auth as Bridge: domain slug and/or Sanctum token with MLS allowlist

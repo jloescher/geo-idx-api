@@ -1,0 +1,126 @@
+package queue
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"time"
+)
+
+// HandlerFunc processes a reserved job.
+type HandlerFunc func(ctx context.Context, job *ReservedJob) error
+
+// Worker polls and processes jobs from PostgreSQL.
+type Worker struct {
+	client      *Client
+	queues      []string
+	handlers    map[string]HandlerFunc
+	maxAttempts int
+	pollEvery   time.Duration
+	logger      *slog.Logger
+}
+
+func NewWorker(client *Client, queues []string, pollEvery time.Duration, logger *slog.Logger) *Worker {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Worker{
+		client:      client,
+		queues:      queues,
+		handlers:    make(map[string]HandlerFunc),
+		maxAttempts: 3,
+		pollEvery:   pollEvery,
+		logger:      logger,
+	}
+}
+
+func (w *Worker) Register(typ string, fn HandlerFunc) {
+	w.handlers[typ] = fn
+}
+
+func (w *Worker) Run(ctx context.Context) error {
+	notifyCh, err := w.client.Listen(ctx)
+	if err != nil {
+		w.logger.Warn("queue listen failed, polling only", "error", err)
+	}
+
+	ticker := time.NewTicker(w.pollEvery)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		job, err := w.client.Reserve(ctx, w.queues)
+		if err != nil {
+			w.logger.Error("reserve job", "error", err)
+			w.sleep(ctx, w.pollEvery)
+			continue
+		}
+		if job == nil {
+			w.wait(ctx, ticker, notifyCh)
+			continue
+		}
+
+		if err := w.process(ctx, job); err != nil {
+			w.logger.Error("job failed", "id", job.ID, "type", job.Payload.Type, "error", err)
+			_ = w.client.Release(ctx, job, w.maxAttempts, err)
+		} else {
+			_ = w.client.Delete(ctx, job.ID)
+			w.handleBatchComplete(ctx, job)
+		}
+	}
+}
+
+func (w *Worker) process(ctx context.Context, job *ReservedJob) error {
+	if job.Payload.Type == "" && IsLegacyLaravelPayload(job.Raw) {
+		w.logger.Info("discarded legacy Laravel queue job (purge with: DELETE FROM jobs WHERE payload LIKE '%CallQueuedHandler%')",
+			"id", job.ID,
+			"queue", job.Queue,
+			"laravel_job", LegacyLaravelJobName(job.Raw),
+		)
+		return nil
+	}
+
+	fn, ok := w.handlers[job.Payload.Type]
+	if !ok {
+		w.logger.Warn("unknown job type", "type", job.Payload.Type, "id", job.ID, "queue", job.Queue)
+		return fmt.Errorf("unknown job type %q", job.Payload.Type)
+	}
+	return fn(ctx, job)
+}
+
+func (w *Worker) handleBatchComplete(ctx context.Context, job *ReservedJob) {
+	var wrapper struct {
+		BatchID string          `json:"batch_id"`
+		Job     json.RawMessage `json:"job"`
+	}
+	if len(job.Payload.Args) == 0 {
+		return
+	}
+	if err := json.Unmarshal(job.Payload.Args, &wrapper); err != nil || wrapper.BatchID == "" {
+		return
+	}
+	_ = w.client.CompleteBatchJob(ctx, wrapper.BatchID, job.Queue, "", nil)
+}
+
+func (w *Worker) wait(ctx context.Context, ticker *time.Ticker, notify <-chan struct{}) {
+	select {
+	case <-ctx.Done():
+	case <-ticker.C:
+	case <-notify:
+	}
+}
+
+func (w *Worker) sleep(ctx context.Context, d time.Duration) {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+	case <-t.C:
+	}
+}

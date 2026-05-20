@@ -1,5 +1,5 @@
 #!/bin/bash
-# UserPromptSubmit hook for skill-aware responses
+# UserPromptSubmit hook for skill-aware responses (Go idx-api)
 
 cat <<'EOF'
 REQUIRED: SKILL LOADING PROTOCOL
@@ -7,22 +7,20 @@ REQUIRED: SKILL LOADING PROTOCOL
 Before writing any code, complete these steps in order:
 
 1. SCAN each skill below and decide: LOAD or SKIP (with brief reason)
-   - php
-   - laravel
+   - go
    - postgresql
-   - livewire
-   - tailwind
-   - frontend-design
-   - stripe
    - docker
+   - nginx
+   - frontend-design
+   - inspecting-search-coverage
+   - crafting-empty-states
+   - designing-inapp-guidance
    - scoping-feature-work
    - prioritizing-roadmap-bets
    - mapping-user-journeys
    - designing-onboarding-paths
    - improving-activation-flow
-   - crafting-empty-states
    - orchestrating-feature-adoption
-   - designing-inapp-guidance
    - instrumenting-product-metrics
    - running-product-experiments
    - triaging-user-feedback
@@ -48,10 +46,11 @@ Before writing any code, complete these steps in order:
    - calibrating-paid-campaigns
    - building-acquisition-tools
    - engineering-referral-loops
-   - inspecting-search-coverage
    - scaling-template-pages
    - adding-structured-signals
    - building-compare-hubs
+
+   SKIP by default (legacy Laravel stack): php, laravel, livewire, fortify-development, pulse-development, vite, tailwind — unless explicitly maintaining archived PHP.
 
 2. For every skill marked LOAD → immediately invoke Skill(name)
    If none need loading → write "Proceeding without skills"
@@ -61,13 +60,12 @@ Before writing any code, complete these steps in order:
 IMPORTANT: Skipping step 2 invalidates step 1. Always call Skill() for relevant items.
 
 Sample output:
-- php: LOAD - building components
-- laravel: SKIP - not needed for this task
-- postgresql: LOAD - building components
-- livewire: SKIP - not needed for this task
+- go: LOAD - API handler change
+- postgresql: LOAD - migration
+- docker: SKIP - not needed for this task
 
 Then call:
-> Skill(php)
+> Skill(go)
 > Skill(postgresql)
 
 Now implementation can begin.

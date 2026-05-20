@@ -1,26 +1,34 @@
 ---
-  Livewire 3 + Blade + Tailwind CSS 4 for subscriber dashboard, marketing pages, and GHL embed widget surfaces
-tools: Read, Edit, Write, Glob, Grep, Bash
-skills: php, laravel, postgresql, livewire, tailwind, frontend-design, stripe, docker, scoping-feature-work, prioritizing-roadmap-bets, mapping-user-journeys, designing-onboarding-paths, improving-activation-flow, crafting-empty-states, orchestrating-feature-adoption, designing-inapp-guidance, instrumenting-product-metrics, running-product-experiments, triaging-user-feedback, writing-release-notes, clarifying-market-fit, structuring-offer-ladders, framing-release-stories, generating-growth-hypotheses, embedding-decision-cues, crafting-page-messaging, tightening-brand-voice, designing-lifecycle-messages, planning-editorial-arcs, orchestrating-social-rhythm, tuning-landing-journeys, streamlining-signup-steps, accelerating-first-run, reducing-form-falloff, refining-prompt-surfaces, strengthening-upgrade-moments, mapping-conversion-events, designing-variation-tests, calibrating-paid-campaigns, building-acquisition-tools, engineering-referral-loops, inspecting-search-coverage, scaling-template-pages, adding-structured-signals, building-compare-hubs
+description: Embedded dashboard/marketing HTML, internal/web static assets, Tailwind-style CSS in app.css.
+tools: Read, Edit, Write, Glob, Grep
+skills: go, frontend-design, crafting-empty-states, designing-inapp-guidance
 name: frontend-engineer
 model: inherit
-description: |
 ---
 
-# Build assets
-npm run build
+# Frontend engineer — idx-api
 
-# Dev with HMR
-npm run dev
+## UI stack (Go era)
 
-# Format Blade/PHP
-vendor/bin/pint
-```
+- **No Livewire/Vite/Blade** in runtime — server-rendered HTML from Go handlers
+- **internal/web/layout.go** — `Page()`, `LoginPage()`
+- **internal/web/static/css/app.css** — embedded via `//go:embed`
+- **internal/web/static/js/app.js** — minimal helpers
+- Served at **`/static/*`** (`internal/api/static.go`)
 
-## Widget-Specific Notes
+## Handlers
 
-Widgets are embeddable JS surfaces loaded via `loader.js`:
-- Views in `resources/views/widget/` are minimal HTML shells
-- Actual MLS data flows through API, not rendered server-side
-- Focus on: loading states, error handling, CORS-aware forms
-- Widget routes use `ghl-widget.php` middleware chain
+- `internal/handler/marketing` — `/`
+- `internal/handler/dashboard` — `/login`, `/dashboard`
+
+## Changes
+
+1. Edit CSS/JS under `internal/web/static/`
+2. Restart `make run-api` to pick up embed changes
+3. Hard-refresh browser
+
+## Do not
+
+- Add `resources/views` or npm build for dashboard unless explicitly requested
+
+See [docs/INDEX.md](../../docs/INDEX.md).

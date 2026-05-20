@@ -1,55 +1,73 @@
 # Database migrations (PostgreSQL)
 
-Canonical inventory for **`database/migrations/`** (Laravel 13). All application schema lives in this single directory (no secondary `loadMigrationsFrom()` paths).
-
-For a **fresh database**, run `php artisan migrate` (or `migrate:fresh` on disposable dev/test DBs only). Legacy incremental migrations and the old `drop_removed_lead_and_agent_tables` cleanup were consolidated into the files below.
+Schema is managed with **[goose](https://github.com/pressly/goose)** SQL migrations in [`migrations/`](../migrations/).
 
 ---
 
-## Migration inventory (run order)
+## Migration inventory
 
 | File | Tables / purpose |
 |------|------------------|
-| `0001_01_01_000000_create_users_table.php` | `users` (Fortify 2FA, widget embed, MLS membership, `is_admin`), `password_reset_tokens`, `sessions` |
-| `0001_01_01_000001_create_cache_table.php` | Laravel `cache`, `cache_locks` |
-| `0001_01_01_000002_create_jobs_table.php` | `jobs`, `job_batches`, `failed_jobs` |
-| `2026_01_01_100000_create_idx_auth_tables.php` | `personal_access_tokens`, `user_invitations` |
-| `2026_01_01_200000_create_idx_domain_and_mls_cache_tables.php` | `domains`, `mls_search_cache`, `listings_cache`, `mls_proxy_audit_logs` |
-| `2026_01_01_300000_create_gis_tables.php` | `gis_cache`, `gis_source_states` (+ seed rows for FL parcel sources) |
-| `2026_01_01_400000_create_crypto_price_snapshots_table.php` | `crypto_price_snapshots` |
-| `2026_01_01_500000_create_listings_mirror_tables.php` | PostGIS `listings`, `listing_sync_cursors`, `replica_pages` (Bridge + Spark staging) |
-| `2026_04_23_144258_create_telescope_entries_table.php` | Laravel Telescope (diagnostics) |
-| `2026_04_23_144551_create_pulse_tables.php` | Laravel Pulse |
+| `00001_initial.sql` | Consolidated schema: `users`, `sessions`, `cache`, `jobs`, `job_batches`, `failed_jobs`, `personal_access_tokens`, `user_invitations`, `domains`, `listings_cache`, `mls_search_cache`, `mls_proxy_audit_logs`, `gis_*`, `crypto_price_snapshots`, PostGIS `listings`, `listing_sync_cursors`, `replica_pages` |
 
-**9 migration files** total (3 framework + 5 IDX domain + 2 observability).
+**Note:** Laravel Telescope/Pulse tables are **not** included in the Go cutover migration.
 
 ---
 
-## Operational notes
-
-### PostGIS
-
-[`2026_01_01_500000_create_listings_mirror_tables.php`](../database/migrations/2026_01_01_500000_create_listings_mirror_tables.php) enables PostGIS when missing (`CREATE EXTENSION IF NOT EXISTS postgis`). On managed Postgres without superuser, create the extension once before migrating.
-
-**Mirror scope:** replication stores **Active + Pending** in `listings`; **Closed** is on-demand via live MLS API (Bridge or Spark). See [IDX-API Bridge proxy](idx-api-bridge-proxy.md).
-
-**Provider-neutral extension columns on `listings`:** `flood_zone_code`, `estimated_total_monthly_fees` (replaces legacy `stellar_flood_zone_code` / `stellar_total_monthly_fees` on fresh installs). Beaches monthly fees are derived from association fee pairs at persist time — see [Spark integration](spark/idx-api-integration.md#normalized-mirror-columns-persist--replication-updates).
-
-**Partial index (PostgreSQL):** `listings_ap_flood_zone_idx` on `(dataset_slug, flood_zone_code)` for Active/Pending rows where `flood_zone_code IS NOT NULL`.
-
-**Services:** `AssociationFeeMonthlyNormalizer`, `ListingResoFieldResolver`, `ListingMirrorWriter` (replication create/update), `PostgisSearchService` (search mirror leg), `BridgeSearchClient` / `BridgeCompsService` (OData and `raw_data` mapping).
-
-### Fresh install
+## Commands
 
 ```bash
-php artisan migrate --force
+# From project root (.env DB_* or explicit DSN)
+export GOOSE_DBSTRING="postgres://user:pass@host:5432/dbname?sslmode=require"
+make migrate
+
+# Bootstrap admin (Argon2id password from ADMIN_SEED_*)
+make seed-admin
 ```
 
-Use a dedicated database for **`migrate:fresh`** in CI/local dev (`testing` or `idx_api_testing`; see `tests/TestCase.php`).
+Install goose on PATH (optional): `make migrate-install`
 
-### Upgrading existing databases
+---
 
-If an environment already ran migrations that created `bridge_replica_pages` or `2026_05_18_155700_extend_listing_sync_and_replica_pages_for_spark.php`, do **not** swap migration files in place. **Reset** to a fresh database (`migrate:fresh` on disposable dev/staging only) and run the consolidated set above.
+## PostGIS
+
+`00001_initial.sql` runs `CREATE EXTENSION IF NOT EXISTS postgis`. On managed Postgres without superuser, create the extension once before migrating.
+
+**Mirror scope:** replication stores **Active + Pending** in `listings`; **Closed** is on-demand via live Bridge/Spark API.
+
+**Extension columns:** `flood_zone_code`, `estimated_total_monthly_fees` on `listings`.
+
+**Go services:** `internal/service/sync` (mirror persist), `internal/service/search/postgis.go` (hybrid search).
+
+---
+
+## Fresh / disposable databases
+
+```bash
+# Drop all tables manually or use a new database, then:
+make migrate
+make seed-admin
+```
+
+Use dedicated DB names for tests (`TEST_DATABASE_URL`).
+
+---
+
+## Queue table
+
+Go workers expect job payloads:
+
+```json
+{"type":"bridge.fetch_page","args":{...}}
+```
+
+Purge legacy Laravel rows after cutover:
+
+```sql
+DELETE FROM jobs WHERE payload LIKE '%CallQueuedHandler%';
+```
+
+See [go-cutover.md](go-cutover.md).
 
 ---
 

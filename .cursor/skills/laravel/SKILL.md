@@ -1,5 +1,6 @@
 ---
 name: laravel
+deprecated: Use `.cursor/skills/go/SKILL.md` — idx-api runtime is Go 1.25+, not Laravel.
 description: Manages Laravel 13 routing, ORM, queues, and service providers
 allowed-tools: Read, Edit, Write, Glob, Grep, Bash
 ---

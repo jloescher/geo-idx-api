@@ -1,72 +1,63 @@
 # Quantyra IDX API
 
-Laravel 13 + Octane service powering Quantyra's Bridge MLS proxy, Spark Beaches MLS proxy, GIS parcel/geometry proxy, authenticated user dashboard (domains, API keys, MLS feed scope), and secured image proxy delivery. The service sits between real estate MLS data (Bridge Data Output / Stellar MLS), public ArcGIS parcel sources, and customer tooling. Three public surfaces: **idx.quantyralabs.cc** (app/marketing), **idx-api.quantyralabs.cc** (API), **idx-images.quantyralabs.cc** (image proxy).
+**Go 1.25+** service (Fiber, pgx, PostgreSQL queue) powering Quantyra's Bridge MLS proxy, Spark Beaches MLS proxy, GIS parcel/geometry proxy, authenticated user dashboard (domains, API keys, MLS feed scope), and secured image proxy delivery. The service sits between real estate MLS data (Bridge Data Output / Stellar MLS), public ArcGIS parcel sources, and customer tooling. Three public surfaces: **idx.quantyralabs.cc** (app/marketing), **idx-api.quantyralabs.cc** (API), **idx-images.quantyralabs.cc** (image proxy).
+
+> **Note:** This repository was rewritten from Laravel 13 + Octane. Use `cmd/api`, `cmd/worker`, `cmd/scheduler`, and [README.md](README.md) for build/run instructions.
 
 ## Tech Stack
 
 | Layer | Technology | Version | Purpose |
 |-------|------------|---------|---------|
-| Runtime | PHP | 8.5 | Server language |
-| Web Server | FrankenPHP (via Laravel Octane) | 2.x | High-performance concurrent request handling |
-| Framework | Laravel | 13.x | Application skeleton, routing, ORM, queues |
-| Language | PHP | 8.5 | Strong typing, constructor promotion, PHP attributes for model fillable/hidden |
-| Database | PostgreSQL | - | Eloquent ORM; development, staging (shared), and production (dedicated) all use `pgsql` |
-| Frontend | Livewire + Blade + Tailwind CSS 4 | 4.x / 4.x | Server-rendered marketing home, user dashboard, Filament dashboard shell |
-| Build | Vite | 8.x | CSS/JS bundling with Tailwind plugin |
-| Auth | Laravel Sanctum + Fortify | 4.x / 1.36.x | API tokens; login + **invite-only** registration (no public self-signup), password reset, 2FA |
-| Observability | Pulse + Telescope + Debugbar | 1.x / 5.x / 4.x | Production metrics, local debugging, rate-limited behind HTTP Basic Auth |
+| Runtime | Go | 1.25+ | Server language |
+| HTTP | Fiber | 2.x | API router and middleware |
+| Database | PostgreSQL + PostGIS | — | pgx + sqlx |
+| Queue | PostgreSQL `jobs` | — | `cmd/worker` + LISTEN/NOTIFY |
+| Migrations | goose | 3.x | `migrations/*.sql` |
+| Dashboard UI | Embedded HTML/CSS | — | `internal/web` (`//go:embed`) |
+| Auth | Session + PAT | — | Argon2id passwords; SHA-256 token hashes |
+| Edge images | Nginx | 1.27 | `Dockerfile.idx-images` → Go API |
 
 ## Quick Start
 
 ```bash
-# Prerequisites: PHP 8.5+, Composer, Node 20+, PostgreSQL (local development database)
+# Prerequisites: Go 1.25+, PostgreSQL with PostGIS
 
-# Installation
 cp .env.example .env
-composer install
-php artisan key:generate
-php artisan migrate
+# Edit DB_*, BRIDGE_API_KEY, SPARK_ACCESS_TOKEN, ADMIN_SEED_*, WORKER_QUEUES
 
-# Frontend assets (Livewire/Blade dashboard + marketing)
-npm install
-npm run build
+export GOOSE_DBSTRING="postgres://user:pass@127.0.0.1:5432/idx_api?sslmode=disable"
+make migrate
+make seed-admin
 
-# Development (server + queue + logs + Vite HMR in parallel)
-composer dev
+make run-api        # :8000
+make run-worker     # separate terminal
+make run-scheduler  # separate terminal
 
-# Run tests (PostgreSQL from `.env`; see README + tests/bootstrap.php; PostGIS requires Postgres)
-composer test
-
-# Code formatting (Laravel Pint)
-vendor/bin/pint
+go test ./...
 ```
 
 ## Project Structure
 
 ```
 idx-api/
-├── app/
-│   ├── Actions/Fortify/          # User creation, password reset, profile update
-│   ├── Console/Commands/         # GIS, token management, MLS utilities
-│   ├── Filament/                 # User dashboard (Filament v4)
-│   ├── Http/
-│   │   ├── Controllers/
-│   │   │   ├── Api/              # BridgeProxyController, ImageProxyController
-│   │   │   ├── Marketing/        # SalesPageController → marketing home
-│   │   │   ├── Dashboard*.php    # User dashboard Setup (domain + MLS + API keys)
-│   │   │   └── GisProxyController.php
-│   │   ├── Middleware/           # DomainOrTokenAuth, mls.access, ProtectMonitoringDashboard
-│   │   └── Requests/
-│   ├── Jobs/                     # Listings cache refresh, GIS metadata, backups
-│   ├── Models/                   # User, Domain, ListingsCache, Bridge proxy audit, GIS cache
-│   ├── Providers/
-│   └── Services/                 # Bridge/, Gis*
-├── config/                       # bridge, gis, mls, idx/idx_urls, fortify, pulse, octane, etc.
-├── database/migrations/
+├── cmd/api/              # HTTP server
+├── cmd/worker/           # Queue consumer
+├── cmd/scheduler/        # Cron → enqueue
+├── cmd/seed/             # make seed-admin
+├── internal/
+│   ├── api/              # Routes, middleware
+│   ├── handler/          # bridge, gis, images, dashboard, auth, marketing
+│   ├── service/          # sync, search, gis, cache, mls, crypto
+│   ├── job/              # Queue handler registry
+│   ├── queue/            # PostgreSQL queue client
+│   ├── repository/       # DB access
+│   ├── config/           # .env loading
+│   ├── auth/password/    # Argon2id
+│   └── web/              # Embedded static + HTML layout
+├── migrations/           # Goose SQL
 ├── docs/
-├── routes/                       # web.php (platform + API hosts), api.php (v1 Bridge + GIS)
-├── tests/
-└── Dockerfile.* / docker-compose.dev.yml
+├── Dockerfile            # api | worker | scheduler
+└── docker-compose.dev.yml
 ```
 
 ## Architecture Overview
@@ -75,8 +66,8 @@ The service has three primary subsystems:
 
 ### 1. Bridge MLS Proxy (`/api/v1/*`)
 
-Proxies Bridge Data Output with domain-based or Sanctum token authentication. Key behaviors:
-- **DomainOrTokenAuth** + **mls.access** resolve identity and feed access
+Proxies Bridge Data Output with domain-based or PAT authentication. Key behaviors:
+- **domain.token** + **mls.access** middleware resolve identity and feed access
 - **Teaser gating**: non-full-access requests cap listings (revenue lever)
 - **Image URL rewriting**: Bridge photo URLs rewritten to `idx-images` public URLs
 - **Listings cache**: TTL collection cache per domain; purge/housekeeping jobs for stale rows
@@ -88,8 +79,8 @@ Public ArcGIS feature server proxy for Florida parcel data. Three-tier caching w
 
 ### 3. Platform & user dashboard
 
-- **Marketing home** (`/`) on platform hosts — static Blade intro and links to login / dashboard
-- **User dashboard** (`/dashboard`) — simplified three-step Setup flow: register domain + MLS, verify DNS TXT, connect with auto-issued Production API key. Optional Staging key for preview sites. API Keys panel for revoke and additional named tokens.
+- **Marketing home** (`/`) — `internal/handler/marketing`
+- **User dashboard** (`/dashboard`) — domains, DNS TXT verify, API keys (`internal/handler/dashboard`)
 
 ```
 ┌──────────────┐        ┌──────────────┐        ┌──────────────┐
@@ -97,8 +88,8 @@ Public ArcGIS feature server proxy for Florida parcel data. Three-tier caching w
 │  (App/Mktg)  │        │  (API)       │        │  (Nginx)     │
 ├──────────────┤        ├──────────────┤        ├──────────────┤
 │ User dashboard │        │ Bridge Proxy │        │ Edge cache   │
-│ (Blade +       │        │ GIS Proxy    │   ──▶  │ -> idx-api   │
-│  Filament)     │        │              │        │ /images/*    │
+│ (Go HTML)      │        │ GIS Proxy    │   ──▶  │ -> idx-api   │
+│                │        │              │        │ /images/*    │
 └──────────────┘        └──────┬───────┘        └──────────────┘
                                │
                                ▼
@@ -112,14 +103,14 @@ Public ArcGIS feature server proxy for Florida parcel data. Three-tier caching w
 
 | Module | Location | Purpose |
 |--------|----------|---------|
-| `BridgeProxyController` | `app/Http/Controllers/Api/` | MLS proxy — web, RESO OData, doc-style endpoints |
-| `GisProxyController` | `app/Http/Controllers/` | ArcGIS parcel proxy, MLS-scoped routing |
-| `GisProxyService` | `app/Services/` | Multi-tier GIS proxy, cache, failover, teaser |
-| `BridgeHttpService` | `app/Services/Bridge/` | HTTP client, URL building, timeouts |
-| `DomainOrTokenAuth` | `app/Http/Middleware/` | Domain slug and/or Sanctum token auth |
-| `DashboardViewData` | `app/Services/Dashboard/` | Setup phase resolution, token flags, panel routing |
-| `DashboardDomainController` | `app/Http/Controllers/` | Domain registration (with MLS), TXT verify, auto-token |
-| `DashboardApiTokenController` | `app/Http/Controllers/` | Production auto-issue, Staging token, custom named tokens |
+| Bridge proxy | `internal/handler/bridge` | MLS RESO proxy, search, stats |
+| GIS proxy | `internal/handler/gis` | ArcGIS parcel proxy |
+| Images | `internal/handler/images` | `/images/*` streaming cache |
+| Domain/token auth | `internal/api/middleware/domain_token.go` | Domain slug and/or PAT |
+| MLS access | `internal/api/middleware/mls_access.go` | Feed allowlists |
+| Sync/replication | `internal/service/sync` | Bridge + Spark mirror jobs |
+| Dashboard | `internal/handler/dashboard` | Login, domains, API keys |
+| Queue | `internal/queue`, `internal/job` | Job types and workers |
 
 ## Development Guidelines
 
@@ -335,23 +326,19 @@ When working on tasks involving these technologies, invoke the corresponding ski
 
 | Skill | Invoke When |
 |-------|-------------|
-| livewire | Manages Livewire reactive components and Blade integration |
-| postgresql | Handles PostgreSQL schema, migrations, and query patterns |
-| frontend-design | Applies UI design with Livewire, Blade, Tailwind CSS 4, and Alpine.js |
-| laravel | Manages Laravel 13 routing, ORM, queues, and service providers |
-| docker | Configures Docker multi-stage builds, FrankenPHP, and Compose workflows |
-| php | Enforces PHP 8.5 patterns, strict typing, and constructor promotion |
-| tailwind | Applies Tailwind CSS 4 styling and utility patterns |
-| vite | Configures Vite build pipeline and HMR |
-| nginx | Configures Nginx reverse proxy for idx-images |
-| crafting-empty-states | Creates empty states and onboarding affordances |
-| designing-inapp-guidance | Builds tooltips, tours, and contextual guidance |
-| inspecting-search-coverage | Audits Bridge MLS filters, GIS queries, and on-page search coverage |
-| laravel-best-practices | Laravel PHP patterns, security, queues, validation (under `.agents/skills` or `.cursor/skills`) |
-| fortify-development | Fortify authentication customization |
-| pulse-development | Laravel Pulse dashboards and recorders |
+| **go** | Handlers, services, queue jobs, config, `cmd/*`, tests |
+| postgresql | Goose migrations, PostGIS queries |
+| docker | `Dockerfile`, Compose, Coolify deploy |
+| frontend-design | Dashboard/marketing HTML + `internal/web/static` CSS |
+| nginx | idx-images reverse proxy |
+| crafting-empty-states | Dashboard empty states |
+| designing-inapp-guidance | Onboarding copy and flows |
+| inspecting-search-coverage | MLS/GIS search filters and docs |
+| _legacy_ laravel, php, livewire, fortify, pulse, vite | **Do not use** for new backend work (pre–Go cutover) |
 
-## Laravel Boost Guidelines
+## Laravel Boost Guidelines (legacy)
+
+> **Superseded:** Runtime is Go. Follow **go** skill and this file’s Quick Start. Boost/PHP rules below apply only if maintaining archived Laravel code.
 
 ### Foundation Rules
 

@@ -1,6 +1,6 @@
 # Quantyra GeoIDX — Documentation Index
 
-Central index for all documentation in this project. Implementation code lives in this repository root, and **reference and integration guides** live under `docs/`.
+Central index for **idx-api** (Go 1.25+). Implementation lives in `cmd/` and `internal/`; guides live under `docs/`.
 
 ---
 
@@ -8,34 +8,47 @@ Central index for all documentation in this project. Implementation code lives i
 
 | Document | Description |
 |----------|-------------|
-| [idx-api HTTP API overview](api.md) | `/api/v1` and GIS entrypoints; how dashboard Sanctum keys (Production/Staging auto-provisioned on domain verify) relate to `domain.token`. |
-| [OpenAPI spec document](yaak-api-collection.json) | Canonical OpenAPI `3.1.0` document used by Swagger UI (`/swagger`) and served at `/openapi.json`. |
-| [Bridge / MLS API](bridge-api-documentation.md) | Bridge Data Output API reference (Stellar MLS proxy usage). |
-| [Spark Platform (Beaches MLS)](spark/README.md) | Index: platform overview, idx-api integration, RESO reference, compliance, fixtures. |
-| [Spark — idx-api integration](spark/idx-api-integration.md) | Mirror replication, dual hosts (`replication.sparkapi.com` / `sparkapi.com`), queues, live proxy, hybrid search. |
-| [Spark — listing display compliance](spark/spark-compliance.md) | Summary/Detail views, disclaimers, IDX logos, engineering checklist. |
-| [spark-api-documentation.md](spark-api-documentation.md) | Redirect hub to `docs/spark/`. |
-| [IDX-API Bridge proxy](idx-api-bridge-proxy.md) | Secured Bridge proxy: `/api/v1/*`, `?domain=`, auth (verified **domains** + Sanctum PATs with **`idx:access` or `idx:full`**, **dashboard API keys**), full MLS-shaped JSON for authenticated traffic, listings cache (15m), **search cache**, **PostGIS mirror** (Active/Pending replication + **`bridge-sync-fetch`** / **`bridge-sync-persist`** queues), **hybrid search** (AP local, Closed live Bridge, mixed merge), `/api/v1/bridge/stats`, listing pricing enrichment (`pricing` + `pricing_converted`), queued CoinGecko quote refresh, JSON photo URL rewrite to **idx-images**, CloudFront URL normalization, OData cursor pagination, `/images/*` streaming proxy + immutable CDN headers, audit, env, Docker. |
-| [Comps API](comps-api.md) | `POST /api/v1/comps/run` for A–E comps, investor modes (`rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`), BPO mode (`bpo`) with market-derived adjustments, and **home value estimator** (`home_value`) with Google Maps geocoding, condition overlay, and market-scaled renovation credits. |
-| [Database migrations](database-migrations.md) | Inventory of `database/migrations/`, PostGIS, `listings` mirror columns (`flood_zone_code`, `estimated_total_monthly_fees`), deploy notes. |
-| [Deployment & operations](deployment-operations.md) | Docker, docker-compose, Dokploy, migrations, queues, scheduling (non–Coolify-specific layout). |
-| [Coolify deployment](coolify-deployment.md) | **Production and staging** on Coolify: four apps per env, Dockerfile targets, ports 8000/8080, PostgreSQL queue, env checklist, post-deploy, `idx-api` / `idx-images` networking, CPU/RAM (staging workers **768M** PHP / **1024 MB** container). |
-| [Docker builds](../README.md) | Production (`Dockerfile.production`), staging (`Dockerfile.staging`), image edge (`Dockerfile.idx-images`) — project-root build context. |
+| [HTTP API overview](api.md) | `/api/v1`, GIS, auth (domain + PAT), dashboard tokens |
+| [Go cutover runbook](go-cutover.md) | Laravel → Go migration, queue purge, API key re-issue |
+| [OpenAPI spec](yaak-api-collection.json) | OpenAPI 3.1 document (update when routes change) |
+| [Bridge / MLS API](bridge-api-documentation.md) | Bridge Data Output upstream reference |
+| [Spark Platform (Beaches MLS)](spark/README.md) | Integration, RESO, compliance, fixtures |
+| [Spark — idx-api integration](spark/idx-api-integration.md) | Replication, dual hosts, queues, hybrid search |
+| [IDX-API Bridge proxy](idx-api-bridge-proxy.md) | Proxy auth, cache, mirror, search, images, env |
+| [Comps API](comps-api.md) | `POST /api/v1/comps/run` |
+| [GIS API](gis-api.md) | Parcel/geometry proxy |
+| [Database migrations](database-migrations.md) | Goose SQL, PostGIS, schema inventory |
+| [Deployment & operations](deployment-operations.md) | Docker, queues, scheduler, migrations |
+| [Coolify deployment](coolify-deployment.md) | Production/staging: api, worker, scheduler, idx-images |
+| [README](../README.md) | Local dev, `make` targets, build & test |
 
 ---
 
-## Project layout summary
+## Project layout
 
 | Path | Role |
 |------|------|
-| `app/`, `routes/`, `config/`, `database/` | Laravel 13 + Octane: **MLS proxy** (Bridge Stellar + Spark Beaches), GIS, images, dashboard. |
-| `docs/` | Product, integration, deployment, and operations documentation. |
-| `tests/` | Feature and unit test coverage for Bridge and platform flows. |
-| `Dockerfile.production`, `Dockerfile.staging`, `Dockerfile.idx-images` | Production API, staging API (FrankenPHP/Octane + workers), and Nginx image edge (same idx-images image for staging and production). |
+| `cmd/api`, `cmd/worker`, `cmd/scheduler`, `cmd/seed` | Binaries |
+| `internal/` | Handlers, services, queue, repository, config |
+| `migrations/` | Goose SQL schema |
+| `internal/web/static/` | Embedded dashboard/marketing CSS/JS |
+| `docs/` | Product and operations documentation |
+| `Dockerfile` | Targets: `api`, `worker`, `scheduler` |
+| `Dockerfile.idx-images` | Nginx edge for `/images/*` |
 
-For a full product overview, see the root [README.md](../README.md). **Coolify:** [coolify-deployment.md](coolify-deployment.md). **Docker / Dokploy:** [deployment-operations.md](deployment-operations.md) and the root [README.md](../README.md).
+---
 
-## Dev run commands
+## Dev commands
 
-- Docker dev up/watch: `./scripts/docker-dev.sh up-watch`
-- Docker dev down: `./scripts/docker-dev.sh down`
+```bash
+cp .env.example .env
+export GOOSE_DBSTRING="postgres://..."
+make migrate
+make seed-admin
+make run-api          # :8000
+make run-worker       # WORKER_QUEUES in .env
+make run-scheduler
+go test ./...
+```
+
+Docker: `docker compose -f docker-compose.dev.yml up --build`

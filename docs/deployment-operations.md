@@ -1,121 +1,98 @@
 # Deployment & operations
 
-Covers **Docker**, **docker-compose**, **[Coolify](coolify-deployment.md)**, **Dokploy**, migrations, queues, and scheduled tasks. Container images are defined at the project root (see [README.md](../README.md)).
+**Go idx-api** — Docker, Coolify/Dokploy, PostgreSQL queue, goose migrations. See also **[Coolify deployment](coolify-deployment.md)** and **[go-cutover.md](go-cutover.md)**.
 
 ---
 
-## Docker images (project root context)
+## Docker images
 
-All Dockerfiles build from this project root context. Set **build context = project root** (`.`) in Coolify, Dokploy, and in `docker compose build`.
+Build from project root (context `.`).
 
-| Service | Dockerfile | Base | Exposed port |
-|---------|------------|------|----------------|
-| **idx-api (web)** | [`Dockerfile.production`](../Dockerfile.production) (target **`octane`**) | FrankenPHP + PHP 8.5 Alpine + **intl** (Filament) | **8000** |
-| **idx-api (worker)** | same file (target **`queue-worker`**) | (same image) | — |
-| **idx-api (scheduler)** | same file (target **`scheduler`**) | (same image) | — |
-| **idx-api (staging)** | [`Dockerfile.staging`](../Dockerfile.staging) | FrankenPHP + Xdebug | **8000** |
-| **idx-images** | `Dockerfile.idx-images` | `nginx:1.27-alpine` | `8080` |
-
-**idx-api image notes**
-
-- **Logs:** `/var/log/geoidx/` (paths created in the Dockerfile where applicable).
-- **Bridge / MLS cache paths** are created in the same Dockerfile (see [idx-api-bridge-proxy.md](idx-api-bridge-proxy.md)).
-
-**Root [`.dockerignore`](../.dockerignore)** shrinks build context (`vendor/`, `node_modules/`, `docs/`, `.git`, etc.) for Coolify and local builds.
-
-**Canonical deployment notes:** [README.md](../README.md), [AGENTS.md](../AGENTS.md), and **[coolify-deployment.md](coolify-deployment.md)** (Coolify production & staging).
-
-Build locally (from project root):
+| Service | Dockerfile | Target | Port |
+|---------|------------|--------|------|
+| **idx-api (web)** | [`Dockerfile`](../Dockerfile) | `api` | **8000** |
+| **idx-api (worker)** | same | `worker` | — |
+| **idx-api (scheduler)** | same | `scheduler` | — |
+| **idx-images** | [`Dockerfile.idx-images`](../Dockerfile.idx-images) | — | **8080** |
 
 ```bash
-docker build -f Dockerfile.production --target octane -t quantyra/idx-api:latest .
-docker build -f Dockerfile.production --target queue-worker -t quantyra/idx-api-worker:latest .
-docker build -f Dockerfile.production --target scheduler -t quantyra/idx-api-scheduler:latest .
+docker build -f Dockerfile --target api -t quantyra/idx-api:latest .
+docker build -f Dockerfile --target worker -t quantyra/idx-api-worker:latest .
+docker build -f Dockerfile --target scheduler -t quantyra/idx-api-scheduler:latest .
 docker build -f Dockerfile.idx-images -t quantyra/idx-images:latest .
-docker compose build
 ```
 
----
+**Health:** `GET /healthz` (liveness), `GET /readyz` (Postgres + PostGIS).
 
-## docker-compose (project root)
-
-Services use environment variables from root **`.env.example`** as a template. Common URL-related variables:
-
-- `IDX_PLATFORM_URL` — platform app (marketing + dashboard) public URL  
-- `IDX_API_PUBLIC_URL` / `API_URL` — API + widgets host  
-- `IDX_IMAGES_PUBLIC_URL` / `IMAGE_URL` — image proxy host  
-- `IDX_PLATFORM_HOSTS`, `IDX_API_HOSTS` — comma-separated hosts for `Route::domain()` routing  
+**Image cache:** set `IMAGE_CACHE_PATH` (default `/var/cache/geoidx/images`); writable by container user.
 
 ---
 
-## Coolify
+## Environment (all replicas)
 
-**Primary guide:** **[Coolify deployment (production & staging)](coolify-deployment.md)** — four applications per environment, Dockerfile build pack, ports **8000** / **8080**, PostgreSQL **`QUEUE_CONNECTION=database`**, networking, post-deploy, route-cache caveat, CPU/RAM.
+| Variable | Purpose |
+|----------|---------|
+| `DB_*` | PostgreSQL (`DB_SSLMODE=require` for remote hosts) |
+| `BRIDGE_API_KEY`, `SPARK_ACCESS_TOKEN` | MLS upstream credentials |
+| `WORKER_QUEUES` | Comma-separated queue names for `cmd/worker` |
+| `IDX_PLATFORM_URL`, `IDX_API_PUBLIC_URL`, `IDX_IMAGES_PUBLIC_URL` | Public URLs |
+| `ADMIN_SEED_*` | `make seed-admin` only (not read at runtime by API) |
 
-Quick reference:
+**Worker queues (typical):**
 
-| Concern | Production | Staging |
-|---------|------------|---------|
-| API Dockerfile | `Dockerfile.production` | `Dockerfile.staging` |
-| Build targets | `octane`, `queue-worker`, `scheduler` | same |
-| idx-images Dockerfile | `Dockerfile.idx-images` | same |
-| API port | **8000** | **8000** |
-| idx-images port | **8080** | **8080** |
+```env
+WORKER_QUEUES=default,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist
+```
+
+Bridge fetch/persist: `BRIDGE_SYNC_FETCH_QUEUE`, `BRIDGE_SYNC_PERSIST_QUEUE`  
+Spark fetch/persist: `SPARK_SYNC_FETCH_QUEUE`, `SPARK_SYNC_PERSIST_QUEUE`
 
 ---
 
-## Dokploy (recommended layout)
-
-| Setting | Value |
-|---------|--------|
-| Repository | Your GeoIDX / idx-api fork |
-| Application | `idx-api` and `idx-images` |
-| Build context | **Project root** (`.`) |
-| Dockerfile path | `Dockerfile.production` (or `Dockerfile.staging`) / `Dockerfile.idx-images` |
-| Published port / reverse proxy | API host → **8000**; idx-images → **8080** |
-| Health check | **idx-api:** `php artisan octane:status` or `GET /up` on **8000**. **idx-images:** `GET /health` on **8080**. |
-
-**Post-deploy commands** (run once per release or via platform “Execute command”):
+## Migrations & admin seed
 
 ```bash
-php artisan migrate --force
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
+export GOOSE_DBSTRING="postgres://..."
+make migrate
+make seed-admin
 ```
 
-**`route:cache`:** skip if your app registers the same route names on multiple `Route::domain()` hosts (see `routes/web.php`); the Docker production image omits route caching at build for that reason.
-
-**Queue worker** (separate service using the **same** API image, Docker target **`queue-worker`**):
-
-| Image | Default `queue:work` command |
-|-------|------------------------------|
-| `Dockerfile.production` | `php -d memory_limit=512M artisan queue:work …` |
-| `Dockerfile.staging` | `php -d memory_limit=768M artisan queue:work …` (FrankenPHP staging base also sets **`memory_limit=768M`** in `php.ini`) |
-
-Use the image CMD unless your platform overrides it. Env **`WORKER_QUEUES`** defaults to `default` in the Dockerfile; set **`default,bridge-sync-fetch,bridge-sync-persist`** on staging/production workers for Bridge replica jobs (see [Coolify deployment](coolify-deployment.md)). The scheduler runs **`mls:replication-kickoff`** every **minute** for datasets more than **15 minutes** behind MLS “now”; catch-up chains dispatch `BridgeSyncFetchPageJob` / `SparkSyncFetchPageJob` on **`bridge-sync-fetch`** / **`spark-sync-fetch`** (max **2 upstream GETs/sec** per provider). Steady-state incremental polls use a **15-minute** idle delay after a successful sync. Persist runs on **`bridge-sync-persist`** / **`spark-sync-persist`** (Spark defaults to sequential `Bus::chain` chunks). After deploy, seed once: `php artisan mls:replication-kickoff`. Drain any legacy jobs on the old **`bridge-sync`** queue name after deploy. Set e.g. `default,gis` if you use a dedicated GIS queue (`config/gis.php`).
-
-Set **`MLS_LOCAL_MIRROR_ROLLING_MONTHS`** per environment (staging **3**, production **12**) on web, workers, and scheduler before or with deploy; purge/search/listings-cache use `MlsMirrorRollingWindow`. After shortening the window, run closed-listings purge once (`PurgeClosedListingsJob`) or wait for the daily schedule. For Beaches MLS (Spark) replication, include **`spark-sync-fetch`** and **`spark-sync-persist`** (see [Spark documentation](spark/README.md)).
-
-**Scheduler** (separate service, target **`scheduler`**, or host cron):
-
-```cron
-* * * * * cd /var/www/html && php artisan schedule:run >> /dev/null 2>&1
-```
-
-Scheduled tasks are defined in `routes/console.php`.
+Run once per deploy when `migrations/` changes.
 
 ---
 
-## Migrations
+## Worker
 
-Core migrations live under `database/migrations/`. For a **file-by-file inventory**, PostGIS requirements, and the legacy `dropIfExists` cleanup migration, see **[Database migrations](database-migrations.md)**.
+Process: `/usr/local/bin/worker` (or `make run-worker` locally).
+
+- Polls `jobs` with `FOR UPDATE SKIP LOCKED`
+- Job types: `internal/queue/payload.go` (`bridge.fetch_page`, `spark.persist_chunk`, `mls.replication_kickoff`, …)
+- Discard legacy Laravel payloads or purge `jobs` table (see go-cutover)
+
+Scale: separate replicas for fetch vs persist during replication catch-up.
+
+---
+
+## Scheduler
+
+Process: `/usr/local/bin/scheduler` (or `make run-scheduler`).
+
+Enqueues periodic work (listings cache refresh, replication kickoff, GIS probe, crypto pricing). **Requires workers** to execute jobs.
+
+---
+
+## idx-images
+
+Nginx proxies `/images/*` → idx-api:8000. Same image for staging and production.
+
+---
+
+## Local Compose
 
 ```bash
-php artisan migrate --force
+docker compose -f docker-compose.dev.yml up --build
+./scripts/docker-dev.sh up-watch   # if using tunnel/watch helpers
 ```
-
-On first deploy or after pulling migration changes, run migrate from the API container (or host) against the correct `DB_*` target. Prefer **`migrate:fresh` only on disposable** databases (never shared staging/production unless intentional).
 
 ---
 
@@ -123,13 +100,16 @@ On first deploy or after pulling migration changes, run migrate from the API con
 
 | Symptom | Check |
 |---------|--------|
-| Docker build fails (`COPY failed`) | Build context must be the **project root**; Dockerfile path **`Dockerfile.*`** — see [README.md](../README.md). |
-| Wrong app in container | Do not set a nested context; Laravel files must land at `/var/www/html` via `COPY . .` from project root. |
+| `unknown job type type=""` | Laravel jobs in `jobs`; run purge SQL from go-cutover |
+| Spark jobs not running | `WORKER_QUEUES` includes `spark-sync-fetch`, `spark-sync-persist` |
+| Login fails after cutover | `make seed-admin`; passwords are Argon2id |
+| API tokens rejected | Re-issue PATs from dashboard (SHA-256 storage) |
+| 502 on `/images/*` | idx-images → idx-api network, port 8000 |
 
 ---
 
-## Related docs
+## Related
 
-- [README.md](../README.md) — project Docker build and setup instructions.  
-- [coolify-deployment.md](coolify-deployment.md) — Coolify production & staging.  
-- [idx-api-bridge-proxy.md](idx-api-bridge-proxy.md) — MLS proxy, image edge, Bridge env.
+- [README.md](../README.md)
+- [AGENTS.md](../AGENTS.md)
+- [coolify-deployment.md](coolify-deployment.md)

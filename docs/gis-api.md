@@ -5,7 +5,7 @@ Quantyra GeoIDX **idx-api** exposes a GIS proxy that returns **public Florida go
 ## Product and compliance notes
 
 - **Map UX:** Parcel overlays pair with listing markers so consumers get cadastral context without expanding MLS processing beyond Bridge-backed listing calls.
-- **Infra:** Short PostgreSQL + Laravel cache mirrors `listings_cache` economics so upstream ArcGIS instability does not scale linearly with traffic.
+- **Infra:** PostgreSQL origin cache + edge TTL (`GIS_EDGE_CACHE_TTL`) so upstream ArcGIS instability does not scale linearly with traffic.
 - **Stellar MLS PDA / IDX:** This layer uses **public** cadastral and county GIS only, consistent with enhancing IDX display with non-MLS context.
 
 ## Authentication
@@ -13,7 +13,7 @@ Quantyra GeoIDX **idx-api** exposes a GIS proxy that returns **public Florida go
 Same as other `/api/v1/*` Bridge proxy routes:
 
 - **Domain mode:** `X-Domain-Slug` header (or `domain` query / Referer host) for an **active** `domains` row.
-- **Token mode:** Bearer Sanctum token with `idx:access` or `idx:full`, plus **`X-Domain-Slug`** / **`?domain=`** for a verified domain on the token owner's account.
+- **Token mode:** Bearer PAT with `idx:access` or `idx:full`, plus **`X-Domain-Slug`** / **`?domain=`** for a verified domain on the token owner's account.
 
 **Access shape**
 
