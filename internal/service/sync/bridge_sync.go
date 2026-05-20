@@ -118,13 +118,47 @@ func (s *BridgeSync) FetchIncrementalPage(ctx context.Context, dataset string, c
 }
 
 func (s *BridgeSync) applySyncExpand(query url.Values) {
-	// Bridge returns Media inline on Property when fetching the full resource (reso_web_api.md).
+	// /Property/replication does not return expanded Rooms/UnitTypes/OpenHouses — only /Property does.
+	// Media is inline on full Property; navigation collections still need $expand on /Property.
 	if s.cfg.Bridge.SyncFullProperty {
+		if nav := mls.BridgeNavigationExpandCSV(s.cfg.Bridge.SyncExpand); nav != "" {
+			query.Set("$expand", nav)
+		}
 		return
 	}
 	if expand := strings.TrimSpace(s.cfg.Bridge.SyncExpand); expand != "" {
 		query.Set("$expand", expand)
 	}
+}
+
+// FetchNavHydratePage walks /Property with navigation $expand to backfill Rooms, UnitTypes, OpenHouses
+// omitted from /Property/replication responses (Stellar ignores $expand on replication).
+func (s *BridgeSync) FetchNavHydratePage(ctx context.Context, dataset string, skip int) (PageResult, error) {
+	top := s.cfg.Bridge.SyncIncrementalTop
+	if top <= 0 {
+		top = 200
+	}
+
+	fetchURL := s.propertyCollectionURL(dataset)
+	query := url.Values{}
+	query.Set("$filter", BridgeReplicationFilter(s.cfg))
+	query.Set("$top", fmt.Sprintf("%d", top))
+	query.Set("$skip", fmt.Sprintf("%d", skip))
+	if !s.cfg.Bridge.SyncFullProperty {
+		query.Set("$select", s.replicationSelectList(dataset))
+	}
+	s.applySyncExpand(query)
+
+	result, err := s.fetchPage(ctx, fetchURL, query, dataset, false)
+	if err != nil {
+		return result, err
+	}
+	if len(result.Rows) == 0 {
+		result.ReplicationComplete = true
+		return result, nil
+	}
+	result.IncrementalHasMore = len(result.Rows) >= top
+	return result, nil
 }
 
 func (s *BridgeSync) fetchPage(ctx context.Context, fetchURL string, query url.Values, dataset string, replication bool) (PageResult, error) {

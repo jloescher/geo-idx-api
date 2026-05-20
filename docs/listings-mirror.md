@@ -43,7 +43,8 @@ Expand lists control **upstream fetch** and which keys are stripped into JSONB a
 | `MLS_SYNC_EXPAND` | `Media,Unit,Room,OpenHouse` | **Spark** replication/incremental (`replication.sparkapi.com`) |
 | `SPARK_SYNC_EXPAND` | (alias) | Falls back to `MLS_SYNC_EXPAND` when unset |
 | `BRIDGE_SYNC_EXPAND` | `Media,OpenHouses,Rooms,UnitTypes` | **Bridge** when `$select` mode (`BRIDGE_SYNC_FULL_PROPERTY=false`) |
-| `BRIDGE_SYNC_FULL_PROPERTY` | `true` | When **true**, Bridge replication/incremental **omit `$expand`** — `Media` is already inline on the Property resource ([Bridge docs](https://bridgedataoutput.com/docs/platform/API/zg-data)). Invalid Spark-style `$expand=Unit,Room,OpenHouse` returns **HTTP 400** on Stellar. |
+| `BRIDGE_SYNC_FULL_PROPERTY` | `true` | When **true**, `Media` is inline on Property; **`$expand=OpenHouses,Rooms,UnitTypes`** is still sent on **`/Property`** (incremental + nav hydrate). `/Property/replication` does not return expanded nav collections even with `$expand`. |
+| `BRIDGE_SYNC_NAV_HYDRATE_AFTER_REPLICATION` | `true` | After replication completes, paginate **`/Property`** with nav `$expand` to backfill `unit` / `room` / `open_house` JSONB. |
 
 **Stellar navigation names** (from `docs/bridge_interactive/stellar_metadata.xml`): `Media`, `OpenHouses`, `Rooms`, `UnitTypes` — not Spark’s `Unit` / `Room` / `OpenHouse`.
 

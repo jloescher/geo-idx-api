@@ -23,7 +23,7 @@ func TestBridgePropertyReplicationURL(t *testing.T) {
 	}
 }
 
-func TestBridgeReplicationSkipsExpandWhenFullProperty(t *testing.T) {
+func TestBridgeApplySyncExpandFullPropertySetsNavigationOnly(t *testing.T) {
 	s := NewBridgeSync(config.Config{
 		Bridge: config.BridgeConfig{
 			SyncFullProperty: true,
@@ -32,8 +32,10 @@ func TestBridgeReplicationSkipsExpandWhenFullProperty(t *testing.T) {
 	}, nil)
 	q := url.Values{}
 	s.applySyncExpand(q)
-	if q.Get("$expand") != "" {
-		t.Fatalf("full property should not set $expand, got %q", q.Get("$expand"))
+	got := q.Get("$expand")
+	want := "OpenHouses,Rooms,UnitTypes"
+	if got != want {
+		t.Fatalf("expand = %q want %q (Media inline; nav required on /Property)", got, want)
 	}
 }
 

@@ -95,6 +95,8 @@ func (w *BridgeWorker) FetchPage(ctx context.Context, job *queue.ReservedJob) er
 	switch args.Mode {
 	case "replication":
 		result, err = w.sync.FetchReplicationPage(ctx, args.Dataset, cursor)
+	case "nav_hydrate":
+		result, err = w.sync.FetchNavHydratePage(ctx, args.Dataset, args.IncrementalSkip)
 	default:
 		result, err = w.sync.FetchIncrementalPage(ctx, args.Dataset, cursor, args.IncrementalSkip)
 	}
@@ -115,7 +117,7 @@ func (w *BridgeWorker) FetchPage(ctx context.Context, job *queue.ReservedJob) er
 		return fmt.Errorf("bridge fetch http %d for dataset %s", result.HTTPStatus, args.Dataset)
 	}
 
-	if len(result.Rows) == 0 && args.Mode == "incremental" && !result.IncrementalHasMore {
+	if len(result.Rows) == 0 && (args.Mode == "incremental" || args.Mode == "nav_hydrate") && !result.IncrementalHasMore {
 		return w.cursors.ApplyPatch(ctx, args.Dataset, CursorPatch{MarkSyncFinished: true})
 	}
 
@@ -136,7 +138,7 @@ func (w *BridgeWorker) continuationPlan(args fetchPageArgs, result PageResult) (
 			ApplyReplicationState: true,
 			ReplicationNextURL:    result.NextReplicationURL,
 			ReplicationInProgress: &inProgress,
-			MaxModificationTs:           result.MaxModificationTs,
+			MaxModificationTs:     result.MaxModificationTs,
 		}
 		if !result.ReplicationComplete && result.NextReplicationURL != nil && *result.NextReplicationURL != "" {
 			mode := "replication"
@@ -146,8 +148,40 @@ func (w *BridgeWorker) continuationPlan(args fetchPageArgs, result PageResult) (
 				ChainDepth: args.ChainDepth + 1,
 			}
 		}
+		if result.ReplicationComplete && w.cfg.Bridge.SyncNavHydrateAfterReplication {
+			mode := "nav_hydrate"
+			return patch, false, &fetchPageArgs{
+				Dataset:    args.Dataset,
+				Mode:       mode,
+				ChainDepth: args.ChainDepth + 1,
+			}
+		}
 		dispatchInc := result.ReplicationComplete && result.MaxModificationTs != nil
 		return patch, dispatchInc, nil
+	}
+
+	if args.Mode == "nav_hydrate" {
+		patch := CursorPatch{
+			MaxModificationTs: result.MaxModificationTs,
+		}
+		if result.IncrementalHasMore {
+			top := w.cfg.Bridge.SyncIncrementalTop
+			if top <= 0 {
+				top = 200
+			}
+			skip := args.IncrementalSkip + top
+			if skip >= 10000 {
+				w.logger.Warn("bridge nav hydrate skip cap", "dataset", args.Dataset, "skip", skip)
+				return patch, result.MaxModificationTs != nil, nil
+			}
+			return patch, false, &fetchPageArgs{
+				Dataset:         args.Dataset,
+				Mode:            "nav_hydrate",
+				IncrementalSkip: skip,
+				ChainDepth:      args.ChainDepth + 1,
+			}
+		}
+		return patch, result.MaxModificationTs != nil, nil
 	}
 
 	patch := CursorPatch{

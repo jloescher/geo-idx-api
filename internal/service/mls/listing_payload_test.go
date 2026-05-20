@@ -30,6 +30,25 @@ func TestMergeMirrorListingFlatCustomFields(t *testing.T) {
 	}
 }
 
+func TestBridgeNavigationExpandCSV(t *testing.T) {
+	got := BridgeNavigationExpandCSV("Media,OpenHouses,Rooms,UnitTypes")
+	if got != "OpenHouses,Rooms,UnitTypes" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestExtractExpandedPayloadsBridgeNavKeys(t *testing.T) {
+	row := map[string]any{
+		"OpenHouses": []any{map[string]any{"OpenHouseKey": "oh1"}},
+		"Rooms":      []any{map[string]any{"RoomType": "Bedroom"}},
+		"UnitTypes":  []any{},
+	}
+	p := ExtractExpandedPayloads(row, MirrorProviderBridge, ParseExpandKeys("Media,OpenHouses,Rooms,UnitTypes"))
+	if !p.HasOpenHouse || !p.HasRoom {
+		t.Fatalf("has open_house=%v room=%v unit=%v", p.HasOpenHouse, p.HasRoom, p.HasUnit)
+	}
+}
+
 func TestNormalizeBridgeExpandKeys(t *testing.T) {
 	row := map[string]any{
 		"Rooms":      []any{map[string]any{"RoomType": "Bedroom"}},

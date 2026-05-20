@@ -7,6 +7,30 @@ import (
 
 const defaultSyncExpand = "Media,Unit,Room,OpenHouse"
 
+const bridgeNavigationExpandDefault = "OpenHouses,Rooms,UnitTypes"
+
+// BridgeNavigationExpandCSV returns Stellar navigation $expand names (Rooms, UnitTypes, OpenHouses).
+// Media is omitted — Bridge inlines Media on full Property; /replication ignores $expand anyway.
+func BridgeNavigationExpandCSV(bridgeExpandCSV string) string {
+	return strings.Join(BridgeNavigationExpandKeys(bridgeExpandCSV), ",")
+}
+
+// BridgeNavigationExpandKeys lists Stellar nav property names from BRIDGE_SYNC_EXPAND.
+func BridgeNavigationExpandKeys(bridgeExpandCSV string) []string {
+	keys := ParseExpandKeys(bridgeExpandCSV)
+	nav := make([]string, 0, 3)
+	for _, k := range keys {
+		switch k {
+		case "OpenHouses", "Rooms", "UnitTypes":
+			nav = append(nav, k)
+		}
+	}
+	if len(nav) > 0 {
+		return nav
+	}
+	return ParseExpandKeys(bridgeNavigationExpandDefault)
+}
+
 // ParseExpandKeys splits a comma-separated OData $expand list (e.g. MLS_SYNC_EXPAND).
 func ParseExpandKeys(expandCSV string) []string {
 	expandCSV = strings.TrimSpace(expandCSV)
@@ -97,11 +121,11 @@ func ExtractExpandedPayloads(row map[string]any, provider MirrorProvider, expand
 		switch key {
 		case "Media":
 			p.Media, p.HasMedia = val, true
-		case "Unit":
+		case "Unit", "UnitTypes":
 			p.Unit, p.HasUnit = val, true
-		case "Room":
+		case "Room", "Rooms":
 			p.Room, p.HasRoom = val, true
-		case "OpenHouse":
+		case "OpenHouse", "OpenHouses":
 			p.OpenHouse, p.HasOpenHouse = val, true
 		}
 	}

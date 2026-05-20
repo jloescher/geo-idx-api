@@ -79,8 +79,9 @@ type BridgeConfig struct {
 	SyncReplicationTop  int
 	SyncIncrementalTop  int
 	SyncIncludeMedia    bool
-	SyncFullProperty    bool
-	SyncExpand          string
+	SyncFullProperty                 bool
+	SyncNavHydrateAfterReplication   bool
+	SyncExpand                       string
 	SyncMaxChainedFetch int
 	ImageRewriteHosts   []string
 }
@@ -208,8 +209,9 @@ func Load() (Config, error) {
 			SyncReplicationTop:  envInt("BRIDGE_SYNC_REPLICATION_TOP", 2000),
 			SyncIncrementalTop:  envInt("BRIDGE_SYNC_INCREMENTAL_TOP", 200),
 			SyncIncludeMedia:    envBool("BRIDGE_SYNC_INCLUDE_MEDIA", true),
-			SyncFullProperty:    envBool("BRIDGE_SYNC_FULL_PROPERTY", true),
-			SyncExpand:          envBridgeSyncExpand(),
+			SyncFullProperty:               envBool("BRIDGE_SYNC_FULL_PROPERTY", true),
+			SyncNavHydrateAfterReplication: envBool("BRIDGE_SYNC_NAV_HYDRATE_AFTER_REPLICATION", true),
+			SyncExpand:                     envBridgeSyncExpand(),
 			SyncMaxChainedFetch: envInt("BRIDGE_SYNC_MAX_CHAINED_FETCH_PAGES", 0),
 			ImageRewriteHosts:   splitCSV(env("BRIDGE_IMAGE_REWRITE_HOSTS", "")),
 		},
