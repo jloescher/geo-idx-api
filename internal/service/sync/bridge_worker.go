@@ -3,31 +3,38 @@ package sync
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/quantyralabs/idx-api/internal/config"
 	"github.com/quantyralabs/idx-api/internal/queue"
 	"github.com/quantyralabs/idx-api/internal/repository"
+	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
 
 // BridgeWorker handles Bridge replication queue jobs.
 type BridgeWorker struct {
-	cfg    config.Config
-	db     *repository.DB
-	queue  *queue.Client
-	store  *ReplicaPageStore
-	mirror *ListingMirrorWriter
-	logger *slog.Logger
+	cfg     config.Config
+	db      *repository.DB
+	queue   *queue.Client
+	store   *ReplicaPageStore
+	mirror  *ListingMirrorWriter
+	sync    *BridgeSync
+	cursors *CursorStore
+	logger  *slog.Logger
 }
 
 func NewBridgeWorker(cfg config.Config, db *repository.DB, q *queue.Client, logger *slog.Logger) *BridgeWorker {
 	return &BridgeWorker{
-		cfg:    cfg,
-		db:     db,
-		queue:  q,
-		store:  NewReplicaPageStore(db, cfg),
-		mirror: NewListingMirrorWriter(db),
-		logger: logger,
+		cfg:     cfg,
+		db:      db,
+		queue:   q,
+		store:   NewReplicaPageStore(db, cfg),
+		mirror:  NewListingMirrorWriter(db, cfg.Bridge.SyncUpsertChunk),
+		sync:    NewBridgeSync(cfg, db),
+		cursors: NewCursorStore(db),
+		logger:  logger,
 	}
 }
 
@@ -35,6 +42,7 @@ type fetchPageArgs struct {
 	Dataset         string `json:"dataset"`
 	Mode            string `json:"mode"`
 	IncrementalSkip int    `json:"incremental_skip"`
+	ChainDepth      int    `json:"chain_depth"`
 }
 
 type persistChunkArgs struct {
@@ -45,15 +53,227 @@ type persistChunkArgs struct {
 }
 
 type persistFinalizeArgs struct {
-	ReplicaPageID *int64 `json:"replica_page_id"`
-	Dataset       string `json:"dataset"`
+	ReplicaPageID            *int64  `json:"replica_page_id,omitempty"`
+	Dataset                  string  `json:"dataset"`
+	ApplyReplicationState    bool    `json:"apply_replication_state,omitempty"`
+	ReplicationNextURL       *string `json:"replication_next_url,omitempty"`
+	ReplicationInProgress    *bool   `json:"replication_in_progress,omitempty"`
+	MaxBridgeTs              *string `json:"max_bridge_ts,omitempty"`
+	IncrementalWindowEnd     *string `json:"incremental_window_end,omitempty"`
+	MarkSyncFinished         bool    `json:"mark_sync_finished,omitempty"`
+	DispatchIncrementalAfter bool    `json:"dispatch_incremental_after,omitempty"`
+	NextFetchMode            *string `json:"next_fetch_mode,omitempty"`
+	NextIncrementalSkip      int     `json:"next_incremental_skip,omitempty"`
+	NextChainDepth           int     `json:"next_chain_depth,omitempty"`
 }
 
 func (w *BridgeWorker) FetchPage(ctx context.Context, job *queue.ReservedJob) error {
 	var args fetchPageArgs
-	_ = json.Unmarshal(job.Payload.Args, &args)
-	w.logger.Info("bridge fetch page", "dataset", args.Dataset, "mode", args.Mode)
-	return nil
+	if err := json.Unmarshal(job.Payload.Args, &args); err != nil {
+		return err
+	}
+	if args.Dataset == "" {
+		return fmt.Errorf("bridge fetch: missing dataset")
+	}
+
+	maxChain := w.cfg.Bridge.SyncMaxChainedFetch
+	if maxChain > 0 && args.ChainDepth >= maxChain {
+		w.logger.Warn("bridge fetch chain cap", "dataset", args.Dataset, "depth", args.ChainDepth)
+		return nil
+	}
+
+	cursor, err := w.cursors.ForDataset(ctx, args.Dataset)
+	if err != nil {
+		return err
+	}
+
+	if args.Mode == "incremental" && cursor.ReplicationInProgress {
+		return nil
+	}
+
+	var result PageResult
+	switch args.Mode {
+	case "replication":
+		result, err = w.sync.FetchReplicationPage(ctx, args.Dataset, cursor)
+	default:
+		result, err = w.sync.FetchIncrementalPage(ctx, args.Dataset, cursor, args.IncrementalSkip)
+	}
+	if err != nil {
+		return err
+	}
+
+	if result.Forbidden {
+		inProgress := false
+		return w.cursors.ApplyPatch(ctx, args.Dataset, CursorPatch{
+			ApplyReplicationState: true,
+			ReplicationNextURL:    nil,
+			ReplicationInProgress: &inProgress,
+		})
+	}
+	if result.HTTPError {
+		w.logger.Error("bridge fetch http error", "dataset", args.Dataset, "status", result.HTTPStatus, "url", result.UpstreamURL)
+		return fmt.Errorf("bridge fetch http %d for dataset %s", result.HTTPStatus, args.Dataset)
+	}
+
+	if len(result.Rows) == 0 && args.Mode == "incremental" && !result.IncrementalHasMore {
+		return w.cursors.ApplyPatch(ctx, args.Dataset, CursorPatch{MarkSyncFinished: true})
+	}
+
+	patch, dispatchIncremental, nextFetch := w.continuationPlan(args, result)
+	if args.Mode == "replication" && len(result.Rows) > 0 {
+		inProgress := true
+		if err := w.cursors.ApplyPatch(ctx, args.Dataset, CursorPatch{ReplicationInProgress: &inProgress}); err != nil {
+			return err
+		}
+	}
+	return w.dispatchPersistBatch(ctx, args.Dataset, args.Mode, result, patch, dispatchIncremental, nextFetch)
+}
+
+func (w *BridgeWorker) continuationPlan(args fetchPageArgs, result PageResult) (CursorPatch, bool, *fetchPageArgs) {
+	if args.Mode == "replication" {
+		inProgress := !result.ReplicationComplete
+		patch := CursorPatch{
+			ApplyReplicationState: true,
+			ReplicationNextURL:    result.NextReplicationURL,
+			ReplicationInProgress: &inProgress,
+			MaxBridgeTs:           result.MaxBridgeTs,
+		}
+		if !result.ReplicationComplete && result.NextReplicationURL != nil && *result.NextReplicationURL != "" {
+			mode := "replication"
+			return patch, false, &fetchPageArgs{
+				Dataset:    args.Dataset,
+				Mode:       mode,
+				ChainDepth: args.ChainDepth + 1,
+			}
+		}
+		dispatchInc := result.ReplicationComplete && result.MaxBridgeTs != nil
+		return patch, dispatchInc, nil
+	}
+
+	patch := CursorPatch{
+		MaxBridgeTs:      result.MaxBridgeTs,
+		MarkSyncFinished: !result.IncrementalHasMore,
+	}
+	if result.IncrementalHasMore {
+		top := w.cfg.Bridge.SyncIncrementalTop
+		if top <= 0 {
+			top = 200
+		}
+		skip := args.IncrementalSkip + top
+		if skip >= 10000 {
+			w.logger.Warn("bridge incremental skip cap", "dataset", args.Dataset, "skip", skip)
+			return patch, false, nil
+		}
+		mode := "incremental"
+		return patch, false, &fetchPageArgs{
+			Dataset:         args.Dataset,
+			Mode:            mode,
+			IncrementalSkip: skip,
+			ChainDepth:      args.ChainDepth + 1,
+		}
+	}
+	return patch, false, nil
+}
+
+func (w *BridgeWorker) dispatchPersistBatch(
+	ctx context.Context,
+	dataset, mode string,
+	result PageResult,
+	patch CursorPatch,
+	dispatchIncremental bool,
+	nextFetch *fetchPageArgs,
+) error {
+	persistQueue := w.cfg.Bridge.SyncPersistQueue
+	if len(result.Rows) == 0 {
+		finalizeArgs := w.buildFinalizeArgs(dataset, nil, patch, dispatchIncremental, nextFetch)
+		_, err := w.queue.Enqueue(ctx, persistQueue, queue.TypeBridgePersistFinalize, finalizeArgs, 0)
+		return err
+	}
+
+	chunkSize := w.cfg.Bridge.SyncPersistChunk
+	pageID, chunkTotal, err := w.store.StorePage(ctx, "bridge", dataset, mode, result.Rows, chunkSize, replicaPageMetaFromResult(result))
+	if err != nil {
+		return err
+	}
+	w.logger.Info("stored replica page", "dataset", dataset, "page_id", pageID, "rows", len(result.Rows), "chunks", chunkTotal)
+
+	finalizeArgs := w.buildFinalizeArgs(dataset, &pageID, patch, dispatchIncremental, nextFetch)
+
+	if chunkTotal == 0 {
+		_, err := w.queue.Enqueue(ctx, persistQueue, queue.TypeBridgePersistFinalize, finalizeArgs, 0)
+		return err
+	}
+
+	chunkJobs := make([]queue.BatchJob, 0, chunkTotal)
+	for i := 1; i <= chunkTotal; i++ {
+		chunkJobs = append(chunkJobs, queue.BatchJob{
+			Type: queue.TypeBridgePersistChunk,
+			Args: persistChunkArgs{
+				ReplicaPageID: pageID,
+				ChunkIndex:    i,
+				ChunkTotal:    chunkTotal,
+				Dataset:       dataset,
+			},
+		})
+	}
+
+	batchID, err := w.queue.EnqueueBatch(ctx, queue.BatchSpec{
+		Name:  "bridge-replica-persist:" + dataset,
+		Queue: persistQueue,
+		Jobs:  chunkJobs,
+		OnComplete: queue.BatchJob{
+			Type: queue.TypeBridgePersistFinalize,
+			Args: finalizeArgs,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	return w.store.MarkProcessing(ctx, pageID, batchID)
+}
+
+func replicaPageMetaFromResult(result PageResult) ReplicaPageMeta {
+	return ReplicaPageMeta{
+		FetchURL:    result.FetchURL,
+		UpstreamURL: result.UpstreamURL,
+		ODataQuery:  result.ODataQuery,
+	}
+}
+
+func (w *BridgeWorker) buildFinalizeArgs(
+	dataset string,
+	pageID *int64,
+	patch CursorPatch,
+	dispatchIncremental bool,
+	nextFetch *fetchPageArgs,
+) persistFinalizeArgs {
+	args := persistFinalizeArgs{
+		Dataset:                  dataset,
+		ReplicaPageID:            pageID,
+		DispatchIncrementalAfter: dispatchIncremental,
+	}
+	if patch.ApplyReplicationState {
+		args.ApplyReplicationState = true
+		args.ReplicationNextURL = patch.ReplicationNextURL
+		args.ReplicationInProgress = patch.ReplicationInProgress
+	}
+	if patch.MaxBridgeTs != nil {
+		s := patch.MaxBridgeTs.UTC().Format(time.RFC3339)
+		args.MaxBridgeTs = &s
+	}
+	if patch.MarkSyncFinished {
+		args.MarkSyncFinished = true
+	}
+	if patch.IncrementalWindowEnd != nil {
+		s := patch.IncrementalWindowEnd.UTC().Format(time.RFC3339)
+		args.IncrementalWindowEnd = &s
+	}
+	if nextFetch != nil {
+		args.NextFetchMode = &nextFetch.Mode
+		args.NextIncrementalSkip = nextFetch.IncrementalSkip
+		args.NextChainDepth = nextFetch.ChainDepth
+	}
+	return args
 }
 
 func (w *BridgeWorker) PersistChunk(ctx context.Context, job *queue.ReservedJob) error {
@@ -61,7 +281,9 @@ func (w *BridgeWorker) PersistChunk(ctx context.Context, job *queue.ReservedJob)
 		BatchID string           `json:"batch_id"`
 		Job     persistChunkArgs `json:"job"`
 	}
-	_ = json.Unmarshal(job.Payload.Args, &wrapper)
+	if err := json.Unmarshal(job.Payload.Args, &wrapper); err != nil {
+		return err
+	}
 	args := wrapper.Job
 	if args.ReplicaPageID == 0 {
 		return nil
@@ -70,15 +292,70 @@ func (w *BridgeWorker) PersistChunk(ctx context.Context, job *queue.ReservedJob)
 	if err != nil {
 		return err
 	}
-	return w.mirror.UpsertBatch(ctx, args.Dataset, rows)
+	stats, err := w.mirror.HydrateReplicaBatch(ctx, args.Dataset, mls.MirrorProviderBridge, rows)
+	if err != nil {
+		return err
+	}
+	w.logger.Info("persisted mirror chunk",
+		"dataset", args.Dataset,
+		"page_id", args.ReplicaPageID,
+		"chunk", args.ChunkIndex,
+		"upserted", stats.Upserted,
+		"deleted", stats.Deleted,
+		"skipped", stats.Skipped,
+	)
+	return nil
 }
 
 func (w *BridgeWorker) PersistFinalize(ctx context.Context, job *queue.ReservedJob) error {
 	var args persistFinalizeArgs
-	_ = json.Unmarshal(job.Payload.Args, &args)
+	if err := json.Unmarshal(job.Payload.Args, &args); err != nil {
+		return err
+	}
+
+	if args.ApplyReplicationState || args.MaxBridgeTs != nil || args.IncrementalWindowEnd != nil || args.MarkSyncFinished || args.ReplicationInProgress != nil {
+		patch := CursorPatch{
+			ApplyReplicationState: args.ApplyReplicationState,
+			ReplicationNextURL:    args.ReplicationNextURL,
+			ReplicationInProgress: args.ReplicationInProgress,
+			MarkSyncFinished:      args.MarkSyncFinished,
+		}
+		if args.MaxBridgeTs != nil {
+			if t, err := time.Parse(time.RFC3339, *args.MaxBridgeTs); err == nil {
+				patch.MaxBridgeTs = &t
+			}
+		}
+		if args.IncrementalWindowEnd != nil {
+			if t, err := time.Parse(time.RFC3339, *args.IncrementalWindowEnd); err == nil {
+				patch.IncrementalWindowEnd = &t
+			}
+		}
+		if err := w.cursors.ApplyPatch(ctx, args.Dataset, patch); err != nil {
+			return err
+		}
+	}
+
 	if args.ReplicaPageID != nil {
 		_ = w.store.MarkCompleted(ctx, *args.ReplicaPageID)
 		_ = w.store.DeletePage(ctx, *args.ReplicaPageID)
+	}
+
+	fetchQueue := w.cfg.Bridge.SyncFetchQueue
+	if args.DispatchIncrementalAfter {
+		_, err := w.queue.Enqueue(ctx, fetchQueue, queue.TypeBridgeFetchPage, fetchPageArgs{
+			Dataset: args.Dataset,
+			Mode:    "incremental",
+		}, 0)
+		return err
+	}
+	if args.NextFetchMode != nil {
+		_, err := w.queue.Enqueue(ctx, fetchQueue, queue.TypeBridgeFetchPage, fetchPageArgs{
+			Dataset:         args.Dataset,
+			Mode:            *args.NextFetchMode,
+			IncrementalSkip: args.NextIncrementalSkip,
+			ChainDepth:      args.NextChainDepth,
+		}, 0)
+		return err
 	}
 	return nil
 }

@@ -62,6 +62,18 @@ func (c *Client) Enqueue(ctx context.Context, queueName string, typ string, args
 	return id, nil
 }
 
+// batchOnComplete is stored in job_batches.options for finalize dispatch.
+type batchOnComplete struct {
+	Queue string `json:"queue,omitempty"`
+	Type  string `json:"type"`
+	Args  any    `json:"args,omitempty"`
+}
+
+// batchOptionsJSON is stored in job_batches.options.
+type batchOptionsJSON struct {
+	OnComplete *batchOnComplete `json:"on_complete,omitempty"`
+}
+
 // BatchSpec defines a batch of jobs with a completion callback.
 type BatchSpec struct {
 	Name       string
@@ -91,10 +103,24 @@ func (c *Client) EnqueueBatch(ctx context.Context, spec BatchSpec) (batchID stri
 	}
 	defer tx.Rollback(ctx)
 
+	var options *string
+	if spec.OnComplete.Type != "" {
+		b, err := json.Marshal(batchOptionsJSON{OnComplete: &batchOnComplete{
+			Queue: spec.Queue,
+			Type:  spec.OnComplete.Type,
+			Args:  spec.OnComplete.Args,
+		}})
+		if err != nil {
+			return "", err
+		}
+		s := string(b)
+		options = &s
+	}
+
 	_, err = tx.Exec(ctx, `
 		INSERT INTO job_batches (id, name, total_jobs, pending_jobs, failed_jobs, failed_job_ids, options, cancelled_at, created_at, finished_at)
-		VALUES ($1, $2, $3, $3, 0, '[]', NULL, NULL, $4, NULL)
-	`, batchID, spec.Name, len(spec.Jobs), now)
+		VALUES ($1, $2, $3, $3, 0, '[]', $4, NULL, $5, NULL)
+	`, batchID, spec.Name, len(spec.Jobs), options, now)
 	if err != nil {
 		return "", err
 	}
@@ -231,15 +257,16 @@ func (c *Client) Fail(ctx context.Context, job *ReservedJob, jobErr error) error
 	return c.Delete(ctx, job.ID)
 }
 
-// CompleteBatchJob decrements pending_jobs; enqueues onComplete when zero.
+// CompleteBatchJob decrements pending_jobs; enqueues on_complete from job_batches.options when zero.
 func (c *Client) CompleteBatchJob(ctx context.Context, batchID, completeQueue, completeType string, completeArgs any) error {
 	var pending int
+	var options *string
 	err := c.pool.QueryRow(ctx, `
 		UPDATE job_batches
 		SET pending_jobs = pending_jobs - 1
 		WHERE id = $1 AND pending_jobs > 0
-		RETURNING pending_jobs
-	`, batchID).Scan(&pending)
+		RETURNING pending_jobs, options
+	`, batchID).Scan(&pending, &options)
 	if err == pgx.ErrNoRows {
 		return nil
 	}
@@ -249,8 +276,20 @@ func (c *Client) CompleteBatchJob(ctx context.Context, batchID, completeQueue, c
 	if pending == 0 {
 		now := time.Now().Unix()
 		_, _ = c.pool.Exec(ctx, `UPDATE job_batches SET finished_at = $1 WHERE id = $2`, now, batchID)
-		if completeType != "" {
-			_, err = c.Enqueue(ctx, completeQueue, completeType, completeArgs, 0)
+
+		typ, queue, args := completeType, completeQueue, completeArgs
+		if options != nil && *options != "" {
+			var opts batchOptionsJSON
+			if json.Unmarshal([]byte(*options), &opts) == nil && opts.OnComplete != nil && opts.OnComplete.Type != "" {
+				typ = opts.OnComplete.Type
+				args = opts.OnComplete.Args
+				if opts.OnComplete.Queue != "" {
+					queue = opts.OnComplete.Queue
+				}
+			}
+		}
+		if typ != "" && queue != "" {
+			_, err = c.Enqueue(ctx, queue, typ, args, 0)
 			return err
 		}
 	}

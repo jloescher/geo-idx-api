@@ -81,6 +81,9 @@ type SearchRequest struct {
 	Lng                    *float64 `json:"lng"`
 	RadiusMiles            *float64 `json:"radius_miles"`
 	PriceReducedWithinDays *int     `json:"price_reduced_within_days"`
+	LowRiskFloodzone       *bool    `json:"low_risk_floodzone"`
+	MinMonthlyFees         *float64 `json:"min_monthly_fees"`
+	MaxMonthlyFees         *float64 `json:"max_monthly_fees"`
 	Skip                   int      `json:"skip"`
 	Limit                  int      `json:"limit"`
 }

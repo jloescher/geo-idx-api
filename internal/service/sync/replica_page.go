@@ -7,12 +7,20 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/quantyralabs/idx-api/internal/config"
 	"github.com/quantyralabs/idx-api/internal/repository"
 )
+
+// ReplicaPageMeta is observability metadata for a staged MLS OData page.
+type ReplicaPageMeta struct {
+	FetchURL    string
+	UpstreamURL string
+	ODataQuery  map[string]string
+}
 
 // ReplicaPageStore stages gzip MLS pages before chunked persist.
 // Revenue impact: splitting large API pages bounds worker memory during replication.
@@ -30,7 +38,26 @@ type pagePayloadV2 struct {
 	Parts []string `json:"parts"`
 }
 
-func (s *ReplicaPageStore) StorePage(ctx context.Context, provider, dataset, mode string, rows []json.RawMessage, chunkSize int) (int64, int, error) {
+func odataQueryMap(q url.Values) map[string]string {
+	if len(q) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(q))
+	for k, vs := range q {
+		if len(vs) > 0 {
+			out[k] = vs[0]
+		}
+	}
+	return out
+}
+
+func (s *ReplicaPageStore) StorePage(
+	ctx context.Context,
+	provider, dataset, mode string,
+	rows []json.RawMessage,
+	chunkSize int,
+	meta ReplicaPageMeta,
+) (int64, int, error) {
 	if chunkSize <= 0 {
 		chunkSize = 50
 	}
@@ -52,13 +79,40 @@ func (s *ReplicaPageStore) StorePage(ctx context.Context, provider, dataset, mod
 		parts = append(parts, base64.StdEncoding.EncodeToString(buf.Bytes()))
 	}
 	payload, _ := json.Marshal(pagePayloadV2{V: 2, Parts: parts})
+	var odataJSON []byte
+	if len(meta.ODataQuery) > 0 {
+		odataJSON, _ = json.Marshal(meta.ODataQuery)
+	}
+	var fetchURL, upstreamURL *string
+	if meta.FetchURL != "" {
+		fetchURL = &meta.FetchURL
+	}
+	if meta.UpstreamURL != "" {
+		upstreamURL = &meta.UpstreamURL
+	}
 	var id int64
 	err := s.db.Pool.QueryRow(ctx, `
-		INSERT INTO replica_pages (provider, dataset_slug, mode, status, compressed_payload, row_count, fetched_at, created_at, updated_at)
-		VALUES ($1, $2, $3, 'pending', $4, $5, NOW(), NOW(), NOW())
+		INSERT INTO replica_pages (
+			provider, dataset_slug, mode, status, compressed_payload, row_count,
+			fetch_url, upstream_url, odata_query, fetched_at, created_at, updated_at
+		)
+		VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8, NOW(), NOW(), NOW())
 		RETURNING id
-	`, provider, dataset, mode, string(payload), len(rows)).Scan(&id)
+	`, provider, dataset, mode, string(payload), len(rows), fetchURL, upstreamURL, odataJSON).Scan(&id)
 	return id, len(parts), err
+}
+
+func (s *ReplicaPageStore) MarkProcessing(ctx context.Context, pageID int64, batchID string) error {
+	var batch any
+	if batchID != "" {
+		batch = batchID
+	}
+	_, err := s.db.Pool.Exec(ctx, `
+		UPDATE replica_pages
+		SET status = 'processing', batch_id = $2, updated_at = NOW()
+		WHERE id = $1
+	`, pageID, batch)
+	return err
 }
 
 func (s *ReplicaPageStore) RowsForChunk(ctx context.Context, pageID int64, chunkIndex, chunkTotal int) ([]json.RawMessage, error) {

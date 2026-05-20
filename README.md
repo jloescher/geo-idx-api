@@ -58,7 +58,20 @@ go run ./cmd/scheduler
 
 **Scheduler + worker:** The worker stays idle when the `jobs` table is empty. The scheduler enqueues `mls.replication_kickoff` every minute at **:00**; the worker runs kickoff, which enqueues `bridge.fetch_page` / `spark.fetch_page` on their queues. Run **both** processes against the same `DB_*` as the API. First kickoff log appears on the next minute boundary after `scheduler started`.
 
-If you still use a **Laravel** scheduler/worker on the same staging database, stop them — they enqueue incompatible `CallQueuedHandler` payloads.
+**Inspecting the database:** Completed jobs are **deleted** from `jobs` after success (normal queue behavior). Look at `replica_pages` during fetch, then `listings` after persist. Ensure `DB_*` in `.env` matches `GOOSE_DBSTRING` used for `make migrate`.
+
+Bridge replication (`bridge.fetch_page`) and Spark beaches replication (`spark.fetch_page`) call upstream OData and write `replica_pages` → `listings` via the worker. Requires `SPARK_ACCESS_TOKEN` and replication host vars (see `docs/spark/idx-api-integration.md`).
+
+After replication, verify indexed columns (not only `raw_data`):
+
+```sql
+SELECT COUNT(*) AS total,
+       COUNT(list_price) AS with_price,
+       COUNT(flood_zone_code) AS with_flood,
+       COUNT(estimated_total_monthly_fees) AS with_fees,
+       COUNT(coordinates) AS with_geom
+FROM listings WHERE dataset_slug = 'stellar';
+```
 
 ### Docker Compose (Go stack)
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/quantyralabs/idx-api/internal/repository"
+	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
 
 // PostgisSearch queries local listings mirror.
@@ -32,7 +33,7 @@ func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchR
 	}
 
 	q := `
-		SELECT raw_data FROM listings
+		SELECT raw_data, media FROM listings
 		WHERE dataset_slug = $1
 		  AND LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
 	`
@@ -46,6 +47,24 @@ func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchR
 	if req.MaxPrice != nil {
 		q += fmt.Sprintf(" AND list_price <= $%d", n)
 		args = append(args, *req.MaxPrice)
+		n++
+	}
+	if req.BedsMin != nil {
+		q += fmt.Sprintf(" AND bedrooms_total >= $%d", n)
+		args = append(args, *req.BedsMin)
+		n++
+	}
+	if req.LowRiskFloodzone != nil && *req.LowRiskFloodzone {
+		q += " AND low_risk_flood_zone_yn = TRUE"
+	}
+	if req.MinMonthlyFees != nil {
+		q += fmt.Sprintf(" AND estimated_total_monthly_fees >= $%d", n)
+		args = append(args, *req.MinMonthlyFees)
+		n++
+	}
+	if req.MaxMonthlyFees != nil {
+		q += fmt.Sprintf(" AND estimated_total_monthly_fees <= $%d", n)
+		args = append(args, *req.MaxMonthlyFees)
 		n++
 	}
 	if req.Lat != nil && req.Lng != nil && req.RadiusMiles != nil {
@@ -70,13 +89,15 @@ func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchR
 	var results []json.RawMessage
 	for rows.Next() {
 		var raw []byte
-		if err := rows.Scan(&raw); err != nil {
+		var media []byte
+		if err := rows.Scan(&raw, &media); err != nil {
 			return SearchResult{}, err
 		}
-		if len(raw) == 0 {
+		if len(raw) == 0 && len(media) == 0 {
 			continue
 		}
-		results = append(results, json.RawMessage(raw))
+		merged := mls.MergeListingJSON(json.RawMessage(raw), json.RawMessage(media))
+		results = append(results, merged)
 	}
 	hasMore := len(results) > limit
 	if hasMore {

@@ -100,8 +100,9 @@ Domains enable feeds via **Allowed MLS datasets** during domain registration on 
 
 | `listings` column | Beaches RESO source | Notes |
 |-------------------|---------------------|--------|
-| `flood_zone_code` | `Location_sp_and_sp_Legal_co_Flood_sp_Zone2` | Provider-neutral; also used by PostGIS `low_risk_floodzone` filter |
-| `estimated_total_monthly_fees` | `AssociationFee` + `AssociationFeeFrequency`, `AssociationFee2` + `AssociationFee2Frequency` | Each fee converted to a monthly equivalent and summed |
+| `flood_zone_code` | `Location_sp_and_sp_Legal_co_Flood_sp_Zone2` | Raw MLS flood zone string |
+| `low_risk_flood_zone_yn` | Derived from `flood_zone_code` | `true` when code contains X/X500/`no` (case-insensitive) and not A/V; `false` when empty or contains A or V (substring) |
+| `estimated_total_monthly_fees` | `AssociationFee` + `AssociationFeeFrequency`, `AssociationFee2` + `AssociationFee2Frequency` | Each fee converted to a monthly equivalent and summed; replaces RESO `total_monthly_fees` / extension fields at persist |
 
 **Association fee frequencies** (exact MLS strings): `Monthly`, `Annually`, `Semi-Annually`, `Quarterly`, `Weekly`, `Daily`, `One Time`. Null frequency or `One Time` does not contribute to the monthly total. If both association pairs yield no recurring total, fallback: `Financial_sp_Information_co_Estimated_sp_Monthly_sp_Assoc_sp_Recurring_sp_Fee3`.
 
@@ -141,7 +142,7 @@ StandardStatus eq 'Active' or StandardStatus eq 'Pending'
 
 **Staging:** gzip JSON in `replica_pages` with `provider = spark` (multi-part payload when rows exceed persist chunk size).
 
-**Persist:** `ListingMirrorWriter` with `ListingMirrorProvider::Spark` — full row in `raw_data`; indexed columns from standard RESO fields (including `flood_zone_code`, `estimated_total_monthly_fees` via `ListingResoFieldResolver`); Beaches encoded fields in `custom_fields`. Every replication upsert (create or update) recomputes normalized flood and monthly-fee columns.
+**Persist:** `ListingMirrorWriter` with Spark provider — property fields in `raw_data`; **`Media[]` from `$expand=Media`** in `listings.media` (see [beaches_50_listings.json](beaches_50_listings.json): `MediaURL` on `cdn.photos.sparkplatform.com`, `MediaKey`, `Order`, `MediaCategory`). `Room` / `Unit` / `OpenHouse` expands remain in `raw_data` for now. Indexed columns from standard RESO fields (`flood_zone_code`, `estimated_total_monthly_fees` via `ListingResoFieldResolver`); Beaches encoded fields in `custom_fields`.
 
 **Purge:** `mls:purge-replica-pages` (alias `bridge:purge-replica-pages`; shared table; Spark retention via `SPARK_REPLICA_PAGE_RETENTION_HOURS`).
 

@@ -8,7 +8,7 @@ Schema is managed with **[goose](https://github.com/pressly/goose)** SQL migrati
 
 | File | Tables / purpose |
 |------|------------------|
-| `00001_initial.sql` | Consolidated schema: `users`, `sessions`, `cache`, `jobs`, `job_batches`, `failed_jobs`, `personal_access_tokens`, `user_invitations`, `domains`, `listings_cache`, `mls_search_cache`, `mls_proxy_audit_logs`, `gis_*`, `crypto_price_snapshots`, PostGIS `listings`, `listing_sync_cursors`, `replica_pages` |
+| `00001_initial.sql` | Single consolidated schema: `users`, `sessions`, `cache`, `jobs`, `job_batches`, `failed_jobs`, `personal_access_tokens`, `user_invitations`, `domains`, `listings_cache`, `mls_search_cache`, `mls_proxy_audit_logs`, `gis_*`, `crypto_price_snapshots`, PostGIS `listings` (incl. `media` JSONB), `listing_sync_cursors`, `replica_pages` (`fetch_url`, `upstream_url`, `odata_query`, `batch_id`) |
 
 **Note:** Laravel Telescope/Pulse tables are **not** included in the Go cutover migration.
 
@@ -35,7 +35,7 @@ Install goose on PATH (optional): `make migrate-install`
 
 **Mirror scope:** replication stores **Active + Pending** in `listings`; **Closed** is on-demand via live Bridge/Spark API.
 
-**Extension columns:** `flood_zone_code`, `estimated_total_monthly_fees` on `listings`.
+**Extension columns:** `flood_zone_code`, `low_risk_flood_zone_yn`, `estimated_total_monthly_fees` on `listings` (set at mirror persist from RESO; `low_risk_flood_zone_yn` derived from `flood_zone_code`).
 
 **Go services:** `internal/service/sync` (mirror persist), `internal/service/search/postgis.go` (hybrid search).
 

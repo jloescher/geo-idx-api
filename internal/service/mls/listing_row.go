@@ -1,0 +1,192 @@
+package mls
+
+import (
+	"encoding/json"
+	"strings"
+	"time"
+)
+
+// RowAction is how persist should treat a RESO row.
+type RowAction string
+
+const (
+	RowActionUpsert RowAction = "upsert"
+	RowActionDelete RowAction = "delete"
+	RowActionSkip   RowAction = "skip"
+)
+
+// ListingRecord is a normalized row for listings mirror upsert.
+type ListingRecord struct {
+	DatasetSlug                 string
+	ListingKey                  string
+	MlsListingID                *string
+	StandardStatus              *string
+	ListPrice                   *float64
+	BedroomsTotal               *int16
+	BathroomsTotalDecimal       *float64
+	LivingArea                  *int32
+	LotSizeAcres                *float64
+	YearBuilt                   *int16
+	StoriesTotal                *int16
+	City                        *string
+	CountyOrParish              *string
+	PostalCode                  *string
+	StateOrProvince             *string
+	PropertyType                *string
+	PropertySubType             *string
+	OnMarketDate                *time.Time
+	CloseDate                   *time.Time
+	ModificationTimestamp       *time.Time
+	BridgeModificationTimestamp *time.Time
+	PriceChangeTimestamp        *time.Time
+	PreviousListPrice           *float64
+	FloodZoneCode               *string
+	LowRiskFloodZoneYN          bool
+	EstimatedTotalMonthlyFees   *float64
+	Latitude                    *float64
+	Longitude                   *float64
+	WaterfrontYN                *bool
+	PoolPrivateYN               *bool
+	DockYN                      *bool
+	NewConstructionYN           *bool
+	GarageYN                    *bool
+	AssociationYN               *bool
+	SpaYN                       *bool
+	FireplaceYN                 *bool
+	SeniorCommunityYN           *bool
+	SubdivisionName             *string
+	ElementarySchool            *string
+	MiddleOrJuniorSchool        *string
+	HighSchool                  *string
+	SpecialListingConditions    json.RawMessage
+	RawData                     json.RawMessage
+	Media                       json.RawMessage
+	HasMedia                    bool
+	CustomFields                json.RawMessage
+	StreetNumber                *string
+	StreetName                  *string
+	ListAgentMlsID              *string
+	ListOfficeMlsID             *string
+}
+
+// BuildListingRecord maps a RESO Property row to mirror columns.
+func BuildListingRecord(
+	replicationDataset string,
+	provider MirrorProvider,
+	row map[string]any,
+	raw json.RawMessage,
+	resolver *ResoFieldResolver,
+) (ListingRecord, RowAction) {
+	listingKey := stringValue(row["ListingKey"])
+	if listingKey == "" {
+		return ListingRecord{}, RowActionSkip
+	}
+
+	datasetSlug := datasetSlugFromListingKey(listingKey, replicationDataset)
+	statusNorm := strings.ToLower(strings.TrimSpace(stringValue(row["StandardStatus"])))
+	if statusNorm != "active" && statusNorm != "pending" {
+		return ListingRecord{DatasetSlug: datasetSlug, ListingKey: listingKey}, RowActionDelete
+	}
+
+	datasetUpper := strings.ToUpper(replicationDataset)
+	lat, lng, hasCoords := resolveLatLng(row)
+	var latPtr, lngPtr *float64
+	if hasCoords {
+		latPtr = &lat
+		lngPtr = &lng
+	}
+
+	var mlsID *string
+	if s := stringValue(row["ListingId"]); s != "" {
+		mlsID = &s
+	}
+
+	var bridgeMod *time.Time
+	if provider == MirrorProviderBridge {
+		bridgeMod = timestampPtr(row["BridgeModificationTimestamp"])
+	}
+
+	var custom json.RawMessage
+	switch provider {
+	case MirrorProviderSpark:
+		custom = extractSparkCustomFields(row)
+	default:
+		custom = extractBridgeCustomFields(row, datasetUpper)
+	}
+
+	stdStatus := stringValue(row["StandardStatus"])
+	var stdPtr *string
+	if stdStatus != "" {
+		stdPtr = &stdStatus
+	}
+
+	floodZoneCode := resolver.ResolveFloodZoneCode(row, provider, datasetUpper)
+
+	storedRaw := raw
+	media, hasMedia := ExtractMediaJSON(row)
+	if hasMedia {
+		storedRaw = StripMediaFromRaw(raw)
+	}
+
+	rec := ListingRecord{
+		DatasetSlug:                 datasetSlug,
+		ListingKey:                  listingKey,
+		MlsListingID:                mlsID,
+		StandardStatus:              stdPtr,
+		ListPrice:                   float64Ptr(row["ListPrice"]),
+		BedroomsTotal:               int16Ptr(row["BedroomsTotal"]),
+		BathroomsTotalDecimal:       bathroomsTotal(row),
+		LivingArea:                  livingArea(row),
+		LotSizeAcres:                float64Ptr(row["LotSizeAcres"]),
+		YearBuilt:                   int16Ptr(row["YearBuilt"]),
+		StoriesTotal:                int16Ptr(row["StoriesTotal"]),
+		City:                        optionalString(row["City"]),
+		CountyOrParish:              optionalString(row["CountyOrParish"]),
+		PostalCode:                  optionalString(row["PostalCode"]),
+		StateOrProvince:             optionalString(row["StateOrProvince"]),
+		PropertyType:                optionalString(row["PropertyType"]),
+		PropertySubType:             optionalString(row["PropertySubType"]),
+		OnMarketDate:                datePtr(row["OnMarketDate"]),
+		CloseDate:                   datePtr(row["CloseDate"]),
+		ModificationTimestamp:       timestampPtr(row["ModificationTimestamp"]),
+		BridgeModificationTimestamp: bridgeMod,
+		PriceChangeTimestamp:        timestampPtr(row["PriceChangeTimestamp"]),
+		PreviousListPrice:           float64Ptr(row["PreviousListPrice"]),
+		FloodZoneCode:               floodZoneCode,
+		LowRiskFloodZoneYN:          ComputeLowRiskFloodZoneYN(floodZoneCode),
+		EstimatedTotalMonthlyFees:   resolver.ResolveEstimatedTotalMonthlyFees(row, provider, datasetUpper),
+		Latitude:                    latPtr,
+		Longitude:                   lngPtr,
+		WaterfrontYN:                boolPtr(row["WaterfrontYN"]),
+		PoolPrivateYN:               boolPtr(row["PoolPrivateYN"]),
+		DockYN:                      boolPtr(row["DockYN"]),
+		NewConstructionYN:           boolPtr(row["NewConstructionYN"]),
+		GarageYN:                    boolPtr(row["GarageYN"]),
+		AssociationYN:               boolPtr(row["AssociationYN"]),
+		SpaYN:                       boolPtr(row["SpaYN"]),
+		FireplaceYN:                 boolPtr(row["FireplaceYN"]),
+		SeniorCommunityYN:           boolPtr(row["SeniorCommunityYN"]),
+		SubdivisionName:             optionalString(row["SubdivisionName"]),
+		ElementarySchool:            optionalString(row["ElementarySchool"]),
+		MiddleOrJuniorSchool:        optionalString(row["MiddleOrJuniorSchool"]),
+		HighSchool:                  optionalString(row["HighSchool"]),
+		SpecialListingConditions:    specialListingConditions(row),
+		RawData:                     storedRaw,
+		Media:                       media,
+		HasMedia:                    hasMedia,
+		CustomFields:                custom,
+		StreetNumber:                optionalString(row["StreetNumber"]),
+		StreetName:                  optionalString(row["StreetName"]),
+		ListAgentMlsID:              optionalString(row["ListAgentMlsId"]),
+		ListOfficeMlsID:             optionalString(row["ListOfficeMlsId"]),
+	}
+	return rec, RowActionUpsert
+}
+
+func optionalString(v any) *string {
+	s := stringValue(v)
+	if s == "" {
+		return nil
+	}
+	return &s
+}

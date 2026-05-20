@@ -177,7 +177,7 @@ Replication best practice ([Spark replication](https://sparkplatform.com/docs/su
 - Use **live host** for user-facing RESO proxy, hybrid live search, and image resolution.
 - Passthrough upstream JSON including `DisplayCompliance` without filtering.
 
-### Postgres mirror (`listings.raw_data`)
+### Postgres mirror (`listings.raw_data`, `listings.media`)
 
 - Optimized for Active/Pending search and map workloads.
 - Compliance metadata in mirror rows may be **stale** relative to live Spark.

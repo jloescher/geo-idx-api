@@ -307,7 +307,7 @@ The structured search endpoint accepts JSON payloads with filter criteria and re
 | `min_lot_size_acres` / `max_lot_size_acres` | `lot_size_acres` |
 | `min_year_built` / `max_year_built` | `year_built` |
 | `min_monthly_fees` / `max_monthly_fees` | `estimated_total_monthly_fees` |
-| `low_risk_floodzone` | `flood_zone_code` contains `x` (case-insensitive) |
+| `low_risk_floodzone` | `low_risk_flood_zone_yn = true` (derived at persist from `flood_zone_code`) |
 | `waterfront`, `pool_private`, `dock`, etc. | matching `*_yn` boolean columns |
 | `city`, `state`, `county`, `postal_code` | address columns |
 | `property_types`, `property_sub_types`, `statuses` | `property_type`, `property_sub_type`, `standard_status` |

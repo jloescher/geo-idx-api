@@ -1,5 +1,7 @@
 -- +goose Up
--- Consolidated schema from Laravel migrations (core IDX tables; no Telescope/Pulse).
+-- Consolidated schema (fresh DB only): core IDX tables, PostGIS listings mirror,
+-- listing_sync_cursors, replica_pages (fetch_url/upstream_url/odata_query/batch_id),
+-- listings.media (RESO Media[] split from raw_data). No Telescope/Pulse.
 
 CREATE EXTENSION IF NOT EXISTS postgis;
 
@@ -233,6 +235,7 @@ CREATE TABLE listings (
     previous_list_price NUMERIC(14, 2) NULL,
     flood_zone_code VARCHAR(80) NULL,
     estimated_total_monthly_fees NUMERIC(14, 2) NULL,
+    low_risk_flood_zone_yn BOOLEAN NOT NULL DEFAULT FALSE,
     latitude DOUBLE PRECISION NULL,
     longitude DOUBLE PRECISION NULL,
     waterfront_yn BOOLEAN NULL,
@@ -250,6 +253,7 @@ CREATE TABLE listings (
     high_school VARCHAR(160) NULL,
     special_listing_conditions JSONB NULL,
     raw_data JSONB NULL,
+    media JSONB NULL, -- RESO Media[] (Bridge $select / Spark $expand); omitted from raw_data at persist
     custom_fields JSONB NULL,
     coordinates geography(Point, 4326) NULL,
     street_number VARCHAR(40) NULL,
@@ -273,6 +277,9 @@ CREATE INDEX listings_ap_ds_mod_ts_idx ON listings (dataset_slug, modification_t
     WHERE LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending') AND modification_timestamp IS NOT NULL;
 CREATE INDEX listings_ap_flood_zone_idx ON listings (dataset_slug, flood_zone_code)
     WHERE LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending') AND flood_zone_code IS NOT NULL;
+CREATE INDEX listings_ap_low_risk_flood_idx ON listings (dataset_slug, low_risk_flood_zone_yn)
+    WHERE LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
+      AND low_risk_flood_zone_yn = TRUE;
 
 CREATE TABLE listing_sync_cursors (
     dataset_slug VARCHAR(64) PRIMARY KEY,
@@ -293,8 +300,8 @@ CREATE TABLE replica_pages (
     status VARCHAR(32) NOT NULL DEFAULT 'pending',
     compressed_payload TEXT NULL,
     row_count INT NOT NULL DEFAULT 0,
-    bridge_url TEXT NULL,
-    upstream_url TEXT NULL,
+    fetch_url TEXT NULL, -- OData resource URL (provider-agnostic; was bridge_url)
+    upstream_url TEXT NULL, -- full HTTP GET URL including query string
     odata_query JSONB NULL,
     batch_id UUID NULL,
     fetched_at TIMESTAMPTZ NOT NULL,

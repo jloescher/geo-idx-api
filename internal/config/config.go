@@ -63,44 +63,55 @@ type IdxURLsConfig struct {
 }
 
 type BridgeConfig struct {
-	APIKey            string
-	Host              string
-	Dataset           string
-	PathPrefix        string
-	ResoRoot          string
-	ListingPhotoPath  string
-	Timeout           time.Duration
-	Datasets          []string
-	ListingsCacheTTL  time.Duration
-	SyncFetchQueue    string
-	SyncPersistQueue  string
-	SyncPersistChunk  int
-	ImageRewriteHosts []string
+	APIKey              string
+	Host                string
+	Dataset             string
+	PathPrefix          string
+	ResoRoot            string
+	ListingPhotoPath    string
+	Timeout             time.Duration
+	Datasets            []string
+	ListingsCacheTTL    time.Duration
+	SyncFetchQueue      string
+	SyncPersistQueue    string
+	SyncPersistChunk    int
+	SyncUpsertChunk     int
+	SyncReplicationTop  int
+	SyncIncrementalTop  int
+	SyncIncludeMedia    bool
+	SyncMaxChainedFetch int
+	ImageRewriteHosts   []string
 }
 
 type SparkConfig struct {
-	AccessToken       string
-	ReplicationHost   string
-	ReplicationReso   string
-	APIHost           string
-	APIVersion        string
-	LiveResoRoot      string
-	Datasets          []string
-	Timeout           time.Duration
-	SyncFetchQueue    string
-	SyncPersistQueue  string
-	SyncPersistChunk  int
-	PersistSequential bool
+	AccessToken         string
+	ReplicationHost     string
+	ReplicationReso     string
+	APIHost             string
+	APIVersion          string
+	LiveResoRoot        string
+	Datasets            []string
+	Timeout             time.Duration
+	SyncFetchQueue      string
+	SyncPersistQueue    string
+	SyncPersistChunk    int
+	SyncUpsertChunk     int
+	SyncReplicationTop  int
+	SyncIncrementalTop  int
+	SyncExpand          string
+	SyncMaxChainedFetch int
+	PersistSequential   bool
 }
 
 type MLSConfig struct {
-	LocalMirrorRollingMonths   int
-	ReplicaPageRetentionHours  int
-	ListingsCacheRetentionDays int
-	StellarEnabled             bool
-	StellarPersistChunk        int
-	BeachesEnabled             bool
-	BeachesPersistChunk        int
+	LocalMirrorRollingMonths    int
+	ReplicaPageRetentionHours   int
+	ListingsCacheRetentionDays  int
+	ReplicationFreshnessMinutes int
+	StellarEnabled              bool
+	StellarPersistChunk         int
+	BeachesEnabled              bool
+	BeachesPersistChunk         int
 }
 
 type GISConfig struct {
@@ -166,7 +177,7 @@ func Load() (Config, error) {
 		Queue: QueueConfig{
 			Table:         env("DB_QUEUE_TABLE", "jobs"),
 			PollInterval:  time.Duration(pollMs) * time.Millisecond,
-			WorkerQueues: splitCSV(env("WORKER_QUEUES", "default,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist")),
+			WorkerQueues:  splitCSV(env("WORKER_QUEUES", "default,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist")),
 			RetryAfter:    time.Duration(retryAfter) * time.Second,
 			NotifyChannel: env("QUEUE_NOTIFY_CHANNEL", "idx_jobs_wakeup"),
 		},
@@ -178,42 +189,53 @@ func Load() (Config, error) {
 			APIHosts:      splitCSV(env("IDX_API_HOSTS", "localhost")),
 		},
 		Bridge: BridgeConfig{
-			APIKey:            env("BRIDGE_API_KEY", ""),
-			Host:              env("BRIDGE_HOST", "https://api.bridgedataoutput.com"),
-			Dataset:           env("BRIDGE_DATASET", "stellar"),
-			PathPrefix:        env("BRIDGE_PATH_PREFIX", "api/v2"),
-			ResoRoot:          env("BRIDGE_RESO_ROOT", "reso/odata"),
-			ListingPhotoPath:  env("BRIDGE_LISTING_PHOTO_PATH", "/api/v2/{dataset}/listings/{listingKey}/photos/{photoId}"),
-			Timeout:           envDuration("BRIDGE_TIMEOUT", 30*time.Second),
-			Datasets:          splitCSV(env("BRIDGE_DATASETS", "stellar")),
-			ListingsCacheTTL:  envDuration("LISTINGS_CACHE_TTL", 900*time.Second),
-			SyncFetchQueue:    env("BRIDGE_SYNC_FETCH_QUEUE", "bridge-sync-fetch"),
-			SyncPersistQueue:  env("BRIDGE_SYNC_PERSIST_QUEUE", "bridge-sync-persist"),
-			SyncPersistChunk:  envInt("BRIDGE_SYNC_PERSIST_JOB_CHUNK", 50),
-			ImageRewriteHosts: splitCSV(env("BRIDGE_IMAGE_REWRITE_HOSTS", "")),
+			APIKey:              env("BRIDGE_API_KEY", ""),
+			Host:                env("BRIDGE_HOST", "https://api.bridgedataoutput.com"),
+			Dataset:             env("BRIDGE_DATASET", "stellar"),
+			PathPrefix:          env("BRIDGE_PATH_PREFIX", "api/v2"),
+			ResoRoot:            env("BRIDGE_RESO_ROOT", "reso/odata"),
+			ListingPhotoPath:    env("BRIDGE_LISTING_PHOTO_PATH", "/api/v2/{dataset}/listings/{listingKey}/photos/{photoId}"),
+			Timeout:             envDuration("BRIDGE_TIMEOUT", 30*time.Second),
+			Datasets:            splitCSV(env("BRIDGE_DATASETS", "stellar")),
+			ListingsCacheTTL:    envDuration("LISTINGS_CACHE_TTL", 900*time.Second),
+			SyncFetchQueue:      env("BRIDGE_SYNC_FETCH_QUEUE", "bridge-sync-fetch"),
+			SyncPersistQueue:    env("BRIDGE_SYNC_PERSIST_QUEUE", "bridge-sync-persist"),
+			SyncPersistChunk:    envInt("BRIDGE_SYNC_PERSIST_JOB_CHUNK", 50),
+			SyncUpsertChunk:     envInt("BRIDGE_SYNC_UPSERT_CHUNK", 250),
+			SyncReplicationTop:  envInt("BRIDGE_SYNC_REPLICATION_TOP", 2000),
+			SyncIncrementalTop:  envInt("BRIDGE_SYNC_INCREMENTAL_TOP", 200),
+			SyncIncludeMedia:    envBool("BRIDGE_SYNC_INCLUDE_MEDIA", true),
+			SyncMaxChainedFetch: envInt("BRIDGE_SYNC_MAX_CHAINED_FETCH_PAGES", 0),
+			ImageRewriteHosts:   splitCSV(env("BRIDGE_IMAGE_REWRITE_HOSTS", "")),
 		},
 		Spark: SparkConfig{
-			AccessToken:       env("SPARK_ACCESS_TOKEN", ""),
-			ReplicationHost:   env("SPARK_REPLICATION_HOST", "https://replication.sparkapi.com"),
-			ReplicationReso:   env("SPARK_REPLICATION_RESO_ROOT", "Reso/OData"),
-			APIHost:           env("SPARK_API_HOST", "https://sparkapi.com"),
-			APIVersion:        env("SPARK_API_VERSION", "v1"),
-			LiveResoRoot:      env("SPARK_LIVE_RESO_ROOT", "Reso/OData"),
-			Datasets:          splitCSV(env("SPARK_DATASETS", "beaches")),
-			Timeout:           envDuration("SPARK_TIMEOUT", 30*time.Second),
-			SyncFetchQueue:    env("SPARK_SYNC_FETCH_QUEUE", "spark-sync-fetch"),
-			SyncPersistQueue:  env("SPARK_SYNC_PERSIST_QUEUE", "spark-sync-persist"),
-			SyncPersistChunk:  envInt("SPARK_SYNC_PERSIST_JOB_CHUNK", 50),
-			PersistSequential: envBool("SPARK_SYNC_PERSIST_SEQUENTIAL", true),
+			AccessToken:         firstNonEmpty(env("SPARK_ACCESS_TOKEN", ""), env("SPARK_API_KEY", "")),
+			ReplicationHost:     env("SPARK_REPLICATION_HOST", "https://replication.sparkapi.com"),
+			ReplicationReso:     env("SPARK_REPLICATION_RESO_ROOT", "Reso/OData"),
+			APIHost:             env("SPARK_API_HOST", "https://sparkapi.com"),
+			APIVersion:          env("SPARK_API_VERSION", "v1"),
+			LiveResoRoot:        env("SPARK_LIVE_RESO_ROOT", "Reso/OData"),
+			Datasets:            splitCSV(env("SPARK_DATASETS", "beaches")),
+			Timeout:             envDuration("SPARK_TIMEOUT", 30*time.Second),
+			SyncFetchQueue:      env("SPARK_SYNC_FETCH_QUEUE", "spark-sync-fetch"),
+			SyncPersistQueue:    env("SPARK_SYNC_PERSIST_QUEUE", "spark-sync-persist"),
+			SyncPersistChunk:    envInt("SPARK_SYNC_PERSIST_JOB_CHUNK", 50),
+			SyncUpsertChunk:     envInt("MLS_BEACHES_UPSERT_CHUNK_SIZE", envInt("SPARK_SYNC_UPSERT_CHUNK", 250)),
+			SyncReplicationTop:  envInt("SPARK_SYNC_REPLICATION_TOP", 1000),
+			SyncIncrementalTop:  envInt("SPARK_SYNC_INCREMENTAL_TOP", 1000),
+			SyncExpand:          env("SPARK_SYNC_EXPAND", "Media,Unit,Room,OpenHouse"),
+			SyncMaxChainedFetch: envInt("SPARK_SYNC_MAX_CHAINED_FETCH_PAGES", 0),
+			PersistSequential:   envBool("SPARK_SYNC_PERSIST_SEQUENTIAL", true),
 		},
 		MLS: MLSConfig{
-			LocalMirrorRollingMonths:   envInt("MLS_LOCAL_MIRROR_ROLLING_MONTHS", 12),
-			ReplicaPageRetentionHours:  envInt("MLS_REPLICA_PAGE_RETENTION_HOURS", 24),
-			ListingsCacheRetentionDays: envInt("MLS_LISTINGS_CACHE_RETENTION_DAYS", 365),
-			StellarEnabled:             envBool("MLS_STELLAR_ENABLED", true),
-			StellarPersistChunk:        envInt("MLS_STELLAR_PERSIST_CHUNK_SIZE", 50),
-			BeachesEnabled:             envBool("MLS_BEACHES_ENABLED", true),
-			BeachesPersistChunk:        envInt("MLS_BEACHES_PERSIST_CHUNK_SIZE", 25),
+			LocalMirrorRollingMonths:    envInt("MLS_LOCAL_MIRROR_ROLLING_MONTHS", 12),
+			ReplicaPageRetentionHours:   envInt("MLS_REPLICA_PAGE_RETENTION_HOURS", 24),
+			ListingsCacheRetentionDays:  envInt("MLS_LISTINGS_CACHE_RETENTION_DAYS", 365),
+			ReplicationFreshnessMinutes: envInt("MLS_REPLICATION_FRESHNESS_MINUTES", 15),
+			StellarEnabled:              envBool("MLS_STELLAR_ENABLED", true),
+			StellarPersistChunk:         envInt("MLS_STELLAR_PERSIST_CHUNK_SIZE", 50),
+			BeachesEnabled:              envBool("MLS_BEACHES_ENABLED", true),
+			BeachesPersistChunk:         envInt("MLS_BEACHES_PERSIST_CHUNK_SIZE", 25),
 		},
 		GIS: GISConfig{
 			EdgeCacheTTL:         envDuration("GIS_EDGE_CACHE_TTL", 900*time.Second),
