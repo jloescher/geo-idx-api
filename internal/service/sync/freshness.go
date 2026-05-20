@@ -71,11 +71,16 @@ func (f *Freshness) IsCurrent(ctx context.Context, dataset, provider string) (bo
 	if c.LastModificationTimestamp == nil {
 		return false, nil
 	}
+	if c.LastSyncFinishedAt == nil {
+		return false, nil
+	}
 
+	// "Current" = last completed sync cycle (replication or incremental) finished within the freshness window.
+	// Do not use LastModificationTimestamp here — listing mod times can be recent even when we have not polled Bridge.
 	threshold := f.cfg.MLS.ReplicationFreshnessMinutes
 	if threshold < 1 {
 		threshold = 15
 	}
 	cutoff := time.Now().Add(-time.Duration(threshold) * time.Minute)
-	return !c.LastModificationTimestamp.Before(cutoff), nil
+	return !c.LastSyncFinishedAt.Before(cutoff), nil
 }

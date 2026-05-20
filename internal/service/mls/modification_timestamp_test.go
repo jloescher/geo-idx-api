@@ -1,6 +1,7 @@
 package mls
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -37,5 +38,17 @@ func TestModificationODataField(t *testing.T) {
 	}
 	if ModificationODataField("beaches") != "ModificationTimestamp" {
 		t.Fatal("beaches")
+	}
+}
+
+func TestODataGTFilterBareISO8601(t *testing.T) {
+	since := time.Date(2025, 5, 20, 4, 51, 45, 0, time.UTC)
+	got := ODataGTFilter("BridgeModificationTimestamp", since)
+	want := "BridgeModificationTimestamp gt 2025-05-20T04:51:45Z"
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+	if strings.Contains(got, "datetime'") {
+		t.Fatalf("Bridge OData must not use datetime'' wrapper: %q", got)
 	}
 }

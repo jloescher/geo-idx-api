@@ -108,7 +108,7 @@ Returns **403** if feed not enabled for domain/token.
 - `BathroomsTotalInteger` and `BathroomsTotalDecimal` — mirror uses decimal for `bathrooms_total_decimal`.
 - `LivingArea` — indexed as `living_area`; falls back to `BuildingAreaTotal` when `LivingArea` is missing.
 - `ModificationTimestamp` — cursor driver (no `BridgeModificationTimestamp`).
-- Encoded custom field names (`*_sp_*`, `*_co_*`) — stored in `listings.custom_fields`; human labels in metadata `MLS.OData.Metadata.LocalName` annotations.
+- Encoded custom field names (`*_sp_*`, `*_co_*`) and other unmapped RESO keys — stored in `listings.custom_fields` at persist; **flat-merged** onto the root Property object in mirror-backed API responses (not returned as a nested `custom_fields` key). Human labels in metadata `MLS.OData.Metadata.LocalName` annotations.
 - `Media` expanded on replication (`$expand=Media`) — photo array in `listings.media`; property JSON (minus `Media`) in `raw_data`. Sample shape: [beaches_50_listings.json](beaches_50_listings.json).
 
 ### Normalized mirror columns (idx-api)

@@ -84,9 +84,8 @@ func (s *BridgeSync) FetchIncrementalPage(ctx context.Context, dataset string, c
 		top = 200
 	}
 
-	ts := cursor.LastModificationTimestamp.UTC().Format("2006-01-02T15:04:05Z")
 	odataField := mls.ModificationODataField(dataset)
-	filterLiteral := odataField + " gt datetime'" + ts + "'"
+	filterLiteral := BridgeIncrementalFilter(dataset, *cursor.LastModificationTimestamp)
 	fetchURL := s.propertyCollectionURL(dataset)
 	query := url.Values{}
 	query.Set("$filter", filterLiteral)
@@ -110,7 +109,7 @@ func (s *BridgeSync) FetchIncrementalPage(ctx context.Context, dataset string, c
 		return result, err
 	}
 	if result.HTTPError && (result.HTTPStatus == 400 || result.HTTPStatus == 501) && odataField != "ModificationTimestamp" {
-		filterLiteral = "ModificationTimestamp gt datetime'" + ts + "'"
+		filterLiteral = "(" + activePendingStatusFilter + ") and " + mls.ODataGTFilter("ModificationTimestamp", *cursor.LastModificationTimestamp)
 		query.Set("$filter", filterLiteral)
 		query.Set("$orderby", "ModificationTimestamp asc")
 		return s.fetchPage(ctx, fetchURL, query, dataset, false)
@@ -335,4 +334,3 @@ func maxModificationTimestampFromRows(dataset string, rows []json.RawMessage) *t
 	}
 	return max
 }
-

@@ -44,7 +44,9 @@ docker build -f Dockerfile.idx-images -t quantyra/idx-images:latest .
 WORKER_QUEUES=default,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist
 ```
 
-Bridge fetch/persist: `BRIDGE_SYNC_FETCH_QUEUE`, `BRIDGE_SYNC_PERSIST_QUEUE`  
+Bridge fetch/persist: `BRIDGE_SYNC_FETCH_QUEUE`, `BRIDGE_SYNC_PERSIST_QUEUE`
+
+Mirror payload / expand: `MLS_SYNC_EXPAND` (Spark), `BRIDGE_SYNC_EXPAND` (Bridge Stellar nav names), `BRIDGE_SYNC_FULL_PROPERTY` (default true — omit Bridge `$expand`). See [listings-mirror.md](listings-mirror.md).  
 Spark fetch/persist: `SPARK_SYNC_FETCH_QUEUE`, `SPARK_SYNC_PERSIST_QUEUE`
 
 ---

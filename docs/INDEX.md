@@ -18,6 +18,7 @@ Central index for **idx-api** (Go 1.25+). Implementation lives in `cmd/` and `in
 | [Comps API](comps-api.md) | `POST /api/v1/comps/run` |
 | [GIS API](gis-api.md) | Parcel/geometry proxy |
 | [Database migrations](database-migrations.md) | Goose SQL, PostGIS, schema inventory |
+| [Listings mirror](listings-mirror.md) | Payload split (`raw_data`, JSONB expands, `custom_fields`), timestamps, `$expand`, API merge |
 | [Deployment & operations](deployment-operations.md) | Docker, queues, scheduler, migrations |
 | [Coolify deployment](coolify-deployment.md) | Production/staging: api, worker, scheduler, idx-images |
 | [README](../README.md) | Local dev, `make` targets, build & test |

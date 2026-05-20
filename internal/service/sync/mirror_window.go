@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/quantyralabs/idx-api/internal/config"
+	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
 
 const activePendingStatusFilter = "(StandardStatus eq 'Active' or StandardStatus eq 'Pending')"
@@ -20,13 +21,22 @@ func MirrorRollingCutoff(cfg config.Config) *time.Time {
 }
 
 // BridgeReplicationFilter is the OData $filter for Bridge Property/replication seed pages.
+//
+// Stellar /replication accepts StandardStatus filters only; BridgeModificationTimestamp
+// (or ModificationTimestamp) in $filter returns HTTP 400. MLS_LOCAL_MIRROR_ROLLING_MONTHS
+// is enforced after persist via purge (modification_timestamp), not on replication fetch.
 func BridgeReplicationFilter(cfg config.Config) string {
-	cutoff := MirrorRollingCutoff(cfg)
-	if cutoff == nil {
-		return activePendingStatusFilter
-	}
-	// Bridge recommends BridgeModificationTimestamp for incremental/replication windows.
-	return activePendingStatusFilter + " and BridgeModificationTimestamp gt " + bridgeRollingTimestampLiteral(*cutoff)
+	_ = cfg // rolling window does not apply to Bridge replication OData
+	return activePendingStatusFilter
+}
+
+// BridgeIncrementalFilter is the OData $filter for Bridge Property incremental updates (post-replication).
+func BridgeIncrementalFilter(dataset string, since time.Time) string {
+	return "(" + activePendingStatusFilter + ") and " + bridgeIncrementalTimestampClause(dataset, since)
+}
+
+func bridgeIncrementalTimestampClause(dataset string, since time.Time) string {
+	return mls.ODataGTFilter(mls.ModificationODataField(dataset), since)
 }
 
 // SparkReplicationFilter is the OData $filter for Spark replication seed pages.
@@ -40,10 +50,6 @@ func replicationStatusFilter(cfg config.Config, tsFn func(time.Time) string) str
 		return activePendingStatusFilter
 	}
 	return activePendingStatusFilter + " and ModificationTimestamp gt " + tsFn(*cutoff)
-}
-
-func bridgeRollingTimestampLiteral(t time.Time) string {
-	return "datetime'" + t.UTC().Format("2006-01-02T15:04:05Z") + "'"
 }
 
 func sparkRollingTimestampLiteral(t time.Time) string {

@@ -135,14 +135,16 @@ StandardStatus eq 'Active' or StandardStatus eq 'Pending'
 **Query shape:**
 
 - `$top` ≤ 1000 (`SPARK_SYNC_REPLICATION_TOP`)
-- `$expand=Media,Unit,Room,OpenHouse` (`SPARK_SYNC_EXPAND`)
+- `$expand=Media,Unit,Room,OpenHouse` (`MLS_SYNC_EXPAND` / `SPARK_SYNC_EXPAND`)
 - No `$select` on replication pages
 - Incremental: `ModificationTimestamp gt {cursor} and ModificationTimestamp lt {window_end}`; upper bound in `listing_sync_cursors.incremental_window_end`
 - Pagination: `@odata.nextLink` → `listing_sync_cursors.replication_next_url` (follow absolute URL; do not rewrite host)
 
 **Staging:** gzip JSON in `replica_pages` with `provider = spark` (multi-part payload when rows exceed persist chunk size).
 
-**Persist:** `ListingMirrorWriter` with Spark provider — scalars in typed columns; **`MLS_SYNC_EXPAND`** collections in `media`, `unit`, `room`, `open_house` JSONB (stripped from `raw_data`). Overflow RESO keys in `custom_fields` (flat-merged onto the root Property object in mirror-backed API responses). Canonical **`modification_timestamp`** from `ModificationTimestamp`; sync cursor **`last_modification_timestamp`**. See [beaches_50_listings.json](beaches_50_listings.json) for expanded Media shape.
+**Persist:** `ListingMirrorWriter` with Spark provider — see [Listings mirror](../listings-mirror.md). **`MLS_SYNC_EXPAND`** collections land in `media`, `unit`, `room`, `open_house` JSONB (stripped from `raw_data`). Overflow keys in `custom_fields`. Canonical **`modification_timestamp`** from `ModificationTimestamp`; cursor **`last_modification_timestamp`**. Fixture: [beaches_50_listings.json](beaches_50_listings.json).
+
+**Bridge (Stellar)** uses different OData expand names (`OpenHouses`, `Rooms`, `UnitTypes`) and omits `$expand` when `BRIDGE_SYNC_FULL_PROPERTY=true` — same JSONB column layout after persist.
 
 **Purge:** `mls:purge-replica-pages` (alias `bridge:purge-replica-pages`; shared table; Spark retention via `SPARK_REPLICA_PAGE_RETENTION_HOURS`).
 

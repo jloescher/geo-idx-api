@@ -62,6 +62,8 @@ go run ./cmd/scheduler
 
 Bridge replication (`bridge.fetch_page`) and Spark beaches replication (`spark.fetch_page`) call upstream OData and write `replica_pages` → `listings` via the worker. Requires `SPARK_ACCESS_TOKEN` and replication host vars (see `docs/spark/idx-api-integration.md`).
 
+Replicated rows split payload across `raw_data`, `media`, `unit`, `room`, `open_house`, and `custom_fields` (see [docs/listings-mirror.md](docs/listings-mirror.md)). Mirror-backed search returns flat RESO Property JSON.
+
 After replication, verify indexed columns (not only `raw_data`):
 
 ```sql

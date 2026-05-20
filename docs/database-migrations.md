@@ -39,6 +39,8 @@ Install goose on PATH (optional): `make migrate-install`
 
 **Go services:** `internal/service/sync` (mirror persist), `internal/service/search/postgis.go` (hybrid search).
 
+**Payload layout:** expanded collections (`media`, `unit`, `room`, `open_house`), overflow in `custom_fields`, canonical `modification_timestamp`, cursor `last_modification_timestamp`. See [Listings mirror](listings-mirror.md).
+
 ---
 
 ## Fresh / disposable databases
@@ -73,6 +75,7 @@ See [go-cutover.md](go-cutover.md).
 
 ## Related docs
 
+- [Listings mirror](listings-mirror.md)
 - [Deployment & operations](deployment-operations.md)
 - [Coolify deployment](coolify-deployment.md)
 - [IDX-API Bridge proxy](idx-api-bridge-proxy.md)

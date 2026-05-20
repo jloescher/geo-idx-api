@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/quantyralabs/idx-api/internal/config"
 	"github.com/quantyralabs/idx-api/internal/queue"
@@ -68,14 +69,6 @@ func (k *Kickoff) dispatchSpark(ctx context.Context) error {
 }
 
 func (k *Kickoff) dispatchDataset(ctx context.Context, provider, dataset, fetchQueue, jobType string) error {
-	mode, err := k.freshness.Mode(ctx, dataset, provider)
-	if err != nil {
-		return err
-	}
-	if mode != ModeCatchUp {
-		return nil
-	}
-
 	active, err := k.store.HasActivePage(ctx, provider, dataset)
 	if err != nil || active {
 		return err
@@ -86,23 +79,53 @@ func (k *Kickoff) dispatchDataset(ctx context.Context, provider, dataset, fetchQ
 		return err
 	}
 
-	fetchMode := "incremental"
 	if runRep, err := k.cursors.ShouldRunReplication(ctx, cursor); err != nil {
 		return err
 	} else if runRep {
-		fetchMode = "replication"
-	} else if !k.cursors.ShouldRunIncremental(cursor) {
+		return k.enqueueFetch(ctx, provider, dataset, fetchQueue, jobType, "replication")
+	}
+
+	if !k.cursors.ShouldRunIncremental(cursor) {
+		return nil
+	}
+	if !k.shouldPollIncremental(cursor) {
 		return nil
 	}
 
+	return k.enqueueFetch(ctx, provider, dataset, fetchQueue, jobType, "incremental")
+}
+
+// shouldPollIncremental gates steady-state Bridge/Spark updates after the mirror is seeded.
+// Bridge docs: poll Property with BridgeModificationTimestamp gt cursor on an interval.
+func (k *Kickoff) shouldPollIncremental(cursor SyncCursor) bool {
+	if cursor.ReplicationInProgress {
+		return false
+	}
+	if cursor.ReplicationNextURL != nil && *cursor.ReplicationNextURL != "" {
+		return false
+	}
+
+	threshold := k.cfg.MLS.ReplicationFreshnessMinutes
+	if threshold < 1 {
+		threshold = 15
+	}
+	interval := time.Duration(threshold) * time.Minute
+
+	if cursor.LastSyncFinishedAt == nil {
+		return true
+	}
+	return time.Since(*cursor.LastSyncFinishedAt) >= interval
+}
+
+func (k *Kickoff) enqueueFetch(ctx context.Context, provider, dataset, fetchQueue, jobType, mode string) error {
 	id, err := k.queue.Enqueue(ctx, fetchQueue, jobType, fetchPageArgs{
 		Dataset: dataset,
-		Mode:    fetchMode,
+		Mode:    mode,
 	}, 0)
 	if err != nil {
 		k.logger.Error("enqueue fetch", "provider", provider, "dataset", dataset, "error", err)
 		return err
 	}
-	k.logger.Info("enqueued fetch", "provider", provider, "dataset", dataset, "mode", fetchMode, "queue", fetchQueue, "job_id", id)
+	k.logger.Info("enqueued fetch", "provider", provider, "dataset", dataset, "mode", mode, "queue", fetchQueue, "job_id", id)
 	return nil
 }

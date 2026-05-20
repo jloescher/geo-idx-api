@@ -46,7 +46,7 @@ The search endpoint accepts JSON payloads with filter criteria and returns pagin
 **Features:**
 - Multi-dataset support (validated against domain's `allowed_mls_datasets`)
 - Structured filters: location (cities, counties, states), price range, beds/baths, property types, features (pool, waterfront), etc.
-- **PostGIS mirror leg** (Active/Pending): `low_risk_floodzone` → `listings.flood_zone_code`; `min_monthly_fees` / `max_monthly_fees` → `listings.estimated_total_monthly_fees` (Beaches: association fees normalized to monthly at persist — see [Spark integration](spark/idx-api-integration.md#normalized-mirror-columns-persist--replication-updates))
+- **PostGIS mirror leg** (Active/Pending): queries indexed columns; each hit is reassembled into a **flat RESO Property** (`raw_data` + JSONB expands + flat-merged `custom_fields`) — [Listings mirror](listings-mirror.md#api-responses-mirror-backed). `low_risk_floodzone` → `listings.flood_zone_code`; `min_monthly_fees` / `max_monthly_fees` → `listings.estimated_total_monthly_fees` (Beaches: association fees normalized to monthly at persist — see [Spark integration](spark/idx-api-integration.md#normalized-mirror-columns-persist--replication-updates))
 - **Hybrid routing:** mirror for Active/Pending; Bridge for Closed-only or unsupported statuses; split merge when both appear in `status` / `statuses`
 - OData cursor pagination via `@odata.nextLink` (Bridge leg; mirror leg uses SQL offset/limit)
 - 15-minute result caching (same cache mechanism as listings)
