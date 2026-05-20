@@ -48,13 +48,17 @@ make seed-admin   # ADMIN_SEED_EMAIL / ADMIN_SEED_PASSWORD in .env
 # Run API
 go run ./cmd/api
 
-# Worker (separate terminal)
+# Worker (separate terminal) — only processes rows the scheduler (or API) enqueues
 export WORKER_QUEUES=default,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist
 go run ./cmd/worker
 
-# Scheduler
+# Scheduler (separate terminal) — required for replication kickoff, cache refresh, etc.
 go run ./cmd/scheduler
 ```
+
+**Scheduler + worker:** The worker stays idle when the `jobs` table is empty. The scheduler enqueues `mls.replication_kickoff` every minute at **:00**; the worker runs kickoff, which enqueues `bridge.fetch_page` / `spark.fetch_page` on their queues. Run **both** processes against the same `DB_*` as the API. First kickoff log appears on the next minute boundary after `scheduler started`.
+
+If you still use a **Laravel** scheduler/worker on the same staging database, stop them — they enqueue incompatible `CallQueuedHandler` payloads.
 
 ### Docker Compose (Go stack)
 

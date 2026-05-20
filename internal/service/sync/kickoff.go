@@ -28,20 +28,30 @@ func (k *Kickoff) Run(ctx context.Context) error {
 		if err != nil || active {
 			continue
 		}
-		_, _ = k.queue.Enqueue(ctx, k.cfg.Bridge.SyncFetchQueue, queue.TypeBridgeFetchPage, fetchPageArgs{
+		id, err := k.queue.Enqueue(ctx, k.cfg.Bridge.SyncFetchQueue, queue.TypeBridgeFetchPage, fetchPageArgs{
 			Dataset: ds,
 			Mode:    "incremental",
 		}, 0)
+		if err != nil {
+			k.logger.Error("enqueue bridge fetch", "dataset", ds, "error", err)
+			continue
+		}
+		k.logger.Info("enqueued bridge fetch", "dataset", ds, "queue", k.cfg.Bridge.SyncFetchQueue, "job_id", id)
 	}
 	for _, ds := range k.cfg.Spark.Datasets {
 		active, err := k.store.HasActivePage(ctx, "spark", ds)
 		if err != nil || active {
 			continue
 		}
-		_, _ = k.queue.Enqueue(ctx, k.cfg.Spark.SyncFetchQueue, queue.TypeSparkFetchPage, fetchPageArgs{
+		id, err := k.queue.Enqueue(ctx, k.cfg.Spark.SyncFetchQueue, queue.TypeSparkFetchPage, fetchPageArgs{
 			Dataset: ds,
 			Mode:    "incremental",
 		}, 0)
+		if err != nil {
+			k.logger.Error("enqueue spark fetch", "dataset", ds, "error", err)
+			continue
+		}
+		k.logger.Info("enqueued spark fetch", "dataset", ds, "queue", k.cfg.Spark.SyncFetchQueue, "job_id", id)
 	}
 	return nil
 }

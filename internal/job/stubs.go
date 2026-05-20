@@ -7,6 +7,7 @@ import (
 )
 
 func (r *Registry) handleReplicationKickoff(ctx context.Context, job *queue.ReservedJob) error {
+	r.logger.Info("running replication kickoff", "job_id", job.ID)
 	return r.replicationKickoff.Run(ctx)
 }
 
