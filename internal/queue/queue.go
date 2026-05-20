@@ -128,10 +128,11 @@ func (c *Client) EnqueueBatch(ctx context.Context, spec BatchSpec) (batchID stri
 
 // ReservedJob is a claimed job ready for processing.
 type ReservedJob struct {
-	ID      int64
-	Queue   string
-	Payload Payload
-	Raw     []byte
+	ID       int64
+	Queue    string
+	Payload  Payload
+	Raw      []byte
+	attempts int // post-reserve count (incremented in Reserve)
 }
 
 // Reserve claims the next available job on one of the given queues (SKIP LOCKED).
@@ -185,10 +186,11 @@ func (c *Client) Reserve(ctx context.Context, queues []string) (*ReservedJob, er
 	}
 
 	return &ReservedJob{
-		ID:      id,
-		Queue:   queue,
-		Payload: p,
-		Raw:     []byte(payloadStr),
+		ID:       id,
+		Queue:    queue,
+		Payload:  p,
+		Raw:      []byte(payloadStr),
+		attempts: attempts + 1,
 	}, nil
 }
 
@@ -212,8 +214,7 @@ func (c *Client) Release(ctx context.Context, job *ReservedJob, maxAttempts int,
 }
 
 func (j *ReservedJob) Attempts() int {
-	// attempts incremented on reserve; read from DB if needed — simplified: use 1
-	return 1
+	return j.attempts
 }
 
 // Fail records job in failed_jobs and deletes from jobs.
