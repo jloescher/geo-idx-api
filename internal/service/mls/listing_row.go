@@ -17,56 +17,61 @@ const (
 
 // ListingRecord is a normalized row for listings mirror upsert.
 type ListingRecord struct {
-	DatasetSlug                 string
-	ListingKey                  string
-	MlsListingID                *string
-	StandardStatus              *string
-	ListPrice                   *float64
-	BedroomsTotal               *int16
-	BathroomsTotalDecimal       *float64
-	LivingArea                  *int32
-	LotSizeAcres                *float64
-	YearBuilt                   *int16
-	StoriesTotal                *int16
-	City                        *string
-	CountyOrParish              *string
-	PostalCode                  *string
-	StateOrProvince             *string
-	PropertyType                *string
-	PropertySubType             *string
-	OnMarketDate                *time.Time
-	CloseDate                   *time.Time
-	ModificationTimestamp       *time.Time
-	BridgeModificationTimestamp *time.Time
-	PriceChangeTimestamp        *time.Time
-	PreviousListPrice           *float64
-	FloodZoneCode               *string
-	LowRiskFloodZoneYN          bool
-	EstimatedTotalMonthlyFees   *float64
-	Latitude                    *float64
-	Longitude                   *float64
-	WaterfrontYN                *bool
-	PoolPrivateYN               *bool
-	DockYN                      *bool
-	NewConstructionYN           *bool
-	GarageYN                    *bool
-	AssociationYN               *bool
-	SpaYN                       *bool
-	FireplaceYN                 *bool
-	SeniorCommunityYN           *bool
-	SubdivisionName             *string
-	ElementarySchool            *string
-	MiddleOrJuniorSchool        *string
-	HighSchool                  *string
-	SpecialListingConditions    json.RawMessage
-	RawData                     json.RawMessage
-	Media                       json.RawMessage
-	HasMedia                    bool
-	CustomFields                json.RawMessage
-	StreetNumber                *string
-	StreetName                  *string
-	ListAgentMlsID              *string
-	ListOfficeMlsID             *string
+	DatasetSlug               string
+	ListingKey                string
+	MlsListingID              *string
+	StandardStatus            *string
+	ListPrice                 *float64
+	BedroomsTotal             *int16
+	BathroomsTotalDecimal     *float64
+	LivingArea                *int32
+	LotSizeAcres              *float64
+	YearBuilt                 *int16
+	StoriesTotal              *int16
+	City                      *string
+	CountyOrParish            *string
+	PostalCode                *string
+	StateOrProvince           *string
+	PropertyType              *string
+	PropertySubType           *string
+	OnMarketDate              *time.Time
+	CloseDate                 *time.Time
+	ModificationTimestamp     *time.Time
+	PriceChangeTimestamp      *time.Time
+	PreviousListPrice         *float64
+	FloodZoneCode             *string
+	LowRiskFloodZoneYN        bool
+	EstimatedTotalMonthlyFees *float64
+	Latitude                  *float64
+	Longitude                 *float64
+	WaterfrontYN              *bool
+	PoolPrivateYN             *bool
+	DockYN                    *bool
+	NewConstructionYN         *bool
+	GarageYN                  *bool
+	AssociationYN             *bool
+	SpaYN                     *bool
+	FireplaceYN               *bool
+	SeniorCommunityYN         *bool
+	SubdivisionName           *string
+	ElementarySchool          *string
+	MiddleOrJuniorSchool      *string
+	HighSchool                *string
+	SpecialListingConditions  json.RawMessage
+	RawData                   json.RawMessage
+	Media                     json.RawMessage
+	Unit                      json.RawMessage
+	Room                      json.RawMessage
+	OpenHouse                 json.RawMessage
+	HasMedia                  bool
+	HasUnit                   bool
+	HasRoom                   bool
+	HasOpenHouse              bool
+	CustomFields              json.RawMessage
+	StreetNumber              *string
+	StreetName                *string
+	ListAgentMlsID            *string
+	ListOfficeMlsID           *string
 }
 
 // BuildListingRecord maps a RESO Property row to mirror columns.
@@ -76,6 +81,7 @@ func BuildListingRecord(
 	row map[string]any,
 	raw json.RawMessage,
 	resolver *ResoFieldResolver,
+	expandKeys []string,
 ) (ListingRecord, RowAction) {
 	listingKey := stringValue(row["ListingKey"])
 	if listingKey == "" {
@@ -101,18 +107,13 @@ func BuildListingRecord(
 		mlsID = &s
 	}
 
-	var bridgeMod *time.Time
-	if provider == MirrorProviderBridge {
-		bridgeMod = timestampPtr(row["BridgeModificationTimestamp"])
+	if len(expandKeys) == 0 {
+		expandKeys = ParseExpandKeys("")
 	}
 
-	var custom json.RawMessage
-	switch provider {
-	case MirrorProviderSpark:
-		custom = extractSparkCustomFields(row)
-	default:
-		custom = extractBridgeCustomFields(row, datasetUpper)
-	}
+	payloads := ExtractExpandedPayloads(row, expandKeys)
+	storedRaw := StripJSONBKeysFromRaw(raw, expandKeys)
+	custom := BuildCustomFields(row, expandKeys)
 
 	stdStatus := stringValue(row["StandardStatus"])
 	var stdPtr *string
@@ -122,14 +123,8 @@ func BuildListingRecord(
 
 	floodZoneCode := resolver.ResolveFloodZoneCode(row, provider, datasetUpper)
 
-	storedRaw := raw
-	media, hasMedia := ExtractMediaJSON(row)
-	if hasMedia {
-		storedRaw = StripMediaFromRaw(raw)
-	}
-
 	rec := ListingRecord{
-		DatasetSlug:                 datasetSlug,
+		DatasetSlug:               datasetSlug,
 		ListingKey:                  listingKey,
 		MlsListingID:                mlsID,
 		StandardStatus:              stdPtr,
@@ -148,8 +143,7 @@ func BuildListingRecord(
 		PropertySubType:             optionalString(row["PropertySubType"]),
 		OnMarketDate:                datePtr(row["OnMarketDate"]),
 		CloseDate:                   datePtr(row["CloseDate"]),
-		ModificationTimestamp:       timestampPtr(row["ModificationTimestamp"]),
-		BridgeModificationTimestamp: bridgeMod,
+		ModificationTimestamp:       ResolveModificationTimestamp(datasetSlug, row),
 		PriceChangeTimestamp:        timestampPtr(row["PriceChangeTimestamp"]),
 		PreviousListPrice:           float64Ptr(row["PreviousListPrice"]),
 		FloodZoneCode:               floodZoneCode,
@@ -172,8 +166,14 @@ func BuildListingRecord(
 		HighSchool:                  optionalString(row["HighSchool"]),
 		SpecialListingConditions:    specialListingConditions(row),
 		RawData:                     storedRaw,
-		Media:                       media,
-		HasMedia:                    hasMedia,
+		Media:                       payloads.Media,
+		Unit:                        payloads.Unit,
+		Room:                        payloads.Room,
+		OpenHouse:                   payloads.OpenHouse,
+		HasMedia:                    payloads.HasMedia,
+		HasUnit:                     payloads.HasUnit,
+		HasRoom:                     payloads.HasRoom,
+		HasOpenHouse:                payloads.HasOpenHouse,
 		CustomFields:                custom,
 		StreetNumber:                optionalString(row["StreetNumber"]),
 		StreetName:                  optionalString(row["StreetName"]),

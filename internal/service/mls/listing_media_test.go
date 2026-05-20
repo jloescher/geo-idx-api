@@ -48,7 +48,7 @@ func TestBuildListingRecordBeachesSeparatesMedia(t *testing.T) {
 	// Media[] uses Spark CDN URLs; Room/Unit/OpenHouse remain on the property row (not split).
 	row, raw := loadFixtureListing(t, fixturePath("spark/beaches_50_listings.json"), 0)
 	resolver := mls.NewResoFieldResolver()
-	rec, action := mls.BuildListingRecord("beaches", mls.MirrorProviderSpark, row, raw, resolver)
+	rec, action := mls.BuildListingRecord("beaches", mls.MirrorProviderSpark, row, raw, resolver, nil)
 	if action != mls.RowActionUpsert {
 		t.Fatalf("action %s", action)
 	}
@@ -82,11 +82,17 @@ func TestBuildListingRecordBeachesSeparatesMedia(t *testing.T) {
 	if _, has := stripped["Media"]; has {
 		t.Fatal("raw_data must not contain Media")
 	}
-	if _, has := stripped["Room"]; !has {
-		t.Fatal("Room expand should remain in raw_data until separately indexed")
+	if _, has := stripped["Room"]; has {
+		t.Fatal("raw_data must not contain Room")
+	}
+	if !rec.HasRoom {
+		t.Fatal("expected Room in room column")
 	}
 
-	merged := mls.MergeListingJSON(rec.RawData, rec.Media)
+	merged := mls.MergeMirrorListing(rec.RawData, mls.ExpandedPayload{
+		Media: rec.Media, HasMedia: rec.HasMedia,
+		Room: rec.Room, HasRoom: rec.HasRoom,
+	}, rec.CustomFields)
 	var mergedRow map[string]any
 	if err := json.Unmarshal(merged, &mergedRow); err != nil {
 		t.Fatal(err)
@@ -100,7 +106,7 @@ func TestBuildListingRecordBeachesSeparatesMedia(t *testing.T) {
 func TestBuildListingRecordSeparatesMedia(t *testing.T) {
 	row, raw := loadFixtureListing(t, fixturePath("bridge_interactive/stellar_50_listings.json"), 1)
 	resolver := mls.NewResoFieldResolver()
-	rec, action := mls.BuildListingRecord("stellar", mls.MirrorProviderBridge, row, raw, resolver)
+	rec, action := mls.BuildListingRecord("stellar", mls.MirrorProviderBridge, row, raw, resolver, nil)
 	if action != mls.RowActionUpsert {
 		t.Fatalf("action %s", action)
 	}

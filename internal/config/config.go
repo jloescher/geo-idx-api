@@ -79,6 +79,7 @@ type BridgeConfig struct {
 	SyncReplicationTop  int
 	SyncIncrementalTop  int
 	SyncIncludeMedia    bool
+	SyncFullProperty    bool
 	SyncMaxChainedFetch int
 	ImageRewriteHosts   []string
 }
@@ -112,6 +113,7 @@ type MLSConfig struct {
 	StellarPersistChunk         int
 	BeachesEnabled              bool
 	BeachesPersistChunk         int
+	SyncExpand                  string
 }
 
 type GISConfig struct {
@@ -205,6 +207,7 @@ func Load() (Config, error) {
 			SyncReplicationTop:  envInt("BRIDGE_SYNC_REPLICATION_TOP", 2000),
 			SyncIncrementalTop:  envInt("BRIDGE_SYNC_INCREMENTAL_TOP", 200),
 			SyncIncludeMedia:    envBool("BRIDGE_SYNC_INCLUDE_MEDIA", true),
+			SyncFullProperty:    envBool("BRIDGE_SYNC_FULL_PROPERTY", true),
 			SyncMaxChainedFetch: envInt("BRIDGE_SYNC_MAX_CHAINED_FETCH_PAGES", 0),
 			ImageRewriteHosts:   splitCSV(env("BRIDGE_IMAGE_REWRITE_HOSTS", "")),
 		},
@@ -223,12 +226,12 @@ func Load() (Config, error) {
 			SyncUpsertChunk:     envInt("MLS_BEACHES_UPSERT_CHUNK_SIZE", envInt("SPARK_SYNC_UPSERT_CHUNK", 250)),
 			SyncReplicationTop:  envInt("SPARK_SYNC_REPLICATION_TOP", 1000),
 			SyncIncrementalTop:  envInt("SPARK_SYNC_INCREMENTAL_TOP", 1000),
-			SyncExpand:          env("SPARK_SYNC_EXPAND", "Media,Unit,Room,OpenHouse"),
+			SyncExpand:          envSyncExpand(),
 			SyncMaxChainedFetch: envInt("SPARK_SYNC_MAX_CHAINED_FETCH_PAGES", 0),
 			PersistSequential:   envBool("SPARK_SYNC_PERSIST_SEQUENTIAL", true),
 		},
 		MLS: MLSConfig{
-			LocalMirrorRollingMonths:    envInt("MLS_LOCAL_MIRROR_ROLLING_MONTHS", 12),
+			LocalMirrorRollingMonths:    envMirrorRollingMonths(),
 			ReplicaPageRetentionHours:   envInt("MLS_REPLICA_PAGE_RETENTION_HOURS", 24),
 			ListingsCacheRetentionDays:  envInt("MLS_LISTINGS_CACHE_RETENTION_DAYS", 365),
 			ReplicationFreshnessMinutes: envInt("MLS_REPLICATION_FRESHNESS_MINUTES", 15),
@@ -236,6 +239,7 @@ func Load() (Config, error) {
 			StellarPersistChunk:         envInt("MLS_STELLAR_PERSIST_CHUNK_SIZE", 50),
 			BeachesEnabled:              envBool("MLS_BEACHES_ENABLED", true),
 			BeachesPersistChunk:         envInt("MLS_BEACHES_PERSIST_CHUNK_SIZE", 25),
+			SyncExpand:                  envSyncExpand(),
 		},
 		GIS: GISConfig{
 			EdgeCacheTTL:         envDuration("GIS_EDGE_CACHE_TTL", 900*time.Second),
@@ -321,6 +325,24 @@ func envInt(key string, def int) int {
 	return n
 }
 
+// envMirrorRollingMonths: production defaults to all-time (0); staging to 3 months unless MLS_LOCAL_MIRROR_ROLLING_MONTHS is set.
+func envMirrorRollingMonths() int {
+	if v := os.Getenv("MLS_LOCAL_MIRROR_ROLLING_MONTHS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err == nil {
+			return n
+		}
+	}
+	switch env("APP_ENV", "local") {
+	case "production":
+		return 0
+	case "staging":
+		return 3
+	default:
+		return 12
+	}
+}
+
 func envFloat(key string, def float64) float64 {
 	v := os.Getenv(key)
 	if v == "" {
@@ -370,4 +392,14 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// envSyncExpand is the shared OData $expand list for Bridge and Spark replication (MLS_SYNC_EXPAND).
+func envSyncExpand() string {
+	return firstNonEmpty(
+		env("MLS_SYNC_EXPAND", ""),
+		env("BRIDGE_SYNC_EXPAND", ""),
+		env("SPARK_SYNC_EXPAND", ""),
+		"Media,Unit,Room,OpenHouse",
+	)
 }

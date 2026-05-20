@@ -8,7 +8,7 @@ Schema is managed with **[goose](https://github.com/pressly/goose)** SQL migrati
 
 | File | Tables / purpose |
 |------|------------------|
-| `00001_initial.sql` | Single consolidated schema: `users`, `sessions`, `cache`, `jobs`, `job_batches`, `failed_jobs`, `personal_access_tokens`, `user_invitations`, `domains`, `listings_cache`, `mls_search_cache`, `mls_proxy_audit_logs`, `gis_*`, `crypto_price_snapshots`, PostGIS `listings` (incl. `media` JSONB), `listing_sync_cursors`, `replica_pages` (`fetch_url`, `upstream_url`, `odata_query`, `batch_id`) |
+| `00001_initial.sql` | Single consolidated schema: `users`, `sessions`, `cache`, `jobs`, `job_batches`, `failed_jobs`, `personal_access_tokens`, `user_invitations`, `domains`, `listings_cache`, `mls_search_cache`, `mls_proxy_audit_logs`, `gis_*`, `crypto_price_snapshots`, PostGIS `listings` (`raw_data` + `media`/`unit`/`room`/`open_house` JSONB + `custom_fields`; single `modification_timestamp`), `listing_sync_cursors` (`last_modification_timestamp`), `replica_pages` (`fetch_url`, `upstream_url`, `odata_query`, `batch_id`) |
 
 **Note:** Laravel Telescope/Pulse tables are **not** included in the Go cutover migration.
 

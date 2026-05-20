@@ -68,7 +68,7 @@ func (f *Freshness) IsCurrent(ctx context.Context, dataset, provider string) (bo
 	if !seeded {
 		return false, nil
 	}
-	if c.LastBridgeModificationTimestamp == nil {
+	if c.LastModificationTimestamp == nil {
 		return false, nil
 	}
 
@@ -77,5 +77,5 @@ func (f *Freshness) IsCurrent(ctx context.Context, dataset, provider string) (bo
 		threshold = 15
 	}
 	cutoff := time.Now().Add(-time.Duration(threshold) * time.Minute)
-	return !c.LastBridgeModificationTimestamp.Before(cutoff), nil
+	return !c.LastModificationTimestamp.Before(cutoff), nil
 }

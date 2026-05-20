@@ -39,13 +39,13 @@ func (s *Service) Handle(c *fiber.Ctx) error {
 	var err error
 	switch mode {
 	case RoutePostgresOnly:
-		result, err = s.postgis.Search(c.Context(), feed, req)
+		result, err = s.postgis.Search(c.Context(), feed, req, s.cfg.MLS.LocalMirrorRollingMonths)
 	case RouteBridgeOnly:
 		result, err = s.bridge.Search(c.Context(), c, feed, req)
 	case RouteSplit:
 		result, err = s.searchSplit(c, feed, req)
 	default:
-		result, err = s.postgis.Search(c.Context(), feed, req)
+		result, err = s.postgis.Search(c.Context(), feed, req, s.cfg.MLS.LocalMirrorRollingMonths)
 	}
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadGateway, err.Error())
@@ -55,7 +55,7 @@ func (s *Service) Handle(c *fiber.Ctx) error {
 }
 
 func (s *Service) searchSplit(c *fiber.Ctx, feed string, req SearchRequest) (SearchResult, error) {
-	ap, err := s.postgis.Search(c.Context(), feed, req)
+	ap, err := s.postgis.Search(c.Context(), feed, req, s.cfg.MLS.LocalMirrorRollingMonths)
 	if err != nil {
 		return s.bridge.Search(c.Context(), c, feed, req)
 	}

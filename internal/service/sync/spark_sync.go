@@ -14,7 +14,14 @@ import (
 	"github.com/quantyralabs/idx-api/internal/repository"
 )
 
-const sparkActivePendingFilter = "StandardStatus eq 'Active' or StandardStatus eq 'Pending'"
+func activePendingReplicationBaseFilter(cfg config.Config) string {
+	cutoff := MirrorRollingCutoff(cfg)
+	if cutoff == nil {
+		return "StandardStatus eq 'Active' or StandardStatus eq 'Pending'"
+	}
+	return fmt.Sprintf("(StandardStatus eq 'Active' or StandardStatus eq 'Pending') and ModificationTimestamp gt %s",
+		sparkRollingTimestampLiteral(*cutoff))
+}
 
 // SparkSync fetches Spark replication OData pages (replication.sparkapi.com only).
 type SparkSync struct {
@@ -49,18 +56,16 @@ func (s *SparkSync) FetchReplicationPage(ctx context.Context, cursor SyncCursor)
 		fetchURL = *cursor.ReplicationNextURL
 	} else {
 		fetchURL = s.propertyCollectionURL()
-		query.Set("$filter", sparkActivePendingFilter)
+		query.Set("$filter", SparkReplicationFilter(s.cfg))
 		query.Set("$top", fmt.Sprintf("%d", top))
-		if expand := strings.TrimSpace(s.cfg.Spark.SyncExpand); expand != "" {
-			query.Set("$expand", expand)
-		}
+		s.applySyncExpand(query)
 	}
 
-	return s.fetchPage(ctx, fetchURL, query, true)
+	return s.fetchPage(ctx, fetchURL, query, cursor.DatasetSlug, true)
 }
 
 func (s *SparkSync) FetchIncrementalPage(ctx context.Context, cursor SyncCursor, skip int) (PageResult, error) {
-	if cursor.LastBridgeModificationTimestamp == nil {
+	if cursor.LastModificationTimestamp == nil {
 		return PageResult{ReplicationComplete: true}, nil
 	}
 
@@ -78,10 +83,10 @@ func (s *SparkSync) FetchIncrementalPage(ctx context.Context, cursor SyncCursor,
 		windowEnd = &now
 	}
 
-	lower := cursor.LastBridgeModificationTimestamp.UTC().Format("2006-01-02T15:04:05Z")
+	lower := cursor.LastModificationTimestamp.UTC().Format("2006-01-02T15:04:05Z")
 	upper := windowEnd.UTC().Format("2006-01-02T15:04:05Z")
 	filter := fmt.Sprintf("(%s) and ModificationTimestamp gt %s and ModificationTimestamp lt %s",
-		sparkActivePendingFilter, lower, upper)
+		activePendingReplicationBaseFilter(s.cfg), lower, upper)
 
 	fetchURL := s.propertyCollectionURL()
 	query := url.Values{}
@@ -89,11 +94,9 @@ func (s *SparkSync) FetchIncrementalPage(ctx context.Context, cursor SyncCursor,
 	query.Set("$orderby", "ModificationTimestamp asc")
 	query.Set("$top", fmt.Sprintf("%d", top))
 	query.Set("$skip", fmt.Sprintf("%d", skip))
-	if expand := strings.TrimSpace(s.cfg.Spark.SyncExpand); expand != "" {
-		query.Set("$expand", expand)
-	}
+	s.applySyncExpand(query)
 
-	result, err := s.fetchPage(ctx, fetchURL, query, false)
+	result, err := s.fetchPage(ctx, fetchURL, query, cursor.DatasetSlug, false)
 	if err != nil {
 		return result, err
 	}
@@ -103,7 +106,13 @@ func (s *SparkSync) FetchIncrementalPage(ctx context.Context, cursor SyncCursor,
 	return result, nil
 }
 
-func (s *SparkSync) fetchPage(ctx context.Context, fetchURL string, query url.Values, replication bool) (PageResult, error) {
+func (s *SparkSync) applySyncExpand(query url.Values) {
+	if expand := strings.TrimSpace(s.cfg.MLS.SyncExpand); expand != "" {
+		query.Set("$expand", expand)
+	}
+}
+
+func (s *SparkSync) fetchPage(ctx context.Context, fetchURL string, query url.Values, dataset string, replication bool) (PageResult, error) {
 	if s.cfg.Spark.AccessToken == "" {
 		return PageResult{}, fmt.Errorf("SPARK_ACCESS_TOKEN is not configured")
 	}
@@ -163,7 +172,7 @@ func (s *SparkSync) fetchPage(ctx context.Context, fetchURL string, query url.Va
 	}
 
 	result.Rows = rows
-	result.MaxBridgeTs = maxBridgeTimestampFromRows(rows)
+	result.MaxModificationTs = maxModificationTimestampFromRows(dataset, rows)
 	next := extractNextURL(resp.Header.Get("Link"), body)
 	result.NextReplicationURL = next
 

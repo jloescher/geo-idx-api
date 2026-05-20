@@ -142,7 +142,7 @@ StandardStatus eq 'Active' or StandardStatus eq 'Pending'
 
 **Staging:** gzip JSON in `replica_pages` with `provider = spark` (multi-part payload when rows exceed persist chunk size).
 
-**Persist:** `ListingMirrorWriter` with Spark provider — property fields in `raw_data`; **`Media[]` from `$expand=Media`** in `listings.media` (see [beaches_50_listings.json](beaches_50_listings.json): `MediaURL` on `cdn.photos.sparkplatform.com`, `MediaKey`, `Order`, `MediaCategory`). `Room` / `Unit` / `OpenHouse` expands remain in `raw_data` for now. Indexed columns from standard RESO fields (`flood_zone_code`, `estimated_total_monthly_fees` via `ListingResoFieldResolver`); Beaches encoded fields in `custom_fields`.
+**Persist:** `ListingMirrorWriter` with Spark provider — scalars in typed columns; **`MLS_SYNC_EXPAND`** collections in `media`, `unit`, `room`, `open_house` JSONB (stripped from `raw_data`). Overflow RESO keys in `custom_fields` (flat-merged onto the root Property object in mirror-backed API responses). Canonical **`modification_timestamp`** from `ModificationTimestamp`; sync cursor **`last_modification_timestamp`**. See [beaches_50_listings.json](beaches_50_listings.json) for expanded Media shape.
 
 **Purge:** `mls:purge-replica-pages` (alias `bridge:purge-replica-pages`; shared table; Spark retention via `SPARK_REPLICA_PAGE_RETENTION_HOURS`).
 

@@ -31,7 +31,7 @@ func NewBridgeWorker(cfg config.Config, db *repository.DB, q *queue.Client, logg
 		db:      db,
 		queue:   q,
 		store:   NewReplicaPageStore(db, cfg),
-		mirror:  NewListingMirrorWriter(db, cfg.Bridge.SyncUpsertChunk),
+		mirror:  NewListingMirrorWriter(db, cfg.Bridge.SyncUpsertChunk, cfg.MLS.SyncExpand),
 		sync:    NewBridgeSync(cfg, db),
 		cursors: NewCursorStore(db),
 		logger:  logger,
@@ -58,7 +58,7 @@ type persistFinalizeArgs struct {
 	ApplyReplicationState    bool    `json:"apply_replication_state,omitempty"`
 	ReplicationNextURL       *string `json:"replication_next_url,omitempty"`
 	ReplicationInProgress    *bool   `json:"replication_in_progress,omitempty"`
-	MaxBridgeTs              *string `json:"max_bridge_ts,omitempty"`
+	MaxModificationTs        *string `json:"max_modification_ts,omitempty"`
 	IncrementalWindowEnd     *string `json:"incremental_window_end,omitempty"`
 	MarkSyncFinished         bool    `json:"mark_sync_finished,omitempty"`
 	DispatchIncrementalAfter bool    `json:"dispatch_incremental_after,omitempty"`
@@ -136,7 +136,7 @@ func (w *BridgeWorker) continuationPlan(args fetchPageArgs, result PageResult) (
 			ApplyReplicationState: true,
 			ReplicationNextURL:    result.NextReplicationURL,
 			ReplicationInProgress: &inProgress,
-			MaxBridgeTs:           result.MaxBridgeTs,
+			MaxModificationTs:           result.MaxModificationTs,
 		}
 		if !result.ReplicationComplete && result.NextReplicationURL != nil && *result.NextReplicationURL != "" {
 			mode := "replication"
@@ -146,12 +146,12 @@ func (w *BridgeWorker) continuationPlan(args fetchPageArgs, result PageResult) (
 				ChainDepth: args.ChainDepth + 1,
 			}
 		}
-		dispatchInc := result.ReplicationComplete && result.MaxBridgeTs != nil
+		dispatchInc := result.ReplicationComplete && result.MaxModificationTs != nil
 		return patch, dispatchInc, nil
 	}
 
 	patch := CursorPatch{
-		MaxBridgeTs:      result.MaxBridgeTs,
+		MaxModificationTs:      result.MaxModificationTs,
 		MarkSyncFinished: !result.IncrementalHasMore,
 	}
 	if result.IncrementalHasMore {
@@ -257,9 +257,9 @@ func (w *BridgeWorker) buildFinalizeArgs(
 		args.ReplicationNextURL = patch.ReplicationNextURL
 		args.ReplicationInProgress = patch.ReplicationInProgress
 	}
-	if patch.MaxBridgeTs != nil {
-		s := patch.MaxBridgeTs.UTC().Format(time.RFC3339)
-		args.MaxBridgeTs = &s
+	if patch.MaxModificationTs != nil {
+		s := patch.MaxModificationTs.UTC().Format(time.RFC3339)
+		args.MaxModificationTs = &s
 	}
 	if patch.MarkSyncFinished {
 		args.MarkSyncFinished = true
@@ -313,16 +313,16 @@ func (w *BridgeWorker) PersistFinalize(ctx context.Context, job *queue.ReservedJ
 		return err
 	}
 
-	if args.ApplyReplicationState || args.MaxBridgeTs != nil || args.IncrementalWindowEnd != nil || args.MarkSyncFinished || args.ReplicationInProgress != nil {
+	if args.ApplyReplicationState || args.MaxModificationTs != nil || args.IncrementalWindowEnd != nil || args.MarkSyncFinished || args.ReplicationInProgress != nil {
 		patch := CursorPatch{
 			ApplyReplicationState: args.ApplyReplicationState,
 			ReplicationNextURL:    args.ReplicationNextURL,
 			ReplicationInProgress: args.ReplicationInProgress,
 			MarkSyncFinished:      args.MarkSyncFinished,
 		}
-		if args.MaxBridgeTs != nil {
-			if t, err := time.Parse(time.RFC3339, *args.MaxBridgeTs); err == nil {
-				patch.MaxBridgeTs = &t
+		if args.MaxModificationTs != nil {
+			if t, err := time.Parse(time.RFC3339, *args.MaxModificationTs); err == nil {
+				patch.MaxModificationTs = &t
 			}
 		}
 		if args.IncrementalWindowEnd != nil {

@@ -30,9 +30,10 @@ type ListingMirrorWriter struct {
 	db          *repository.DB
 	resolver    *mls.ResoFieldResolver
 	upsertChunk int
+	expandKeys  []string
 }
 
-func NewListingMirrorWriter(db *repository.DB, upsertChunk int) *ListingMirrorWriter {
+func NewListingMirrorWriter(db *repository.DB, upsertChunk int, syncExpand string) *ListingMirrorWriter {
 	if upsertChunk <= 0 {
 		upsertChunk = 250
 	}
@@ -40,6 +41,7 @@ func NewListingMirrorWriter(db *repository.DB, upsertChunk int) *ListingMirrorWr
 		db:          db,
 		resolver:    mls.NewResoFieldResolver(),
 		upsertChunk: upsertChunk,
+		expandKeys:  mls.ParseExpandKeys(syncExpand),
 	}
 }
 
@@ -94,7 +96,7 @@ func (w *ListingMirrorWriter) HydrateReplicaBatch(
 			continue
 		}
 
-		rec, action := mls.BuildListingRecord(replicationDataset, provider, row, raw, w.resolver)
+		rec, action := mls.BuildListingRecord(replicationDataset, provider, row, raw, w.resolver, w.expandKeys)
 		switch action {
 		case mls.RowActionSkip:
 			stats.Skipped++
@@ -155,13 +157,13 @@ func upsertListing(ctx context.Context, tx pgx.Tx, rec mls.ListingRecord) error 
 			list_price, bedrooms_total, bathrooms_total_decimal, living_area, lot_size_acres,
 			year_built, stories_total, city, county_or_parish, postal_code, state_or_province,
 			property_type, property_sub_type, on_market_date, close_date,
-			modification_timestamp, bridge_modification_timestamp, price_change_timestamp,
+			modification_timestamp, price_change_timestamp,
 			previous_list_price, flood_zone_code, estimated_total_monthly_fees, low_risk_flood_zone_yn,
 			latitude, longitude, coordinates,
 			waterfront_yn, pool_private_yn, dock_yn, new_construction_yn, garage_yn,
 			association_yn, spa_yn, fireplace_yn, senior_community_yn,
 			subdivision_name, elementary_school, middle_or_junior_school, high_school,
-			special_listing_conditions, raw_data, media, custom_fields,
+			special_listing_conditions, raw_data, media, unit, room, open_house, custom_fields,
 			street_number, street_name, list_agent_mls_id, list_office_mls_id,
 			created_at, updated_at
 		) VALUES (
@@ -169,14 +171,14 @@ func upsertListing(ctx context.Context, tx pgx.Tx, rec mls.ListingRecord) error 
 			$5, $6, $7, $8, $9,
 			$10, $11, $12, $13, $14, $15,
 			$16, $17, $18, $19,
-			$20, $21, $22,
-			$23, $24, $25, $26,
-			$27, $28, NULL,
-			$29, $30, $31, $32, $33,
-			$34, $35, $36, $37,
-			$38, $39, $40, $41,
-			$42, $43, $44, $45,
-			$46, $47, $48, $49,
+			$20, $21,
+			$22, $23, $24, $25,
+			$26, $27, NULL,
+			$28, $29, $30, $31, $32,
+			$33, $34, $35, $36,
+			$37, $38, $39, $40,
+			$41, $42, $43, $44, $45, $46, $47,
+			$48, $49, $50, $51,
 			NOW(), NOW()
 		)
 		ON CONFLICT (dataset_slug, listing_key) DO UPDATE SET
@@ -198,7 +200,6 @@ func upsertListing(ctx context.Context, tx pgx.Tx, rec mls.ListingRecord) error 
 			on_market_date = EXCLUDED.on_market_date,
 			close_date = EXCLUDED.close_date,
 			modification_timestamp = EXCLUDED.modification_timestamp,
-			bridge_modification_timestamp = EXCLUDED.bridge_modification_timestamp,
 			price_change_timestamp = EXCLUDED.price_change_timestamp,
 			previous_list_price = EXCLUDED.previous_list_price,
 			flood_zone_code = EXCLUDED.flood_zone_code,
@@ -222,6 +223,9 @@ func upsertListing(ctx context.Context, tx pgx.Tx, rec mls.ListingRecord) error 
 			special_listing_conditions = EXCLUDED.special_listing_conditions,
 			raw_data = EXCLUDED.raw_data,
 			media = COALESCE(EXCLUDED.media, listings.media),
+			unit = COALESCE(EXCLUDED.unit, listings.unit),
+			room = COALESCE(EXCLUDED.room, listings.room),
+			open_house = COALESCE(EXCLUDED.open_house, listings.open_house),
 			custom_fields = EXCLUDED.custom_fields,
 			street_number = EXCLUDED.street_number,
 			street_name = EXCLUDED.street_name,
@@ -233,13 +237,18 @@ func upsertListing(ctx context.Context, tx pgx.Tx, rec mls.ListingRecord) error 
 		rec.ListPrice, rec.BedroomsTotal, rec.BathroomsTotalDecimal, rec.LivingArea, rec.LotSizeAcres,
 		rec.YearBuilt, rec.StoriesTotal, rec.City, rec.CountyOrParish, rec.PostalCode, rec.StateOrProvince,
 		rec.PropertyType, rec.PropertySubType, rec.OnMarketDate, rec.CloseDate,
-		rec.ModificationTimestamp, rec.BridgeModificationTimestamp, rec.PriceChangeTimestamp,
+		rec.ModificationTimestamp, rec.PriceChangeTimestamp,
 		rec.PreviousListPrice, rec.FloodZoneCode, rec.EstimatedTotalMonthlyFees, rec.LowRiskFloodZoneYN,
 		rec.Latitude, rec.Longitude,
 		rec.WaterfrontYN, rec.PoolPrivateYN, rec.DockYN, rec.NewConstructionYN, rec.GarageYN,
 		rec.AssociationYN, rec.SpaYN, rec.FireplaceYN, rec.SeniorCommunityYN,
 		rec.SubdivisionName, rec.ElementarySchool, rec.MiddleOrJuniorSchool, rec.HighSchool,
-		rec.SpecialListingConditions, rec.RawData, nullableJSONB(rec.Media, rec.HasMedia), rec.CustomFields,
+		rec.SpecialListingConditions, rec.RawData,
+		nullableJSONB(rec.Media, rec.HasMedia),
+		nullableJSONB(rec.Unit, rec.HasUnit),
+		nullableJSONB(rec.Room, rec.HasRoom),
+		nullableJSONB(rec.OpenHouse, rec.HasOpenHouse),
+		rec.CustomFields,
 		rec.StreetNumber, rec.StreetName, rec.ListAgentMlsID, rec.ListOfficeMlsID,
 	)
 	return err

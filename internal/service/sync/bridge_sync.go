@@ -13,6 +13,7 @@ import (
 
 	"github.com/quantyralabs/idx-api/internal/config"
 	"github.com/quantyralabs/idx-api/internal/repository"
+	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
 
 // PageResult is one OData page (Bridge or Spark replication/incremental).
@@ -22,7 +23,7 @@ type PageResult struct {
 	ReplicationComplete  bool
 	IncrementalHasMore   bool
 	NextIncrementalSkip  int
-	MaxBridgeTs          *time.Time
+	MaxModificationTs    *time.Time
 	IncrementalWindowEnd *time.Time
 	Forbidden            bool
 	HTTPError            bool
@@ -62,16 +63,19 @@ func (s *BridgeSync) FetchReplicationPage(ctx context.Context, dataset string, c
 		fetchURL = *cursor.ReplicationNextURL
 	} else {
 		fetchURL = s.propertyReplicationURL(dataset)
-		query.Set("$filter", "(StandardStatus eq 'Active' or StandardStatus eq 'Pending')")
+		query.Set("$filter", BridgeReplicationFilter(s.cfg))
 		query.Set("$top", fmt.Sprintf("%d", top))
-		query.Set("$select", s.replicationSelectList(dataset))
+		if !s.cfg.Bridge.SyncFullProperty {
+			query.Set("$select", s.replicationSelectList(dataset))
+		}
+		s.applySyncExpand(query)
 	}
 
-	return s.fetchPage(ctx, fetchURL, query, true)
+	return s.fetchPage(ctx, fetchURL, query, dataset, true)
 }
 
 func (s *BridgeSync) FetchIncrementalPage(ctx context.Context, dataset string, cursor SyncCursor, skip int) (PageResult, error) {
-	if cursor.LastBridgeModificationTimestamp == nil {
+	if cursor.LastModificationTimestamp == nil {
 		return PageResult{ReplicationComplete: true}, nil
 	}
 
@@ -80,33 +84,47 @@ func (s *BridgeSync) FetchIncrementalPage(ctx context.Context, dataset string, c
 		top = 200
 	}
 
-	ts := cursor.LastBridgeModificationTimestamp.UTC().Format("2006-01-02T15:04:05Z")
-	filterLiteral := "ModificationTimestamp gt datetime'" + ts + "'"
+	ts := cursor.LastModificationTimestamp.UTC().Format("2006-01-02T15:04:05Z")
+	odataField := mls.ModificationODataField(dataset)
+	filterLiteral := odataField + " gt datetime'" + ts + "'"
 	fetchURL := s.propertyCollectionURL(dataset)
 	query := url.Values{}
 	query.Set("$filter", filterLiteral)
-	query.Set("$orderby", "ModificationTimestamp asc")
+	query.Set("$orderby", odataField+" asc")
 	query.Set("$top", fmt.Sprintf("%d", top))
 	query.Set("$skip", fmt.Sprintf("%d", skip))
-	query.Set("$select", s.syncSelectList(dataset))
-	if !s.cfg.Bridge.SyncIncludeMedia {
-		query.Set("$unselect", "Media")
+	if s.cfg.Bridge.SyncFullProperty {
+		if !s.cfg.Bridge.SyncIncludeMedia {
+			query.Set("$unselect", "Media")
+		}
+	} else {
+		query.Set("$select", s.syncSelectList(dataset))
+		if !s.cfg.Bridge.SyncIncludeMedia {
+			query.Set("$unselect", "Media")
+		}
 	}
+	s.applySyncExpand(query)
 
-	result, err := s.fetchPage(ctx, fetchURL, query, false)
+	result, err := s.fetchPage(ctx, fetchURL, query, dataset, false)
 	if err != nil {
 		return result, err
 	}
-	if result.HTTPError && (result.HTTPStatus == 400 || result.HTTPStatus == 501) {
-		filterLiteral = "BridgeModificationTimestamp gt datetime'" + ts + "'"
+	if result.HTTPError && (result.HTTPStatus == 400 || result.HTTPStatus == 501) && odataField != "ModificationTimestamp" {
+		filterLiteral = "ModificationTimestamp gt datetime'" + ts + "'"
 		query.Set("$filter", filterLiteral)
-		query.Set("$orderby", "BridgeModificationTimestamp asc")
-		return s.fetchPage(ctx, fetchURL, query, false)
+		query.Set("$orderby", "ModificationTimestamp asc")
+		return s.fetchPage(ctx, fetchURL, query, dataset, false)
 	}
 	return result, nil
 }
 
-func (s *BridgeSync) fetchPage(ctx context.Context, fetchURL string, query url.Values, replication bool) (PageResult, error) {
+func (s *BridgeSync) applySyncExpand(query url.Values) {
+	if expand := strings.TrimSpace(s.cfg.MLS.SyncExpand); expand != "" {
+		query.Set("$expand", expand)
+	}
+}
+
+func (s *BridgeSync) fetchPage(ctx context.Context, fetchURL string, query url.Values, dataset string, replication bool) (PageResult, error) {
 	if s.cfg.Bridge.APIKey == "" {
 		return PageResult{}, fmt.Errorf("BRIDGE_API_KEY is not configured")
 	}
@@ -166,7 +184,7 @@ func (s *BridgeSync) fetchPage(ctx context.Context, fetchURL string, query url.V
 	}
 
 	result.Rows = rows
-	result.MaxBridgeTs = maxBridgeTimestampFromRows(rows)
+	result.MaxModificationTs = maxModificationTimestampFromRows(dataset, rows)
 	next := extractNextURL(resp.Header.Get("Link"), body)
 	result.NextReplicationURL = next
 
@@ -214,17 +232,26 @@ func (s *BridgeSync) propertyReplicationURL(dataset string) string {
 
 func (s *BridgeSync) replicationSelectList(dataset string) string {
 	fields := strings.Split(s.syncSelectList(dataset), ",")
-	hasMedia := false
-	for _, f := range fields {
-		if strings.TrimSpace(f) == "Media" {
-			hasMedia = true
-			break
+	seen := make(map[string]struct{}, len(fields)+4)
+	out := make([]string, 0, len(fields)+4)
+	appendField := func(f string) {
+		f = strings.TrimSpace(f)
+		if f == "" {
+			return
 		}
+		if _, ok := seen[f]; ok {
+			return
+		}
+		seen[f] = struct{}{}
+		out = append(out, f)
 	}
-	if !hasMedia {
-		fields = append(fields, "Media")
+	for _, f := range fields {
+		appendField(f)
 	}
-	return strings.Join(fields, ",")
+	for _, key := range mls.ParseExpandKeys(s.cfg.MLS.SyncExpand) {
+		appendField(key)
+	}
+	return strings.Join(out, ",")
 }
 
 func (s *BridgeSync) syncSelectList(dataset string) string {
@@ -286,42 +313,22 @@ func extractNextURL(linkHeader string, body []byte) *string {
 	return nil
 }
 
-func maxBridgeTimestampFromRows(rows []json.RawMessage) *time.Time {
+func maxModificationTimestampFromRows(dataset string, rows []json.RawMessage) *time.Time {
 	var max *time.Time
 	for _, raw := range rows {
 		var m map[string]any
 		if err := json.Unmarshal(raw, &m); err != nil {
 			continue
 		}
-		for _, key := range []string{"ModificationTimestamp", "BridgeModificationTimestamp"} {
-			ts := parseBridgeTime(m[key])
-			if ts == nil {
-				continue
-			}
-			if max == nil || ts.After(*max) {
-				t := *ts
-				max = &t
-			}
+		ts := mls.MaxModificationFromRow(dataset, m)
+		if ts == nil {
+			continue
+		}
+		if max == nil || ts.After(*max) {
+			t := *ts
+			max = &t
 		}
 	}
 	return max
 }
 
-func parseBridgeTime(v any) *time.Time {
-	s, ok := v.(string)
-	if !ok || strings.TrimSpace(s) == "" {
-		return nil
-	}
-	layouts := []string{
-		time.RFC3339Nano,
-		time.RFC3339,
-		"2006-01-02T15:04:05Z",
-		"2006-01-02T15:04:05.999Z",
-	}
-	for _, layout := range layouts {
-		if t, err := time.Parse(layout, s); err == nil {
-			return &t
-		}
-	}
-	return nil
-}

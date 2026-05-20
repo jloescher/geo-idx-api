@@ -35,7 +35,7 @@ func NewSparkWorker(cfg config.Config, db *repository.DB, q *queue.Client, logge
 		db:      db,
 		queue:   q,
 		store:   NewReplicaPageStore(db, cfg),
-		mirror:  NewListingMirrorWriter(db, upsertChunk),
+		mirror:  NewListingMirrorWriter(db, upsertChunk, cfg.MLS.SyncExpand),
 		sync:    NewSparkSync(cfg, db),
 		cursors: NewCursorStore(db),
 		logger:  logger,
@@ -119,7 +119,7 @@ func (w *SparkWorker) continuationPlan(args fetchPageArgs, result PageResult) (C
 		patch.ApplyReplicationState = true
 		patch.ReplicationNextURL = result.NextReplicationURL
 		patch.ReplicationInProgress = &inProgress
-		patch.MaxBridgeTs = result.MaxBridgeTs
+		patch.MaxModificationTs = result.MaxModificationTs
 
 		if !result.ReplicationComplete && result.NextReplicationURL != nil && *result.NextReplicationURL != "" {
 			mode := "replication"
@@ -129,11 +129,11 @@ func (w *SparkWorker) continuationPlan(args fetchPageArgs, result PageResult) (C
 				ChainDepth: args.ChainDepth + 1,
 			}
 		}
-		dispatchInc := result.ReplicationComplete && result.MaxBridgeTs != nil
+		dispatchInc := result.ReplicationComplete && result.MaxModificationTs != nil
 		return patch, dispatchInc, nil
 	}
 
-	patch.MaxBridgeTs = result.MaxBridgeTs
+	patch.MaxModificationTs = result.MaxModificationTs
 	patch.MarkSyncFinished = !result.IncrementalHasMore
 	if result.IncrementalWindowEnd != nil {
 		patch.IncrementalWindowEnd = result.IncrementalWindowEnd
@@ -234,9 +234,9 @@ func (w *SparkWorker) buildFinalizeArgs(
 		args.ReplicationNextURL = patch.ReplicationNextURL
 		args.ReplicationInProgress = patch.ReplicationInProgress
 	}
-	if patch.MaxBridgeTs != nil {
-		s := patch.MaxBridgeTs.UTC().Format(time.RFC3339)
-		args.MaxBridgeTs = &s
+	if patch.MaxModificationTs != nil {
+		s := patch.MaxModificationTs.UTC().Format(time.RFC3339)
+		args.MaxModificationTs = &s
 	}
 	if patch.IncrementalWindowEnd != nil {
 		s := patch.IncrementalWindowEnd.UTC().Format(time.RFC3339)
@@ -291,16 +291,16 @@ func (w *SparkWorker) PersistFinalize(ctx context.Context, job *queue.ReservedJo
 		return err
 	}
 
-	if args.ApplyReplicationState || args.MaxBridgeTs != nil || args.IncrementalWindowEnd != nil || args.MarkSyncFinished || args.ReplicationInProgress != nil {
+	if args.ApplyReplicationState || args.MaxModificationTs != nil || args.IncrementalWindowEnd != nil || args.MarkSyncFinished || args.ReplicationInProgress != nil {
 		patch := CursorPatch{
 			ApplyReplicationState: args.ApplyReplicationState,
 			ReplicationNextURL:    args.ReplicationNextURL,
 			ReplicationInProgress: args.ReplicationInProgress,
 			MarkSyncFinished:      args.MarkSyncFinished,
 		}
-		if args.MaxBridgeTs != nil {
-			if t, err := time.Parse(time.RFC3339, *args.MaxBridgeTs); err == nil {
-				patch.MaxBridgeTs = &t
+		if args.MaxModificationTs != nil {
+			if t, err := time.Parse(time.RFC3339, *args.MaxModificationTs); err == nil {
+				patch.MaxModificationTs = &t
 			}
 		}
 		if args.IncrementalWindowEnd != nil {

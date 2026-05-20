@@ -39,7 +39,10 @@ func TestSparkSync_FetchReplicationPageFromFixture(t *testing.T) {
 		},
 	}
 
-	syncer := NewSparkSync(cfg, nil)
+	syncer := NewSparkSync(config.Config{
+		Spark: cfg.Spark,
+		MLS:   config.MLSConfig{LocalMirrorRollingMonths: 0},
+	}, nil)
 	result, err := syncer.FetchReplicationPage(t.Context(), SyncCursor{})
 	if err != nil {
 		t.Fatal(err)
@@ -100,10 +103,11 @@ func TestSparkSync_FetchIncrementalPageBuildsWindowFilter(t *testing.T) {
 			ReplicationReso:    "Reso/OData",
 			SyncIncrementalTop: 100,
 		},
+		MLS: config.MLSConfig{LocalMirrorRollingMonths: 0},
 	}
 	syncer := NewSparkSync(cfg, nil)
 	_, err := syncer.FetchIncrementalPage(t.Context(), SyncCursor{
-		LastBridgeModificationTimestamp: &lower,
+		LastModificationTimestamp: &lower,
 		IncrementalWindowEnd:            &upper,
 	}, 0)
 	if err != nil {

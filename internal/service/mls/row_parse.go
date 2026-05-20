@@ -183,39 +183,6 @@ func specialListingConditions(row map[string]any) json.RawMessage {
 	}
 }
 
-func extractBridgeCustomFields(row map[string]any, datasetUpper string) json.RawMessage {
-	prefix := strings.ToUpper(datasetUpper) + "_"
-	out := make(map[string]any)
-	for k, v := range row {
-		if strings.HasPrefix(strings.ToUpper(k), prefix) {
-			out[k] = v
-		}
-	}
-	b, _ := json.Marshal(out)
-	return b
-}
-
-func extractSparkCustomFields(row map[string]any) json.RawMessage {
-	standard := standardResoFieldNames()
-	skip := map[string]struct{}{
-		"Media": {}, "Room": {}, "Unit": {}, "OpenHouse": {}, "@odata.id": {},
-	}
-	out := make(map[string]any)
-	for k, v := range row {
-		if _, isStd := standard[k]; isStd {
-			continue
-		}
-		if _, skipK := skip[k]; skipK {
-			continue
-		}
-		if strings.Contains(k, "_sp_") || strings.Contains(k, "_co_") {
-			out[k] = v
-		}
-	}
-	b, _ := json.Marshal(out)
-	return b
-}
-
 func standardResoFieldNames() map[string]struct{} {
 	names := []string{
 		"ListingKey", "ListingId", "StandardStatus", "ListPrice", "ClosePrice", "PreviousListPrice",

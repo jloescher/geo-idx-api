@@ -20,7 +20,7 @@ func NewPostgisSearch(db *repository.DB) *PostgisSearch {
 	return &PostgisSearch{db: db}
 }
 
-func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchRequest) (SearchResult, error) {
+func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchRequest, rollingMonths int) (SearchResult, error) {
 	dataset := strings.TrimPrefix(feedCode, "bridge_")
 	dataset = strings.TrimPrefix(dataset, "spark_")
 	limit := req.Limit
@@ -33,7 +33,7 @@ func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchR
 	}
 
 	q := `
-		SELECT raw_data, media FROM listings
+		SELECT raw_data, media, unit, room, open_house, custom_fields FROM listings
 		WHERE dataset_slug = $1
 		  AND LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
 	`
@@ -56,6 +56,11 @@ func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchR
 	}
 	if req.LowRiskFloodzone != nil && *req.LowRiskFloodzone {
 		q += " AND low_risk_flood_zone_yn = TRUE"
+	}
+	if rollingMonths > 0 {
+		q += fmt.Sprintf(" AND modification_timestamp >= $%d", n)
+		args = append(args, RollingWindowCutoff(rollingMonths))
+		n++
 	}
 	if req.MinMonthlyFees != nil {
 		q += fmt.Sprintf(" AND estimated_total_monthly_fees >= $%d", n)
@@ -88,15 +93,24 @@ func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchR
 
 	var results []json.RawMessage
 	for rows.Next() {
-		var raw []byte
-		var media []byte
-		if err := rows.Scan(&raw, &media); err != nil {
+		var raw, media, unit, room, openHouse, custom []byte
+		if err := rows.Scan(&raw, &media, &unit, &room, &openHouse, &custom); err != nil {
 			return SearchResult{}, err
 		}
-		if len(raw) == 0 && len(media) == 0 {
+		if len(raw) == 0 && len(media) == 0 && len(unit) == 0 && len(room) == 0 && len(openHouse) == 0 && len(custom) == 0 {
 			continue
 		}
-		merged := mls.MergeListingJSON(json.RawMessage(raw), json.RawMessage(media))
+		payloads := mls.ExpandedPayload{
+			Media:        json.RawMessage(media),
+			Unit:         json.RawMessage(unit),
+			Room:         json.RawMessage(room),
+			OpenHouse:    json.RawMessage(openHouse),
+			HasMedia:     len(media) > 0,
+			HasUnit:      len(unit) > 0,
+			HasRoom:      len(room) > 0,
+			HasOpenHouse: len(openHouse) > 0,
+		}
+		merged := mls.MergeMirrorListing(json.RawMessage(raw), payloads, json.RawMessage(custom))
 		results = append(results, merged)
 	}
 	hasMore := len(results) > limit

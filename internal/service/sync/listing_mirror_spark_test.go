@@ -30,7 +30,7 @@ func TestHydrateReplicaBatchSparkMapsFloodAndFees(t *testing.T) {
 	}
 
 	resolver := mls.NewResoFieldResolver()
-	rec, action := mls.BuildListingRecord("beaches", mls.MirrorProviderSpark, row, doc.Value[0], resolver)
+	rec, action := mls.BuildListingRecord("beaches", mls.MirrorProviderSpark, row, doc.Value[0], resolver, nil)
 	if action != mls.RowActionUpsert {
 		t.Fatalf("action %s", action)
 	}
@@ -47,7 +47,7 @@ func TestHydrateReplicaBatchSparkMapsFloodAndFees(t *testing.T) {
 		if m[mls.BeachesSparkFloodZoneField] == nil {
 			continue
 		}
-		rec, action = mls.BuildListingRecord("beaches", mls.MirrorProviderSpark, m, r, resolver)
+		rec, action = mls.BuildListingRecord("beaches", mls.MirrorProviderSpark, m, r, resolver, nil)
 		if action != mls.RowActionUpsert || rec.FloodZoneCode == nil {
 			t.Fatalf("flood row: action=%s flood=%v", action, rec.FloodZoneCode)
 		}

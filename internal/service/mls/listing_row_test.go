@@ -41,7 +41,7 @@ func loadFixtureListing(t *testing.T, path string, index int) (map[string]any, j
 func TestBuildListingRecordStellarFixture(t *testing.T) {
 	row, raw := loadFixtureListing(t, fixturePath("bridge_interactive/stellar_50_listings.json"), 0)
 	resolver := mls.NewResoFieldResolver()
-	rec, action := mls.BuildListingRecord("stellar", mls.MirrorProviderBridge, row, raw, resolver)
+	rec, action := mls.BuildListingRecord("stellar", mls.MirrorProviderBridge, row, raw, resolver, nil)
 	if action != mls.RowActionUpsert {
 		t.Fatalf("action %s", action)
 	}
@@ -76,7 +76,7 @@ func TestBuildListingRecordBeachesFloodZone(t *testing.T) {
 		if stringValue(row[mls.BeachesSparkFloodZoneField]) == "" {
 			continue
 		}
-		rec, action := mls.BuildListingRecord("beaches", mls.MirrorProviderSpark, row, raw, resolver)
+		rec, action := mls.BuildListingRecord("beaches", mls.MirrorProviderSpark, row, raw, resolver, nil)
 		if action != mls.RowActionUpsert {
 			t.Fatalf("index %d action %s", i, action)
 		}
@@ -104,7 +104,7 @@ func stringValue(v any) string {
 func TestBuildListingRecordBeachesFees(t *testing.T) {
 	row, raw := loadFixtureListing(t, fixturePath("spark/beaches_50_listings.json"), 0)
 	resolver := mls.NewResoFieldResolver()
-	rec, action := mls.BuildListingRecord("beaches", mls.MirrorProviderSpark, row, raw, resolver)
+	rec, action := mls.BuildListingRecord("beaches", mls.MirrorProviderSpark, row, raw, resolver, nil)
 	if action != mls.RowActionUpsert {
 		t.Fatalf("action %s", action)
 	}
@@ -125,7 +125,7 @@ func TestBuildListingRecordClosedDeletes(t *testing.T) {
 		"StandardStatus": "Closed",
 	}
 	raw, _ := json.Marshal(row)
-	rec, action := mls.BuildListingRecord("stellar", mls.MirrorProviderBridge, row, raw, mls.NewResoFieldResolver())
+	rec, action := mls.BuildListingRecord("stellar", mls.MirrorProviderBridge, row, raw, mls.NewResoFieldResolver(), nil)
 	if action != mls.RowActionDelete {
 		t.Fatalf("action %s", action)
 	}
@@ -144,7 +144,7 @@ func TestBuildListingRecordCoordinatesGeoJSON(t *testing.T) {
 		},
 	}
 	raw, _ := json.Marshal(row)
-	rec, action := mls.BuildListingRecord("stellar", mls.MirrorProviderBridge, row, raw, mls.NewResoFieldResolver())
+	rec, action := mls.BuildListingRecord("stellar", mls.MirrorProviderBridge, row, raw, mls.NewResoFieldResolver(), nil)
 	if action != mls.RowActionUpsert {
 		t.Fatalf("action %s", action)
 	}

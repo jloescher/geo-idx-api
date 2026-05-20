@@ -43,16 +43,16 @@ func TestMergeCursorPatch_applyReplicationStateClearsNextURL(t *testing.T) {
 	}
 }
 
-func TestMergeCursorPatch_maxBridgeTsMonotonic(t *testing.T) {
+func TestMergeCursorPatch_maxModificationTsMonotonic(t *testing.T) {
 	older := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	newer := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
-	c := SyncCursor{LastBridgeModificationTimestamp: &newer}
-	merged := mergeCursorPatch(c, CursorPatch{MaxBridgeTs: &older}, time.Now())
-	if !merged.LastBridgeModificationTimestamp.Equal(newer) {
+	c := SyncCursor{LastModificationTimestamp: &newer}
+	merged := mergeCursorPatch(c, CursorPatch{MaxModificationTs: &older}, time.Now())
+	if !merged.LastModificationTimestamp.Equal(newer) {
 		t.Fatal("expected max timestamp to remain newer value")
 	}
-	merged = mergeCursorPatch(c, CursorPatch{MaxBridgeTs: &newer}, time.Now())
-	if merged.LastBridgeModificationTimestamp == nil || !merged.LastBridgeModificationTimestamp.Equal(newer) {
+	merged = mergeCursorPatch(c, CursorPatch{MaxModificationTs: &newer}, time.Now())
+	if merged.LastModificationTimestamp == nil || !merged.LastModificationTimestamp.Equal(newer) {
 		t.Fatal("expected max timestamp updated to newer")
 	}
 }

@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"net/url"
 	"testing"
 
 	"github.com/quantyralabs/idx-api/internal/config"
@@ -19,6 +20,17 @@ func TestBridgePropertyReplicationURL(t *testing.T) {
 	want := "https://api.bridgedataoutput.com/api/v2/OData/stellar/Property/replication"
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestBridgeReplicationQuerySetsExpand(t *testing.T) {
+	s := NewBridgeSync(config.Config{
+		MLS: config.MLSConfig{SyncExpand: "Media,Unit,Room,OpenHouse"},
+	}, nil)
+	q := url.Values{}
+	s.applySyncExpand(q)
+	if q.Get("$expand") != "Media,Unit,Room,OpenHouse" {
+		t.Fatalf("expand = %q", q.Get("$expand"))
 	}
 }
 

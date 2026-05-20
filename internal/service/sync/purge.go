@@ -8,7 +8,8 @@ import (
 	"github.com/quantyralabs/idx-api/internal/repository"
 )
 
-// PurgeClosed removes closed listings outside rolling window from mirror.
+// PurgeClosed removes Closed listings from the mirror and, when a rolling window is configured,
+// Active/Pending rows older than the window.
 type PurgeClosed struct {
 	cfg config.Config
 	db  *repository.DB
@@ -19,10 +20,24 @@ func NewPurgeClosed(cfg config.Config, db *repository.DB) *PurgeClosed {
 }
 
 func (p *PurgeClosed) Run(ctx context.Context) error {
-	cutoff := time.Now().AddDate(0, -p.cfg.MLS.LocalMirrorRollingMonths, 0)
+	months := p.cfg.MLS.LocalMirrorRollingMonths
+	if months <= 0 {
+		_, err := p.db.Pool.Exec(ctx, `
+			DELETE FROM listings
+			WHERE LOWER(TRIM(COALESCE(standard_status, ''))) = 'closed'
+		`)
+		return err
+	}
+
+	cutoff := time.Now().UTC().AddDate(0, -months, 0)
 	_, err := p.db.Pool.Exec(ctx, `
 		DELETE FROM listings
 		WHERE LOWER(TRIM(COALESCE(standard_status, ''))) = 'closed'
+		   OR (
+		     LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
+		     AND modification_timestamp IS NOT NULL
+		     AND modification_timestamp < $1
+		   )
 		   OR (close_date IS NOT NULL AND close_date < $1::date)
 	`, cutoff)
 	return err

@@ -1,7 +1,8 @@
 -- +goose Up
 -- Consolidated schema (fresh DB only): core IDX tables, PostGIS listings mirror,
--- listing_sync_cursors, replica_pages (fetch_url/upstream_url/odata_query/batch_id),
--- listings.media (RESO Media[] split from raw_data). No Telescope/Pulse.
+-- listing_sync_cursors (last_modification_timestamp), replica_pages,
+-- listings payload split (raw_data + media/unit/room/open_house JSONB + custom_fields overflow),
+-- single modification_timestamp per row (dataset_slug resolves upstream field at sync). No Telescope/Pulse.
 
 CREATE EXTENSION IF NOT EXISTS postgis;
 
@@ -230,7 +231,6 @@ CREATE TABLE listings (
     on_market_date DATE NULL,
     close_date DATE NULL,
     modification_timestamp TIMESTAMPTZ NULL,
-    bridge_modification_timestamp TIMESTAMPTZ NULL,
     price_change_timestamp TIMESTAMPTZ NULL,
     previous_list_price NUMERIC(14, 2) NULL,
     flood_zone_code VARCHAR(80) NULL,
@@ -253,7 +253,10 @@ CREATE TABLE listings (
     high_school VARCHAR(160) NULL,
     special_listing_conditions JSONB NULL,
     raw_data JSONB NULL,
-    media JSONB NULL, -- RESO Media[] (Bridge $select / Spark $expand); omitted from raw_data at persist
+    media JSONB NULL,
+    unit JSONB NULL,
+    room JSONB NULL,
+    open_house JSONB NULL,
     custom_fields JSONB NULL,
     coordinates geography(Point, 4326) NULL,
     street_number VARCHAR(40) NULL,
@@ -283,7 +286,7 @@ CREATE INDEX listings_ap_low_risk_flood_idx ON listings (dataset_slug, low_risk_
 
 CREATE TABLE listing_sync_cursors (
     dataset_slug VARCHAR(64) PRIMARY KEY,
-    last_bridge_modification_timestamp TIMESTAMPTZ NULL,
+    last_modification_timestamp TIMESTAMPTZ NULL,
     incremental_window_end TIMESTAMPTZ NULL,
     replication_next_url TEXT NULL,
     replication_in_progress BOOLEAN NOT NULL DEFAULT FALSE,

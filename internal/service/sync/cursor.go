@@ -9,12 +9,12 @@ import (
 
 // SyncCursor tracks replication/incremental state per dataset (listing_sync_cursors).
 type SyncCursor struct {
-	DatasetSlug                     string
-	LastBridgeModificationTimestamp *time.Time
-	IncrementalWindowEnd            *time.Time
-	ReplicationNextURL              *string
-	ReplicationInProgress           bool
-	LastSyncFinishedAt              *time.Time
+	DatasetSlug               string
+	LastModificationTimestamp *time.Time
+	IncrementalWindowEnd      *time.Time
+	ReplicationNextURL        *string
+	ReplicationInProgress     bool
+	LastSyncFinishedAt        *time.Time
 }
 
 // CursorPatch updates cursor fields after a fetch/persist cycle.
@@ -22,7 +22,7 @@ type CursorPatch struct {
 	ApplyReplicationState bool
 	ReplicationNextURL    *string
 	ReplicationInProgress *bool
-	MaxBridgeTs           *time.Time
+	MaxModificationTs     *time.Time
 	IncrementalWindowEnd  *time.Time
 	MarkSyncFinished      bool
 }
@@ -43,11 +43,11 @@ func (s *CursorStore) ForDataset(ctx context.Context, dataset string) (SyncCurso
 		INSERT INTO listing_sync_cursors (dataset_slug, replication_in_progress, created_at, updated_at)
 		VALUES ($1, FALSE, NOW(), NOW())
 		ON CONFLICT (dataset_slug) DO UPDATE SET updated_at = listing_sync_cursors.updated_at
-		RETURNING dataset_slug, last_bridge_modification_timestamp, incremental_window_end,
+		RETURNING dataset_slug, last_modification_timestamp, incremental_window_end,
 			replication_next_url, replication_in_progress, last_sync_finished_at
 	`, dataset).Scan(
 		&c.DatasetSlug,
-		&c.LastBridgeModificationTimestamp,
+		&c.LastModificationTimestamp,
 		&c.IncrementalWindowEnd,
 		&c.ReplicationNextURL,
 		&c.ReplicationInProgress,
@@ -82,7 +82,7 @@ func (s *CursorStore) ShouldRunIncremental(c SyncCursor) bool {
 	if c.ReplicationInProgress {
 		return false
 	}
-	return c.LastBridgeModificationTimestamp != nil
+	return c.LastModificationTimestamp != nil
 }
 
 // mergeCursorPatch computes the row state after applying a patch (used by ApplyPatch and tests).
@@ -97,10 +97,10 @@ func mergeCursorPatch(c SyncCursor, patch CursorPatch, now time.Time) SyncCursor
 	if patch.IncrementalWindowEnd != nil {
 		out.IncrementalWindowEnd = patch.IncrementalWindowEnd
 	}
-	if patch.MaxBridgeTs != nil {
-		if out.LastBridgeModificationTimestamp == nil || patch.MaxBridgeTs.After(*out.LastBridgeModificationTimestamp) {
-			t := *patch.MaxBridgeTs
-			out.LastBridgeModificationTimestamp = &t
+	if patch.MaxModificationTs != nil {
+		if out.LastModificationTimestamp == nil || patch.MaxModificationTs.After(*out.LastModificationTimestamp) {
+			t := *patch.MaxModificationTs
+			out.LastModificationTimestamp = &t
 		}
 	}
 	if patch.MarkSyncFinished {
@@ -120,7 +120,7 @@ func (s *CursorStore) ApplyPatch(ctx context.Context, dataset string, patch Curs
 
 	_, err = s.db.Pool.Exec(ctx, `
 		UPDATE listing_sync_cursors SET
-			last_bridge_modification_timestamp = $2,
+			last_modification_timestamp = $2,
 			incremental_window_end = $3,
 			replication_next_url = $4,
 			replication_in_progress = $5,
@@ -128,7 +128,7 @@ func (s *CursorStore) ApplyPatch(ctx context.Context, dataset string, patch Curs
 			updated_at = NOW()
 		WHERE dataset_slug = $1
 	`, dataset,
-		merged.LastBridgeModificationTimestamp,
+		merged.LastModificationTimestamp,
 		merged.IncrementalWindowEnd,
 		merged.ReplicationNextURL,
 		merged.ReplicationInProgress,
