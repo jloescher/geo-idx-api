@@ -80,6 +80,7 @@ type BridgeConfig struct {
 	SyncIncrementalTop  int
 	SyncIncludeMedia    bool
 	SyncFullProperty    bool
+	SyncExpand          string
 	SyncMaxChainedFetch int
 	ImageRewriteHosts   []string
 }
@@ -208,6 +209,7 @@ func Load() (Config, error) {
 			SyncIncrementalTop:  envInt("BRIDGE_SYNC_INCREMENTAL_TOP", 200),
 			SyncIncludeMedia:    envBool("BRIDGE_SYNC_INCLUDE_MEDIA", true),
 			SyncFullProperty:    envBool("BRIDGE_SYNC_FULL_PROPERTY", true),
+			SyncExpand:          envBridgeSyncExpand(),
 			SyncMaxChainedFetch: envInt("BRIDGE_SYNC_MAX_CHAINED_FETCH_PAGES", 0),
 			ImageRewriteHosts:   splitCSV(env("BRIDGE_IMAGE_REWRITE_HOSTS", "")),
 		},
@@ -394,12 +396,20 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
-// envSyncExpand is the shared OData $expand list for Bridge and Spark replication (MLS_SYNC_EXPAND).
+// envSyncExpand is the OData $expand list for Spark replication (MLS_SYNC_EXPAND).
 func envSyncExpand() string {
 	return firstNonEmpty(
 		env("MLS_SYNC_EXPAND", ""),
-		env("BRIDGE_SYNC_EXPAND", ""),
 		env("SPARK_SYNC_EXPAND", ""),
 		"Media,Unit,Room,OpenHouse",
+	)
+}
+
+// envBridgeSyncExpand is the OData $expand list for Bridge (Stellar navigation property names).
+func envBridgeSyncExpand() string {
+	return firstNonEmpty(
+		env("BRIDGE_SYNC_EXPAND", ""),
+		env("MLS_SYNC_EXPAND", ""),
+		"Media,OpenHouses,Rooms,UnitTypes",
 	)
 }

@@ -55,8 +55,39 @@ func ExtractJSONBField(row map[string]any, key string) (json.RawMessage, bool) {
 	return b, true
 }
 
+// NormalizeBridgeExpandKeys maps Bridge Stellar navigation names to canonical JSONB keys.
+// Bridge metadata uses Rooms, UnitTypes, OpenHouses (not Spark's Room, Unit, OpenHouse).
+func NormalizeBridgeExpandKeys(row map[string]any) {
+	aliases := []struct{ bridge, canonical string }{
+		{"Rooms", "Room"},
+		{"UnitTypes", "Unit"},
+		{"OpenHouses", "OpenHouse"},
+	}
+	for _, a := range aliases {
+		if v, ok := row[a.bridge]; ok {
+			if _, has := row[a.canonical]; !has {
+				row[a.canonical] = v
+			}
+		}
+	}
+}
+
+// StripKeysForProvider returns raw_data keys to remove after payload split.
+func StripKeysForProvider(provider MirrorProvider, expandKeys []string) []string {
+	keys := append([]string(nil), expandKeys...)
+	if provider == MirrorProviderBridge {
+		for _, extra := range []string{"Rooms", "UnitTypes", "OpenHouses"} {
+			keys = append(keys, extra)
+		}
+	}
+	return keys
+}
+
 // ExtractExpandedPayloads reads all configured expand keys from the row.
-func ExtractExpandedPayloads(row map[string]any, expandKeys []string) ExpandedPayload {
+func ExtractExpandedPayloads(row map[string]any, provider MirrorProvider, expandKeys []string) ExpandedPayload {
+	if provider == MirrorProviderBridge {
+		NormalizeBridgeExpandKeys(row)
+	}
 	var p ExpandedPayload
 	for _, key := range expandKeys {
 		val, ok := ExtractJSONBField(row, key)
@@ -72,6 +103,24 @@ func ExtractExpandedPayloads(row map[string]any, expandKeys []string) ExpandedPa
 			p.Room, p.HasRoom = val, true
 		case "OpenHouse":
 			p.OpenHouse, p.HasOpenHouse = val, true
+		}
+	}
+	// Bridge $expand uses OpenHouses, Rooms, UnitTypes — map after canonical normalization.
+	if provider == MirrorProviderBridge {
+		if !p.HasRoom {
+			if val, ok := ExtractJSONBField(row, "Rooms"); ok {
+				p.Room, p.HasRoom = val, true
+			}
+		}
+		if !p.HasUnit {
+			if val, ok := ExtractJSONBField(row, "UnitTypes"); ok {
+				p.Unit, p.HasUnit = val, true
+			}
+		}
+		if !p.HasOpenHouse {
+			if val, ok := ExtractJSONBField(row, "OpenHouses"); ok {
+				p.OpenHouse, p.HasOpenHouse = val, true
+			}
 		}
 	}
 	return p
@@ -103,11 +152,19 @@ func StripJSONBKeysFromRaw(raw json.RawMessage, keys []string) json.RawMessage {
 	return b
 }
 
+// PersistExpandKeys returns expand key names used to split payloads for a provider.
+func PersistExpandKeys(provider MirrorProvider, sparkExpand, bridgeExpand string) []string {
+	if provider == MirrorProviderSpark {
+		return ParseExpandKeys(sparkExpand)
+	}
+	return ParseExpandKeys(bridgeExpand)
+}
+
 // BuildCustomFields collects unmapped RESO keys not stored in typed columns or expanded JSONB.
-func BuildCustomFields(row map[string]any, expandKeys []string) json.RawMessage {
+func BuildCustomFields(row map[string]any, provider MirrorProvider, expandKeys []string) json.RawMessage {
 	mapped := mappedScalarFieldNames()
-	expandSet := make(map[string]struct{}, len(expandKeys))
-	for _, k := range expandKeys {
+	expandSet := make(map[string]struct{}, len(expandKeys)+4)
+	for _, k := range StripKeysForProvider(provider, expandKeys) {
 		expandSet[k] = struct{}{}
 	}
 

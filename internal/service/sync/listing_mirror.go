@@ -27,22 +27,28 @@ type coordPair struct {
 
 // ListingMirrorWriter upserts rows into listings mirror with PostGIS coordinates.
 type ListingMirrorWriter struct {
-	db          *repository.DB
-	resolver    *mls.ResoFieldResolver
-	upsertChunk int
-	expandKeys  []string
+	db           *repository.DB
+	resolver     *mls.ResoFieldResolver
+	upsertChunk  int
+	sparkExpand  string
+	bridgeExpand string
 }
 
-func NewListingMirrorWriter(db *repository.DB, upsertChunk int, syncExpand string) *ListingMirrorWriter {
+func NewListingMirrorWriter(db *repository.DB, upsertChunk int, sparkExpand, bridgeExpand string) *ListingMirrorWriter {
 	if upsertChunk <= 0 {
 		upsertChunk = 250
 	}
 	return &ListingMirrorWriter{
-		db:          db,
-		resolver:    mls.NewResoFieldResolver(),
-		upsertChunk: upsertChunk,
-		expandKeys:  mls.ParseExpandKeys(syncExpand),
+		db:           db,
+		resolver:     mls.NewResoFieldResolver(),
+		upsertChunk:  upsertChunk,
+		sparkExpand:  sparkExpand,
+		bridgeExpand: bridgeExpand,
 	}
+}
+
+func (w *ListingMirrorWriter) expandKeys(provider mls.MirrorProvider) []string {
+	return mls.PersistExpandKeys(provider, w.sparkExpand, w.bridgeExpand)
 }
 
 // HydrateReplicaBatch maps RESO rows to indexed listings columns (Active/Pending upsert; others delete).
@@ -96,7 +102,7 @@ func (w *ListingMirrorWriter) HydrateReplicaBatch(
 			continue
 		}
 
-		rec, action := mls.BuildListingRecord(replicationDataset, provider, row, raw, w.resolver, w.expandKeys)
+		rec, action := mls.BuildListingRecord(replicationDataset, provider, row, raw, w.resolver, w.expandKeys(provider))
 		switch action {
 		case mls.RowActionSkip:
 			stats.Skipped++

@@ -119,7 +119,11 @@ func (s *BridgeSync) FetchIncrementalPage(ctx context.Context, dataset string, c
 }
 
 func (s *BridgeSync) applySyncExpand(query url.Values) {
-	if expand := strings.TrimSpace(s.cfg.MLS.SyncExpand); expand != "" {
+	// Bridge returns Media inline on Property when fetching the full resource (reso_web_api.md).
+	if s.cfg.Bridge.SyncFullProperty {
+		return
+	}
+	if expand := strings.TrimSpace(s.cfg.Bridge.SyncExpand); expand != "" {
 		query.Set("$expand", expand)
 	}
 }
@@ -248,7 +252,7 @@ func (s *BridgeSync) replicationSelectList(dataset string) string {
 	for _, f := range fields {
 		appendField(f)
 	}
-	for _, key := range mls.ParseExpandKeys(s.cfg.MLS.SyncExpand) {
+	for _, key := range mls.ParseExpandKeys(s.cfg.Bridge.SyncExpand) {
 		appendField(key)
 	}
 	return strings.Join(out, ",")

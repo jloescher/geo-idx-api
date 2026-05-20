@@ -30,6 +30,18 @@ func TestMergeMirrorListingFlatCustomFields(t *testing.T) {
 	}
 }
 
+func TestNormalizeBridgeExpandKeys(t *testing.T) {
+	row := map[string]any{
+		"Rooms":      []any{map[string]any{"RoomType": "Bedroom"}},
+		"UnitTypes":  []any{},
+		"OpenHouses": []any{},
+	}
+	NormalizeBridgeExpandKeys(row)
+	if row["Room"] == nil {
+		t.Fatal("expected Room alias from Rooms")
+	}
+}
+
 func TestBuildCustomFieldsIncludesUnmappedScalars(t *testing.T) {
 	row := map[string]any{
 		"ListingKey":     "k",
@@ -38,7 +50,7 @@ func TestBuildCustomFieldsIncludesUnmappedScalars(t *testing.T) {
 		"STELLAR_Foo":    "bar",
 		"Media":          []any{},
 	}
-	custom := BuildCustomFields(row, []string{"Media"})
+	custom := BuildCustomFields(row, MirrorProviderBridge, []string{"Media"})
 	var m map[string]any
 	if err := json.Unmarshal(custom, &m); err != nil {
 		t.Fatal(err)

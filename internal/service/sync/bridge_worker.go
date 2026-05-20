@@ -31,7 +31,7 @@ func NewBridgeWorker(cfg config.Config, db *repository.DB, q *queue.Client, logg
 		db:      db,
 		queue:   q,
 		store:   NewReplicaPageStore(db, cfg),
-		mirror:  NewListingMirrorWriter(db, cfg.Bridge.SyncUpsertChunk, cfg.MLS.SyncExpand),
+		mirror:  NewListingMirrorWriter(db, cfg.Bridge.SyncUpsertChunk, cfg.MLS.SyncExpand, cfg.Bridge.SyncExpand),
 		sync:    NewBridgeSync(cfg, db),
 		cursors: NewCursorStore(db),
 		logger:  logger,

@@ -111,9 +111,9 @@ func BuildListingRecord(
 		expandKeys = ParseExpandKeys("")
 	}
 
-	payloads := ExtractExpandedPayloads(row, expandKeys)
-	storedRaw := StripJSONBKeysFromRaw(raw, expandKeys)
-	custom := BuildCustomFields(row, expandKeys)
+	payloads := ExtractExpandedPayloads(row, provider, expandKeys)
+	storedRaw := StripJSONBKeysFromRaw(raw, StripKeysForProvider(provider, expandKeys))
+	custom := BuildCustomFields(row, provider, expandKeys)
 
 	stdStatus := stringValue(row["StandardStatus"])
 	var stdPtr *string

@@ -21,7 +21,12 @@ func MirrorRollingCutoff(cfg config.Config) *time.Time {
 
 // BridgeReplicationFilter is the OData $filter for Bridge Property/replication seed pages.
 func BridgeReplicationFilter(cfg config.Config) string {
-	return replicationStatusFilter(cfg, bridgeRollingTimestampLiteral)
+	cutoff := MirrorRollingCutoff(cfg)
+	if cutoff == nil {
+		return activePendingStatusFilter
+	}
+	// Bridge recommends BridgeModificationTimestamp for incremental/replication windows.
+	return activePendingStatusFilter + " and BridgeModificationTimestamp gt " + bridgeRollingTimestampLiteral(*cutoff)
 }
 
 // SparkReplicationFilter is the OData $filter for Spark replication seed pages.

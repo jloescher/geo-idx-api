@@ -35,7 +35,7 @@ func NewSparkWorker(cfg config.Config, db *repository.DB, q *queue.Client, logge
 		db:      db,
 		queue:   q,
 		store:   NewReplicaPageStore(db, cfg),
-		mirror:  NewListingMirrorWriter(db, upsertChunk, cfg.MLS.SyncExpand),
+		mirror:  NewListingMirrorWriter(db, upsertChunk, cfg.MLS.SyncExpand, cfg.Bridge.SyncExpand),
 		sync:    NewSparkSync(cfg, db),
 		cursors: NewCursorStore(db),
 		logger:  logger,

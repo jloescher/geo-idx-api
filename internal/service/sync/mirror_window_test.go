@@ -21,7 +21,7 @@ func TestBridgeReplicationFilterRolling(t *testing.T) {
 	if !strings.Contains(got, activePendingStatusFilter) {
 		t.Fatalf("missing status filter: %q", got)
 	}
-	if !strings.Contains(got, "ModificationTimestamp gt datetime'") {
+	if !strings.Contains(got, "BridgeModificationTimestamp gt datetime'") {
 		t.Fatalf("missing rolling timestamp: %q", got)
 	}
 }

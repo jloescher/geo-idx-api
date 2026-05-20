@@ -23,13 +23,30 @@ func TestBridgePropertyReplicationURL(t *testing.T) {
 	}
 }
 
-func TestBridgeReplicationQuerySetsExpand(t *testing.T) {
+func TestBridgeReplicationSkipsExpandWhenFullProperty(t *testing.T) {
 	s := NewBridgeSync(config.Config{
-		MLS: config.MLSConfig{SyncExpand: "Media,Unit,Room,OpenHouse"},
+		Bridge: config.BridgeConfig{
+			SyncFullProperty: true,
+			SyncExpand:       "Media,OpenHouses,Rooms,UnitTypes",
+		},
 	}, nil)
 	q := url.Values{}
 	s.applySyncExpand(q)
-	if q.Get("$expand") != "Media,Unit,Room,OpenHouse" {
+	if q.Get("$expand") != "" {
+		t.Fatalf("full property should not set $expand, got %q", q.Get("$expand"))
+	}
+}
+
+func TestBridgeReplicationQuerySetsBridgeExpand(t *testing.T) {
+	s := NewBridgeSync(config.Config{
+		Bridge: config.BridgeConfig{
+			SyncFullProperty: false,
+			SyncExpand:       "Media,OpenHouses,Rooms,UnitTypes",
+		},
+	}, nil)
+	q := url.Values{}
+	s.applySyncExpand(q)
+	if q.Get("$expand") != "Media,OpenHouses,Rooms,UnitTypes" {
 		t.Fatalf("expand = %q", q.Get("$expand"))
 	}
 }
