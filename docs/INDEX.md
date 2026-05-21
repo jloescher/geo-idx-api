@@ -18,7 +18,7 @@ Central index for **idx-api** (Go 1.25+). Implementation lives in `cmd/` and `in
 | [Comps API](comps-api.md) | `POST /api/v1/comps/run` (BPO, home value, investor modes) |
 | [GIS API](gis-api.md) | Parcel/geometry proxy, teaser for `idx:access`-only PATs |
 | [Database migrations](database-migrations.md) | Goose SQL, PostGIS, schema inventory |
-| [Listings mirror](listings-mirror.md) | Payload split, `$expand`, hybrid search merge |
+| [Listings mirror](listings-mirror.md) | Payload split, `$expand`, replication kickoff gating, hybrid search merge |
 | [Deployment & operations](deployment-operations.md) | Docker, queues, scheduler leader lock, migrations |
 | [Coolify deployment](coolify-deployment.md) | Single-host and **multi-DC (NYC + ATL)** runbooks |
 | [README](../README.md) | Local dev, `make` targets, build & test |
@@ -46,7 +46,7 @@ Central index for **idx-api** (Go 1.25+). Implementation lives in `cmd/` and `in
 
 | Cron (approx.) | Queue job type | Purpose |
 |----------------|----------------|---------|
-| Every minute | `mls.replication_kickoff` | Bridge/Spark replication kickoff |
+| Every minute | `mls.replication_kickoff` on `sync-kickoff` | Bridge/Spark replication kickoff (deduped; see [listings-mirror](listings-mirror.md)) |
 | Every 15 min | `mls.proxy_cache_purge` | Purge expired `mls_search_cache` rows |
 | Every 10 min | `crypto.refresh_pricing` | CoinGecko snapshot refresh |
 | Daily 03:05 | `mls.purge_closed_listings` | Closed + rolling-window trim on `listings` |
@@ -65,7 +65,7 @@ export GOOSE_DBSTRING="postgres://..."
 make migrate
 make seed-admin
 make run-api          # :8000
-make run-worker       # WORKER_QUEUES in .env
+make run-worker       # WORKER_QUEUES (include sync-kickoff + fetch/persist queues)
 make run-scheduler
 go test ./...
 ```

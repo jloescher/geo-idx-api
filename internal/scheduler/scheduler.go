@@ -75,7 +75,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 func (s *Scheduler) runAsLeader(ctx context.Context) error {
 	s.addJob(ctx, "coingecko", "0 */10 * * * *", s.cfg.Coingecko.Queue, queue.TypeCryptoRefreshPricing)
 	s.addJob(ctx, "mls-proxy-cache-purge", "0 */15 * * * *", "default", queue.TypeMLSProxyCachePurge)
-	s.addJob(ctx, "mls-kickoff", "0 * * * * *", "default", queue.TypeMLSReplicationKickoff)
+	s.addJob(ctx, "mls-kickoff", "0 * * * * *", s.cfg.MLS.SyncKickoffQueue, queue.TypeMLSReplicationKickoff)
 	s.addJob(ctx, "purge-replica", "0 15 4 * * *", "default", queue.TypeMLSPurgeReplicaPages)
 	s.addJob(ctx, "purge-closed", "0 5 3 * * *", "default", queue.TypeMLSPurgeClosed)
 	s.addJob(ctx, "gis-probe", "0 30 6 * * 1", s.cfg.GIS.Queue, queue.TypeGISProbeSources)
@@ -87,7 +87,7 @@ func (s *Scheduler) runAsLeader(ctx context.Context) error {
 	)
 
 	// First tick is up to ~60s away; enqueue kickoff once so dev workers show activity immediately.
-	s.enqueue(ctx, "mls-kickoff-startup", "default", queue.TypeMLSReplicationKickoff, nil)
+	s.enqueue(ctx, "mls-kickoff-startup", s.cfg.MLS.SyncKickoffQueue, queue.TypeMLSReplicationKickoff, nil)
 
 	s.cron.Start()
 	<-ctx.Done()

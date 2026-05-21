@@ -54,7 +54,7 @@ services:
     environment:
       DB_HOST: postgres
       DB_PASSWORD: postgres
-      WORKER_QUEUES: default,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist
+      WORKER_QUEUES: default,sync-kickoff,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist
     depends_on:
       - api
 

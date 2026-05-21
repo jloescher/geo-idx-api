@@ -13,13 +13,17 @@ type HandlerFunc func(ctx context.Context, job *ReservedJob) error
 
 // Worker polls and processes jobs from PostgreSQL.
 type Worker struct {
-	client          *Client
-	queues          []string
-	handlers        map[string]HandlerFunc
-	maxAttempts     int
-	pollEvery       time.Duration
-	logger          *slog.Logger
-	fairQueueCursor int
+	client            *Client
+	queues            []string
+	handlers          map[string]HandlerFunc
+	maxAttempts       int
+	pollEvery         time.Duration
+	logger            *slog.Logger
+	fairQueueCursor   int
+	fairFetchCursor   int
+	fairPersistCursor int
+	fairOtherCursor   int
+	fairPoolCursor    int
 }
 
 func NewWorker(client *Client, queues []string, pollEvery time.Duration, logger *slog.Logger) *Worker {
@@ -44,12 +48,54 @@ func (w *Worker) reserveNext(ctx context.Context) (*ReservedJob, error) {
 	if len(w.queues) <= 1 {
 		return w.client.Reserve(ctx, w.queues)
 	}
+
+	fetchQ, persistQ, otherQ := partitionWorkerQueues(w.queues)
+	if len(fetchQ) > 0 && len(persistQ) > 0 {
+		return w.reserveWeighted(ctx, fetchQ, persistQ, otherQ)
+	}
+
 	job, next, err := w.client.ReserveFair(ctx, w.queues, w.fairQueueCursor)
 	if err != nil {
 		return nil, err
 	}
 	w.fairQueueCursor = next
 	return job, nil
+}
+
+// reserveWeighted alternates fetch vs persist pools so persist backlog cannot starve fetch (and vice versa).
+func (w *Worker) reserveWeighted(ctx context.Context, fetchQ, persistQ, otherQ []string) (*ReservedJob, error) {
+	pools := []struct {
+		queues *[]string
+		cursor *int
+	}{
+		{&fetchQ, &w.fairFetchCursor},
+		{&persistQ, &w.fairPersistCursor},
+	}
+	if len(otherQ) > 0 {
+		pools = append(pools, struct {
+			queues *[]string
+			cursor *int
+		}{&otherQ, &w.fairOtherCursor})
+	}
+
+	n := len(pools)
+	for i := 0; i < n; i++ {
+		idx := (w.fairPoolCursor + i) % n
+		q := *pools[idx].queues
+		if len(q) == 0 {
+			continue
+		}
+		job, next, err := w.client.ReserveFair(ctx, q, *pools[idx].cursor)
+		if err != nil {
+			return nil, err
+		}
+		*pools[idx].cursor = next
+		if job != nil {
+			w.fairPoolCursor = (idx + 1) % n
+			return job, nil
+		}
+	}
+	return nil, nil
 }
 
 func (w *Worker) Run(ctx context.Context) error {

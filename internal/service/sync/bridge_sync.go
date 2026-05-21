@@ -38,6 +38,7 @@ type BridgeSync struct {
 	cfg     config.Config
 	http    *http.Client
 	cursors *CursorStore
+	limiter *syncRateLimiter
 }
 
 func NewBridgeSync(cfg config.Config, db *repository.DB) *BridgeSync {
@@ -47,6 +48,7 @@ func NewBridgeSync(cfg config.Config, db *repository.DB) *BridgeSync {
 			Timeout: cfg.Bridge.Timeout,
 		},
 		cursors: NewCursorStore(db),
+		limiter: newSyncRateLimiter(cfg.Bridge.SyncMaxRequestsPerSecond),
 	}
 }
 
@@ -175,36 +177,65 @@ func (s *BridgeSync) fetchPage(ctx context.Context, fetchURL string, query url.V
 		reqURL = fetchURL + sep + query.Encode()
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	if err != nil {
-		return PageResult{}, err
+	maxRetries := s.cfg.Bridge.SyncMaxHTTPRetries
+	if maxRetries < 1 {
+		maxRetries = 1
 	}
-	req.Header.Set("Authorization", "Bearer "+s.cfg.Bridge.APIKey)
-	req.Header.Set("Accept", "application/json")
 
-	resp, err := s.http.Do(req)
-	if err != nil {
-		return PageResult{}, err
-	}
-	defer resp.Body.Close()
+	var resp *http.Response
+	var body []byte
+	var lastStatus int
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return PageResult{}, err
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if err := s.limiter.wait(ctx); err != nil {
+			return PageResult{}, err
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+		if err != nil {
+			return PageResult{}, err
+		}
+		req.Header.Set("Authorization", "Bearer "+s.cfg.Bridge.APIKey)
+		req.Header.Set("Accept", "application/json")
+
+		resp, err = s.http.Do(req)
+		if err != nil {
+			return PageResult{}, err
+		}
+		body, err = io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return PageResult{}, err
+		}
+
+		lastStatus = resp.StatusCode
+		if resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode != http.StatusServiceUnavailable {
+			break
+		}
+		if attempt+1 < maxRetries {
+			wait := time.Duration(attempt+1) * 500 * time.Millisecond
+			timer := time.NewTimer(wait)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return PageResult{}, ctx.Err()
+			case <-timer.C:
+			}
+		}
 	}
 
 	result := PageResult{
 		FetchURL:    fetchURL,
 		UpstreamURL: reqURL,
 		ODataQuery:  odataQueryMap(query),
-		HTTPStatus:  resp.StatusCode,
+		HTTPStatus:  lastStatus,
 	}
 
-	if resp.StatusCode == 403 {
+	if lastStatus == 403 {
 		result.Forbidden = true
 		return result, nil
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if lastStatus < 200 || lastStatus >= 300 {
 		result.HTTPError = true
 		return result, nil
 	}

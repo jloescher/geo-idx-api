@@ -41,6 +41,7 @@ Expand lists control **upstream fetch** and which keys are stripped into JSONB a
 | Variable | Default | Used for |
 |----------|---------|----------|
 | `MLS_SYNC_EXPAND` | `Media,Unit,Room,OpenHouse` | **Spark** replication/incremental (`replication.sparkapi.com`) |
+| `MLS_SYNC_REPLICATION_EXPAND` | (optional) | **Spark replication only** — smaller `$expand` when set (incremental still uses `MLS_SYNC_EXPAND`) |
 | `SPARK_SYNC_EXPAND` | (alias) | Falls back to `MLS_SYNC_EXPAND` when unset |
 | `BRIDGE_SYNC_EXPAND` | `Media,OpenHouses,Rooms,UnitTypes` | **Bridge** when `$select` mode (`BRIDGE_SYNC_FULL_PROPERTY=false`) |
 | `BRIDGE_SYNC_FULL_PROPERTY` | `true` | When **true**, `Media` is inline on Property; **`$expand=OpenHouses,Rooms,UnitTypes`** is still sent on **`/Property`** (incremental + nav hydrate). `/Property/replication` does not return expanded nav collections even with `$expand`. |
@@ -71,13 +72,13 @@ Per [Bridge RESO Web API](https://bridgedataoutput.com/docs/platform/API/zg-data
 |-------|----------|---------|
 | **Seed** | `GET …/Property/replication` | Bulk Active/Pending; follow `Link: rel="next"` until complete. No `$orderby` / `$skip`. Status-only `$filter` on Stellar (no timestamp on `/replication`). |
 | **Updates** | `GET …/Property` | Incremental: **Active/Pending** and **`BridgeModificationTimestamp gt {cursor}`**, **`$orderby=BridgeModificationTimestamp asc`**, `$top` ≤ 200, `$skip` for pages. Bridge documents this field as the correct change signal (not MLS `ModificationTimestamp`). |
-| **Ongoing** | Same as updates | `mls.replication_kickoff` (every minute) enqueues **incremental** when `last_sync_finished_at` is older than **`MLS_REPLICATION_FRESHNESS_MINUTES`** (default 15), even after the mirror is seeded. After replication completes, the worker chains one incremental job immediately. |
+| **Ongoing** | Same as updates | Scheduler enqueues `mls.replication_kickoff` on **`MLS_SYNC_KICKOFF_QUEUE`** (default `sync-kickoff`) every minute. Kickoff **does not** enqueue replication or incremental while `replication_in_progress`, `replication_next_url`, or a `pending`/`processing` `replica_pages` row exists — replication pages chain from **persist finalize** only. In **catch-up** (`Freshness` mode), kickoff skips incremental; in **steady** state, incremental runs when `last_sync_finished_at` is older than **`MLS_REPLICATION_FRESHNESS_MINUTES`** (default 15). After replication completes, finalize chains one incremental fetch immediately. |
 
 **OData datetime literal:** Bridge expects a **bare ISO-8601** instant (`BridgeModificationTimestamp gt 2025-05-20T04:51:45Z`). The `datetime'…'` wrapper returns **HTTP 400** on Stellar.
 
 **Alternative (Bridge docs):** poll `/Property/replication` via the `next` link on a schedule. idx-api uses **`/Property` + `BridgeModificationTimestamp`** instead so incremental shares the same persist path and respects the 200-row `$skip` cap on the standard collection.
 
-**Rolling mirror window:** when `MLS_LOCAL_MIRROR_ROLLING_MONTHS` > 0, **Spark** replication adds `ModificationTimestamp gt …` to the Active/Pending filter. **Bridge (Stellar)** `/replication` rejects timestamp predicates (HTTP 400) — only `(StandardStatus eq 'Active' or StandardStatus eq 'Pending')` is sent; older rows are removed by the daily purge job using `listings.modification_timestamp`.
+**Rolling mirror window:** when `MLS_LOCAL_MIRROR_ROLLING_MONTHS` > 0, **Spark** replication adds `ModificationTimestamp gt …` to the Active/Pending filter. **Bridge (Stellar)** `/replication` rejects timestamp predicates (HTTP 400) — only `(StandardStatus eq 'Active' or StandardStatus eq 'Pending')` is sent; older rows are removed by the daily purge job using `listings.modification_timestamp`. Aligning Spark replication to Bridge-style status-only OData (purge-only rolling window) is a **product decision** — not enabled by default because page counts and upstream behavior differ.
 
 ---
 

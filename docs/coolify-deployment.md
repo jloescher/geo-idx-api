@@ -28,10 +28,11 @@ Use **separate Coolify projects** for staging and production, each with its own 
 ## 2. Worker configuration
 
 ```env
-WORKER_QUEUES=default,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist
+MLS_SYNC_KICKOFF_QUEUE=sync-kickoff
+WORKER_QUEUES=default,sync-kickoff,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist
 ```
 
-Workers with **multiple queues** use **fair reservation** (`ReserveFair`): each poll rotates across queue names so Bridge backlog cannot starve `spark-sync-fetch` on lowest `jobs.id`.
+Workers with **multiple queues** use **fair reservation** (`ReserveFair`): each poll rotates across queue names so Bridge backlog cannot starve `spark-sync-fetch` on lowest `jobs.id`. When both fetch and persist queues are listed, workers **alternate pools** (fetch vs persist) before falling back to per-queue rotation.
 
 **Replication pipeline (kickoff + fetch):**
 
@@ -42,7 +43,7 @@ Optional split during heavy replication (recommended at scale):
 
 | Deployment | `WORKER_QUEUES` | Role |
 |------------|-----------------|------|
-| **default-worker** (×1) | `default` | kickoff, purge, crypto, GIS |
+| **default-worker** (×1) | `default,sync-kickoff` | kickoff, purge, crypto, GIS |
 | **fetch-worker** (×2) | `bridge-sync-fetch,spark-sync-fetch` | MLS HTTP only |
 | **persist-worker** (×2–4) | `bridge-sync-persist,spark-sync-persist` | Postgres upsert |
 
@@ -188,7 +189,7 @@ DB_USERNAME=...
 DB_PASSWORD=...
 DB_SSLMODE=require
 
-WORKER_QUEUES=default,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist
+WORKER_QUEUES=default,sync-kickoff,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist
 SCHEDULER_LEADER_LOCK_ID=913374211
 SCHEDULER_STANDBY_POLL_SECONDS=15
 

@@ -42,7 +42,8 @@ docker build -f Dockerfile.idx-images -t quantyra/idx-images:latest .
 **Worker queues (typical):**
 
 ```env
-WORKER_QUEUES=default,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist
+MLS_SYNC_KICKOFF_QUEUE=sync-kickoff
+WORKER_QUEUES=default,sync-kickoff,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist
 ```
 
 Bridge fetch/persist: `BRIDGE_SYNC_FETCH_QUEUE`, `BRIDGE_SYNC_PERSIST_QUEUE`  
@@ -74,7 +75,8 @@ DELETE FROM jobs WHERE payload LIKE '%mls.listings_cache_refresh%';
 
 Process: `cmd/worker` (or `make run-worker` locally).
 
-- Polls `jobs` with `FOR UPDATE SKIP LOCKED`; **fair queue rotation** when `WORKER_QUEUES` lists multiple names (Bridge vs Spark fetch parity).
+- Polls `jobs` with `FOR UPDATE SKIP LOCKED`; **fair queue rotation** when `WORKER_QUEUES` lists multiple names (Bridge vs Spark fetch parity). When both fetch and persist queues are configured, workers **alternate pools** (fetch vs persist) so one pool cannot starve the other.
+- `mls.replication_kickoff` runs on **`MLS_SYNC_KICKOFF_QUEUE`** (default `sync-kickoff`) — include that queue on the default/kickoff worker, not only `default`.
 - Job types: `internal/queue/payload.go` (`bridge.fetch_page`, `spark.persist_chunk`, `mls.replication_kickoff`, `mls.proxy_cache_purge`, …)
 - Unknown/legacy payloads are discarded; purge old rows (see go-cutover)
 
@@ -116,6 +118,54 @@ Nginx proxies `/images/*` → **`idx-api:8000`** on the same Docker network. Set
 3. Shared env → **primary** DSN only (phase 1).
 4. Cloudflare geo LB for `idx-api` and `idx-images` hostnames.
 5. Start order: workers → schedulers (verify one leader) → APIs → idx-images.
+
+---
+
+## Replication monitoring (catch-up)
+
+Run against the Patroni primary during heavy replication:
+
+**Queue depth by queue**
+
+```sql
+SELECT queue, COUNT(*) AS pending
+FROM jobs
+WHERE reserved_at IS NULL AND available_at <= EXTRACT(EPOCH FROM NOW())::bigint
+GROUP BY queue
+ORDER BY pending DESC;
+```
+
+**Duplicate kickoff backlog**
+
+```sql
+SELECT queue, payload->>'type' AS job_type, COUNT(*) AS pending
+FROM jobs
+WHERE reserved_at IS NULL
+GROUP BY 1, 2
+HAVING COUNT(*) > 5
+ORDER BY pending DESC;
+```
+
+**Active replica pages (expect ≤1 pending/processing per provider+dataset)**
+
+```sql
+SELECT provider, dataset_slug, status, COUNT(*)
+FROM replica_pages
+WHERE status IN ('pending', 'processing')
+GROUP BY 1, 2, 3;
+```
+
+**Cursor state**
+
+```sql
+SELECT dataset_slug, replication_in_progress, replication_next_url IS NOT NULL AS has_next, last_sync_finished_at
+FROM listing_sync_cursors
+ORDER BY dataset_slug;
+```
+
+**Maintenance window** (after large catch-up): `VACUUM (ANALYZE) listings;` and `VACUUM (ANALYZE) replica_pages;`
+
+**Local smoke:** `make run-scheduler` + `make run-worker` with both feeds enabled; logs should show interleaved `enqueued fetch` for `stellar` and `beaches`, not long Bridge-only bursts. API: `GET /api/v1/bridge/stats` for `replication_in_progress` per dataset.
 
 ---
 

@@ -92,6 +92,8 @@ type BridgeConfig struct {
 	SyncNavHydrateAfterReplication bool
 	SyncExpand                     string
 	SyncMaxChainedFetch            int
+	SyncMaxRequestsPerSecond       int
+	SyncMaxHTTPRetries             int
 	ImageRewriteHosts              []string
 }
 
@@ -125,6 +127,8 @@ type MLSConfig struct {
 	BeachesEnabled                 bool
 	BeachesPersistChunk            int
 	SyncExpand                     string
+	SyncReplicationExpand          string
+	SyncKickoffQueue               string
 }
 
 type GISConfig struct {
@@ -195,7 +199,7 @@ func Load() (Config, error) {
 		Queue: QueueConfig{
 			Table:         env("DB_QUEUE_TABLE", "jobs"),
 			PollInterval:  time.Duration(pollMs) * time.Millisecond,
-			WorkerQueues:  splitCSV(env("WORKER_QUEUES", "default,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist")),
+			WorkerQueues:  splitCSV(env("WORKER_QUEUES", "default,sync-kickoff,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist")),
 			RetryAfter:    time.Duration(retryAfter) * time.Second,
 			NotifyChannel: env("QUEUE_NOTIFY_CHANNEL", "idx_jobs_wakeup"),
 		},
@@ -219,8 +223,10 @@ func Load() (Config, error) {
 			LookupCacheTTL:                 envDuration("MLS_LOOKUP_CACHE_TTL", 720*time.Hour),
 			SyncFetchQueue:                 env("BRIDGE_SYNC_FETCH_QUEUE", "bridge-sync-fetch"),
 			SyncPersistQueue:               env("BRIDGE_SYNC_PERSIST_QUEUE", "bridge-sync-persist"),
-			SyncPersistChunk:               envInt("BRIDGE_SYNC_PERSIST_JOB_CHUNK", 50),
-			SyncUpsertChunk:                envInt("BRIDGE_SYNC_UPSERT_CHUNK", 250),
+			SyncPersistChunk:               envInt("BRIDGE_SYNC_PERSIST_JOB_CHUNK", 75),
+			SyncUpsertChunk:                envInt("BRIDGE_SYNC_UPSERT_CHUNK", 375),
+			SyncMaxRequestsPerSecond:       envInt("BRIDGE_SYNC_MAX_REQUESTS_PER_SECOND", 2),
+			SyncMaxHTTPRetries:             envInt("BRIDGE_SYNC_MAX_HTTP_RETRIES", 4),
 			SyncReplicationTop:             envInt("BRIDGE_SYNC_REPLICATION_TOP", 2000),
 			SyncIncrementalTop:             envInt("BRIDGE_SYNC_INCREMENTAL_TOP", 200),
 			SyncIncludeMedia:               envBool("BRIDGE_SYNC_INCLUDE_MEDIA", true),
@@ -242,7 +248,7 @@ func Load() (Config, error) {
 			SyncFetchQueue:      env("SPARK_SYNC_FETCH_QUEUE", "spark-sync-fetch"),
 			SyncPersistQueue:    env("SPARK_SYNC_PERSIST_QUEUE", "spark-sync-persist"),
 			SyncPersistChunk:    envInt("SPARK_SYNC_PERSIST_JOB_CHUNK", 50),
-			SyncUpsertChunk:     envInt("MLS_BEACHES_UPSERT_CHUNK_SIZE", envInt("SPARK_SYNC_UPSERT_CHUNK", 250)),
+			SyncUpsertChunk:     envInt("MLS_BEACHES_UPSERT_CHUNK_SIZE", envInt("SPARK_SYNC_UPSERT_CHUNK", 375)),
 			SyncReplicationTop:  envInt("SPARK_SYNC_REPLICATION_TOP", 1000),
 			SyncIncrementalTop:  envInt("SPARK_SYNC_INCREMENTAL_TOP", 1000),
 			SyncExpand:          envSyncExpand(),
@@ -255,10 +261,12 @@ func Load() (Config, error) {
 			ProxyCacheRetentionDays:        envInt("MLS_PROXY_CACHE_RETENTION_DAYS", 30),
 			ReplicationFreshnessMinutes:    envInt("MLS_REPLICATION_FRESHNESS_MINUTES", 15),
 			StellarEnabled:                 envBool("MLS_STELLAR_ENABLED", true),
-			StellarPersistChunk:            envInt("MLS_STELLAR_PERSIST_CHUNK_SIZE", 50),
+			StellarPersistChunk:            envInt("MLS_STELLAR_PERSIST_CHUNK_SIZE", 75),
 			BeachesEnabled:                 envBool("MLS_BEACHES_ENABLED", true),
-			BeachesPersistChunk:            envInt("MLS_BEACHES_PERSIST_CHUNK_SIZE", 25),
+			BeachesPersistChunk:            envInt("MLS_BEACHES_PERSIST_CHUNK_SIZE", 50),
 			SyncExpand:                     envSyncExpand(),
+			SyncReplicationExpand:          env("MLS_SYNC_REPLICATION_EXPAND", ""),
+			SyncKickoffQueue:               env("MLS_SYNC_KICKOFF_QUEUE", "sync-kickoff"),
 		},
 		GIS: GISConfig{
 			EdgeCacheTTL:         envDuration("GIS_EDGE_CACHE_TTL", 900*time.Second),

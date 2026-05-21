@@ -58,7 +58,7 @@ func (s *SparkSync) FetchReplicationPage(ctx context.Context, cursor SyncCursor)
 		fetchURL = s.propertyCollectionURL()
 		query.Set("$filter", SparkReplicationFilter(s.cfg))
 		query.Set("$top", fmt.Sprintf("%d", top))
-		s.applySyncExpand(query)
+		s.applySyncExpand(query, true)
 	}
 
 	return s.fetchPage(ctx, fetchURL, query, cursor.DatasetSlug, true)
@@ -94,7 +94,7 @@ func (s *SparkSync) FetchIncrementalPage(ctx context.Context, cursor SyncCursor,
 	query.Set("$orderby", "ModificationTimestamp asc")
 	query.Set("$top", fmt.Sprintf("%d", top))
 	query.Set("$skip", fmt.Sprintf("%d", skip))
-	s.applySyncExpand(query)
+	s.applySyncExpand(query, false)
 
 	result, err := s.fetchPage(ctx, fetchURL, query, cursor.DatasetSlug, false)
 	if err != nil {
@@ -106,8 +106,14 @@ func (s *SparkSync) FetchIncrementalPage(ctx context.Context, cursor SyncCursor,
 	return result, nil
 }
 
-func (s *SparkSync) applySyncExpand(query url.Values) {
-	if expand := strings.TrimSpace(s.cfg.MLS.SyncExpand); expand != "" {
+func (s *SparkSync) applySyncExpand(query url.Values, replication bool) {
+	expand := strings.TrimSpace(s.cfg.MLS.SyncExpand)
+	if replication {
+		if repl := strings.TrimSpace(s.cfg.MLS.SyncReplicationExpand); repl != "" {
+			expand = repl
+		}
+	}
+	if expand != "" {
 		query.Set("$expand", expand)
 	}
 }
