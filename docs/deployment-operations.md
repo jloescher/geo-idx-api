@@ -74,9 +74,13 @@ DELETE FROM jobs WHERE payload LIKE '%mls.listings_cache_refresh%';
 
 Process: `cmd/worker` (or `make run-worker` locally).
 
-- Polls `jobs` with `FOR UPDATE SKIP LOCKED`
+- Polls `jobs` with `FOR UPDATE SKIP LOCKED`; **fair queue rotation** when `WORKER_QUEUES` lists multiple names (Bridge vs Spark fetch parity).
 - Job types: `internal/queue/payload.go` (`bridge.fetch_page`, `spark.persist_chunk`, `mls.replication_kickoff`, `mls.proxy_cache_purge`, …)
 - Unknown/legacy payloads are discarded; purge old rows (see go-cutover)
+
+**Topology:** one combined worker is fine for dev. Production catch-up: split **fetch** (`bridge-sync-fetch,spark-sync-fetch`) from **persist** (`bridge-sync-persist,spark-sync-persist`) and keep **`default`** on a small worker for kickoff/GIS/crypto. See [Coolify §2](coolify-deployment.md#2-worker-configuration).
+
+**Replication:** kickoff must not stack replication fetches while a chain is active; only finalize enqueues the next page. Tune `MLS_REPLICATION_FRESHNESS_MINUTES`, `BRIDGE_SYNC_*`, `SPARK_SYNC_*`, and optional `MLS_BEACHES_PERSIST_CHUNK_SIZE` per [listings-mirror.md](listings-mirror.md).
 
 Scale: four workers across two DCs share the same queues, or split fetch vs persist during replication catch-up.
 
@@ -130,6 +134,7 @@ docker compose -f docker-compose.dev.yml up --build
 |---------|--------|
 | `unknown job type` / empty `type` | Legacy Laravel rows in `jobs`; purge SQL above |
 | Duplicate replication kickoff every minute | Two schedulers without advisory lock; check leader logs |
+| Bridge dominates logs, Spark idle | Combined worker + global job order; use fair multi-queue worker or split fetch workers; confirm kickoff not enqueueing during `replication_in_progress` |
 | Spark jobs not running | `WORKER_QUEUES` includes `spark-sync-fetch`, `spark-sync-persist` |
 | Login fails after cutover | `make seed-admin`; passwords are Argon2id |
 | API tokens rejected | Re-issue PATs from dashboard (SHA-256 storage; not legacy `id\|secret`) |

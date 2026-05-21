@@ -13,12 +13,13 @@ type HandlerFunc func(ctx context.Context, job *ReservedJob) error
 
 // Worker polls and processes jobs from PostgreSQL.
 type Worker struct {
-	client      *Client
-	queues      []string
-	handlers    map[string]HandlerFunc
-	maxAttempts int
-	pollEvery   time.Duration
-	logger      *slog.Logger
+	client          *Client
+	queues          []string
+	handlers        map[string]HandlerFunc
+	maxAttempts     int
+	pollEvery       time.Duration
+	logger          *slog.Logger
+	fairQueueCursor int
 }
 
 func NewWorker(client *Client, queues []string, pollEvery time.Duration, logger *slog.Logger) *Worker {
@@ -39,6 +40,18 @@ func (w *Worker) Register(typ string, fn HandlerFunc) {
 	w.handlers[typ] = fn
 }
 
+func (w *Worker) reserveNext(ctx context.Context) (*ReservedJob, error) {
+	if len(w.queues) <= 1 {
+		return w.client.Reserve(ctx, w.queues)
+	}
+	job, next, err := w.client.ReserveFair(ctx, w.queues, w.fairQueueCursor)
+	if err != nil {
+		return nil, err
+	}
+	w.fairQueueCursor = next
+	return job, nil
+}
+
 func (w *Worker) Run(ctx context.Context) error {
 	notifyCh, err := w.client.Listen(ctx)
 	if err != nil {
@@ -55,7 +68,7 @@ func (w *Worker) Run(ctx context.Context) error {
 		default:
 		}
 
-		job, err := w.client.Reserve(ctx, w.queues)
+		job, err := w.reserveNext(ctx)
 		if err != nil {
 			w.logger.Error("reserve job", "error", err)
 			w.sleep(ctx, w.pollEvery)

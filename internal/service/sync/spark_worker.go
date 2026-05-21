@@ -66,6 +66,10 @@ func (w *SparkWorker) FetchPage(ctx context.Context, job *queue.ReservedJob) err
 		return nil
 	}
 
+	if skip, err := skipReplicationFetchWhenPageActive(ctx, w.store, w.logger, "spark", args.Dataset, args.Mode); err != nil || skip {
+		return err
+	}
+
 	var result PageResult
 	switch args.Mode {
 	case "replication":
@@ -176,6 +180,9 @@ func (w *SparkWorker) dispatchPersistBatch(
 	}
 
 	chunkSize := w.cfg.Spark.SyncPersistChunk
+	if w.cfg.MLS.BeachesPersistChunk > 0 {
+		chunkSize = w.cfg.MLS.BeachesPersistChunk
+	}
 	pageID, chunkTotal, err := w.store.StorePage(ctx, "spark", dataset, mode, result.Rows, chunkSize, replicaPageMetaFromResult(result))
 	if err != nil {
 		return err

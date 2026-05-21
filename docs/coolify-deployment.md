@@ -31,12 +31,34 @@ Use **separate Coolify projects** for staging and production, each with its own 
 WORKER_QUEUES=default,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist
 ```
 
-Optional split during heavy replication:
+Workers with **multiple queues** use **fair reservation** (`ReserveFair`): each poll rotates across queue names so Bridge backlog cannot starve `spark-sync-fetch` on lowest `jobs.id`.
 
-| Replica | `WORKER_QUEUES` |
-|---------|-----------------|
-| Fetch | `default,bridge-sync-fetch,spark-sync-fetch` |
-| Persist | `bridge-sync-persist,spark-sync-persist` |
+**Replication pipeline (kickoff + fetch):**
+
+- Minute `mls.replication_kickoff` does **not** enqueue replication while `replication_in_progress`, `replication_next_url`, or a `pending`/`processing` `replica_pages` row exists — paging continues from **persist finalize** only.
+- Catch-up (`Freshness` mode): kickoff skips incremental; steady state uses `MLS_REPLICATION_FRESHNESS_MINUTES` after mirror is current.
+
+Optional split during heavy replication (recommended at scale):
+
+| Deployment | `WORKER_QUEUES` | Role |
+|------------|-----------------|------|
+| **default-worker** (×1) | `default` | kickoff, purge, crypto, GIS |
+| **fetch-worker** (×2) | `bridge-sync-fetch,spark-sync-fetch` | MLS HTTP only |
+| **persist-worker** (×2–4) | `bridge-sync-persist,spark-sync-persist` | Postgres upsert |
+
+Multi-DC: same split across NYC/ATL workers; all poll the shared `jobs` table on the Patroni primary.
+
+**Env tuning (starting points — adjust from queue depth / `pg_stat_statements`):**
+
+| Variable | Bridge (Stellar) | Spark (Beaches) |
+|----------|------------------|-----------------|
+| `*_SYNC_REPLICATION_TOP` | `2000` (`BRIDGE_SYNC_REPLICATION_TOP`) | `1000` (API cap) |
+| `*_SYNC_PERSIST_JOB_CHUNK` | `50` (`BRIDGE_SYNC_PERSIST_JOB_CHUNK`) | `50` (`SPARK_SYNC_PERSIST_JOB_CHUNK`) |
+| `MLS_STELLAR_PERSIST_CHUNK_SIZE` / `MLS_BEACHES_PERSIST_CHUNK_SIZE` | optional row chunk override | optional row chunk override |
+| `*_SYNC_UPSERT_CHUNK` | `BRIDGE_SYNC_UPSERT_CHUNK` | `MLS_BEACHES_UPSERT_CHUNK_SIZE` / `SPARK_SYNC_UPSERT_CHUNK` |
+| `MLS_SYNC_EXPAND` / `BRIDGE_SYNC_EXPAND` | — | trim if compliant (smaller OData) |
+
+**Smoke after deploy:** scheduler + workers running; logs show **interleaved** `enqueued fetch` for `stellar` and `beaches` (not many Bridge stores with no Spark). SQL: at most one `pending`/`processing` `replica_pages` row per `provider`+`dataset`; `GET /api/v1/bridge/stats` shows `replication_in_progress` / `last_sync_finished_at` per dataset.
 
 **Post-cutover:** purge legacy Laravel jobs once:
 

@@ -161,8 +161,31 @@ type ReservedJob struct {
 	attempts int // post-reserve count (incremented in Reserve)
 }
 
-// Reserve claims the next available job on one of the given queues (SKIP LOCKED).
+// Reserve claims the next available job on one of the given queues (SKIP LOCKED), lowest id first.
 func (c *Client) Reserve(ctx context.Context, queues []string) (*ReservedJob, error) {
+	return c.reserveFromQueues(ctx, queues)
+}
+
+// ReserveFair rotates across queues so one feed cannot monopolize lowest job ids.
+func (c *Client) ReserveFair(ctx context.Context, queues []string, startIndex int) (*ReservedJob, int, error) {
+	if len(queues) == 0 {
+		return nil, 0, nil
+	}
+	n := len(queues)
+	for i := 0; i < n; i++ {
+		idx := (startIndex + i) % n
+		job, err := c.reserveFromQueues(ctx, []string{queues[idx]})
+		if err != nil {
+			return nil, startIndex, err
+		}
+		if job != nil {
+			return job, (idx + 1) % n, nil
+		}
+	}
+	return nil, startIndex, nil
+}
+
+func (c *Client) reserveFromQueues(ctx context.Context, queues []string) (*ReservedJob, error) {
 	if len(queues) == 0 {
 		return nil, nil
 	}

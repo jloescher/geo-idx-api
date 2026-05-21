@@ -112,7 +112,6 @@ type SparkConfig struct {
 	SyncIncrementalTop  int
 	SyncExpand          string
 	SyncMaxChainedFetch int
-	PersistSequential   bool
 }
 
 type MLSConfig struct {
@@ -248,7 +247,6 @@ func Load() (Config, error) {
 			SyncIncrementalTop:  envInt("SPARK_SYNC_INCREMENTAL_TOP", 1000),
 			SyncExpand:          envSyncExpand(),
 			SyncMaxChainedFetch: envInt("SPARK_SYNC_MAX_CHAINED_FETCH_PAGES", 0),
-			PersistSequential:   envBool("SPARK_SYNC_PERSIST_SEQUENTIAL", true),
 		},
 		MLS: MLSConfig{
 			LocalMirrorRollingMonths:       envMirrorRollingMonths(),

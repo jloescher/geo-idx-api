@@ -91,6 +91,10 @@ func (w *BridgeWorker) FetchPage(ctx context.Context, job *queue.ReservedJob) er
 		return nil
 	}
 
+	if skip, err := skipReplicationFetchWhenPageActive(ctx, w.store, w.logger, "bridge", args.Dataset, args.Mode); err != nil || skip {
+		return err
+	}
+
 	var result PageResult
 	switch args.Mode {
 	case "replication":

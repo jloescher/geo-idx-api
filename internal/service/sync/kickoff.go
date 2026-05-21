@@ -70,8 +70,13 @@ func (k *Kickoff) dispatchSpark(ctx context.Context) error {
 
 func (k *Kickoff) dispatchDataset(ctx context.Context, provider, dataset, fetchQueue, jobType string) error {
 	active, err := k.store.HasActivePage(ctx, provider, dataset)
-	if err != nil || active {
+	if err != nil {
 		return err
+	}
+	if active {
+		k.logger.Debug("kickoff skipped: active replica page",
+			"provider", provider, "dataset", dataset)
+		return nil
 	}
 
 	cursor, err := k.cursors.ForDataset(ctx, dataset)
@@ -79,10 +84,35 @@ func (k *Kickoff) dispatchDataset(ctx context.Context, provider, dataset, fetchQ
 		return err
 	}
 
-	if runRep, err := k.cursors.ShouldRunReplication(ctx, cursor); err != nil {
+	if ReplicationChainActive(cursor) {
+		k.logger.Debug("kickoff skipped: replication chain active",
+			"provider", provider, "dataset", dataset)
+		return nil
+	}
+
+	runRep, err := k.cursors.ShouldKickoffReplication(ctx, cursor)
+	if err != nil {
 		return err
-	} else if runRep {
+	}
+	if runRep {
 		return k.enqueueFetch(ctx, provider, dataset, fetchQueue, jobType, "replication")
+	}
+
+	return k.tryIncrementalKickoff(ctx, provider, dataset, fetchQueue, jobType, cursor)
+}
+
+func (k *Kickoff) tryIncrementalKickoff(ctx context.Context, provider, dataset, fetchQueue, jobType string, cursor SyncCursor) error {
+	if ReplicationChainActive(cursor) {
+		return nil
+	}
+
+	mode, err := k.freshness.Mode(ctx, dataset, provider)
+	if err != nil {
+		return err
+	}
+	if mode == ModeCatchUp {
+		// Catch-up: replication pages are chained from finalize; skip minute kickoff incremental noise.
+		return nil
 	}
 
 	if !k.cursors.ShouldRunIncremental(cursor) {
@@ -96,7 +126,6 @@ func (k *Kickoff) dispatchDataset(ctx context.Context, provider, dataset, fetchQ
 }
 
 // shouldPollIncremental gates steady-state Bridge/Spark updates after the mirror is seeded.
-// Bridge docs: poll Property with BridgeModificationTimestamp gt cursor on an interval.
 func (k *Kickoff) shouldPollIncremental(cursor SyncCursor) bool {
 	if cursor.ReplicationInProgress {
 		return false

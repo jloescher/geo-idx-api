@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/quantyralabs/idx-api/internal/repository"
@@ -64,12 +65,22 @@ func (s *CursorStore) MirrorSeeded(ctx context.Context, dataset string) (bool, e
 	return n > 0, err
 }
 
-func (s *CursorStore) ShouldRunReplication(ctx context.Context, c SyncCursor) (bool, error) {
-	if c.ReplicationNextURL != nil && *c.ReplicationNextURL != "" {
-		return true, nil
-	}
+// ReplicationChainActive is true while replication paging is driven by persist finalize (not kickoff).
+func ReplicationChainActive(c SyncCursor) bool {
 	if c.ReplicationInProgress {
-		return true, nil
+		return true
+	}
+	if c.ReplicationNextURL != nil && strings.TrimSpace(*c.ReplicationNextURL) != "" {
+		return true
+	}
+	return false
+}
+
+// ShouldKickoffReplication returns whether kickoff may enqueue the initial replication fetch.
+// In-progress chains continue via persist finalize only.
+func (s *CursorStore) ShouldKickoffReplication(ctx context.Context, c SyncCursor) (bool, error) {
+	if ReplicationChainActive(c) {
+		return false, nil
 	}
 	seeded, err := s.MirrorSeeded(ctx, c.DatasetSlug)
 	if err != nil {

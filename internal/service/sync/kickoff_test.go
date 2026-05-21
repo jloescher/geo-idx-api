@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -38,5 +39,13 @@ func TestShouldPollIncrementalSkipsDuringReplication(t *testing.T) {
 	cursor := SyncCursor{ReplicationNextURL: &next}
 	if k.shouldPollIncremental(cursor) {
 		t.Fatal("expected no incremental during replication paging")
+	}
+}
+
+func TestTryIncrementalKickoffSkipsWhenReplicationChainActive(t *testing.T) {
+	k := &Kickoff{cfg: config.Config{MLS: config.MLSConfig{ReplicationFreshnessMinutes: 15}}}
+	cursor := SyncCursor{ReplicationInProgress: true}
+	if err := k.tryIncrementalKickoff(context.Background(), "bridge", "stellar", "bridge-sync-fetch", "bridge.fetch_page", cursor); err != nil {
+		t.Fatal(err)
 	}
 }
