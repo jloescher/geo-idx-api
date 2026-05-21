@@ -84,9 +84,12 @@ Purge legacy Laravel rows after cutover:
 
 ```sql
 DELETE FROM jobs WHERE payload LIKE '%CallQueuedHandler%';
+DELETE FROM jobs WHERE payload LIKE '%mls.listings_cache_refresh%';
 ```
 
 See [go-cutover.md](go-cutover.md).
+
+**Multi-DC schedulers:** use the same primary DSN; leadership via `pg_try_advisory_lock` (`SCHEDULER_LEADER_LOCK_ID`) — not a migration concern, but both scheduler containers must reach the primary.
 
 ---
 

@@ -146,7 +146,7 @@ StandardStatus eq 'Active' or StandardStatus eq 'Pending'
 
 **Bridge (Stellar)** uses different OData expand names (`OpenHouses`, `Rooms`, `UnitTypes`) and omits `$expand` when `BRIDGE_SYNC_FULL_PROPERTY=true` — same JSONB column layout after persist.
 
-**Purge:** `mls:purge-replica-pages` (alias `bridge:purge-replica-pages`; shared table; Spark retention via `SPARK_REPLICA_PAGE_RETENTION_HOURS`).
+**Purge:** queue job **`mls.purge_replica_pages`** (shared `replica_pages` table; retention via `MLS_REPLICA_PAGE_RETENTION_HOURS` / `SPARK_REPLICA_PAGE_*`).
 
 ### Key code (Go)
 
@@ -164,18 +164,18 @@ StandardStatus eq 'Active' or StandardStatus eq 'Pending'
 When the feed resolver selects `spark_beaches`, the bridge handler uses the **live** Spark host:
 
 - RESO Property, Member, Office, OpenHouse, Lookup
-- Same auth as Bridge: domain slug and/or Sanctum token with MLS allowlist
+- Same auth as Bridge: domain slug and/or Bearer PAT (`idx:access` / `idx:full`) with MLS allowlist
 - JSON passthrough including `DisplayCompliance` (do not strip)
 
-**Hybrid search** (`HybridSearchService`):
+**Hybrid search** (`internal/service/search`):
 
 - Active/Pending + geo → Postgres mirror (`beaches`)
 - Closed / live fallback → `SparkSearchClient` on live host
 
-**Images** (`ImageProxyController`):
+**Images** (`internal/handler/images`):
 
 - Resolves `MediaURL` via live `Property('ListingKey')?$expand=Media`
-- Rewrites CDN URLs in JSON via `BridgeImageUrlRewriter` + `spark.image_rewrite_hosts` (e.g. `cdn.photos.sparkplatform.com`)
+- Rewrites CDN URLs in JSON via `internal/mlspoxy/images.Rewriter` + `BRIDGE_IMAGE_REWRITE_HOSTS` (e.g. `cdn.photos.sparkplatform.com`)
 
 ---
 
@@ -197,12 +197,14 @@ See [../coolify-deployment.md](../coolify-deployment.md) and [../deployment-oper
 |----------|-------------|
 | `GET /api/v1/bridge/stats` | Per-feed stats; Spark mirror uses slug `beaches`, includes `incremental_window_end` |
 
-**Artisan:**
+**Local ops:**
 
 | Command | Purpose |
 |---------|---------|
-| `make run-scheduler` | Confirm `mls-kickoff`, `purge-replica`, `gis-probe` crons enqueue |
-| Queue worker | `mls:purge-replica-pages` job purges old staging pages (Bridge + Spark) |
+| `make run-scheduler` | Enqueues `mls.replication_kickoff`, `mls.proxy_cache_purge`, `gis.probe_sources`, purges |
+| `make run-worker` | Runs `spark.fetch_page`, `spark.persist_chunk`, `mls.purge_replica_pages`, etc. |
+
+Multi-DC: two schedulers require PostgreSQL advisory lock — [Coolify §7](../coolify-deployment.md#7-scheduler-cluster-leadership-required-for-2-schedulers).
 
 ---
 

@@ -109,7 +109,7 @@ Example response fragment after merge:
 
 ## Purge and rolling window
 
-`mls:purge_closed_listings` (daily):
+Queue job **`mls.purge_closed_listings`** (scheduler daily cron):
 
 - Always deletes **Closed** rows from `listings`
 - When `MLS_LOCAL_MIRROR_ROLLING_MONTHS` > 0, also deletes Active/Pending rows with `modification_timestamp` older than the window (and stale `close_date`)

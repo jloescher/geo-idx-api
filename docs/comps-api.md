@@ -60,7 +60,7 @@ Top-level keys:
   - **Condition:** pass `subject.condition` explicitly (`poor`, `fair`, `good`, `excellent`), or omit it to auto-derive from the listing (`PropertyCondition` then `PublicRemarks`; see below). When no match is found, the condition adjustment is skipped (`condition_applied: false`).
   - Renovation credits (kitchen, bathrooms, HVAC) derived from market data (scales with local price levels)
   - Expanded `property_type` enum: `sfr`, `townhouse`, `condo`, `manufactured`, `duplex`, `triplex`, `quadplex`, `modular`
-  - returns `home_value_result` with estimate, range, confidence, comparable count, and market rates summary
+  - returns `home_value_result` with estimate, range, confidence, comparable count, market rates summary, and `condition_rating` (resolved or derived condition used for adjustments)
 
 ## Key filter extensions
 

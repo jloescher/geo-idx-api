@@ -12,7 +12,7 @@ High-performance MLS proxy and image delivery service for Quantyra IDX, written 
 - Hybrid `POST /api/v1/search` (PostGIS / live MLS / split)
 - GIS parcel proxy `/api/v1/gis`
 - Invite-only dashboard (`/dashboard`) for domains and API keys
-- Scheduler: listings cache refresh (15m), replication kickoff, GIS probe, crypto pricing
+- Scheduler: proxy cache purge (15m), replication kickoff, GIS probe, crypto pricing (PostgreSQL advisory lock for multi-DC)
 
 ## Project layout
 
@@ -95,17 +95,22 @@ golangci-lint run   # optional
 | Service | Dockerfile target | Port |
 |---------|-------------------|------|
 | idx-api-web | `api` | 8000 |
-| idx-api-worker-fetch | `worker` | — |
-| idx-api-worker-persist | `worker` | — |
-| idx-api-scheduler | `scheduler` | — |
+| idx-api-worker | `worker` | — (scale replicas; same `WORKER_QUEUES` or split fetch/persist) |
+| idx-api-scheduler | `scheduler` | — (one leader when running two schedulers in multi-DC) |
 | idx-images | `Dockerfile.idx-images` | 8080 |
 
-Environment variables match [`.env.example`](.env.example). See **[docs/go-cutover.md](docs/go-cutover.md)** for migration from Laravel and API key re-issue.
+Environment variables match [`.env.example`](.env.example).
+
+- **[docs/coolify-deployment.md](docs/coolify-deployment.md)** — single-host and **multi-DC (NYC + ATL)** with Patroni over Tailscale
+- **[docs/go-cutover.md](docs/go-cutover.md)** — Laravel → Go migration and API key re-issue
+- **[docs/deployment-operations.md](docs/deployment-operations.md)** — queues, scheduler lock, troubleshooting
 
 ## API documentation
 
+- [docs/INDEX.md](docs/INDEX.md) — full doc index
 - [docs/idx-api-bridge-proxy.md](docs/idx-api-bridge-proxy.md)
 - [docs/gis-api.md](docs/gis-api.md)
+- [docs/comps-api.md](docs/comps-api.md)
 - [docs/database-migrations.md](docs/database-migrations.md)
 
 ## Health

@@ -33,6 +33,46 @@ func New(cfg config.Config, q *queue.Client, db *repository.DB, logger *slog.Log
 }
 
 func (s *Scheduler) Run(ctx context.Context) error {
+	lockKey := s.cfg.Scheduler.LeaderLockKey
+	if lockKey == 0 {
+		lockKey = DefaultLeaderLockKey
+	}
+	poll := s.cfg.Scheduler.StandbyPollInterval
+
+	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		leader, ok, err := TryAcquireLeader(ctx, s.db.Pool, lockKey)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			s.logger.Info("scheduler standby, waiting for leader lock", "lock_key", lockKey)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(poll):
+				continue
+			}
+		}
+
+		s.logger.Info("scheduler leader acquired", "lock_key", lockKey)
+		runErr := s.runAsLeader(ctx)
+		leader.Release(ctx)
+
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if runErr != nil {
+			return runErr
+		}
+		s.logger.Warn("scheduler leader session ended, re-electing", "lock_key", lockKey)
+	}
+}
+
+func (s *Scheduler) runAsLeader(ctx context.Context) error {
 	s.addJob(ctx, "coingecko", "0 */10 * * * *", s.cfg.Coingecko.Queue, queue.TypeCryptoRefreshPricing)
 	s.addJob(ctx, "mls-proxy-cache-purge", "0 */15 * * * *", "default", queue.TypeMLSProxyCachePurge)
 	s.addJob(ctx, "mls-kickoff", "0 * * * * *", "default", queue.TypeMLSReplicationKickoff)
@@ -42,7 +82,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 
 	s.logger.Info("cron schedules registered",
 		"mls_kickoff", "every minute at :00",
-		"mls_search_cache_purge", "every 15 min",
+		"mls_proxy_cache_purge", "every 15 min",
 		"coingecko", "every 10 min",
 	)
 

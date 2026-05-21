@@ -23,6 +23,13 @@ type Config struct {
 	Auth      AuthConfig
 	Geocode   GeocodeConfig
 	Coingecko CoingeckoConfig
+	Scheduler SchedulerConfig
+}
+
+// SchedulerConfig controls cluster-wide cron leadership (PostgreSQL advisory lock).
+type SchedulerConfig struct {
+	LeaderLockKey       int64
+	StandbyPollInterval time.Duration
 }
 
 type AppConfig struct {
@@ -64,28 +71,28 @@ type IdxURLsConfig struct {
 }
 
 type BridgeConfig struct {
-	APIKey              string
-	Host                string
-	Dataset             string
-	PathPrefix          string
-	ResoRoot            string
-	ListingPhotoPath    string
-	Timeout             time.Duration
-	Datasets            []string
-	ListingsCacheTTL    time.Duration
-	LookupCacheTTL      time.Duration
-	SyncFetchQueue      string
-	SyncPersistQueue    string
-	SyncPersistChunk    int
-	SyncUpsertChunk     int
-	SyncReplicationTop  int
-	SyncIncrementalTop  int
-	SyncIncludeMedia    bool
-	SyncFullProperty                 bool
-	SyncNavHydrateAfterReplication   bool
-	SyncExpand                       string
-	SyncMaxChainedFetch int
-	ImageRewriteHosts   []string
+	APIKey                         string
+	Host                           string
+	Dataset                        string
+	PathPrefix                     string
+	ResoRoot                       string
+	ListingPhotoPath               string
+	Timeout                        time.Duration
+	Datasets                       []string
+	ListingsCacheTTL               time.Duration
+	LookupCacheTTL                 time.Duration
+	SyncFetchQueue                 string
+	SyncPersistQueue               string
+	SyncPersistChunk               int
+	SyncUpsertChunk                int
+	SyncReplicationTop             int
+	SyncIncrementalTop             int
+	SyncIncludeMedia               bool
+	SyncFullProperty               bool
+	SyncNavHydrateAfterReplication bool
+	SyncExpand                     string
+	SyncMaxChainedFetch            int
+	ImageRewriteHosts              []string
 }
 
 type SparkConfig struct {
@@ -109,16 +116,16 @@ type SparkConfig struct {
 }
 
 type MLSConfig struct {
-	LocalMirrorRollingMonths    int
+	LocalMirrorRollingMonths       int
 	ReplicaPageRetentionHours      int
 	ReplicaPageFailedRetentionDays int
 	ProxyCacheRetentionDays        int
 	ReplicationFreshnessMinutes    int
-	StellarEnabled              bool
-	StellarPersistChunk         int
-	BeachesEnabled              bool
-	BeachesPersistChunk         int
-	SyncExpand                  string
+	StellarEnabled                 bool
+	StellarPersistChunk            int
+	BeachesEnabled                 bool
+	BeachesPersistChunk            int
+	SyncExpand                     string
 }
 
 type GISConfig struct {
@@ -201,28 +208,28 @@ func Load() (Config, error) {
 			APIHosts:      splitCSV(env("IDX_API_HOSTS", "localhost")),
 		},
 		Bridge: BridgeConfig{
-			APIKey:              env("BRIDGE_API_KEY", ""),
-			Host:                env("BRIDGE_HOST", "https://api.bridgedataoutput.com"),
-			Dataset:             env("BRIDGE_DATASET", "stellar"),
-			PathPrefix:          env("BRIDGE_PATH_PREFIX", "api/v2"),
-			ResoRoot:            env("BRIDGE_RESO_ROOT", "reso/odata"),
-			ListingPhotoPath:    env("BRIDGE_LISTING_PHOTO_PATH", "/api/v2/{dataset}/listings/{listingKey}/photos/{photoId}"),
-			Timeout:             envDuration("BRIDGE_TIMEOUT", 30*time.Second),
-			Datasets:            splitCSV(env("BRIDGE_DATASETS", "stellar")),
-			ListingsCacheTTL:    envDuration("LISTINGS_CACHE_TTL", 900*time.Second),
-			LookupCacheTTL:      envDuration("MLS_LOOKUP_CACHE_TTL", 720*time.Hour),
-			SyncFetchQueue:      env("BRIDGE_SYNC_FETCH_QUEUE", "bridge-sync-fetch"),
-			SyncPersistQueue:    env("BRIDGE_SYNC_PERSIST_QUEUE", "bridge-sync-persist"),
-			SyncPersistChunk:    envInt("BRIDGE_SYNC_PERSIST_JOB_CHUNK", 50),
-			SyncUpsertChunk:     envInt("BRIDGE_SYNC_UPSERT_CHUNK", 250),
-			SyncReplicationTop:  envInt("BRIDGE_SYNC_REPLICATION_TOP", 2000),
-			SyncIncrementalTop:  envInt("BRIDGE_SYNC_INCREMENTAL_TOP", 200),
-			SyncIncludeMedia:    envBool("BRIDGE_SYNC_INCLUDE_MEDIA", true),
+			APIKey:                         env("BRIDGE_API_KEY", ""),
+			Host:                           env("BRIDGE_HOST", "https://api.bridgedataoutput.com"),
+			Dataset:                        env("BRIDGE_DATASET", "stellar"),
+			PathPrefix:                     env("BRIDGE_PATH_PREFIX", "api/v2"),
+			ResoRoot:                       env("BRIDGE_RESO_ROOT", "reso/odata"),
+			ListingPhotoPath:               env("BRIDGE_LISTING_PHOTO_PATH", "/api/v2/{dataset}/listings/{listingKey}/photos/{photoId}"),
+			Timeout:                        envDuration("BRIDGE_TIMEOUT", 30*time.Second),
+			Datasets:                       splitCSV(env("BRIDGE_DATASETS", "stellar")),
+			ListingsCacheTTL:               envDuration("LISTINGS_CACHE_TTL", 900*time.Second),
+			LookupCacheTTL:                 envDuration("MLS_LOOKUP_CACHE_TTL", 720*time.Hour),
+			SyncFetchQueue:                 env("BRIDGE_SYNC_FETCH_QUEUE", "bridge-sync-fetch"),
+			SyncPersistQueue:               env("BRIDGE_SYNC_PERSIST_QUEUE", "bridge-sync-persist"),
+			SyncPersistChunk:               envInt("BRIDGE_SYNC_PERSIST_JOB_CHUNK", 50),
+			SyncUpsertChunk:                envInt("BRIDGE_SYNC_UPSERT_CHUNK", 250),
+			SyncReplicationTop:             envInt("BRIDGE_SYNC_REPLICATION_TOP", 2000),
+			SyncIncrementalTop:             envInt("BRIDGE_SYNC_INCREMENTAL_TOP", 200),
+			SyncIncludeMedia:               envBool("BRIDGE_SYNC_INCLUDE_MEDIA", true),
 			SyncFullProperty:               envBool("BRIDGE_SYNC_FULL_PROPERTY", true),
 			SyncNavHydrateAfterReplication: envBool("BRIDGE_SYNC_NAV_HYDRATE_AFTER_REPLICATION", true),
 			SyncExpand:                     envBridgeSyncExpand(),
-			SyncMaxChainedFetch: envInt("BRIDGE_SYNC_MAX_CHAINED_FETCH_PAGES", 0),
-			ImageRewriteHosts:   splitCSV(env("BRIDGE_IMAGE_REWRITE_HOSTS", "")),
+			SyncMaxChainedFetch:            envInt("BRIDGE_SYNC_MAX_CHAINED_FETCH_PAGES", 0),
+			ImageRewriteHosts:              splitCSV(env("BRIDGE_IMAGE_REWRITE_HOSTS", "")),
 		},
 		Spark: SparkConfig{
 			AccessToken:         firstNonEmpty(env("SPARK_ACCESS_TOKEN", ""), env("SPARK_API_KEY", "")),
@@ -244,16 +251,16 @@ func Load() (Config, error) {
 			PersistSequential:   envBool("SPARK_SYNC_PERSIST_SEQUENTIAL", true),
 		},
 		MLS: MLSConfig{
-			LocalMirrorRollingMonths:    envMirrorRollingMonths(),
-			ReplicaPageRetentionHours:        envInt("MLS_REPLICA_PAGE_RETENTION_HOURS", 24),
-			ReplicaPageFailedRetentionDays:   envInt("MLS_REPLICA_PAGE_FAILED_RETENTION_DAYS", 7),
-			ProxyCacheRetentionDays:          envInt("MLS_PROXY_CACHE_RETENTION_DAYS", 30),
-			ReplicationFreshnessMinutes:      envInt("MLS_REPLICATION_FRESHNESS_MINUTES", 15),
-			StellarEnabled:              envBool("MLS_STELLAR_ENABLED", true),
-			StellarPersistChunk:         envInt("MLS_STELLAR_PERSIST_CHUNK_SIZE", 50),
-			BeachesEnabled:              envBool("MLS_BEACHES_ENABLED", true),
-			BeachesPersistChunk:         envInt("MLS_BEACHES_PERSIST_CHUNK_SIZE", 25),
-			SyncExpand:                  envSyncExpand(),
+			LocalMirrorRollingMonths:       envMirrorRollingMonths(),
+			ReplicaPageRetentionHours:      envInt("MLS_REPLICA_PAGE_RETENTION_HOURS", 24),
+			ReplicaPageFailedRetentionDays: envInt("MLS_REPLICA_PAGE_FAILED_RETENTION_DAYS", 7),
+			ProxyCacheRetentionDays:        envInt("MLS_PROXY_CACHE_RETENTION_DAYS", 30),
+			ReplicationFreshnessMinutes:    envInt("MLS_REPLICATION_FRESHNESS_MINUTES", 15),
+			StellarEnabled:                 envBool("MLS_STELLAR_ENABLED", true),
+			StellarPersistChunk:            envInt("MLS_STELLAR_PERSIST_CHUNK_SIZE", 50),
+			BeachesEnabled:                 envBool("MLS_BEACHES_ENABLED", true),
+			BeachesPersistChunk:            envInt("MLS_BEACHES_PERSIST_CHUNK_SIZE", 25),
+			SyncExpand:                     envSyncExpand(),
 		},
 		GIS: GISConfig{
 			EdgeCacheTTL:         envDuration("GIS_EDGE_CACHE_TTL", 900*time.Second),
@@ -288,6 +295,10 @@ func Load() (Config, error) {
 			CacheTTL:    envDuration("COINGECKO_CACHE_TTL_SECONDS", 1200*time.Second),
 			Queue:       env("COINGECKO_QUEUE", "default"),
 			HTTPTimeout: envDuration("COINGECKO_HTTP_TIMEOUT", 12*time.Second),
+		},
+		Scheduler: SchedulerConfig{
+			LeaderLockKey:       envSchedulerLeaderLockKey(),
+			StandbyPollInterval: time.Duration(envInt("SCHEDULER_STANDBY_POLL_SECONDS", 15)) * time.Second,
 		},
 	}
 
@@ -419,6 +430,18 @@ func envSyncExpand() string {
 		env("SPARK_SYNC_EXPAND", ""),
 		"Media,Unit,Room,OpenHouse",
 	)
+}
+
+func envSchedulerLeaderLockKey() int64 {
+	v := strings.TrimSpace(env("SCHEDULER_LEADER_LOCK_ID", ""))
+	if v == "" {
+		return 913374211
+	}
+	id, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return 913374211
+	}
+	return id
 }
 
 // envBridgeSyncExpand is the OData $expand list for Bridge (Stellar navigation property names).

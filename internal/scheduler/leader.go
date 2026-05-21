@@ -1,0 +1,72 @@
+package scheduler
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// DefaultLeaderLockKey is the PostgreSQL advisory lock id for cluster-wide scheduler leadership.
+const DefaultLeaderLockKey int64 = 913374211
+
+// LeaderSession holds a dedicated pool connection with an acquired advisory lock.
+// The lock is session-scoped; release via Release before returning the connection to the pool.
+type LeaderSession struct {
+	conn *pgxpool.Conn
+	key  int64
+}
+
+// TryAcquireLeader attempts pg_try_advisory_lock on a dedicated connection.
+func TryAcquireLeader(ctx context.Context, pool *pgxpool.Pool, key int64) (*LeaderSession, bool, error) {
+	if pool == nil {
+		return nil, false, fmt.Errorf("nil pool")
+	}
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	var ok bool
+	err = conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, key).Scan(&ok)
+	if err != nil {
+		conn.Release()
+		return nil, false, err
+	}
+	if !ok {
+		conn.Release()
+		return nil, false, nil
+	}
+	return &LeaderSession{conn: conn, key: key}, true, nil
+}
+
+// Release unlocks the advisory lock and returns the connection to the pool.
+func (l *LeaderSession) Release(ctx context.Context) {
+	if l == nil || l.conn == nil {
+		return
+	}
+	_, _ = l.conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, l.key)
+	l.conn.Release()
+	l.conn = nil
+}
+
+// WaitForLeader polls until the advisory lock is acquired or ctx is cancelled.
+func WaitForLeader(ctx context.Context, pool *pgxpool.Pool, key int64, poll time.Duration) (*LeaderSession, error) {
+	if poll <= 0 {
+		poll = 15 * time.Second
+	}
+	for {
+		leader, ok, err := TryAcquireLeader(ctx, pool, key)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			return leader, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(poll):
+		}
+	}
+}

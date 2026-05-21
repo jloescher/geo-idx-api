@@ -3,7 +3,7 @@
 ## Pre-cutover
 
 1. Deploy Go `api`, `worker`, and `scheduler` images against the **same** PostgreSQL database.
-2. Run goose migrations: `goose -dir migrations postgres "$DATABASE_URL" up` (idempotent on existing Laravel schema).
+2. Run goose migrations: `goose -dir migrations postgres "$GOOSE_DBSTRING" up` (idempotent on existing Laravel-era schema).
 3. Notify customers to **re-issue API keys** from `/dashboard` (Go uses SHA-256 token hashes; legacy Sanctum `id|secret` tokens are not accepted).
 
 ## Cutover
