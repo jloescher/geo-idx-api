@@ -20,11 +20,12 @@
 1. Purge leftover **Laravel** rows in `jobs` (Go expects `{"type":"bridge.fetch_page",...}`; PHP jobs show `CallQueuedHandler` and log `discarded legacy Laravel queue job`):
    ```sql
    DELETE FROM jobs WHERE payload LIKE '%CallQueuedHandler%';
+   DELETE FROM jobs WHERE payload LIKE '%mls.listings_cache_refresh%';
    ```
-   Or truncate `jobs` on a disposable staging DB after cutover.
+   Or truncate `jobs` on a disposable staging DB after cutover. The scheduler now enqueues **`mls.proxy_cache_purge`** (renamed from `mls.listings_cache_refresh`).
 2. Verify `/healthz`, `/readyz`, `POST /api/v1/search`, `/images/*`.
 3. Monitor replication lag via `GET /api/v1/bridge/stats`.
 
 ## Rollback
 
-Re-deploy FrankenPHP Octane images and PHP workers; database schema is compatible.
+Rollback requires a prior Laravel/Octane deployment artifact; the current repository builds **Go-only** images (`Dockerfile` targets `api`, `worker`, `scheduler`). Database schema remains compatible with either runtime after goose migrations.

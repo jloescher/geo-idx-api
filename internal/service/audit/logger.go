@@ -18,6 +18,9 @@ func NewLogger(db *repository.DB) *Logger {
 }
 
 func (l *Logger) Log(c *fiber.Ctx, requestType string, listingCount *int, cacheHit *string) {
+	if l == nil || l.db == nil {
+		return
+	}
 	slug, _ := c.Locals(ctxkeys.MLSDomainSlug).(string)
 	var tokenName *string
 	if tn, ok := c.Locals(ctxkeys.MLSTokenName).(*string); ok {

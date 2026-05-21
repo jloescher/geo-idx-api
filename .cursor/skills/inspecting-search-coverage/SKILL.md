@@ -1,63 +1,66 @@
 ---
 name: inspecting-search-coverage
-description: Audits technical and on-page search coverage across the idx-api codebase, including Bridge MLS listing filters, GIS parcel queries, and GHL widget search endpoints.
+description: Audits technical and on-page search coverage across the idx-api Go codebase, including Bridge MLS listing filters, GIS parcel queries, and hybrid PostGIS search.
 allowed-tools: Read, Edit, Write, Glob, Grep, Bash
 ---
 
-# Inspecting Search Coverage Skill
+# Inspecting Search Coverage (Go)
 
-This skill audits search functionality across the Quantyra IDX API, covering Bridge MLS proxy filters (`/api/v1/listings`), GIS parcel geometry queries (`/api/v1/gis`), and GHL widget search surfaces. It identifies query parameter handling, validation logic, and coverage gaps.
+Audits search and filter behavior in the **Go** idx-api service: live MLS proxy, PostGIS mirror search, and GIS parcel queries.
 
-## Quick Start
+## Quick start
 
 ```bash
-# Find all search/filter query parameter handlers
-grep -r "filters\|query\|search" app/Http/Controllers/Api/ --include="*.php" | head -30
+# Bridge / RESO proxy and cache
+grep -rn "finishProxy\|FingerprintRequest\|filters" internal/handler/bridge/ internal/service/cache/
 
-# Locate GIS bbox/radius search implementation
-grep -r "bbox\|radius\|latitude\|longitude" app/Services/ --include="*.php"
+# Hybrid search routing (mirror vs live)
+grep -rn "Route\|PostGIS\|live" internal/service/search/
 
-# Check Bridge query parameter forwarding
-grep -r "BRIDGE\|forward\|query" app/Services/Bridge/ --include="*.php" | grep -i param
+# GIS bbox / failover
+grep -rn "ParseBBox\|sourcesForBBox" internal/service/gis/
 
-# List all controller methods handling search
-grep -rn "public function.*search\|public function.*filter\|public function.*list" app/Http/Controllers/Api/
+# Comps sold vs mirror legs
+grep -rn "fetchSoldComps\|findMirrorComps" internal/service/comps/
 ```
 
-## Key Concepts
+## Key files
 
-**Bridge Filter Forwarding**: The `BridgeProxyController` forwards `filters` query parameters to Bridge Data Output. When `filters` is present, caching is bypassed. Check `app/Http/Controllers/Api/BridgeProxyController.php`.
+| Surface | Location |
+|---------|----------|
+| Live listings / RESO proxy | `internal/handler/bridge/handler.go` |
+| On-demand proxy cache | `internal/service/cache/proxy_cache.go`, `canonical.go` |
+| Hybrid search | `internal/service/search/service.go`, `route.go`, `postgis.go`, `live_search.go` |
+| GIS parcels | `internal/service/gis/proxy.go`, `query.go`, `sources.go` |
+| Comps | `internal/service/comps/engine.go`, `upstream.go`, `mirror.go` |
+| Auth | `internal/api/middleware/domain_token.go` |
 
-**GIS Spatial Queries**: The `GisProxyService` handles `bbox` (west,south,east,north) and `lat`/`lng` + `radius` (meters) parameters. Spatial queries convert to ArcGIS feature server queries with envelope intersection. See `app/Services/GisProxyService.php`.
+## Bridge filter forwarding
 
-**Teaser Gating Impact**: Search results are capped (3 listings, 40 GIS features) for non-`idx:full` tokens. The `BridgeTeaser` service truncates list-shaped JSON after the proxy fetch.
+- Query parameters (including `filters`) are forwarded to Bridge/Spark upstream via `mlspoxy` clients.
+- **Caching:** `FingerprintRequest` hashes method, upstream URL, and sorted query (excluding `domain`). Identical requests return `X-IDX-Cache: HIT` from `mls_search_cache`. Different `filters` values produce different fingerprints (separate cache entries).
+- **No teaser truncation** in this deployment: authenticated `domain.token` traffic receives full JSON (see `docs/idx-api-bridge-proxy.md`).
 
-**Query Parameter Validation**: GIS uses `GisProxyRequest` form request for bbox/radius validation. Bridge passes most parameters through without validation, with exceptions (`domain`, `teaser` are stripped).
+## GIS spatial queries
 
-## Common Patterns
+- `GET /api/v1/gis` — `ParseBBox` from `west,south,east,north` or `lat`/`lng` + `radius` (meters).
+- `GIS_MAX_BBOX_SPAN_DEG` rejects oversized envelopes.
+- Source failover: statewide → county layers → degraded empty FC + OSM tile hint (`internal/service/gis/proxy.go`).
 
-**Audit Bridge Search Coverage**:
-```bash
-# Check what query params are forwarded vs stripped
-grep -A5 "query\|input" app/Http/Controllers/Api/BridgeProxyController.php | head -40
-```
+## Hybrid search routing
 
-**Audit GIS Search Coverage**:
-```bash
-# Review bbox vs radius parameter handling
-grep -B2 -A10 "bbox\|buildBoundingBox" app/Services/GisProxyService.php
+- `POST /api/v1/search` — Active/Pending from PostGIS `listings` when possible; Closed (and mixed status) from live RESO (`internal/service/search/route.go`).
+- Mirror filters: `low_risk_floodzone`, monthly fee bounds on indexed columns.
+- Result caching uses the same proxy-cache machinery as listings (15-minute TTL default).
 
-# Check coordinate validation patterns
-grep -rn "numeric\|min\|max" app/Http/Requests/GisProxyRequest.php
-```
+## Access abilities
 
-**Check Filter Cache Bypass Logic**:
-```bash
-# Find where filters disable caching
-grep -rn "filters" app/Services/Bridge/ListingsCacheService.php
-```
+- PATs require `idx:access` or `idx:full` plus `X-Domain-Slug` / `?domain=` for a verified domain.
+- **`idx:full` does not gate search or comps modes** in Go; both abilities receive full payloads.
 
-**Verify Widget Search Surfaces**:
-```bash
-# Widget search/lead-form endpoints
-grep -rn "widget.*search\|widget.*form" routes/ghl-widget.php
+## References
+
+- `docs/idx-api-bridge-proxy.md` — proxy, cache, search endpoint
+- `docs/gis-api.md` — GIS parameters and caching
+- `docs/comps-api.md` — comps modes and data sources
+- `docs/listings-mirror.md` — mirror payload and indexed columns

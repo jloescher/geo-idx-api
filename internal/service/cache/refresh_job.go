@@ -32,6 +32,6 @@ func (j *RefreshJob) Run(ctx context.Context, _ *queue.ReservedJob) error {
 	if err != nil {
 		return err
 	}
-	j.logger.Info("mls_search_cache purge", "deleted", n)
+	j.logger.Info("mls proxy cache purge", "job", "mls.proxy_cache_purge", "deleted", n)
 	return nil
 }

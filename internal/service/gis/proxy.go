@@ -43,8 +43,11 @@ func (s *ProxyService) Fetch(c *fiber.Ctx, mlsCode *string) error {
 		return fiber.NewError(fiber.StatusUnprocessableEntity, "bbox span exceeds limit")
 	}
 
+	fullAccess := requestFullAccess(c)
+
 	hash := queryHash(c)
-	if body, meta, ok := s.fromCache(c.Context(), hash); ok {
+	if body, meta, ok := s.fromCache(c.Context(), hash, fullAccess); ok {
+		body, _ = applyTeaser(body, s.cfg.GIS, fullAccess)
 		c.Set("Content-Type", "application/geo+json")
 		c.Set("X-IDX-Cache", "edge")
 		return c.Send(wrapWithMeta(body, meta))
@@ -60,7 +63,7 @@ func (s *ProxyService) Fetch(c *fiber.Ctx, mlsCode *string) error {
 			break
 		}
 	}
-	meta := s.buildMeta(c, bbox, used, lastErr)
+	meta := s.buildMeta(c, bbox, used, lastErr, fullAccess)
 	if lastErr != nil && len(raw) == 0 {
 		raw = []byte(`{"type":"FeatureCollection","features":[]}`)
 		meta.Degraded = true
@@ -69,9 +72,10 @@ func (s *ProxyService) Fetch(c *fiber.Ctx, mlsCode *string) error {
 	}
 	gen, _ := s.sourceGeneration(c.Context(), meta.SourceUsed)
 	_ = s.storeCache(c.Context(), hash, raw, meta.SourceUsed, gen)
+	body, _ := applyTeaser(raw, s.cfg.GIS, fullAccess)
 	c.Set("Content-Type", "application/geo+json")
 	c.Set("X-IDX-Cache", "miss")
-	return c.Send(wrapWithMeta(raw, meta))
+	return c.Send(wrapWithMeta(body, meta))
 }
 
 type responseMeta struct {
@@ -87,7 +91,7 @@ type responseMeta struct {
 	CacheHit          *string `json:"cache_hit"`
 }
 
-func (s *ProxyService) buildMeta(c *fiber.Ctx, bbox BBox, src Source, fetchErr error) responseMeta {
+func (s *ProxyService) buildMeta(c *fiber.Ctx, bbox BBox, src Source, fetchErr error, fullAccess bool) responseMeta {
 	lat, lng := bbox.Centroid()
 	hint := countyHint(lat, lng)
 	gen, _ := s.sourceGeneration(c.Context(), src.Key)
@@ -95,8 +99,8 @@ func (s *ProxyService) buildMeta(c *fiber.Ctx, bbox BBox, src Source, fetchErr e
 		SourceUsed:      src.Key,
 		SourceTier:      src.Tier,
 		CountyHint:      hint,
-		Teaser:          false,
-		FullAccess:      true,
+		Teaser:          !fullAccess,
+		FullAccess:      fullAccess,
 		Degraded:        fetchErr != nil,
 		CacheGeneration: gen,
 		Cached:          false,
@@ -141,7 +145,7 @@ func (s *ProxyService) sourceGeneration(ctx context.Context, key string) (int64,
 	return gen, err
 }
 
-func (s *ProxyService) fromCache(ctx context.Context, hash string) ([]byte, responseMeta, bool) {
+func (s *ProxyService) fromCache(ctx context.Context, hash string, fullAccess bool) ([]byte, responseMeta, bool) {
 	var geojson, sourceUsed string
 	var gen int64
 	err := s.db.Pool.QueryRow(ctx, `
@@ -157,8 +161,8 @@ func (s *ProxyService) fromCache(ctx context.Context, hash string) ([]byte, resp
 		CacheGeneration: gen,
 		Cached:          true,
 		CacheHit:        &hit,
-		Teaser:          false,
-		FullAccess:      true,
+		Teaser:          !fullAccess,
+		FullAccess:      fullAccess,
 	}
 	return []byte(geojson), meta, true
 }

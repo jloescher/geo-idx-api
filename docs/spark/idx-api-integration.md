@@ -114,7 +114,7 @@ Stellar (Bridge) uses `{DATASET}_TotalMonthlyFees` when present, else the same a
 
 ## Live proxy cache (on-demand)
 
-**Schedule:** `mls.listings_cache_refresh` every 15 minutes purges expired **`mls_search_cache`** rows (does not pre-warm Active/Pending).
+**Schedule:** `mls.proxy_cache_purge` every 15 minutes purges expired **`mls_search_cache`** rows (does not pre-warm Active/Pending).
 
 **Mirror:** Active/Pending replication uses **`spark.replication.sparkapi.com`** into PostGIS **`listings`** (`dataset_slug = beaches`). **`POST /api/v1/search`** serves Active/Pending from the mirror.
 

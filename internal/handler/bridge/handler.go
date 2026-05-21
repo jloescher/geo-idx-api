@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
@@ -18,13 +19,24 @@ import (
 	"github.com/quantyralabs/idx-api/internal/service/sync"
 )
 
+// proxyCacheStore is the cache surface used by finishProxy (implemented by *cache.ProxyCache).
+type proxyCacheStore interface {
+	Get(ctx context.Context, partition, fingerprint string) ([]byte, bool, error)
+	Put(ctx context.Context, partition, fingerprint string, body []byte) error
+}
+
+// mlsClientFactory selects the upstream MLS client for the active feed.
+type mlsClientFactory interface {
+	ForRequest(c *fiber.Ctx) mlspoxy.ProxyClient
+}
+
 // Handler implements MLS RESO/web proxy routes (Bridge and Spark feeds).
 type Handler struct {
-	cfg      config.Config
-	factory  *mlspoxy.Factory
-	rewriter *images.Rewriter
-	audit    *audit.Logger
-	proxyCache *cache.ProxyCache
+	cfg        config.Config
+	factory    mlsClientFactory
+	rewriter   *images.Rewriter
+	audit      *audit.Logger
+	proxyCache proxyCacheStore
 	pricing    *crypto.PricingReader
 	search     *search.Service
 	stats      *sync.StatsService

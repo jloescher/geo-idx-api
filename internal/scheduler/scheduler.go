@@ -34,7 +34,7 @@ func New(cfg config.Config, q *queue.Client, db *repository.DB, logger *slog.Log
 
 func (s *Scheduler) Run(ctx context.Context) error {
 	s.addJob(ctx, "coingecko", "0 */10 * * * *", s.cfg.Coingecko.Queue, queue.TypeCryptoRefreshPricing)
-	s.addJob(ctx, "mls-cache", "0 */15 * * * *", "default", queue.TypeMLSListingsCacheRefresh)
+	s.addJob(ctx, "mls-proxy-cache-purge", "0 */15 * * * *", "default", queue.TypeMLSProxyCachePurge)
 	s.addJob(ctx, "mls-kickoff", "0 * * * * *", "default", queue.TypeMLSReplicationKickoff)
 	s.addJob(ctx, "purge-replica", "0 15 4 * * *", "default", queue.TypeMLSPurgeReplicaPages)
 	s.addJob(ctx, "purge-closed", "0 5 3 * * *", "default", queue.TypeMLSPurgeClosed)

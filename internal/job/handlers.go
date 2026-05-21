@@ -11,8 +11,8 @@ func (r *Registry) handleReplicationKickoff(ctx context.Context, job *queue.Rese
 	return r.replicationKickoff.Run(ctx)
 }
 
-func (r *Registry) handleListingsCacheRefresh(ctx context.Context, job *queue.ReservedJob) error {
-	return r.listingsCache.Run(ctx, job)
+func (r *Registry) handleProxyCachePurge(ctx context.Context, job *queue.ReservedJob) error {
+	return r.proxyCachePurge.Run(ctx, job)
 }
 
 func (r *Registry) handleBridgeFetchPage(ctx context.Context, job *queue.ReservedJob) error {

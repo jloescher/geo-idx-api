@@ -13,11 +13,9 @@ In-repo Cursor agent skills (`SKILL.md` per folder). **Primary runtime is Go** (
 | Bridge MLS + GIS search surfaces | `inspecting-search-coverage` |
 | Dashboard HTML / embedded static UI | `frontend-design`, `crafting-empty-states`, `designing-inapp-guidance` |
 
-### Legacy (pre–Go cutover — do not use for new backend work)
+### Legacy (pre–Go cutover — archived, do not use for new backend work)
 
-| Area | Skill folder | Notes |
-|------|----------------|-------|
-| Laravel / PHP / Fortify / Livewire / Pulse / Vite | `laravel`, `php`, `laravel-best-practices`, `fortify-development`, `livewire*`, `pulse-development`, `vite`, `tailwind*` | Removed from runtime; reference only |
+Moved to **`_legacy/`** (Laravel, PHP, Fortify, Livewire, Pulse, Vite, Tailwind build, SQLite test stack, Stripe/Cashier). Use **`go`** and **`postgresql`** instead.
 
 ## Product surfaces (Go)
 

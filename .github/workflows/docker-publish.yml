@@ -1,8 +1,8 @@
-# Publish FrankenPHP base images to GHCR (linux/amd64).
-# Coolify builds the app from Dockerfile.staging / Dockerfile.production using those bases
-# (build-arg FRANKENPHP_BASE_IMAGE). See docs/coolify-deployment.md.
+# Publish Go service images to GHCR (linux/amd64).
+# Coolify builds from the same Dockerfiles locally; this workflow publishes optional GHCR tags.
+# See docs/coolify-deployment.md.
 
-name: Docker publish (FrankenPHP base)
+name: Docker publish (Go)
 
 on:
   push:
@@ -13,7 +13,66 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  frankenphp-base:
+  go-images:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - target: api
+            image_suffix: ""
+          - target: worker
+            image_suffix: -worker
+          - target: scheduler
+            image_suffix: -scheduler
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pick environment tag
+        id: pick
+        run: |
+          if [ "${{ github.ref_name }}" = "staging" ]; then
+            echo "tag=staging" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=production" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}${{ matrix.image_suffix }}
+          tags: |
+            type=raw,value=${{ steps.pick.outputs.tag }}
+            type=sha,prefix=sha-
+
+      - name: Build and push ${{ matrix.target }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: ${{ matrix.target }}
+          platforms: linux/amd64
+          provenance: false
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=go-${{ matrix.target }}-${{ steps.pick.outputs.tag }}
+          cache-to: type=gha,mode=max,scope=go-${{ matrix.target }}-${{ steps.pick.outputs.tag }}
+
+  idx-images:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -31,38 +90,33 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pick base Dockerfile and tag
+      - name: Pick environment tag
         id: pick
         run: |
           if [ "${{ github.ref_name }}" = "staging" ]; then
-            echo "file=Dockerfile.frankenphp-base.staging" >> "$GITHUB_OUTPUT"
             echo "tag=staging" >> "$GITHUB_OUTPUT"
           else
-            echo "file=Dockerfile.frankenphp-base.production" >> "$GITHUB_OUTPUT"
             echo "tag=production" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Docker metadata (FrankenPHP base)
+      - name: Docker metadata (idx-images)
         id: meta
         uses: docker/metadata-action@v5
         with:
-          # Canonical: ghcr.io/<owner>/<repo>-frankenphp. Alias geoidx-frankenphp matches local/Coolify env overrides.
-          images: |
-            ${{ env.REGISTRY }}/${{ github.repository }}-frankenphp
-            ${{ env.REGISTRY }}/jloescher/geoidx-frankenphp
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-idx-images
           tags: |
             type=raw,value=${{ steps.pick.outputs.tag }}
             type=sha,prefix=sha-
 
-      - name: Build and push FrankenPHP base
+      - name: Build and push idx-images
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ${{ steps.pick.outputs.file }}
+          file: Dockerfile.idx-images
           platforms: linux/amd64
           provenance: false
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=frankenphp-base-${{ steps.pick.outputs.tag }}
-          cache-to: type=gha,mode=max,scope=frankenphp-base-${{ steps.pick.outputs.tag }}
+          cache-from: type=gha,scope=idx-images-${{ steps.pick.outputs.tag }}
+          cache-to: type=gha,mode=max,scope=idx-images-${{ steps.pick.outputs.tag }}

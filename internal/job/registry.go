@@ -20,7 +20,7 @@ type Registry struct {
 	logger *slog.Logger
 
 	replicationKickoff *sync.Kickoff
-	listingsCache      *cache.RefreshJob
+	proxyCachePurge    *cache.RefreshJob
 	bridgeSync         *sync.BridgeWorker
 	sparkSync          *sync.SparkWorker
 	mirrorPurge        *sync.PurgeClosed
@@ -37,7 +37,7 @@ func NewRegistry(cfg config.Config, db *repository.DB, logger *slog.Logger) *Reg
 func (r *Registry) RegisterAll(w *queue.Worker) {
 	w.Register(queue.TypeNoop, r.handleNoop)
 	w.Register(queue.TypeMLSReplicationKickoff, r.handleReplicationKickoff)
-	w.Register(queue.TypeMLSListingsCacheRefresh, r.handleListingsCacheRefresh)
+	w.Register(queue.TypeMLSProxyCachePurge, r.handleProxyCachePurge)
 	w.Register(queue.TypeBridgeFetchPage, r.handleBridgeFetchPage)
 	w.Register(queue.TypeBridgePersistChunk, r.handleBridgePersistChunk)
 	w.Register(queue.TypeBridgePersistFinalize, r.handleBridgePersistFinalize)

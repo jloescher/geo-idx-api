@@ -13,6 +13,7 @@ MLS comparables and investor analysis for the active feed resolved by `domain.to
 - Route: `POST /api/v1/comps/run`
 - Middleware: `domain.token`
 - Authenticated **domain** or **PAT** traffic (with `idx:access` or `idx:full` and a verified domain binding for tokens) receives **full** comps payloads, including investor modes, BPO, and home value.
+- **No teaser gating:** `internal/service/comps` does not read `MLSFullAccess`; premium modes are not restricted by ability name in this deployment.
 
 ## Request shape
 
@@ -55,9 +56,8 @@ Top-level keys:
 - `home_value`:
   - Home value estimation from owner-provided details or an active MLS listing
   - Two paths: `address` + geocoding via Google Maps, or `listing_id` + Bridge lookup
-  - When `listing_id` is provided, all property details auto-populate from the MLS record
-  - Condition rating auto-derived from `PropertyCondition` field or `PublicRemarks` keyword analysis
-  - Condition is optional: if not provided and cannot be derived, the condition adjustment is skipped
+  - When `listing_id` is provided, property details auto-populate from the MLS/upstream Property row
+  - **Condition:** pass `subject.condition` explicitly (`poor`, `fair`, `good`, `excellent`), or omit it to auto-derive from the listing (`PropertyCondition` then `PublicRemarks`; see below). When no match is found, the condition adjustment is skipped (`condition_applied: false`).
   - Renovation credits (kitchen, bathrooms, HVAC) derived from market data (scales with local price levels)
   - Expanded `property_type` enum: `sfr`, `townhouse`, `condo`, `manufactured`, `duplex`, `triplex`, `quadplex`, `modular`
   - returns `home_value_result` with estimate, range, confidence, comparable count, and market rates summary
@@ -185,7 +185,9 @@ When `listing_id` is provided, the following fields are auto-populated from the 
    - **Excellent**: "mint condition", "turnkey", "completely renovated", "like new", "no expense spared", etc.
    - **Good**: "well maintained", "move-in ready", "updated", "immaculate", etc.
    - **Fair**: "needs some tlc", "as-is", "needs updating", "handyman special", etc.
-3. Returns `null` if no confident match -- condition adjustment is skipped entirely
+3. Returns no rating if no confident match — condition adjustment is skipped (`condition_applied: false` in `home_value_result`)
+
+Implementation: `internal/service/comps/condition.go` (`DeriveConditionFromProperty`), applied in `resolveHomeValueSubject` when `listing_id` is used.
 
 **PropertySubType mapping:**
 

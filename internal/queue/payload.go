@@ -18,7 +18,7 @@ const (
 	TypeSparkPersistChunk       = "spark.persist_chunk"
 	TypeSparkPersistFinalize    = "spark.persist_finalize"
 	TypeMLSReplicationKickoff   = "mls.replication_kickoff"
-	TypeMLSListingsCacheRefresh = "mls.listings_cache_refresh"
+	TypeMLSProxyCachePurge = "mls.proxy_cache_purge"
 	TypeMLSPurgeClosed          = "mls.purge_closed_listings"
 	TypeMLSPurgeReplicaPages    = "mls.purge_replica_pages"
 	TypeGISProbeSources         = "gis.probe_sources"

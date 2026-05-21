@@ -11,7 +11,12 @@ import (
 func (e *Engine) resolveHomeValueSubject(ctx context.Context, dataset string, in SubjectInput) (SubjectProfile, error) {
 	if strings.TrimSpace(in.ListingID) != "" {
 		in.Type = "mls"
-		return e.subjectFromMLS(ctx, dataset, in)
+		sub, err := e.subjectFromMLS(ctx, dataset, in)
+		if err != nil {
+			return SubjectProfile{}, err
+		}
+		applyDerivedCondition(&sub, in)
+		return sub, nil
 	}
 	if in.Address != nil && strings.TrimSpace(*in.Address) != "" {
 		g := geocode.NewGeocoder(e.cfg.Geocode.GoogleMapsAPIKey, e.cfg.Geocode.HTTPTimeout)

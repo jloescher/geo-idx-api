@@ -10,7 +10,9 @@ import (
 	"github.com/quantyralabs/idx-api/internal/repository"
 )
 
-// DomainToken authenticates MLS/GIS/image traffic (Laravel DomainOrTokenAuth parity).
+// DomainToken authenticates MLS/GIS/image traffic (domain header/Referer or Bearer PAT + verified domain).
+// idx:full (or domain identification) sets MLSFullAccess=true; idx:access-only PATs set false (GIS teaser applies).
+// Bridge/comps/search currently return full payloads for both abilities; GIS honors MLSFullAccess via GIS_TEASER_*.
 func DomainToken(_ any, domains *repository.DomainRepo, tokens *repository.TokenRepo) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		auth := c.Get("Authorization")

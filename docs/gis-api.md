@@ -17,7 +17,8 @@ Same as other `/api/v1/*` Bridge proxy routes:
 
 **Access shape**
 
-- Authenticated GIS traffic receives **full** GeoJSON (rich properties, `meta.teaser=false`, `meta.full_access=true`, optional `meta.context_layers` hints). There is **no** plan-based teaser tier in the current internal deployment.
+- **Domain** identification and PATs with **`idx:full`**: full GeoJSON (`meta.teaser=false`, `meta.full_access=true`).
+- PATs with **`idx:access` only** (no `idx:full`): teaser tier — feature cap `GIS_TEASER_MAX_FEATURES` (default 40), coordinate precision `GIS_TEASER_COORD_DECIMALS` (default 4). Full payloads are cached in `gis_cache`; teaser limits apply on the response path.
 
 ## Endpoints
 
@@ -110,7 +111,7 @@ When **degraded** (`meta.degraded=true`), `features` is empty and `meta.leaflet_
 
 | Layer | Policy | Notes |
 |-------|--------|-------|
-| **Laravel `Cache` (edge)** | `GIS_EDGE_CACHE_TTL` (seconds, default 900; falls back to legacy `GIS_CACHE_TTL`) | Full JSON payload keyed by `query_hash`. First read path for hot repeat requests. |
+| **Edge (Postgres `gis_cache`)** | `GIS_EDGE_CACHE_TTL` (seconds, default 900) | `internal/service/gis/proxy.go` reads fresh rows by `query_hash` before calling ArcGIS. Response header `X-IDX-Cache`: `edge` on hit, `miss` on origin fetch. |
 | **PostgreSQL `gis_cache` (origin)** | Per-source **max age in days** (`GIS_ORIGIN_MAX_DAYS_PRIMARY` default 90 for statewide, `GIS_ORIGIN_MAX_DAYS_COUNTY` default 30 for county layers, degraded 1 day) | `meta.cache_generation` + column `source_generation` must match `gis_source_states.generation` for that `source_used`. |
 | **`gis_source_states`** | Weekly scheduled probe | Job `gis.probe_sources` (cron Monday 06:30, queue `GIS_QUEUE`) fetches each layer `?f=json`, fingerprints metadata; fingerprint change **increments `generation`**, invalidating edge + origin rows for that source. |
 | **Filesystem `gis_backup`** | Snapshot per `query_hash` | `GIS_BACKUP_PATH`; optional `GIS_QUEUE_BACKUP_WRITES` on `GIS_QUEUE`. |
@@ -118,9 +119,11 @@ When **degraded** (`meta.degraded=true`), `features` is empty and `meta.leaflet_
 **Operations**
 
 - Enqueue `gis.probe_sources` on the GIS queue (scheduler does this weekly), or run the probe handler inline in development.
-- Clear cache: `DELETE FROM gis_cache` for affected sources and bump `gis_source_states.generation` (ops/SQL); no Artisan CLI in the Go service.
+- Clear cache: `DELETE FROM gis_cache` for affected sources and bump `gis_source_states.generation` (ops/SQL), or enqueue job type `gis.probe_sources`.
 
-**Scheduler:** `routes/console.php` dispatches `RefreshGisSourceMetadataJob` **weekly** (Monday 06:30 app timezone). Requires `schedule:run` / `schedule:work` and a **queue worker** when using `--queued` probes or queued backup writes.
+**Scheduler:** `cmd/scheduler` enqueues `gis.probe_sources` **weekly** (Monday 06:30). Requires `cmd/worker` on the GIS queue (`GIS_QUEUE`, default `default`).
+
+**Teaser:** Implemented in `internal/service/gis/teaser.go` when `MLSFullAccess` is false (typical for `idx:access`-only PATs). Domain header auth and `idx:full` tokens receive full payloads.
 
 **HTTP client:** `GIS_HTTP_TIMEOUT` / `GIS_HTTP_CONNECT_TIMEOUT` for parcel queries; `GIS_METADATA_TIMEOUT` for cheap layer metadata probes.
 
@@ -130,4 +133,4 @@ Geo-web can call `/api/v1/listings` then `/api/v1/gis` with the **same map bbox*
 
 ## Configuration reference
 
-See `config/gis.php` for source URLs, county bounding boxes, optional teaser-related limits (legacy config keys), and Florida MLS allow-list.
+See `internal/service/gis/sources.go` and `GIS_*` env vars in `.env.example` for source URLs, county bounding boxes, and Florida MLS allow-list (`GIS_FLORIDA_MLS_CODES`).

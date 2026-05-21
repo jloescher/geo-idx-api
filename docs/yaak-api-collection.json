@@ -683,7 +683,7 @@
         "responses": {
           "200": { "description": "Comps run completed" },
           "401": { "description": "Unauthenticated" },
-          "403": { "description": "Forbidden or `idx:full` required for premium modes (investor, BPO, home value)" },
+          "403": { "description": "Forbidden (invalid/missing token, domain not verified, or validation error). Premium comps modes are not ability-gated in Go." },
           "422": { "description": "Validation error" }
         }
       }

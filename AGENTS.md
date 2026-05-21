@@ -143,7 +143,7 @@ Public ArcGIS feature server proxy for Florida parcel data. Three-tier caching w
 | Job type | Schedule | Queue | Purpose |
 |----------|----------|-------|---------|
 | `mls.replication_kickoff` | Every minute | default | Enqueue Bridge/Spark sync per dataset |
-| `mls.listings_cache_refresh` | Every 15 min | default | **Purge** stale `mls_search_cache` rows (on-demand proxy cache; does not pre-warm Active/Pending) |
+| `mls.proxy_cache_purge` | Every 15 min | default | **Purge** stale `mls_search_cache` rows (on-demand proxy cache; does not pre-warm Active/Pending) |
 | `crypto.refresh_pricing` | Every 10 min | `COINGECKO_QUEUE` | CoinGecko snapshots |
 | `mls.purge_replica_pages` | Daily 04:15 | default | Completed + failed `replica_pages` retention |
 | `mls.purge_closed_listings` | Daily 03:05 | default | Mirror rolling window purge |
@@ -326,7 +326,7 @@ When working on tasks involving these technologies, invoke the corresponding ski
 | crafting-empty-states | Dashboard empty states |
 | designing-inapp-guidance | Onboarding copy and flows |
 | inspecting-search-coverage | MLS/GIS search filters and docs |
-| _legacy_ laravel, php, livewire, fortify, pulse, vite | **Do not use** for new backend work (pre–Go cutover) |
+| `.cursor/skills/_legacy/` (laravel, php, vite, tailwind, …) | **Do not use** for new backend work (pre–Go cutover) |
 
 ## Agent Notes (Go)
 

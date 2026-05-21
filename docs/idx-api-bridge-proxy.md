@@ -19,7 +19,7 @@ This document describes the **Quantyra idx-api** integration that proxies [Bridg
 |------|----------------|
 | Single MLS egress | Bridge and Spark credentials stay server-side (`BRIDGE_API_KEY`, `SPARK_ACCESS_TOKEN`). |
 | Multi-feed MLS control | Requests identify an **active** row in `domains` (via header, **`?domain=`** query, or `Referer` host) **or** present a valid **personal access token (PAT)** with IDX abilities. Feed access is validated against `domains.allowed_mls_datasets` (catalog keys like `bridge_stellar`, `spark_beaches`). |
-| Cost & latency control | **On-demand** live proxy cache in **`mls_search_cache`**: first identical upstream request (method + path + sorted query + POST body fingerprint) is stored gzip-compressed for **`LISTINGS_CACHE_TTL`** (default 15 min); repeats return **`X-IDX-Cache: HIT`**. Lookup routes use **`MLS_LOOKUP_CACHE_TTL`** (~30 days). **Active/Pending** inventory is served from the **PostGIS mirror** (`listings` table + sync jobs), not a pre-warmed `listings_cache` collection. Scheduler job **`mls.listings_cache_refresh`** only **purges** expired cache rows. |
+| Cost & latency control | **On-demand** live proxy cache in **`mls_search_cache`**: first identical upstream request (method + path + sorted query + POST body fingerprint) is stored gzip-compressed for **`LISTINGS_CACHE_TTL`** (default 15 min); repeats return **`X-IDX-Cache: HIT`**. Lookup routes use **`MLS_LOOKUP_CACHE_TTL`** (~30 days). **Active/Pending** inventory is served from the **PostGIS mirror** (`listings` table + sync jobs), not a pre-warmed `listings_cache` collection. Scheduler job **`mls.proxy_cache_purge`** only **purges** expired cache rows. |
 | Hybrid map performance | `POST /api/v1/search`: Active/Pending from PostGIS replica; Closed from live upstream (Bridge or Spark per `?dataset=`); mixed status filters merge both (see **Hybrid search** under Caching & jobs). |
 | Pricing enrichment | Listing responses include top-level `pricing` quotes and per-listing `pricing_converted` data sourced from local cache/DB snapshots refreshed asynchronously by queue job. |
 | Access model | **Internal-only:** active, MLS-approved **domains** and **personal access token (PAT)s** (with `idx:access` or `idx:full`, plus domain binding for PATs) receive full Bridge-shaped responses. There is **no** Stripe/Cashier subscription tier or plan-based response shrinking in this deployment. |
@@ -43,7 +43,7 @@ flowchart LR
     IC[ImageProxyController]
     CACHE[(mls_search_cache)]
     AUDIT[(mls_proxy_audit_logs)]
-    JOB[mls.listings_cache_refresh purge]
+    JOB[mls.proxy_cache_purge purge]
   end
   BRIDGE[(Bridge Data Output)]
 
@@ -383,7 +383,7 @@ curl -H "X-Domain-Slug: example.com" \
 
 | Mechanism | Detail |
 |-----------|--------|
-| **Live proxy cache (`mls_search_cache`)** | On-demand gzip cache for repeat **identical** live proxy requests (web, RESO, lookup, hybrid search live leg). Fingerprint = method + path + sorted query + POST body hash. Response header **`X-IDX-Cache`**: `HIT` or `MISS`. TTL **`LISTINGS_CACHE_TTL`** (default **900** s); lookup partition uses **`MLS_LOOKUP_CACHE_TTL`** (default 30 days). Scheduled job **`mls.listings_cache_refresh`** purges stale rows only — **no** Active/Pending pre-warm. |
+| **Live proxy cache (`mls_search_cache`)** | On-demand gzip cache for repeat **identical** live proxy requests (web, RESO, lookup, hybrid search live leg). Fingerprint = method + path + sorted query + POST body hash. Response header **`X-IDX-Cache`**: `HIT` or `MISS`. TTL **`LISTINGS_CACHE_TTL`** (default **900** s); lookup partition uses **`MLS_LOOKUP_CACHE_TTL`** (default 30 days). Scheduled job **`mls.proxy_cache_purge`** purges stale rows only — **no** Active/Pending pre-warm. |
 | **Mirror (Active/Pending)** | `listings` PostGIS table via replication jobs — authoritative for hybrid search mirror leg. Not duplicated into `listings_cache`. |
 | **Replica sync** | **`mls:replication-kickoff`** (every minute) enqueues **`bridge.fetch_page`** / **`spark.fetch_page`** on fetch queues. Staging: **`replica_pages`** (gzip JSON) → persist queues → **`listings`**. **Spark** replication uses **`MLS_SYNC_EXPAND`** (`Media,Unit,Room,OpenHouse`). **Bridge** uses **`BRIDGE_SYNC_EXPAND`** (`Media,OpenHouses,Rooms,UnitTypes`) only when **`BRIDGE_SYNC_FULL_PROPERTY=false`**; with full property (default), Media is inline and **`$expand` is omitted**. Bridge replication seed uses **Active/Pending status only** (Stellar rejects timestamp `$filter` on `/replication`). Spark may add **`ModificationTimestamp`** when rolling months are set. Rolling trim: daily purge on **`modification_timestamp`**. Incremental cursor: **`listing_sync_cursors.last_modification_timestamp`**. **Closed** is not bulk-replicated. Details: [Listings mirror](listings-mirror.md). |
 | **Hybrid search** | `POST /api/v1/search`: **Active/Pending** → PostGIS mirror; **Closed** → Bridge OData; **mixed** statuses → merge both sources (merge-then-page). |
@@ -391,7 +391,7 @@ curl -H "X-Domain-Slug: example.com" \
 | **Replication observability** | Structured logs and Telescope events on staging: `bridge.replication.kickoff`, `bridge.replication.page_fetched` (OData query, `status_counts`, `listings_downloaded`), `bridge.replication.page_persisted` (`upserted`, `deleted`, `skipped`), `bridge.replication.failed`. Set **`TELESCOPE_LOG_LEVEL=info`** on web and worker. Filter Telescope Logs by `bridge.replication`. |
 | **Lookups cache** | `GET /api/v1/lookup` uses the same `mls_search_cache` lookup partition; TTL **`MLS_LOOKUP_CACHE_TTL`** (default 30 days). Purge expired rows via the proxy-cache purge job or `DELETE` on `mls_search_cache` by partition. |
 | **Image edge cache** | `/images/*` responses are streamed from Bridge with immutable cache headers so Cloudflare/browser edges cache aggressively. |
-| **Scheduled jobs (Go)** | `cmd/scheduler` enqueues replication kickoff (every minute), **`mls.listings_cache_refresh`** purge (every 15 min), CoinGecko pricing, replica/closed purge, weekly GIS probe. Run **`make run-worker`** (or production worker image) for queue consumption. |
+| **Scheduled jobs (Go)** | `cmd/scheduler` enqueues replication kickoff (every minute), **`mls.proxy_cache_purge`** purge (every 15 min), CoinGecko pricing, replica/closed purge, weekly GIS probe. Run **`make run-worker`** (or production worker image) for queue consumption. |
 
 ---
 
@@ -459,7 +459,7 @@ Set in **`idx-api/.env`** and/or root **`.env`** for Docker Compose. See root **
 
 ### Clear lookups cache
 
-Delete stale rows from **`mls_search_cache`** where `partition_key` matches the lookup partition for the dataset, or wait for the scheduled **`mls.listings_cache_refresh`** purge job (`MLS_PROXY_CACHE_RETENTION_DAYS`).
+Delete stale rows from **`mls_search_cache`** where `partition_key` matches the lookup partition for the dataset, or wait for the scheduled **`mls.proxy_cache_purge`** purge job (`MLS_PROXY_CACHE_RETENTION_DAYS`).
 
 ---
 

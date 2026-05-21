@@ -11,7 +11,7 @@ import (
 // InitServices attaches service implementations (called from cmd/worker).
 func (r *Registry) InitServices(q *queue.Client) {
 	r.replicationKickoff = sync.NewKickoff(r.cfg, r.db, q, r.logger)
-	r.listingsCache = cache.NewRefreshJob(r.cfg, r.db, r.logger)
+	r.proxyCachePurge = cache.NewRefreshJob(r.cfg, r.db, r.logger)
 	r.bridgeSync = sync.NewBridgeWorker(r.cfg, r.db, q, r.logger)
 	r.sparkSync = sync.NewSparkWorker(r.cfg, r.db, q, r.logger)
 	r.mirrorPurge = sync.NewPurgeClosed(r.cfg, r.db)
