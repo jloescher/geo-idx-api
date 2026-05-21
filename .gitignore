@@ -16,6 +16,9 @@ Thumbs.db
 *.test
 coverage.out
 
+# Duplicate agent guide (use AGENTS.md)
+CLAUDE.md
+
 # Legacy PHP (removed)
 /vendor
 /node_modules
