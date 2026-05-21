@@ -1,66 +1,114 @@
 ---
 name: inspecting-search-coverage
-description: Audits technical and on-page search coverage across the idx-api Go codebase, including Bridge MLS listing filters, GIS parcel queries, and hybrid PostGIS search.
+description: |
+  Audits technical and on-page search coverage.
+  Use when: implementing or refactoring Inspecting Search Coverage work, troubleshooting technical, on page, content, or aligning new changes with the repository's existing conventions
 allowed-tools: Read, Edit, Write, Glob, Grep, Bash
 ---
 
-# Inspecting Search Coverage (Go)
+# Inspecting Search Coverage Skill
 
-Audits search and filter behavior in the **Go** idx-api service: live MLS proxy, PostGIS mirror search, and GIS parcel queries.
+This fallback skill keeps Inspecting Search Coverage work aligned with the conventions already present in this repository. Prefer extending the closest existing implementation over inventing a new abstraction, and verify neighboring states before finishing.
 
-## Quick start
+## Before You Code (REQUIRED)
 
-```bash
-# Bridge / RESO proxy and cache
-grep -rn "finishProxy\|FingerprintRequest\|filters" internal/handler/bridge/ internal/service/cache/
+This skill's content was captured at generation time and MAY be stale. For ANY non-trivial change involving inspecting-search-coverage, verify against current docs FIRST:
 
-# Hybrid search routing (mirror vs live)
-grep -rn "Route\|PostGIS\|live" internal/service/search/
 
-# GIS bbox / failover
-grep -rn "ParseBBox\|sourcesForBBox" internal/service/gis/
 
-# Comps sold vs mirror legs
-grep -rn "fetchSoldComps\|findMirrorComps" internal/service/comps/
+Then:
+
+1. **Match the installed version.** Cross-reference against the version installed in this repo. APIs change across minor versions; do not assume.
+2. **Discover provider best practices.** If the task touches a production-sensitive capability, inspect the provider service catalog, official docs, and project docs before choosing an implementation.
+3. **Respect explicit direction.** If the user explicitly asks for a specific mechanism, follow it. If project docs clearly mandate a mechanism, follow the project. In both cases, mention the provider-recommended alternative and make the chosen path safe.
+4. **Prefer provider-native primitives by default.** If no explicit user/project override exists and the change involves caching, rate limiting, background work, scheduled jobs, shared state, queues, or secrets, use the provider-recommended binding/API. Do not hand-roll an in-memory or polyfill solution that "works" locally but breaks under the provider's execution model — derive the need→native-primitive mapping yourself from this provider's docs.
+
+## Capability Contract
+
+Use this section when the user prompt touches production risk, even if the prompt does not name this technology explicitly.
+
+
+
+
+Required wiring surfaces:
+- runtime/infrastructure config: Dockerfile
+- nearest typed request/context boundary
+- handler/procedure boundary before external side effects
+
+Side-effect barrier:
+- Place guards before external APIs, auth mutations, email sends, analytics events, storage writes, and database mutations.
+
+
+Fallback policy:
+- Prefer provider-native/platform-managed primitives by default when no explicit override exists.
+- Follow clear user/project overrides, but mention the native alternative and tradeoff.
+- Fallbacks must be durable, multi-instance safe, and atomic under concurrency.
+
+Verification rules:
+- [error] native-or-explicit-override: Use the provider-native primitive first unless the user/project explicitly overrides it.
+- [error] atomic-fallback: Fallback counters must be atomic under concurrency.
+
+## Quick Start
+
+### Inspect the current implementation
+
+```sh
+rg -n "inspecting-search-coverage|technical|on-page|content" .
+rg --files | rg "inspecting-search-coverage|technical|on-page"
 ```
 
-## Key files
+### Make the smallest compatible change
 
-| Surface | Location |
-|---------|----------|
-| Live listings / RESO proxy | `internal/handler/bridge/handler.go` |
-| On-demand proxy cache | `internal/service/cache/proxy_cache.go`, `canonical.go` |
-| Hybrid search | `internal/service/search/service.go`, `route.go`, `postgis.go`, `live_search.go` |
-| GIS parcels | `internal/service/gis/proxy.go`, `query.go`, `sources.go` |
-| Comps | `internal/service/comps/engine.go`, `upstream.go`, `mirror.go` |
-| Auth | `internal/api/middleware/domain_token.go` |
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
 
-## Bridge filter forwarding
+### Verify before finishing
 
-- Query parameters (including `filters`) are forwarded to Bridge/Spark upstream via `mlspoxy` clients.
-- **Caching:** `FingerprintRequest` hashes method, upstream URL, and sorted query (excluding `domain`). Identical requests return `X-IDX-Cache: HIT` from `mls_search_cache`. Different `filters` values produce different fingerprints (separate cache entries).
-- **No teaser truncation** in this deployment: authenticated `domain.token` traffic receives full JSON (see `docs/idx-api-bridge-proxy.md`).
+- Verify the changed path and the most likely adjacent edge cases.
+- Check that naming, layering, and file placement still match nearby code.
+- Confirm there is a clear reason for any new abstraction, dependency, or workflow.
 
-## GIS spatial queries
+## Key Concepts
 
-- `GET /api/v1/gis` — `ParseBBox` from `west,south,east,north` or `lat`/`lng` + `radius` (meters).
-- `GIS_MAX_BBOX_SPAN_DEG` rejects oversized envelopes.
-- Source failover: statewide → county layers → degraded empty FC + OSM tile hint (`internal/service/gis/proxy.go`).
+| Concept | Why it matters | What to check |
+|---------|----------------|---------------|
+| Existing patterns | Keeps the repo coherent | Start from the nearest matching implementation before editing |
+| Scope control | Prevents abstraction creep | Keep the change in the same layer as surrounding code |
+| Verification | Catches regressions early | Recheck adjacent states, edge cases, and integration points |
+| References | Speeds up repeat work | Use the linked topic files when the task needs deeper guidance |
 
-## Hybrid search routing
+## Common Patterns
 
-- `POST /api/v1/search` — Active/Pending from PostGIS `listings` when possible; Closed (and mixed status) from live RESO (`internal/service/search/route.go`).
-- Mirror filters: `low_risk_floodzone`, monthly fee bounds on indexed columns.
-- Result caching uses the same proxy-cache machinery as listings (15-minute TTL default).
+### Technical
 
-## Access abilities
+**When:** The task touches technical in Inspecting Search Coverage work.
 
-- PATs require `idx:access` or `idx:full` plus `X-Domain-Slug` / `?domain=` for a verified domain.
-- **`idx:full` does not gate search or comps modes** in Go; both abilities receive full payloads.
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
 
-## References
+### On Page
 
-- `docs/idx-api-bridge-proxy.md` — proxy, cache, search endpoint
-- `docs/gis-api.md` — GIS parameters and caching
-- `docs/comps-api.md` — comps modes and data sources
-- `docs/listings-mirror.md` — mirror payload and indexed columns
+**When:** The task touches on page in Inspecting Search Coverage work.
+
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
+
+### Content
+
+**When:** The task touches content in Inspecting Search Coverage work.
+
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
+
+## See Also
+
+- [Technical](references/technical.md)
+- [On Page](references/on-page.md)
+- [Content](references/content.md)
+- [Programmatic](references/programmatic.md)
+- [Schema](references/schema.md)
+- [Competitive](references/competitive.md)

@@ -1,18 +1,40 @@
-# Competitive Search Coverage
+# Inspecting Search Coverage Competitive Reference
 
-When to use: Benchmarking idx-api search functionality against real estate platforms and identifying feature gaps for SEO differentiation.
+## When To Use
 
-## Patterns
+Use this reference when the task touches competitive while working on Inspecting Search Coverage code in this repository.
 
-**Filter Sophistication Comparison**
-Bridge supports `filters` query parameters for advanced listing search. Compare your implementation's filter granularity (price range, property type, bedrooms, bathrooms, square footage) against Zillow, Realtor.com, and Redfin. The `BridgeProxyController` forwards filters directly—audit which filter combinations create unique, indexable result pages.
+## What To Inspect
 
-**Map-Based Search Parity**
-The GIS proxy's `bbox` and radius search capabilities compete with map-based property discovery on major platforms. Benchmark against competitors' map search UX: support for drawing custom polygons, school boundary overlays, and commute-time search. The `GisProxyService` failover chain (statewide → county → degraded) should match competitor reliability.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**GHL Integration Differentiation**
-Most IDX providers lack deep GoHighLevel CRM integration. The widget system (`/widget/loader.js`, `/widget/api/leads`) and lead sync pipeline (`SyncLeadToGhlJob`) create competitive moats. Ensure search functionality exposes lead capture opportunities that competitors cannot match—gated saved searches, automated follow-up triggers, and subscription-tier content access.
+## Recommended Workflow
 
-## Warning
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-Competitors like Zillow receive direct MLS data feeds with fewer compliance restrictions. The idx-api teaser gating and domain authorization requirements create inherent content depth limitations. Do not attempt to compete on listing volume alone—focus on agent workflow integration (GHL sync), local market expertise (GIS layers), and subscriber-exclusive content as differentiators.
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

@@ -1,70 +1,124 @@
 ---
 name: go
-description: Go 1.25+ Fiber API, pgx, PostgreSQL queue workers, and idx-api internal packages. Use when implementing handlers, services, jobs, migrations (goose), config, or tests in cmd/ and internal/.
+description: |
+  Manages Go 1.25+ runtime patterns, concurrency, error handling, and performance
+  for the idx-api codebase. Use when: writing or reviewing Go code, adding handlers,
+  services, repository methods, queue jobs, or scheduler tasks; debugging goroutine
+  leaks, nil panics, or error propagation; structuring new internal/ packages;
+  or optimizing PostgreSQL query patterns with pgx/sqlx.
+allowed-tools: Read, Edit, Write, Glob, Grep, Bash, mcp__4_5v_mcp__analyze_image, mcp__web_reader__webReader
 ---
 
-# Go (idx-api)
+# Go Skill
 
-## Stack
+Go 1.25+ backend for Quantyra IDX API — Fiber HTTP server, PostgreSQL+PostGIS storage, and a PostgreSQL-native job queue. Three processes (`api`, `worker`, `scheduler`) share one database; multi-DC safety via advisory locks. No ORM — raw SQL through `pgxpool` and `sqlx`.
 
-- **Go 1.25+**, **Fiber v2**, **pgx/v5** + **sqlx**, **goose** migrations
-- **PostgreSQL** queue (`jobs` table, `{"type":"bridge.fetch_page","args":{...}}` payloads)
-- **Argon2id** passwords (`internal/auth/password`); legacy bcrypt verified + upgraded on login
-- **API tokens**: SHA-256 hashed in `personal_access_tokens.token` (re-issue after cutover)
+## Before You Code (REQUIRED)
 
-## Layout
+This skill's content was captured at generation time and MAY be stale. For ANY non-trivial change involving go, verify against current docs FIRST:
 
-| Path | Role |
-|------|------|
-| `cmd/api` | HTTP server (:8000) |
-| `cmd/worker` | Queue consumer (`WORKER_QUEUES`) |
-| `cmd/scheduler` | Cron → enqueue jobs |
-| `cmd/seed` | `make seed-admin` (ADMIN_SEED_*) |
-| `internal/api` | Routes, middleware (`domain.token`, `mls.access`) |
-| `internal/handler/` | bridge, gis, images, dashboard, auth, marketing |
-| `internal/service/` | sync, search, gis, cache, mls, crypto |
-| `internal/job` | Queue handler registry |
-| `internal/queue` | Enqueue, reserve, batches |
-| `internal/repository` | DB access |
-| `internal/web` | Embedded CSS/JS + HTML helpers |
-| `migrations/` | Goose SQL (`00001_initial.sql`) |
 
-## Commands
 
-```bash
-make migrate          # GOOSE_DBSTRING required
-make seed-admin
-make run-api
-make run-worker
-make run-scheduler
-GOFLAGS=-mod=mod go test ./...
-go build ./cmd/...
+Then:
+
+1. **Match the installed version.** Cross-reference against the version installed in this repo. APIs change across minor versions; do not assume.
+2. **Discover provider best practices.** If the task touches a production-sensitive capability, inspect the provider service catalog, official docs, and project docs before choosing an implementation.
+3. **Respect explicit direction.** If the user explicitly asks for a specific mechanism, follow it. If project docs clearly mandate a mechanism, follow the project. In both cases, mention the provider-recommended alternative and make the chosen path safe.
+4. **Prefer provider-native primitives by default.** If no explicit user/project override exists and the change involves caching, rate limiting, background work, scheduled jobs, shared state, queues, or secrets, use the provider-recommended binding/API. Do not hand-roll an in-memory or polyfill solution that "works" locally but breaks under the provider's execution model — derive the need→native-primitive mapping yourself from this provider's docs.
+
+## Capability Contract
+
+Use this section when the user prompt touches production risk, even if the prompt does not name this technology explicitly.
+
+
+
+
+Required wiring surfaces:
+- runtime/infrastructure config: Dockerfile
+- nearest typed request/context boundary
+- handler/procedure boundary before external side effects
+
+Side-effect barrier:
+- Place guards before external APIs, auth mutations, email sends, analytics events, storage writes, and database mutations.
+
+
+Fallback policy:
+- Prefer provider-native/platform-managed primitives by default when no explicit override exists.
+- Follow clear user/project overrides, but mention the native alternative and tradeoff.
+- Fallbacks must be durable, multi-instance safe, and atomic under concurrency.
+
+Verification rules:
+- [error] native-or-explicit-override: Use the provider-native primitive first unless the user/project explicitly overrides it.
+- [error] atomic-fallback: Fallback counters must be atomic under concurrency.
+
+## Quick Start
+
+### Verified Existing Pattern — Repository method
+
+```go
+// internal/repository/domain.go
+func (r *DomainRepo) FindActiveBySlug(ctx context.Context, slug string) (*domain.Domain, error) {
+    var d domain.Domain
+    err := r.db.SQLX.GetContext(ctx, &d, `
+        SELECT id, user_id, domain_slug, is_active
+        FROM domains WHERE is_active = true AND LOWER(domain_slug) = LOWER($1) LIMIT 1`, slug)
+    if errors.Is(err, sql.ErrNoRows) { return nil, nil }
+    if err != nil { return nil, err }
+    return &d, nil
+}
 ```
 
-## Patterns
+### New Code Pattern — Add a service method
 
-- Config: `internal/config` from `.env` (see `.env.example`)
-- Handlers: thin; delegate to `internal/service`
-- Queue types: `internal/queue/payload.go` constants (`bridge.fetch_page`, `spark.persist_chunk`, …)
-- Never embed MLS page JSON in job payloads — use `replica_pages`
-- Revenue impact: comment monetization-sensitive logic
+```go
+// new code to add
+func (s *Service) DoWork(ctx context.Context, id int64) (*Result, error) {
+    row, err := s.repo.FindByID(ctx, id)
+    if err != nil { return nil, fmt.Errorf("find by id %d: %w", id, err) }
+    if row == nil { return nil, nil } // not found is not an error
+    return &Result{Data: row}, nil
+}
+```
 
-## Auth
+## Key Concepts
 
-- Domain header / Referer host **or** Bearer PAT + domain binding
-- Abilities: `idx:access` (teaser) vs `idx:full`
-- Dashboard: session cookie after `/login`
+| Concept | Usage | Example |
+|---------|-------|---------|
+| Error wrapping | `fmt.Errorf("…: %w", err)` everywhere | `fmt.Errorf("parse dsn: %w", err)` |
+| Context propagation | Every function that does I/O takes `ctx context.Context` | `FindActiveBySlug(ctx, slug)` |
+| Constructor DI | `New*` functions wire dependencies; no global state | `NewHandler(cfg, db, logger)` |
+| Struct tags | `db:"col"` for sqlx, `json:"field"` for API | `Domain.ID int64 \`db:"id"\`` |
+| Sentinel errors | `sql.ErrNoRows` checked with `errors.Is` | Repository returns `nil, nil` for not-found |
 
-## Tests
+## Common Patterns
 
-- `go test ./internal/...`
-- Integration: `TEST_DATABASE_URL` for DB tests
-- HTTP: `net/http/httptest` or Fiber test helpers; fake upstream MLS/GIS in handler tests
+### Graceful shutdown with signal handling
 
-## Do not
+**When:** Every `cmd/` entry point.
 
-- Reintroduce Laravel/PHP/Composer for this service
-- Use `php artisan` or Eloquent in new code
-- Store plaintext API tokens
+```go
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+go func() {
+    sigCh := make(chan os.Signal, 1)
+    signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+    <-sigCh
+    cancel()
+    _ = app.ShutdownWithTimeout(30 * time.Second)
+}()
+```
 
-See [README.md](../../README.md), [docs/go-cutover.md](../../docs/go-cutover.md), [AGENTS.md](../../AGENTS.md).
+## See Also
+
+- [patterns](references/patterns.md)
+- [types](references/types.md)
+- [modules](references/modules.md)
+- [errors](references/errors.md)
+
+## Related Skills
+
+- See the **fiber** skill for routing, middleware, and Fiber-specific patterns
+- See the **postgres** and **postgresql** skills for pgx/sqlx query patterns
+- See the **queue-postgresql** skill for job enqueue, reserve, and lifecycle
+- See the **cache-postgres** skill for proxy cache patterns
+- See the **geospatial** skill for PostGIS queries

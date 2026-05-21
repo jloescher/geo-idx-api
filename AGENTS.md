@@ -1,336 +1,316 @@
 # Quantyra IDX API
 
-**Go 1.25+** service (Fiber, pgx, PostgreSQL queue) powering Quantyra's Bridge MLS proxy, Spark Beaches MLS proxy, GIS parcel/geometry proxy, authenticated user dashboard (domains, API keys, MLS feed scope), and secured image proxy delivery. The service sits between real estate MLS data (Bridge Data Output / Stellar MLS), public ArcGIS parcel sources, and customer tooling. Three public surfaces: **idx.quantyralabs.cc** (app/marketing), **idx-api.quantyralabs.cc** (API), **idx-images.quantyralabs.cc** (image proxy).
-
-> **Note:** This repository was rewritten from Laravel 13 + Octane. Use `cmd/api`, `cmd/worker`, `cmd/scheduler`, and [README.md](README.md) for build/run instructions.
+High-performance MLS proxy and image delivery service for Quantyra IDX, written in **Go 1.25+** with **Fiber**, **PostgreSQL + PostGIS**, and a **PostgreSQL-backed job queue** (no Redis). Bridges multiple MLS feeds including Bridge Data Output (Stellar) and Spark Platform (Beaches) through a unified API.
 
 ## Tech Stack
 
 | Layer | Technology | Version | Purpose |
 |-------|------------|---------|---------|
-| Runtime | Go | 1.25+ | Server language |
-| HTTP | Fiber | 2.x | API router and middleware |
-| Database | PostgreSQL + PostGIS | — | pgx + sqlx |
-| Queue | PostgreSQL `jobs` | — | `cmd/worker` + LISTEN/NOTIFY |
-| Migrations | goose | 3.x | `migrations/*.sql` |
-| Dashboard UI | Embedded HTML/CSS | — | `internal/web` (`//go:embed`) |
-| Auth | Session + PAT | — | Argon2id passwords; SHA-256 token hashes |
-| Edge images | Nginx | 1.27 | `Dockerfile.idx-images` → Go API |
+| Runtime | Go | 1.25+ | High-performance HTTP server and background workers |
+| Framework | Fiber | v2 | Fast HTTP router with middleware support |
+| Database | PostgreSQL + PostGIS | Latest | Primary storage and geospatial queries |
+| Queue | PostgreSQL | Latest | Job queue for background processing (no Redis) |
+| Logger | slog | stdlib | Structured logging with JSON/text output |
+| Build | CGO_ENABLED=0 | - | Single binary deployment with no runtime deps |
 
 ## Quick Start
 
+**Prerequisites:** Go 1.25+, PostgreSQL with PostGIS, `.env` from `.env.example`.
+
 ```bash
-# Prerequisites: Go 1.25+, PostgreSQL with PostGIS
-
+# Clone and setup
+git clone [repository]
+cd idx-api
 cp .env.example .env
-# Edit DB_*, BRIDGE_API_KEY, SPARK_ACCESS_TOKEN, ADMIN_SEED_*, WORKER_QUEUES
+# Edit DB_*, BRIDGE_API_KEY, SPARK_ACCESS_TOKEN, etc.
 
-export GOOSE_DBSTRING="postgres://user:pass@127.0.0.1:5432/idx_api?sslmode=disable"
+# Database setup
+export GOOSE_DBSTRING="postgres://postgres:postgres@127.0.0.1:5432/idx_api?sslmode=disable"
 make migrate
-make seed-admin
+make seed-admin   # ADMIN_SEED_EMAIL / ADMIN_SEED_PASSWORD in .env
 
-make run-api        # :8000
-make run-worker     # separate terminal
-make run-scheduler  # separate terminal
+# Run services (separate terminals)
+# API server
+make run-api
 
-go test ./...
+# Worker (processes jobs from queue)
+export WORKER_QUEUES=default,sync-kickoff,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist
+make run-worker
+
+# Scheduler (kicks off replication and background tasks)
+make run-scheduler
 ```
 
 ## Project Structure
 
 ```
 idx-api/
-├── cmd/api/              # HTTP server
-├── cmd/worker/           # Queue consumer
-├── cmd/scheduler/        # Cron → enqueue
-├── cmd/seed/             # make seed-admin
-├── internal/
-│   ├── api/              # Routes, middleware
-│   ├── handler/          # bridge, gis, images, dashboard, auth, marketing
-│   ├── service/          # sync, search, gis, cache, comps, mls, crypto, auth
-│   ├── job/              # Queue handler registry
-│   ├── queue/            # PostgreSQL queue client
-│   ├── repository/       # DB access
-│   ├── config/           # .env loading
-│   ├── auth/password/    # Argon2id
-│   └── web/              # Embedded static + HTML layout
-├── migrations/           # Goose SQL
-├── docs/
-├── Dockerfile            # api | worker | scheduler
-└── docker-compose.dev.yml
+├── cmd/                  # Entry points
+│   ├── api/             # HTTP server (:8000)
+│   ├── worker/          # Queue consumer
+│   ├── scheduler/       # Cron dispatcher
+│   └── seed/           # Database seeding
+├── internal/            # Application code
+│   ├── api/            # HTTP routes and middleware
+│   ├── config/         # Configuration management
+│   ├── handler/        # HTTP handlers (bridge, gis, auth, etc.)
+│   ├── mlspoxy/        # MLS proxy implementations
+│   ├── repository/     # Data access layer
+│   ├── service/        # Business logic (audit, cache, search, etc.)
+│   ├── scheduler/      # Distributed scheduling with PostgreSQL locks
+│   └── web/           # Embedded static assets
+├── migrations/         # Goose SQL schema
+├── docs/              # Documentation
+└── bin/              # Built binaries (make build)
 ```
 
 ## Architecture Overview
 
-The service has three primary subsystems:
+The system consists of three main processes:
 
-### 1. Bridge MLS Proxy (`/api/v1/*`)
+1. **API Server** (`cmd/api`) - HTTP endpoints for MLS proxy, GIS, search, and dashboard
+2. **Worker** (`cmd/worker`) - Processes jobs from PostgreSQL queue (fetch MLS data, persist, etc.)
+3. **Scheduler** (`cmd/scheduler`) - Distributed cron with PostgreSQL advisory locks for multi-DC safety
 
-Proxies Bridge Data Output with domain-based or PAT authentication. Key behaviors:
-- **domain.token** + **mls.access** middleware resolve identity and feed access
-- **Image URL rewriting**: Bridge photo URLs rewritten to `idx-images` public URLs
-- **On-demand proxy cache**: repeat identical live requests stored in `mls_search_cache` (`X-IDX-Cache: HIT`/`MISS`); scheduler purges stale rows
-- **Audit logging**: `mls_proxy_audit_logs` including optional `cache_hit`
-
-### 2. GIS Parcel/Geometry Proxy (`/api/v1/gis`, `/api/v1/mls/{mlsCode}/gis`)
-
-Public ArcGIS feature server proxy for Florida parcel data. Three-tier caching with generation-based invalidation, source failover, teaser mode for non-full tokens, and bbox limits.
-
-### 3. Platform & user dashboard
-
-- **Marketing home** (`/`) — `internal/handler/marketing`
-- **User dashboard** (`/dashboard`) — domains, DNS TXT verify, API keys (`internal/handler/dashboard`)
-
-```
-┌──────────────┐        ┌──────────────┐        ┌──────────────┐
-│  idx.*       │        │  idx-api.*   │        │ idx-images.* │
-│  (App/Mktg)  │        │  (API)       │        │  (Nginx)     │
-├──────────────┤        ├──────────────┤        ├──────────────┤
-│ User dashboard │        │ Bridge Proxy │        │ Edge cache   │
-│ (Go HTML)      │        │ GIS Proxy    │   ──▶  │ -> idx-api   │
-│                │        │              │        │ /images/*    │
-└──────────────┘        └──────┬───────┘        └──────────────┘
-                               │
-                               ▼
-                       ┌──────────────┐        ┌──────────────┐
-                       │  Bridge MLS  │        │  ArcGIS      │
-                       │              │        │  Parcel Src  │
-                       └──────────────┘        └──────────────┘
-```
-
-### Key modules
+### Key Components
 
 | Module | Location | Purpose |
 |--------|----------|---------|
-| Bridge proxy | `internal/handler/bridge` | MLS RESO proxy, search, stats |
-| GIS proxy | `internal/handler/gis` | ArcGIS parcel proxy |
-| Images | `internal/handler/images` | `/images/*` streaming cache |
-| Domain/token auth | `internal/api/middleware/domain_token.go` | Domain slug and/or PAT |
-| MLS access | `internal/api/middleware/mls_access.go` | Feed allowlists |
-| Sync/replication | `internal/service/sync` | Bridge + Spark mirror jobs |
-| Comps / BPO | `internal/service/comps` | Modes A–E, investor, BPO (14-line URAR), `home_value` |
-| Dashboard | `internal/handler/dashboard` | Login, domains, API keys, invitations |
-| Queue | `internal/queue`, `internal/job` | Job types and workers |
+| MLS Proxy | `internal/handler/bridge` | RESO web API proxy for Bridge/Spark MLS |
+| GIS Service | `internal/handler/gis` | Parcel data proxy with teaser tiers |
+| Image Proxy | `internal/handler/images` | MLS photo proxy with filesystem cache |
+| Queue System | `internal/queue` | PostgreSQL job queue with fair work distribution |
+| Replication | `internal/service/sync` | MLS data mirroring with chunked persistence |
+| Cache Layer | `internal/service/cache` | Multi-level caching (proxy, lookup, etc.) |
+| Authentication | `internal/handler/auth` | Domain + API token auth with audit logging |
+
+## Platform-Native Production Patterns
+
+Before implementing production behavior, identify the runtime, hosting platform, database, queue, storage, auth, payment, analytics, and email systems involved. Inspect the provider service catalog, official docs, runtime config, and project docs before choosing a fallback implementation.
+
+For changes touching abuse protection, rate limits, background work, scheduled jobs, queues, caching, shared state, secrets, file/object storage, database connectivity, webhooks, payments, auth/session flows, email sending, analytics events, or externally visible side effects:
+
+1. Prefer managed/platform-native primitives over in-process memory, local timers, singleton clients, ad hoc counters, or frontend-only controls.
+2. Wire platform capabilities through the repository's infrastructure/config layer, runtime environment, and typed app/context boundary.
+3. Place guards before expensive or externally visible side effects such as payment APIs, auth mutations, email sends, analytics events, storage writes, or database mutations.
+4. Preserve privacy and anti-enumeration behavior in auth, recovery, invite, checkout, and email flows.
+5. Decide and document the failure stance: fail open, fail closed, retry, or degrade gracefully.
+6. Check concurrency, retries, serverless/edge isolates, transaction boundaries, and multi-instance behavior before choosing a storage or coordination pattern.
+7. Keep the change consistent with the repo's existing deployment/runtime setup rather than introducing a parallel mechanism.
+
+Precedence: follow a clear user instruction first, then explicit project docs, then provider best practices. When a fallback is explicitly required, state the provider-native alternative and make the chosen path durable, multi-instance safe, and atomic under concurrency. Do not present module-scope mutable state, frontend-only checks, detached timers, untyped env access, or non-atomic select-then-update counters as production-ready.
+
+This Go application is designed for cloud deployment with these patterns:
+
+- **Managed primitives**: Uses PostgreSQL advisory locks for scheduler leadership, PostgreSQL-native job queue instead of Redis, platform object storage for images
+- **Multi-DC safety**: Scheduler uses PostgreSQL advisory locks (913374211) for leader election across multiple data centers
+- **Graceful degradation**: Fallback to cached data when MLS APIs are unavailable
+- **State boundaries**: All state persisted to PostgreSQL; no in-process state that would fail in serverless/isolated environments
+- **Atomic operations**: Uses transactions for job processing, data persistence, and cache updates
+
+## UI/UX Quality Contract
+
+For frontend, mobile, desktop, CLI, form, dashboard, onboarding, account/settings, or visual polish tasks:
+
+1. Inspect nearby screens/components, the component library, design tokens, and existing density before creating new structure or styles.
+2. Choose a surface-appropriate direction: dashboard/tooling should be quiet, dense, and scannable; marketing can be more memorable; CLI/Ink should prioritize stable layout, truncation, and keyboard clarity.
+3. Avoid generic AI slop, template-looking screens, random gradient/card stacks, and UI that ignores the product context.
+4. For changed interactive flows, define the state matrix before coding: loading, empty, error, disabled, pending, success, retry/recovery, and long-text cases.
+5. Verify accessibility basics: labels, focus states, keyboard path, semantic controls, contrast, and non-hover-only guidance.
+6. Keep UX distinct from product strategy: UX covers concrete journeys, states, affordances, microcopy, and accessibility; product strategy covers activation, adoption, experiments, and metrics.
 
 ## Development Guidelines
 
-### Code Style (Go)
-- **Formatting**: `gofmt` / `make fmt`; optional `golangci-lint run ./...`
-- **Layout**: standard Go project layout under `cmd/` and `internal/`
-- **Naming**: PascalCase exported types; camelCase unexported; package names are short, lowercase (`comps`, `sync`, `mlspoxy`)
-- **Handlers**: thin Fiber handlers in `internal/handler/*`; business logic in `internal/service/*`
-- **Config**: loaded once in `internal/config` from `.env` (see `.env.example`)
-- **Revenue impact comments**: mark monetization-sensitive paths (cache, access tiers) where applicable
+### Code Style
+- **File naming**: kebab-case for Go files (`bridge/handler.go`)
+- **Code naming**:
+  - Structs: PascalCase (`Handler`, `Service`)
+  - Functions: camelCase with verb prefix (`NewHandler`, `fetchListings`)
+  - Variables: camelCase with context prefix (`ctx`, `cfg`, `db`)
+  - Constants: SCREAMING_SNAKE_CASE (`MAX_RETRIES`)
+  - Interfaces: PascalCase with -able suffix (`ProxyClient`, `CacheStore`)
+- **Import order**: 1) Standard library, 2) Third-party, 3) Internal, 4) Domain, 5) Relative
+- **Error handling**: Always return errors with context; use slog.Error for structured logging
 
-### Import Order (Go)
-1. Standard library
-2. Third-party modules (`github.com/gofiber/...`, `github.com/jackc/...`)
-3. `github.com/quantyralabs/idx-api/...` packages
+### Build & Test
+```bash
+make build          # Build all binaries
+make test           # Run all tests
+make fmt            # Format code
+make lint           # Run golangci-lint
+```
 
-### Database Conventions
-- **Migrations**: goose SQL in `migrations/` — currently **`00001_initial.sql`** only (consolidated fresh schema)
-- **Access**: `internal/repository` (pgx pool + sqlx where helpful)
-- **PostGIS**: `listings.coordinates`; partial indexes for Active/Pending search
-- **Queue**: PostgreSQL `jobs` table; payload JSON `{"type":"...","args":{...}}`
+### Environment Variables
 
-### Testing Patterns
-- **Colocated tests**: `*_test.go` next to packages (`go test ./internal/service/comps/...`)
-- **Full suite**: `make test` or `go test ./...`
-- **External APIs**: use `httptest.Server` or stub upstream in unit tests; no live Bridge/Spark in CI by default
-- **Database tests**: use a disposable Postgres DB; set `GOOSE_DBSTRING` before `make migrate` for integration-style tests
-
-### Scheduled Tasks (`cmd/scheduler` → PostgreSQL `jobs`)
-| Job type | Schedule | Queue | Purpose |
-|----------|----------|-------|---------|
-| `mls.replication_kickoff` | Every minute | default | Enqueue Bridge/Spark sync per dataset |
-| `mls.proxy_cache_purge` | Every 15 min | default | **Purge** stale `mls_search_cache` rows (on-demand proxy cache; does not pre-warm Active/Pending) |
-| `crypto.refresh_pricing` | Every 10 min | `COINGECKO_QUEUE` | CoinGecko snapshots |
-| `mls.purge_replica_pages` | Daily 04:15 | default | Completed + failed `replica_pages` retention |
-| `mls.purge_closed_listings` | Daily 03:05 | default | Mirror rolling window purge |
-| `gis.probe_sources` | Monday 06:30 | `GIS_QUEUE` | ArcGIS metadata fingerprint / generation bump |
-
-## Environment Variables
-
-### Core
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `APP_PORT` | No | HTTP listen port (default `8000`) |
-| `APP_URL` / `IDX_API_PUBLIC_URL` | Yes | Public API base URL |
-| `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, `DB_SSLMODE` | Yes | PostgreSQL connection (see `internal/config`) |
-| `GOOSE_DBSTRING` | Migrate | DSN for `make migrate` (can mirror `DB_*`) |
-| `ADMIN_SEED_EMAIL`, `ADMIN_SEED_PASSWORD` | Seed | `make seed-admin` bootstrap user |
-| `WORKER_QUEUES` | Worker | Comma-separated queues (see `.env.example`) |
-
-### Public URLs
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `IDX_PLATFORM_URL` | Yes | Public app URL (idx.quantyralabs.cc) |
-| `IDX_API_PUBLIC_URL` | Yes | Public API URL (defaults to APP_URL) |
-| `IDX_IMAGES_PUBLIC_URL` | Yes | Public image proxy URL (idx-images.quantyralabs.cc) |
-| `IDX_PLATFORM_HOSTS` | Dev | Comma-separated allowed hosts for platform |
-| `IDX_API_HOSTS` | Dev | Comma-separated allowed hosts for API |
-
-### MLS (provider-agnostic)
-
-Use **`MLS_*`** for mirror retention, replication scheduling, proxy-cache purge, and per-feed tuning (`MLS_STELLAR_*`, `MLS_BEACHES_*`). Keep **`BRIDGE_*`** / **`SPARK_*`** for upstream hosts, credentials, RESO paths, and sync queues. Consumers: `internal/service/sync`, `internal/service/search`, `internal/service/cache`.
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `MLS_LOCAL_MIRROR_ROLLING_MONTHS` | No | Active/Pending mirror window for purge, PostGIS search, listings-cache OData (default **12**; staging often **3**) |
-| `MLS_REPLICA_PAGE_RETENTION_HOURS` | No | Completed replication staging page TTL (default 24) |
-| `MLS_REPLICA_PAGE_FAILED_RETENTION_DAYS` | No | Failed staging page retention (default 7) |
-| `MLS_REPLICATION_FRESHNESS_MINUTES` | No | Catch-up vs steady incremental threshold (default 15) |
-| `MLS_LISTINGS_SYNC_*` | No | Listings collection cache pagination caps |
-| `MLS_STELLAR_*` / `MLS_BEACHES_*` | No | Per-feed replication `$top`, persist/upsert chunks, rate limit, API key overrides |
-
-Deprecated aliases (one release): `BRIDGE_LOCAL_MIRROR_ROLLING_MONTHS`, `SPARK_LOCAL_MIRROR_ROLLING_MONTHS`, `BRIDGE_REPLICA_PAGE_*`, `SPARK_REPLICA_PAGE_*`.
-
-### Bridge MLS (platform)
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `BRIDGE_API_KEY` | Yes | Bridge Data Output API key |
-| `BRIDGE_HOST` | Yes | Bridge API base URL (default: api.bridgedataoutput.com) |
-| `BRIDGE_DATASET` | No | MLS dataset (default: `stellar`) |
-| `BRIDGE_PATH_PREFIX` | No | e.g. `api/v2` |
-| `BRIDGE_RESO_ROOT` | No | e.g. `reso/odata` |
-| `BRIDGE_LISTING_PHOTO_PATH` | No | Path template for photos |
-| `BRIDGE_IMAGE_REWRITE_HOSTS` | No | Extra hostnames for URL rewriting |
-| `BRIDGE_TIMEOUT` | No | HTTP timeout (default: 30) |
-| `LISTINGS_CACHE_TTL` | No | On-demand `mls_search_cache` TTL in seconds (default: 900) |
-| `MLS_LOOKUP_CACHE_TTL` | No | Lookup partition TTL (default ~30 days) |
-| `MLS_PROXY_CACHE_RETENTION_DAYS` | No | Purge horizon for stale proxy cache rows |
-| `GOOGLE_MAPS_GEOCODING_API_KEY` | Home value | Address geocoding for `home_value` mode |
-| `IMAGE_CACHE_PATH` | No | Image storage root (Docker: /var/cache/geoidx/images) |
-| `IMAGE_CACHE_TTL` | No | Origin re-fetch TTL (default: 86400) |
-
-### Spark MLS (Beaches — platform)
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `SPARK_ACCESS_TOKEN` | Yes (Beaches) | Bearer for Spark RESO replication and live proxy |
-| `SPARK_API_FEED_ID` | No | Spark dashboard API Feed ID (audit/logging) |
-| `SPARK_REPLICATION_HOST` | No | Replication OData host (default: `https://replication.sparkapi.com`) — sync only |
-| `SPARK_REPLICATION_RESO_ROOT` | No | Replication RESO path (default: `Reso/OData`) |
-| `SPARK_API_HOST` | No | Live API host (default: `https://sparkapi.com`) — proxy/search/images |
-| `SPARK_API_VERSION` | No | Live API version prefix (default: `v1`) |
-| `SPARK_LIVE_RESO_ROOT` | No | Live RESO path under version (default: `Reso/OData`) |
-| `SPARK_RESO_BASE_URL` | No | Legacy override for replication base only |
-| `SPARK_DATASETS` | No | Mirror/catalog slugs (default: `beaches`) |
-| `SPARK_SYNC_FETCH_QUEUE` | No | Fetch queue (default: `spark-sync-fetch`) |
-| `SPARK_SYNC_PERSIST_QUEUE` | No | Persist queue (default: `spark-sync-persist`) |
-
-Catalog key `spark_beaches`; mirror partition `beaches`. See @docs/spark/README.md (integration, RESO reference, compliance).
-
-### GIS Parcel Proxy
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GIS_EDGE_CACHE_TTL` | No | GIS edge cache TTL (default: 900) |
-| `GIS_ORIGIN_MAX_DAYS_PRIMARY` | No | Postgres origin max age for statewide (default: 90) |
-| `GIS_ORIGIN_MAX_DAYS_COUNTY` | No | Postgres origin max age for county (default: 30) |
-| `GIS_METADATA_TIMEOUT` | No | Metadata probe HTTP timeout (default: 12) |
-| `GIS_QUEUE` | No | Queue for GIS jobs (default: default) |
-| `GIS_QUEUE_BACKUP_WRITES` | No | Async filesystem backup (default: true) |
-| `GIS_TEASER_MAX_FEATURES` | No | Feature cap for non-full-access (default: 40) |
-| `GIS_TEASER_COORD_DECIMALS` | No | Coordinate precision for teaser (default: 4, ~11m) |
-| `GIS_MAX_BBOX_SPAN_DEG` | No | Max bbox span to prevent abuse (default: 0.35) |
-| `GIS_FLORIDA_MLS_CODES` | No | Comma-separated MLS codes (default: stellar) |
-
-### Internal / Ops
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `IMAGE_CACHE_PATH` | Prod | Local NVMe path for image bytes (default under `/var/cache/geoidx/images`) |
-| `SESSION_LIFETIME` | No | Dashboard session TTL (hours) |
+| Variable | Required | Description | Example |
+|----------|----------|-------------|---------|
+| `DB_*` | Yes | PostgreSQL connection | `DB_HOST=127.0.0.1` |
+| `BRIDGE_API_KEY` | Yes | Bridge MLS API key | `sk-...` |
+| `SPARK_ACCESS_TOKEN` | Yes | Spark API access token | `...` |
+| `ADMIN_SEED_*` | Yes | Bootstrap admin credentials | `admin@example.com` |
+| `WORKER_QUEUES` | Yes | Queue names for worker | `default,sync-kickoff,bridge-sync-fetch,...` |
+| `SCHEDULER_LEADER_LOCK_ID` | No | PostgreSQL lock key for scheduler | `913374211` |
 
 ## Available Commands
 
 | Command | Description |
 |---------|-------------|
-| `make build` | Build `bin/api`, `bin/worker`, `bin/scheduler` |
-| `make test` | `go test ./...` |
-| `make fmt` | `gofmt` on `cmd/` and `internal/` |
-| `make migrate` | Goose up (`GOOSE_DBSTRING` required) |
-| `make seed-admin` | Bootstrap admin user from `ADMIN_SEED_*` |
-| `make run-api` | `go run ./cmd/api` (:8000) |
-| `make run-worker` | `go run ./cmd/worker` |
-| `make run-scheduler` | `go run ./cmd/scheduler` |
-| `docker compose -f docker-compose.dev.yml up --build` | API + idx-images edge in Compose |
-| Dashboard PAT | Issue tokens from `/dashboard` (`idx:full`) or `POST /api/auth/token` |
+| `make run-api` | Start HTTP server on port 8000 |
+| `make run-worker` | Start queue worker |
+| `make run-scheduler` | Start scheduler process |
+| `make migrate` | Run database migrations |
+| `make seed-admin` | Create admin user from env vars |
+| `make build` | Build all binaries to bin/ |
+| `make test` | Run all tests with coverage |
 
-**GIS probe:** enqueued as `gis.probe_sources` (scheduler Monday 06:30) or trigger via worker after manual enqueue.
+## Database Schema
 
-## Docker Deployment
+The application uses PostgreSQL with PostGIS. Key tables:
 
-### Production and staging (Coolify / VPS)
+- `domains` - Authorized domains and API keys
+- `tokens` - Active API tokens with scopes
+- `jobs` - PostgreSQL job queue (Laravel parity)
+- `replica_pages` - Staged MLS data before persistence
+- `listings` - Final mirrored listings with geospatial data
+- `audit_logs` - API access and change tracking
 
-Multi-stage **[`Dockerfile`](Dockerfile)** builds three binaries from Go 1.25:
+## Multi-MLS Support
 
-| Target | Process | Port |
-|--------|---------|------|
-| `api` | HTTP server (`cmd/api`) | 8000 |
-| `worker` | Queue consumer (`cmd/worker`) | — |
-| `scheduler` | Cron dispatcher (`cmd/scheduler`) | — |
+The system supports multiple MLS feeds through a unified interface:
 
-**idx-images:** **[`Dockerfile.idx-images`](Dockerfile.idx-images)** — Nginx 1.27 → upstream `idx-api:8000` for `/images/*`.
+- **Bridge Data Output** (Stellar) - RESO OData feed
+- **Spark Platform** (Beaches) - RESO OData feed with custom extensions
+- **Dataset routing** - `?dataset=stellar|beaches` parameter support
 
-```bash
-docker build -f Dockerfile --target api -t quantyra/idx-api:latest .
-docker build -f Dockerfile --target worker -t quantyra/idx-api-worker:latest .
-docker build -f Dockerfile --target scheduler -t quantyra/idx-api-scheduler:latest .
-docker build -f Dockerfile.idx-images -t quantyra/idx-images:latest .
-```
+## GIS Integration
 
-See **[docs/coolify-deployment.md](docs/coolify-deployment.md)** for four-app layout (web, worker, scheduler, idx-images), env, and resource hints.
+Built-in GIS parcel proxy with:
 
-### Development
+- PostGIS spatial queries
+- Teaser tiering for authenticated vs public access
+- County/primary data source separation
+- Bounding box limits for performance
 
-```bash
-docker compose -f docker-compose.dev.yml up --build
-```
+## Authentication & Authorization
 
-Run **worker** and **scheduler** on the host (or separate Coolify services) against the same `DB_*` as the API. See [README.md](README.md).
+- **Domain-based auth**: Validates request hostname against allowed domains
+- **API tokens**: Token-based authentication with scopes
+- **Audit logging**: All authenticated requests logged
+- **MLS access control**: Per-feed authorization checks
 
 ## Testing
 
-- Package tests: `go test ./internal/...`
-- Prefer `httptest` for HTTP handlers and upstream stubs
-- After schema changes: `make migrate` on a throwaway database
-- Smoke: replication kickoff at minute boundary when scheduler + worker are running
+- Unit tests: Handler functions and business logic
+- Integration tests: Database operations and HTTP endpoints
+- E2E tests: Full replication workflows (when available)
+- Test pattern: `*_test.go` files co-located with implementation
+
+## Deployment
+
+Docker multi-target build for separate services:
+
+- `Dockerfile.api` - HTTP server with health checks
+- `Dockerfile.worker` - Queue consumer
+- `Dockerfile.scheduler` - Cron dispatcher
+- Supports Coolify/Dokploy deployment with multi-DC PostgreSQL (Patroni + Tailscale)
 
 ## Additional Resources
 
-- @docs/INDEX.md — Documentation index
-- @docs/spark/README.md — Spark Platform (BeachesMLS): integration, RESO reference, compliance
-- @docs/database-migrations.md — Migration inventory, PostGIS, legacy drops
-- @docs/coolify-deployment.md — Coolify production & staging (four apps, env, networking, resources)
-- @docs/idx-api-bridge-proxy.md — Bridge proxy architecture, auth flow, cache strategy, image rewrite
-- @docs/bridge-api-documentation.md — Bridge Data Output upstream API reference
-- @docs/gis-api.md — GIS parcel/geometry proxy documentation
-- @README.md — Project overview and Docker build instructions
+- @README.md - Full project overview and setup
+- @docs/INDEX.md - Complete documentation index
+- @docs/listings-mirror.md - MLS replication details
+- @docs/go-cutover.md - Migration from Laravel
+- @docs/coolify-deployment.md - Multi-DC deployment guide
+
 
 ## Skill Usage Guide
 
-When working on tasks involving these technologies, invoke the corresponding skill from [`.cursor/skills/`](.cursor/skills/) (see the [skills index](.cursor/skills/README.md)):
+When working on tasks involving these technologies, invoke the corresponding skill:
 
 | Skill | Invoke When |
 |-------|-------------|
-| **go** | Handlers, services, queue jobs, config, `cmd/*`, tests |
-| postgresql | Goose migrations, PostGIS queries |
-| docker | `Dockerfile`, Compose, Coolify deploy |
-| frontend-design | Dashboard/marketing HTML + `internal/web/static` CSS |
-| nginx | idx-images reverse proxy |
-| crafting-empty-states | Dashboard empty states |
-| designing-inapp-guidance | Onboarding copy and flows |
-| inspecting-search-coverage | MLS/GIS search filters and docs |
-| `.cursor/skills/_legacy/` (laravel, php, vite, tailwind, …) | **Do not use** for new backend work (pre–Go cutover) |
+| go | Manages Go 1.25+ runtime patterns and performance optimizations |
+| fiber | Configures Fiber v2 HTTP router with middleware support |
+| postgresql | Manages PostgreSQL database operations with PostGIS extensions |
+| postgres | Manages PostgreSQL database connections and queries |
+| docker | Configures Docker multi-target builds for API, worker, and scheduler services |
+| frontend-design | Applies UI design with Tailwind CSS and component styling patterns |
+| deploy-coolify | Manages Coolify deployments with multi-DC PostgreSQL replication |
+| ux | Improves dashboard flows, authentication paths, and API error states |
+| deploy-docker | Configures Docker builds and container orchestration patterns |
+| deploy-patroni | Manages PostgreSQL Patroni cluster configuration and failover |
+| hosting-tailscale | Configures Tailscale networking for multi-DC connectivity |
+| hosting-coolify | Configures Coolify server deployments and resource allocation |
+| storage-s3 | Configures S3-compatible object storage for image caching |
+| queue-postgresql | Manages PostgreSQL job queue with fair work distribution |
+| auth-api-token | Manages API token authentication with audit logging |
+| cache-postgres | Manages PostgreSQL-based cache for MLS proxy responses |
+| proxy-web | Configures web proxy for MLS API integration with caching and rate limiting |
+| geospatial | Manages PostGIS spatial queries and geographic data processing |
+| auth-domain | Manages domain-based authentication and access control |
+| cron | Configures distributed cron scheduling with PostgreSQL advisory locks |
+| scoping-feature-work | Breaks features into MVP slices and acceptance criteria |
+| prioritizing-roadmap-bets | Ranks initiatives using impact, effort, and risk signals |
+| designing-onboarding-paths | Designs onboarding paths, checklists, and first-run UI |
+| mapping-user-journeys | Maps in-app journeys and identifies friction points in code |
+| improving-activation-flow | Optimizes activation steps and time-to-value milestones |
+| crafting-empty-states | Creates empty states and onboarding affordances |
+| orchestrating-feature-adoption | Plans feature discovery, nudges, and adoption flows |
+| designing-inapp-guidance | Builds tooltips, tours, and contextual guidance |
+| running-product-experiments | Sets up product experiments and rollout checks |
+| instrumenting-product-metrics | Defines product events, funnels, and activation metrics |
+| triaging-user-feedback | Routes feedback into backlog and quick wins |
+| writing-release-notes | Drafts release notes tied to shipped features |
+| structuring-offer-ladders | Frames plan tiers, value ladders, and upgrade logic |
+| clarifying-market-fit | Aligns ICP, positioning, and value narrative for on-page messaging |
+| framing-release-stories | Builds launch narratives, assets, and rollout checklists |
+| embedding-decision-cues | Applies behavioral cues that improve conversion decisions |
+| crafting-page-messaging | Writes conversion-focused messaging for pages and key CTAs |
+| generating-growth-hypotheses | Generates channel experiments and growth loops |
+| designing-lifecycle-messages | Designs onboarding and lifecycle email sequences |
+| tightening-brand-voice | Refines copy for clarity, tone, and consistency |
+| planning-editorial-arcs | Defines content themes, briefs, and editorial cadence |
+| orchestrating-social-rhythm | Plans social content beats and distribution rhythm |
+| tuning-landing-journeys | Improves landing page flow, hierarchy, and conversion paths |
+| streamlining-signup-steps | Reduces friction in signup and trial activation |
+| accelerating-first-run | Improves onboarding sequence and time-to-value |
+| reducing-form-falloff | Improves lead capture forms to reduce drop-off |
+| refining-prompt-surfaces | Optimizes banners, modals, and in-app prompts |
+| strengthening-upgrade-moments | Improves upgrade prompts and paywall messaging |
+| mapping-conversion-events | Defines funnel events, tracking, and success signals |
+| designing-variation-tests | Plans A/B experiments and measurement plans |
+| calibrating-paid-campaigns | Aligns paid acquisition with landing pages and pixels |
+| building-acquisition-tools | Designs lead magnets or free tools for acquisition |
+| engineering-referral-loops | Designs referral or partner loop mechanics |
+| inspecting-search-coverage | Audits technical and on-page search coverage |
+| scaling-template-pages | Builds scalable, template-driven search pages |
+| adding-structured-signals | Adds structured data for rich results |
+| building-compare-hubs | Creates comparison and alternative pages for discovery |
 
-## Agent Notes (Go)
+## Prompt-Aware Production Contract
 
-- Prefer `IDX_API_PUBLIC_URL` / `APP_URL` for absolute URLs; do not hardcode production hostnames in code.
-- Add or update `*_test.go` for behavior changes; run `go test` on touched packages before finishing.
-- Schema changes: edit `migrations/00001_initial.sql` for **fresh** databases only; do not add a new goose file unless upgrading existing deployments is required.
-- Documentation: update `docs/` when API contracts change; only create new doc files when asked.
+Before coding, scan the user's prompt for relevant skills and production-risk signals.
+
+- Load or inspect the relevant skill when the task matches a skill name, its Use when description, or nearby technology terms.
+- Production-risk signals include: abuse/rate-limit guard, background/lifecycle work, scheduled/recurring work, cache/shared state, secrets/env wiring, database/concurrency, webhook/side-effect flow, email/external side effect, API/auth flow.
+- For those signals, create a short task contract before coding: likely skills, provider docs to inspect, preferred native service, wiring surfaces, side-effect barriers, fallback policy, and verification criteria.
+- Infer provider/runtime from repository evidence even when the user does not name it. If a repo uses Cloudflare Workers via Alchemy, an abuse/rate-limit prompt should consider Cloudflare runtime capabilities before a DB counter.
+- Inspect provider service catalogs, best-practice docs, and runtime/database/config surfaces before choosing code.
+- If the user's prompt clearly asks for a different mechanism, follow the user and mention the provider-recommended alternative plus the tradeoff.
+- If project docs clearly mandate a different mechanism, follow project docs and preserve their constraints.
+- Otherwise prefer the platform-recommended/native primitive before in-memory, frontend-only, detached async, or ad hoc counter solutions.
+- Place guards before external side effects and document failure behavior.
+- If a fallback is used, make it durable, multi-instance safe, and atomic under concurrency; non-atomic select-then-update counters are not production-safe.
+
+## UI/UX Quality Contract
+
+For frontend, mobile, desktop, CLI, form, dashboard, onboarding, account/settings, or visual polish tasks:
+
+- UI/UX signals include: UI/interface change, form/flow UX, state coverage, accessibility/interaction quality, responsive layout, conversion/onboarding flow.
+- Load or inspect frontend-design for visual/interface craft and ux for journeys, state coverage, microcopy, and interaction quality when those skills exist.
+- Inspect nearby screens/components, the component library, design tokens, and current density before creating a new visual direction.
+- Choose a surface-appropriate direction: dashboard/tooling should be quiet, dense, and scannable; marketing can be more memorable; CLI/Ink should prioritize stable layout, truncation, and keyboard clarity.
+- Avoid generic AI slop, template-looking screens, random gradient/card stacks, and UI that ignores the product context.
+- For changed interactive flows, define the state matrix before coding: loading, empty, error, disabled, pending, success, retry/recovery, and long-text cases.
+- Verify accessibility basics: labels, focus states, keyboard path, semantic controls, contrast, and non-hover-only guidance.
+- The final hook check is advisory and may warn about missing UI states, responsive constraints, or accessibility cues without blocking completion.

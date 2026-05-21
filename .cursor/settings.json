@@ -9,6 +9,16 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SUMMONAIKIT_HOOK_PHASE=verify .cursor/hooks/skill-instructions-hook.sh"
+          }
+        ]
+      }
     ]
   }
 }

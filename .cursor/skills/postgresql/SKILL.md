@@ -1,97 +1,140 @@
 ---
 name: postgresql
-description: Handles PostgreSQL schema, migrations, and query patterns for the Laravel idx-api service
-allowed-tools: [Read, Edit, Write, Glob, Grep, Bash]
+description: |
+  Manages PostgreSQL database operations with PostGIS extensions for the Quantyra IDX API.
+  Use when: writing SQL queries, creating migrations, implementing repository methods,
+  configuring connection pools, using PostGIS spatial queries, implementing transactions,
+  working with the PostgreSQL job queue (FOR UPDATE SKIP LOCKED, pg_notify),
+  advisory locks for distributed coordination, bulk upsert/batch operations,
+  or any database schema changes.
+allowed-tools: Read, Edit, Write, Glob, Grep, Bash, mcp__4_5v_mcp__analyze_image, mcp__web_reader__webReader
 ---
 
-# Postgresql Skill
+# PostgreSQL Skill
 
-Manages PostgreSQL schema design, migrations, and query patterns for a Laravel 13 + Octane service handling MLS proxy data, GIS parcel caching, and subscriber dashboards. Development, staging, production, and automated tests all use PostgreSQL (`pgsql`).
+This project uses a **dual-driver PostgreSQL architecture** (`pgx/v5` pool + `sqlx` wrapper) with **PostGIS** for geospatial queries, a **PostgreSQL-native job queue** (no Redis), and **advisory locks** for multi-DC scheduler leadership. All state is PostgreSQL-backed — no in-process mutable state survives restarts.
+
+## Before You Code (REQUIRED)
+
+This skill's content was captured at generation time and MAY be stale. For ANY non-trivial change involving postgresql, verify against current docs FIRST:
+
+
+
+Then:
+
+1. **Match the installed version.** Cross-reference against the version installed in this repo. APIs change across minor versions; do not assume.
+2. **Discover provider best practices.** If the task touches a production-sensitive capability, inspect the provider service catalog, official docs, and project docs before choosing an implementation.
+3. **Respect explicit direction.** If the user explicitly asks for a specific mechanism, follow it. If project docs clearly mandate a mechanism, follow the project. In both cases, mention the provider-recommended alternative and make the chosen path safe.
+4. **Prefer provider-native primitives by default.** If no explicit user/project override exists and the change involves caching, rate limiting, background work, scheduled jobs, shared state, queues, or secrets, use the provider-recommended binding/API. Do not hand-roll an in-memory or polyfill solution that "works" locally but breaks under the provider's execution model — derive the need→native-primitive mapping yourself from this provider's docs.
+
+## Capability Contract
+
+Use this section when the user prompt touches production risk, even if the prompt does not name this technology explicitly.
+
+Risk signals this skill can participate in:
+- cache/shared state: Avoid module-level mutable state for serverless or multi-instance code. Use a provider or database primitive with clear concurrency behavior.
+- database/concurrency: Prefer atomic statements, unique constraints, transactions, or provider primitives for coordination. Avoid select-then-insert/update counters unless protected by a lock or constraint. For state flips, use conditional writes such as UPDATE ... WHERE field IS NULL RETURNING instead of read-then-update. For relation creation such as organization membership, add a database uniqueness invariant and an idempotent insert/upsert path.
+
+
+
+Required wiring surfaces:
+- runtime/infrastructure config: Dockerfile
+- nearest typed request/context boundary
+- handler/procedure boundary before external side effects
+
+Side-effect barrier:
+- Place guards before external APIs, auth mutations, email sends, analytics events, storage writes, and database mutations.
+
+
+Fallback policy:
+- Prefer provider-native/platform-managed primitives by default when no explicit override exists.
+- Follow clear user/project overrides, but mention the native alternative and tradeoff.
+- Fallbacks must be durable, multi-instance safe, and atomic under concurrency.
+
+Verification rules:
+- [error] native-or-explicit-override: Use the provider-native primitive first unless the user/project explicitly overrides it.
+- [error] atomic-fallback: Fallback counters must be atomic under concurrency.
+- [warning] relational-uniqueness-invariant: Membership/link/ownership creation should use a database uniqueness invariant plus idempotent insert/upsert behavior.
 
 ## Quick Start
 
-```bash
-# Configure DB_* in .env, then apply migrations
-php artisan migrate
+### Existing Pattern — Repository with dual drivers
+
+```go
+// pgx for high-performance operations (transactions, bulk, notifications)
+_, err := r.db.Pool.Exec(ctx, "INSERT INTO ... VALUES ($1, $2)", a, b)
+
+// sqlx for convenient struct scanning
+err := r.db.SQLX.GetContext(ctx, &result, "SELECT ... WHERE id = $1", id)
 ```
 
-```bash
-# Example PostgreSQL connection (adjust per environment)
-DB_CONNECTION=pgsql
-DB_HOST=127.0.0.1
-DB_PORT=5432
-DB_DATABASE=idx_api
-DB_USERNAME=postgres
-DB_PASSWORD=
+### Existing Pattern — Transaction with rollback
+
+```go
+tx, err := w.db.Pool.Begin(ctx)
+if err != nil {
+    return err
+}
+defer tx.Rollback(ctx)
+// ... operations on tx ...
+return tx.Commit(ctx)
 ```
 
 ## Key Concepts
 
-**Migration Structure**: Core migrations live in `database/migrations/`. Migration filenames follow Laravel's `YYYY_MM_DD_HHMMSS_description.php` format.
-
-**PHP 8 Model Attributes**: Models use PHP 8 attributes instead of property arrays:
-```php
-#[Fillable(['domain_slug', 'is_active'])]
-#[Hidden(['compressed_data'])]
-class ListingsCache extends Model
-{
-    protected function casts(): array
-    {
-        return [
-            'last_updated' => 'datetime',
-            'compressed_data' => 'binary',
-        ];
-    }
-}
-```
-
-**GIS Caching Strategy**: PostgreSQL stores GIS cache blobs with generation-based invalidation. The `gis_cache` table stores `query_hash`, `geojson_blob`, `source_generation`, and `expires_at`. Cache hits require matching `source_generation` against `gis_source_states.generation`.
-
-**Bridge proxy audit**: MLS proxy requests can be logged to `bridge_proxy_audit_logs` where enabled.
-
-**Domain-Scoped Caching**: `listings_cache` stores per-domain MLS listing caches with gzip-compressed `compressed_data` columns (see migrations for the current primary key shape).
-
-**Ephemeral Test Guard**: PHPUnit uses a dedicated PostgreSQL database (see `phpunit.xml`, default `idx_api_testing`). `TestCase::setUp()` allows only `testing` or `idx_api_testing` unless `ALLOW_DESTRUCTIVE_TEST_DB=true`.
+| Concept | Usage | Location |
+|---------|-------|----------|
+| `pgxpool.Pool` | Primary connection for transactions, bulk ops | `internal/repository/db.go` |
+| `sqlx.DB` | Struct scanning via `GetContext`/`SelectContext` | `internal/repository/` |
+| `ON CONFLICT DO UPDATE` | Upsert with COALESCE for nullable JSONB | `listing_mirror.go` |
+| `FOR UPDATE SKIP LOCKED` | Concurrent-safe job claiming | `internal/queue/queue.go` |
+| `pg_notify` | Worker wakeup on enqueue | `internal/queue/queue.go` |
+| `pg_try_advisory_lock` | Multi-DC scheduler leader election | `internal/scheduler/leader.go` |
+| PostGIS `geography` | Distance calculations in meters | `internal/service/search/postgis.go` |
+| Goose migrations | `+goose Up/Down` SQL files | `migrations/` |
 
 ## Common Patterns
 
-**Migration with JSON columns**:
-```php
-Schema::create('example_settings', function (Blueprint $table) {
-    $table->id();
-    $table->json('payload')->nullable();
-    $table->timestamps();
-});
-```
+### Dynamic query builder with parameterized placeholders
 
-**Encrypted columns**:
-```php
-protected function casts(): array
-{
-    return [
-        'secret' => 'encrypted',
-        'expires_at' => 'datetime',
-    ];
+```go
+// From internal/service/search/postgis.go — parameterized, injection-safe
+q := "SELECT ... FROM listings WHERE dataset_slug = $1"
+args := []any{dataset}
+n := 2
+if req.MinPrice != nil {
+    q += fmt.Sprintf(" AND list_price >= $%d", n)
+    args = append(args, *req.MinPrice)
+    n++
 }
 ```
 
-**Soft Deletes with Unique Constraints**:
-```php
-$table->string('access_token_hash')->unique();
-$table->softDeletes(); // Combined with unique hash for token lookup
+### WARNING: Never use string interpolation for values
+
+**The Problem:**
+```go
+// BAD — SQL injection
+q := fmt.Sprintf("SELECT * FROM listings WHERE city = '%s'", city)
 ```
 
-**Queue Worker Configuration** (PostgreSQL production):
-```php
-// config/queue.php or env
-QUEUE_CONNECTION=database  # Uses PostgreSQL jobs table
+**Why This Breaks:** SQL injection allows arbitrary query execution. Even "safe" inputs break on apostrophes (e.g., `Coeur d'Alene`).
+
+**The Fix:**
+```go
+// GOOD — parameterized
+q := "SELECT * FROM listings WHERE city = $1"
+rows, err := db.Pool.Query(ctx, q, city)
 ```
 
-**Generation-Based Cache Invalidation**:
-```sql
--- Check cache validity by comparing generations
-SELECT * FROM gis_cache c
-JOIN gis_source_states s ON c.source_used = s.source_name
-WHERE c.query_hash = ?
-AND c.source_generation = s.generation
-AND c.expires_at > NOW();
+## See Also
+
+- [patterns](references/patterns.md)
+- [workflows](references/workflows.md)
+
+## Related Skills
+
+- **queue-postgresql** — job queue, FOR UPDATE SKIP LOCKED, pg_notify
+- **geospatial** — PostGIS spatial queries and coordinate indexing
+- **cache-postgres** — PostgreSQL-backed caching layer
+- **deploy-patroni** — multi-DC PostgreSQL with Patroni over Tailscale
+- **go** — Go-specific database patterns (pgx, sqlx)

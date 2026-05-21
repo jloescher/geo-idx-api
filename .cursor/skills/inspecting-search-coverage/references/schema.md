@@ -1,18 +1,40 @@
-# Schema.org Structured Data
+# Inspecting Search Coverage Schema Reference
 
-When to use: Validating JSON-LD implementation, rich snippet eligibility, and structured data coverage for real estate listings and IDX pages.
+## When To Use
 
-## Patterns
+Use this reference when the task touches schema while working on Inspecting Search Coverage code in this repository.
 
-**RESO Property Schema Mapping**
-Bridge RESO API responses (`/api/v1/properties`) return `Property` entities with fields like `ListingKey`, `ListPrice`, `BedroomsTotal`, `BathroomsTotalInteger`, `LivingArea`, and `Media`. Map these to Schema.org `RealEstateListing` or `House` types with `offers` (PriceSpecification), `numberOfRooms`, `floorSize`, and `image` properties.
+## What To Inspect
 
-**GIS Geometry Schema**
-GeoJSON responses from `/api/v1/gis` contain `Polygon` geometries that can be embedded as Schema.org `GeoShape` or `Place` with `geo` properties. Use the `bbox` metadata to generate `geoMidpoint` and `geoRadius` for neighborhood and radius-search pages.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Organization and LocalBusiness for GHL**
-GHL-integrated locations should implement `RealEstateAgent` or `RealEstateAgency` schema using data from `ghl_oauth_tokens` and `ghl_registered_urls`. Include `areaServed` referencing the MLS market area and `hasOfferCatalog` pointing to IDX subscription tiers.
+## Recommended Workflow
 
-## Warning
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-MLS compliance restrictions may limit which structured data properties can be publicly exposed. The `BridgeTeaser` service caps listing data for non-full tokens—ensure that schema markup on teaser pages accurately represents the limited data shown and does not misrepresent the full listing availability to search engines.
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

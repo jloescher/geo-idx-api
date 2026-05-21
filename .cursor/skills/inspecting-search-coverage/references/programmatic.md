@@ -1,18 +1,40 @@
-# Programmatic Search Coverage
+# Inspecting Search Coverage Programmatic Reference
 
-When to use: Analyzing dynamically generated pages, URL patterns for property listings, and scaleable SEO strategies for large MLS datasets.
+## When To Use
 
-## Patterns
+Use this reference when the task touches programmatic while working on Inspecting Search Coverage code in this repository.
 
-**Listing Detail Page Generation**
-Individual listing endpoints (`/api/v1/listings/{listingId}`, `/api/v1/properties/{listingKey}`) serve as the foundation for programmatic SEO. Each listing should map to a canonical frontend URL pattern like `/listings/{city}/{address}-{listingKey}` to create indexable, location-rich pages at scale.
+## What To Inspect
 
-**ArcGIS Feature Programmatic Mapping**
-The GIS proxy supports `bbox` and `lat`/`lng` + `radius` queries that can generate neighborhood-level landing pages. Use `GisProxyService` envelope queries to create programmatic pages for cities, ZIP codes, and custom neighborhoods with unique boundary geometries.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**GHL Location-Specific Content**
-Installed locations (`ghl_installed_locations` table) with registered URLs (`ghl_registered_urls`) create opportunities for programmatic subdomains or subdirectories. Each location's widget embeds and IDX pages should generate unique, indexable content based on their specific MLS market area and agent branding.
+## Recommended Workflow
 
-## Warning
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-Programmatic generation of listing pages must respect MLS compliance requirements—Stellar MLS data cannot be displayed on unauthorized domains. The `domains` table controls which hostnames may display listing content; violating this can result in MLS access revocation and search engine penalties for duplicate content across unauthorized domains.
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

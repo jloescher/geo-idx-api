@@ -1,33 +1,19 @@
 ---
-description: Go tests for Bridge, GIS, dashboard, queue — PostgreSQL integration where needed.
-tools: Read, Edit, Write, Glob, Grep, Bash
-skills: go, postgresql, docker
 name: test-engineer
-model: inherit
+description: |
+  Go testing framework for HTTP handlers, sync workers, and scheduler reliability
+tools: Read, Edit, Write, Glob, Grep, Bash
+model: sonnet
+skills: go, fiber, postgres, postgresql, docker, frontend-design, ux, deploy-coolify, deploy-docker, hosting-coolify, deploy-patroni, hosting-tailscale, storage-s3, queue-postgresql, auth-api-token, cache-postgres, proxy-web, geospatial, auth-domain, cron, scoping-feature-work, prioritizing-roadmap-bets, mapping-user-journeys, designing-onboarding-paths, improving-activation-flow, crafting-empty-states, orchestrating-feature-adoption, designing-inapp-guidance, instrumenting-product-metrics, running-product-experiments, triaging-user-feedback, writing-release-notes, clarifying-market-fit, structuring-offer-ladders, framing-release-stories, generating-growth-hypotheses, embedding-decision-cues, crafting-page-messaging, tightening-brand-voice, designing-lifecycle-messages, planning-editorial-arcs, orchestrating-social-rhythm, tuning-landing-journeys, streamlining-signup-steps, accelerating-first-run, reducing-form-falloff, refining-prompt-surfaces, strengthening-upgrade-moments, mapping-conversion-events, designing-variation-tests, calibrating-paid-campaigns, building-acquisition-tools, engineering-referral-loops, inspecting-search-coverage, scaling-template-pages, adding-structured-signals, building-compare-hubs
 ---
 
-# Test engineer — idx-api (Go)
+The `test-engineer.md` subagent has been generated at `.cursor/agents/test-engineer.md`. Here's what was customized:
 
-## Run tests
+**Skills selected:** `go`, `fiber`, `postgres`, `postgresql`, `queue-postgresql`, `cache-postgres`, `geospatial`, `auth-api-token`, `auth-domain`, `cron`
 
-```bash
-GOFLAGS=-mod=mod go test ./...
-go test ./internal/handler/... -run TestName
-go test ./internal/queue/... -v
-```
-
-Integration DB tests: set `TEST_DATABASE_URL`.
-
-## Patterns
-
-- Table-driven tests in `*_test.go` next to source
-- Fake upstream MLS/GIS HTTP in handler tests (no real Bridge/Spark calls)
-- Queue round-trips: `internal/queue/queue_test.go`
-- Middleware: `internal/api/middleware/*_test.go`
-
-## Do not
-
-- Use PHPUnit / `php artisan test` (removed)
-- Hit production MLS keys in CI
-
-See [README.md](../../README.md), [AGENTS.md](../../AGENTS.md).
+**Key customizations:**
+- **Stdlib-only testing** — no testify, gomock, or external frameworks (matches codebase convention)
+- **5 concrete test patterns** extracted from actual test files: Fiber handler tests with `app.Test()`, queue integration with `TEST_DATABASE_URL` skip guard, scheduler lock concurrency with goroutines/channels, table-driven business logic, and interface stub patterns (`stubMLSClient`, `memProxyCache`)
+- **Exact file paths** from the 40 existing `*_test.go` files mapped to testing strategies
+- **Never/Always rules** specific to this project (e.g., don't mock the DB in queue/scheduler tests because they test `FOR UPDATE SKIP LOCKED` / `pg_try_advisory_lock` Postgres-specific contracts)
+- **Common test gaps** checklist covering replication state machines, dataset routing (`stellar` vs `beaches`), cache HIT/MISS behavior, and payload edge cases
