@@ -2,7 +2,6 @@ package cache
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 
 	"github.com/quantyralabs/idx-api/internal/config"
@@ -10,44 +9,29 @@ import (
 	"github.com/quantyralabs/idx-api/internal/repository"
 )
 
-// RefreshJob refreshes listings_cache for active domains (15-min schedule).
-// Revenue impact: warm cache improves TTFB and conversion on listing grids.
+// RefreshJob purges stale mls_search_cache rows (on-demand proxy cache retention).
+// Active/Pending data lives in the listings mirror; this job does not pre-warm collections.
 type RefreshJob struct {
 	cfg    config.Config
 	db     *repository.DB
+	cache  *ProxyCache
 	logger *slog.Logger
 }
 
 func NewRefreshJob(cfg config.Config, db *repository.DB, logger *slog.Logger) *RefreshJob {
-	return &RefreshJob{cfg: cfg, db: db, logger: logger}
+	return &RefreshJob{
+		cfg:    cfg,
+		db:     db,
+		cache:  NewProxyCache(cfg, db),
+		logger: logger,
+	}
 }
 
 func (j *RefreshJob) Run(ctx context.Context, _ *queue.ReservedJob) error {
-	domains, err := repository.NewDomainRepo(j.db).ListActive(ctx)
+	n, err := j.cache.PurgeExpired(ctx)
 	if err != nil {
 		return err
 	}
-	for _, d := range domains {
-		if !d.IsVerified() {
-			continue
-		}
-		feeds := repository.NewDomainRepo(j.db).AllowedDatasets(&d)
-		if len(feeds) == 0 {
-			feeds = []string{j.cfg.Bridge.Dataset}
-		}
-		for _, feed := range feeds {
-			j.logger.Info("listings cache refresh", "domain", d.DomainSlug, "feed", feed)
-		}
-	}
+	j.logger.Info("mls_search_cache purge", "deleted", n)
 	return nil
-}
-
-// RefreshArgs optional per-domain job args.
-type RefreshArgs struct {
-	DomainSlug string `json:"domain_slug"`
-	FeedCode   string `json:"feed_code"`
-}
-
-func decodeArgs(job *queue.ReservedJob, out any) error {
-	return json.Unmarshal(job.Payload.Args, out)
 }

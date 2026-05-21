@@ -42,7 +42,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 
 	s.logger.Info("cron schedules registered",
 		"mls_kickoff", "every minute at :00",
-		"mls_cache", "every 15 min",
+		"mls_search_cache_purge", "every 15 min",
 		"coingecko", "every 10 min",
 	)
 

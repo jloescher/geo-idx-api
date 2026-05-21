@@ -112,13 +112,13 @@ Stellar (Bridge) uses `{DATASET}_TotalMonthlyFees` when present, else the same a
 
 ---
 
-## Domain listings cache (Active + Pending)
+## Live proxy cache (on-demand)
 
-**Schedule:** `cmd/scheduler` enqueues `mls.listings_cache_refresh` every 15 minutes (per domain × feed, including `spark_beaches`).
+**Schedule:** `mls.listings_cache_refresh` every 15 minutes purges expired **`mls_search_cache`** rows (does not pre-warm Active/Pending).
 
-**Upstream:** live `sparkapi.com` Property OData — **not** the replication host. Filter: Active + Pending with rolling window **`MLS_LOCAL_MIRROR_ROLLING_MONTHS`** (default **12**, staging often **3**).
+**Mirror:** Active/Pending replication uses **`spark.replication.sparkapi.com`** into PostGIS **`listings`** (`dataset_slug = beaches`). **`POST /api/v1/search`** serves Active/Pending from the mirror.
 
-**Storage:** row-level gzip in `listings_cache` (`feed_code = spark_beaches`). Structured search / properties / lookup fingerprints use **`mls_search_cache`**. **Closed** listings are not persisted in `listings_cache`; hybrid search fetches Closed via live API (`SparkSearchClient`) and caches the response in `mls_search_cache` when applicable.
+**Live cache:** Identical upstream proxy/search requests are gzip-stored in **`mls_search_cache`** (e.g. Closed status, RESO `Property`, web listings with filters). TTL: **`LISTINGS_CACHE_TTL`** (default 15 min).
 
 ---
 
@@ -201,8 +201,8 @@ See [../coolify-deployment.md](../coolify-deployment.md) and [../deployment-oper
 
 | Command | Purpose |
 |---------|---------|
-| `php artisan schedule:list` | Confirm `spark-listings-replica-sync` |
-| `php artisan bridge:purge-replica-pages` | Purge old staging pages (Bridge + Spark) |
+| `make run-scheduler` | Confirm `mls-kickoff`, `purge-replica`, `gis-probe` crons enqueue |
+| Queue worker | `mls:purge-replica-pages` job purges old staging pages (Bridge + Spark) |
 
 ---
 

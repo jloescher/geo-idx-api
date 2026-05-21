@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/quantyralabs/idx-api/internal/api/ctxkeys"
 	"github.com/quantyralabs/idx-api/internal/config"
 	"github.com/quantyralabs/idx-api/internal/mlspoxy"
 	"github.com/quantyralabs/idx-api/internal/mlspoxy/bridge"
@@ -12,20 +13,22 @@ import (
 	"github.com/quantyralabs/idx-api/internal/repository"
 	"github.com/quantyralabs/idx-api/internal/service/audit"
 	"github.com/quantyralabs/idx-api/internal/service/cache"
+	"github.com/quantyralabs/idx-api/internal/service/crypto"
 	"github.com/quantyralabs/idx-api/internal/service/search"
 	"github.com/quantyralabs/idx-api/internal/service/sync"
 )
 
-// Handler implements Bridge proxy routes.
+// Handler implements MLS RESO/web proxy routes (Bridge and Spark feeds).
 type Handler struct {
 	cfg      config.Config
 	factory  *mlspoxy.Factory
 	rewriter *images.Rewriter
 	audit    *audit.Logger
-	listings *cache.ListingsService
-	search   *search.Service
-	stats    *sync.StatsService
-	logger   *slog.Logger
+	proxyCache *cache.ProxyCache
+	pricing    *crypto.PricingReader
+	search     *search.Service
+	stats      *sync.StatsService
+	logger     *slog.Logger
 }
 
 func NewHandler(cfg config.Config, db *repository.DB, auditor *audit.Logger, logger *slog.Logger) *Handler {
@@ -34,8 +37,9 @@ func NewHandler(cfg config.Config, db *repository.DB, auditor *audit.Logger, log
 		factory:  mlspoxy.NewFactory(cfg),
 		rewriter: images.NewRewriter(cfg),
 		audit:    auditor,
-		listings: cache.NewListingsService(cfg, db),
-		search:   search.NewService(cfg, db),
+		proxyCache: cache.NewProxyCache(cfg, db),
+		pricing:    crypto.NewPricingReader(db),
+		search:     search.NewService(cfg, db, cache.NewProxyCache(cfg, db)),
 		stats:    sync.NewStatsService(db),
 		logger:   logger,
 	}
@@ -46,7 +50,7 @@ func (h *Handler) Listings(c *fiber.Ctx) error {
 }
 
 func (h *Handler) Listing(c *fiber.Ctx) error {
-	return h.proxyWeb(c, "listings.detail", "listings/"+c.Params("listingId"))
+	return h.proxyWebWithKey(c, "listings.detail", "listings/"+c.Params("listingId"), c.Params("listingId"))
 }
 
 func (h *Handler) Agents(c *fiber.Ctx) error { return h.proxyWeb(c, "agents.collection", "agents") }
@@ -69,7 +73,7 @@ func (h *Handler) Properties(c *fiber.Ctx) error {
 }
 
 func (h *Handler) Property(c *fiber.Ctx) error {
-	return h.proxyReso(c, "properties.detail", "Property('"+c.Params("listingKey")+"')")
+	return h.proxyResoWithKey(c, "properties.detail", "Property('"+c.Params("listingKey")+"')", c.Params("listingKey"))
 }
 
 func (h *Handler) Members(c *fiber.Ctx) error { return h.proxyReso(c, "members.collection", "Member") }
@@ -92,7 +96,7 @@ func (h *Handler) ResoOpenHouse(c *fiber.Ctx) error {
 	return h.proxyReso(c, "reso-openhouses.detail", "OpenHouse('"+c.Params("openHouseKey")+"')")
 }
 
-func (h *Handler) Lookup(c *fiber.Ctx) error { return h.proxyReso(c, "lookup", "Lookup") }
+func (h *Handler) Lookup(c *fiber.Ctx) error { return h.proxyResoLookup(c, "lookup", "Lookup") }
 
 func (h *Handler) PubParcels(c *fiber.Ctx) error {
 	return h.proxyPub(c, "pub.parcels", "pub/parcels")
@@ -126,52 +130,109 @@ func (h *Handler) Stats(c *fiber.Ctx) error {
 }
 
 func (h *Handler) proxyWeb(c *fiber.Ctx, auditType, path string) error {
+	return h.proxyWebWithKey(c, auditType, path, "")
+}
+
+func (h *Handler) proxyWebWithKey(c *fiber.Ctx, auditType, path, listingKey string) error {
 	feed := mlspoxy.Feed(c)
 	ds := bridge.DatasetFromFeed(feed, h.cfg.Bridge.Dataset)
 	cli := h.factory.ForRequest(c)
 	var upstream string
 	if feed.Provider == "spark" {
-		// Spark web paths use live API
 		upstream = h.cfg.Spark.APIHost + "/" + h.cfg.Spark.APIVersion + "/" + path
 	} else {
 		bc := bridge.NewClient(h.cfg, feed)
 		upstream = bc.WebURL(path, ds)
 	}
-	return h.finishProxy(c, auditType, cli, upstream, "")
+	return h.finishProxy(c, auditType, cli, upstream, listingKey, cache.WebPartition(h.domainSlug(c), h.feedCode(c), auditType))
 }
 
 func (h *Handler) proxyReso(c *fiber.Ctx, auditType, entity string) error {
+	return h.proxyResoWithKey(c, auditType, entity, "")
+}
+
+func (h *Handler) proxyResoWithKey(c *fiber.Ctx, auditType, entity, listingKey string) error {
 	feed := mlspoxy.Feed(c)
 	ds := bridge.DatasetFromFeed(feed, h.cfg.Bridge.Dataset)
 	cli := h.factory.ForRequest(c)
 	var upstream string
 	if feed.Provider == "spark" {
-		sc := mlspoxy.Feed(c)
-		_ = sc
 		upstream = h.cfg.Spark.APIHost + "/" + h.cfg.Spark.APIVersion + "/" + h.cfg.Spark.LiveResoRoot + "/" + entity
 	} else {
 		bc := bridge.NewClient(h.cfg, feed)
 		upstream = bc.ResoURL(entity, ds)
 	}
-	return h.finishProxy(c, auditType, cli, upstream, "")
+	return h.finishProxy(c, auditType, cli, upstream, listingKey, cache.ResoPartition(h.domainSlug(c), h.feedCode(c), entity))
+}
+
+func (h *Handler) proxyResoLookup(c *fiber.Ctx, auditType, entity string) error {
+	feed := mlspoxy.Feed(c)
+	ds := bridge.DatasetFromFeed(feed, h.cfg.Bridge.Dataset)
+	cli := h.factory.ForRequest(c)
+	var upstream string
+	if feed.Provider == "spark" {
+		upstream = h.cfg.Spark.APIHost + "/" + h.cfg.Spark.APIVersion + "/" + h.cfg.Spark.LiveResoRoot + "/" + entity
+	} else {
+		bc := bridge.NewClient(h.cfg, feed)
+		upstream = bc.ResoURL(entity, ds)
+	}
+	partition := cache.LookupPartition(h.domainSlug(c), h.feedCode(c))
+	return h.finishProxy(c, auditType, cli, upstream, "", partition)
 }
 
 func (h *Handler) proxyPub(c *fiber.Ctx, auditType, path string) error {
 	bc := bridge.NewClient(h.cfg, mlspoxy.Feed(c))
 	ds := bridge.DatasetFromFeed(mlspoxy.Feed(c), h.cfg.Bridge.Dataset)
 	upstream := bc.WebURL(path, ds)
-	return h.finishProxy(c, auditType, h.factory.ForRequest(c), upstream, "")
+	return h.finishProxy(c, auditType, h.factory.ForRequest(c), upstream, "", cache.WebPartition(h.domainSlug(c), h.feedCode(c), auditType))
 }
 
-func (h *Handler) finishProxy(c *fiber.Ctx, auditType string, cli mlspoxy.ProxyClient, upstream, listingKey string) error {
+func (h *Handler) domainSlug(c *fiber.Ctx) string {
+	s, _ := c.Locals(ctxkeys.MLSDomainSlug).(string)
+	return s
+}
+
+func (h *Handler) feedCode(c *fiber.Ctx) string {
+	f, _ := c.Locals(ctxkeys.MLSFeedCode).(string)
+	if f == "" {
+		return "bridge_" + h.cfg.Bridge.Dataset
+	}
+	return f
+}
+
+func (h *Handler) finishProxy(c *fiber.Ctx, auditType string, cli mlspoxy.ProxyClient, upstream, listingKey, partition string) error {
+	fp := cache.FingerprintRequest(c, upstream)
+	if partition != "" {
+		if body, ok, err := h.proxyCache.Get(c.Context(), partition, fp); err == nil && ok {
+			c.Set("X-IDX-Cache", "HIT")
+			hit := "HIT"
+			h.audit.Log(c, auditType, nil, &hit)
+			c.Set("Content-Type", "application/json")
+			if c.Query("include_pricing") == "1" {
+				body = h.pricing.InjectIntoJSON(c.Context(), body)
+			}
+			return c.Status(fiber.StatusOK).Send(body)
+		}
+	}
+
 	status, body, hdr, err := cli.Proxy(c, upstream)
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadGateway, err.Error())
 	}
+	var cacheHit *string
 	if status >= 200 && status < 300 {
 		body = images.RewriteBytes(h.rewriter, body, mlspoxy.Feed(c).Dataset, listingKey)
+		if c.Query("include_pricing") == "1" {
+			body = h.pricing.InjectIntoJSON(c.Context(), body)
+		}
+		if partition != "" {
+			_ = h.proxyCache.Put(c.Context(), partition, fp, body)
+			c.Set("X-IDX-Cache", "MISS")
+			miss := "MISS"
+			cacheHit = &miss
+		}
 	}
-	h.audit.Log(c, auditType, nil)
+	h.audit.Log(c, auditType, nil, cacheHit)
 	c.Set("Content-Type", "application/json")
 	if etags := hdr["Etag"]; len(etags) > 0 {
 		c.Set("ETag", etags[0])

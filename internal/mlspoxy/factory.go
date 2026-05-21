@@ -4,17 +4,18 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/quantyralabs/idx-api/internal/api/ctxkeys"
 	"github.com/quantyralabs/idx-api/internal/config"
+	dom "github.com/quantyralabs/idx-api/internal/domain"
 	"github.com/quantyralabs/idx-api/internal/mlspoxy/bridge"
 	"github.com/quantyralabs/idx-api/internal/mlspoxy/spark"
-	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
 
 // ProxyClient can forward HTTP to an MLS upstream.
 type ProxyClient interface {
 	Proxy(c *fiber.Ctx, url string) (int, []byte, map[string][]string, error)
+	ProxyUpstream(c *fiber.Ctx, url string) (int, []byte, map[string][]string, error)
 }
 
-// Factory selects Bridge vs Spark client by feed.
+// Factory selects upstream MLS client by feed provider.
 type Factory struct {
 	cfg config.Config
 }
@@ -24,15 +25,15 @@ func NewFactory(cfg config.Config) *Factory {
 }
 
 func (f *Factory) ForRequest(c *fiber.Ctx) ProxyClient {
-	def, _ := c.Locals(ctxkeys.MLSFeedDef).(mls.FeedDefinition)
+	def, _ := c.Locals(ctxkeys.MLSFeedDef).(dom.FeedDefinition)
 	if def.Provider == "spark" {
-		return &sparkWrapper{spark.NewClient(f.cfg, def)}
+		return &sparkWrapper{spark.NewClient(f.cfg)}
 	}
 	return &bridgeWrapper{bridge.NewClient(f.cfg, def)}
 }
 
-func Feed(c *fiber.Ctx) mls.FeedDefinition {
-	def, _ := c.Locals(ctxkeys.MLSFeedDef).(mls.FeedDefinition)
+func Feed(c *fiber.Ctx) dom.FeedDefinition {
+	def, _ := c.Locals(ctxkeys.MLSFeedDef).(dom.FeedDefinition)
 	return def
 }
 
@@ -48,9 +49,19 @@ func (w *bridgeWrapper) Proxy(c *fiber.Ctx, url string) (int, []byte, map[string
 	return st, body, hdr, err
 }
 
+func (w *bridgeWrapper) ProxyUpstream(c *fiber.Ctx, url string) (int, []byte, map[string][]string, error) {
+	st, body, hdr, err := w.Client.ProxyUpstream(c, url)
+	return st, body, hdr, err
+}
+
 type sparkWrapper struct{ *spark.Client }
 
 func (w *sparkWrapper) Proxy(c *fiber.Ctx, url string) (int, []byte, map[string][]string, error) {
 	st, body, hdr, err := w.Client.Proxy(c, url)
+	return st, body, hdr, err
+}
+
+func (w *sparkWrapper) ProxyUpstream(c *fiber.Ctx, url string) (int, []byte, map[string][]string, error) {
+	st, body, hdr, err := w.Client.ProxyUpstream(c, url)
 	return st, body, hdr, err
 }

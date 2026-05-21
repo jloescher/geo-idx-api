@@ -21,6 +21,7 @@ type Config struct {
 	GIS       GISConfig
 	Images    ImageCacheConfig
 	Auth      AuthConfig
+	Geocode   GeocodeConfig
 	Coingecko CoingeckoConfig
 }
 
@@ -72,6 +73,7 @@ type BridgeConfig struct {
 	Timeout             time.Duration
 	Datasets            []string
 	ListingsCacheTTL    time.Duration
+	LookupCacheTTL      time.Duration
 	SyncFetchQueue      string
 	SyncPersistQueue    string
 	SyncPersistChunk    int
@@ -108,9 +110,10 @@ type SparkConfig struct {
 
 type MLSConfig struct {
 	LocalMirrorRollingMonths    int
-	ReplicaPageRetentionHours   int
-	ListingsCacheRetentionDays  int
-	ReplicationFreshnessMinutes int
+	ReplicaPageRetentionHours      int
+	ReplicaPageFailedRetentionDays int
+	ProxyCacheRetentionDays        int
+	ReplicationFreshnessMinutes    int
 	StellarEnabled              bool
 	StellarPersistChunk         int
 	BeachesEnabled              bool
@@ -142,6 +145,11 @@ type AuthConfig struct {
 	AdminSeedEmail  string
 	AdminSeedPass   string
 	AdminSeedName   string
+}
+
+type GeocodeConfig struct {
+	GoogleMapsAPIKey string
+	HTTPTimeout      time.Duration
 }
 
 type CoingeckoConfig struct {
@@ -202,6 +210,7 @@ func Load() (Config, error) {
 			Timeout:             envDuration("BRIDGE_TIMEOUT", 30*time.Second),
 			Datasets:            splitCSV(env("BRIDGE_DATASETS", "stellar")),
 			ListingsCacheTTL:    envDuration("LISTINGS_CACHE_TTL", 900*time.Second),
+			LookupCacheTTL:      envDuration("MLS_LOOKUP_CACHE_TTL", 720*time.Hour),
 			SyncFetchQueue:      env("BRIDGE_SYNC_FETCH_QUEUE", "bridge-sync-fetch"),
 			SyncPersistQueue:    env("BRIDGE_SYNC_PERSIST_QUEUE", "bridge-sync-persist"),
 			SyncPersistChunk:    envInt("BRIDGE_SYNC_PERSIST_JOB_CHUNK", 50),
@@ -236,9 +245,10 @@ func Load() (Config, error) {
 		},
 		MLS: MLSConfig{
 			LocalMirrorRollingMonths:    envMirrorRollingMonths(),
-			ReplicaPageRetentionHours:   envInt("MLS_REPLICA_PAGE_RETENTION_HOURS", 24),
-			ListingsCacheRetentionDays:  envInt("MLS_LISTINGS_CACHE_RETENTION_DAYS", 365),
-			ReplicationFreshnessMinutes: envInt("MLS_REPLICATION_FRESHNESS_MINUTES", 15),
+			ReplicaPageRetentionHours:        envInt("MLS_REPLICA_PAGE_RETENTION_HOURS", 24),
+			ReplicaPageFailedRetentionDays:   envInt("MLS_REPLICA_PAGE_FAILED_RETENTION_DAYS", 7),
+			ProxyCacheRetentionDays:          envInt("MLS_PROXY_CACHE_RETENTION_DAYS", 30),
+			ReplicationFreshnessMinutes:      envInt("MLS_REPLICATION_FRESHNESS_MINUTES", 15),
 			StellarEnabled:              envBool("MLS_STELLAR_ENABLED", true),
 			StellarPersistChunk:         envInt("MLS_STELLAR_PERSIST_CHUNK_SIZE", 50),
 			BeachesEnabled:              envBool("MLS_BEACHES_ENABLED", true),
@@ -267,6 +277,10 @@ func Load() (Config, error) {
 			AdminSeedEmail:  env("ADMIN_SEED_EMAIL", ""),
 			AdminSeedPass:   env("ADMIN_SEED_PASSWORD", ""),
 			AdminSeedName:   firstNonEmpty(env("ADMIN_SEED_NAME", ""), "Quantyra Admin"),
+		},
+		Geocode: GeocodeConfig{
+			GoogleMapsAPIKey: env("GOOGLE_MAPS_GEOCODING_API_KEY", ""),
+			HTTPTimeout:      envDuration("GEOCODING_TIMEOUT", 12*time.Second),
 		},
 		Coingecko: CoingeckoConfig{
 			APIKey:      env("COINGECKO_API_KEY", ""),

@@ -1,6 +1,12 @@
 # Comps API (`POST /api/v1/comps/run`)
 
-Bridge-backed comparables and investor analysis endpoint for the active MLS dataset resolved by `domain.token` + `MlsDatasetResolver`.
+MLS comparables and investor analysis for the active feed resolved by `domain.token` + MLS access middleware (`bridge_stellar`, `spark_beaches`, …).
+
+**Data sources:**
+
+- **Closed / sold comps** — live RESO upstream per feed provider (`bridge_*` / `spark_*` catalog codes; Closed rows are not bulk-replicated into the mirror).
+- **Active / Pending competition** — PostGIS `listings` mirror for **all** enabled MLS feeds (Stellar, Beaches, etc.).
+- **Rental (`rent_hold_cashflow`, `flip_vs_hold`)** — Closed leases from live Bridge/Spark; Active/Pending leases from the mirror.
 
 ## Auth and access
 
@@ -34,7 +40,7 @@ Top-level keys:
   - sold comps + optional active/pending competition comps
   - adjustment grid + market conditions + optional overpriced signals (full access)
 - `rent_hold_cashflow`:
-  - Bridge rental comps (`PropertyType eq 'Residential Lease'`) for closed + active/pending inventories
+  - Rental comps: Closed leases from live Bridge/Spark (`PropertyType eq 'Residential Lease'`); Active/Pending from the `listings` mirror
   - returns `rental_comps` and `rental_result`
 - `flip_vs_hold`:
   - combines sold comps + rental comps

@@ -58,7 +58,7 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 	v1.Get("/gis", gisH.Show)
 	v1.Get("/mls/:mlsCode/gis", gisH.ShowForMLS)
 
-	// Bridge web API
+	// MLS web API (dataset-agnostic paths)
 	v1.Get("/listings", bridgeH.Listings)
 	v1.Get("/listings/:listingId", bridgeH.Listing)
 	v1.Get("/agents", bridgeH.Agents)

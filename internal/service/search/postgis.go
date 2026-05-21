@@ -21,8 +21,7 @@ func NewPostgisSearch(db *repository.DB) *PostgisSearch {
 }
 
 func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchRequest, rollingMonths int) (SearchResult, error) {
-	dataset := strings.TrimPrefix(feedCode, "bridge_")
-	dataset = strings.TrimPrefix(dataset, "spark_")
+	dataset := mls.DatasetSlugFromFeedCode(feedCode)
 	limit := req.Limit
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -35,8 +34,10 @@ func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchR
 	q := `
 		SELECT raw_data, media, unit, room, open_house, custom_fields FROM listings
 		WHERE dataset_slug = $1
-		  AND LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
 	`
+	if len(req.Statuses) == 0 {
+		q += ` AND LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')`
+	}
 	args := []any{dataset}
 	n := 2
 	if req.MinPrice != nil {
@@ -52,6 +53,71 @@ func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchR
 	if req.BedsMin != nil {
 		q += fmt.Sprintf(" AND bedrooms_total >= $%d", n)
 		args = append(args, *req.BedsMin)
+		n++
+	}
+	if req.BathsMin != nil {
+		q += fmt.Sprintf(" AND bathrooms_total_decimal >= $%d", n)
+		args = append(args, *req.BathsMin)
+		n++
+	}
+	if req.LivingAreaMin != nil {
+		q += fmt.Sprintf(" AND living_area >= $%d", n)
+		args = append(args, *req.LivingAreaMin)
+		n++
+	}
+	if req.LivingAreaMax != nil {
+		q += fmt.Sprintf(" AND living_area <= $%d", n)
+		args = append(args, *req.LivingAreaMax)
+		n++
+	}
+	if req.LotSizeAcresMin != nil {
+		q += fmt.Sprintf(" AND lot_size_acres >= $%d", n)
+		args = append(args, *req.LotSizeAcresMin)
+		n++
+	}
+	if req.YearBuiltMin != nil {
+		q += fmt.Sprintf(" AND year_built >= $%d", n)
+		args = append(args, *req.YearBuiltMin)
+		n++
+	}
+	if req.PropertyType != nil && strings.TrimSpace(*req.PropertyType) != "" {
+		q += fmt.Sprintf(" AND LOWER(property_type) = LOWER($%d)", n)
+		args = append(args, strings.TrimSpace(*req.PropertyType))
+		n++
+	}
+	if req.PropertySubType != nil && strings.TrimSpace(*req.PropertySubType) != "" {
+		q += fmt.Sprintf(" AND LOWER(property_sub_type) = LOWER($%d)", n)
+		args = append(args, strings.TrimSpace(*req.PropertySubType))
+		n++
+	}
+	if req.City != nil && strings.TrimSpace(*req.City) != "" {
+		q += fmt.Sprintf(" AND LOWER(city) = LOWER($%d)", n)
+		args = append(args, strings.TrimSpace(*req.City))
+		n++
+	}
+	if req.PostalCode != nil && strings.TrimSpace(*req.PostalCode) != "" {
+		q += fmt.Sprintf(" AND postal_code = $%d", n)
+		args = append(args, strings.TrimSpace(*req.PostalCode))
+		n++
+	}
+	if req.PoolPrivate != nil && *req.PoolPrivate {
+		q += " AND pool_private_yn = TRUE"
+	}
+	if req.Waterfront != nil && *req.Waterfront {
+		q += " AND waterfront_yn = TRUE"
+	}
+	if len(req.Statuses) > 0 {
+		var lowered []string
+		for _, st := range req.Statuses {
+			lowered = append(lowered, strings.ToLower(strings.TrimSpace(st)))
+		}
+		q += fmt.Sprintf(" AND LOWER(TRIM(COALESCE(standard_status, ''))) = ANY($%d)", n)
+		args = append(args, lowered)
+		n++
+	}
+	if req.PriceReducedWithinDays != nil && *req.PriceReducedWithinDays > 0 {
+		q += fmt.Sprintf(" AND price_change_timestamp >= NOW() - ($%d || ' days')::interval", n)
+		args = append(args, *req.PriceReducedWithinDays)
 		n++
 	}
 	if req.LowRiskFloodzone != nil && *req.LowRiskFloodzone {

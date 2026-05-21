@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Quantyra GeoIDX API",
-    "description": "OpenAPI document for the **idx-api** host: Sanctum auth, versioned Bridge MLS proxy (`/api/v1/*`), GIS parcel GeoJSON, structured search, comps engine, PostGIS replication stats, and authenticated listing photo streaming (`/api/images/*`). Routes are registered from `routes/api.php` and `bootstrap/app.php` (image proxy).",
+    "description": "OpenAPI document for the **idx-api** Go service (Fiber): PAT auth, versioned Bridge/Spark MLS proxy (`/api/v1/*`), GIS parcel GeoJSON, hybrid search, comps engine, replication stats, and listing photos (`/api/images/*`). Routes are registered in `internal/api/routes.go`.",
     "version": "1.0.0"
   },
   "servers": [
@@ -12,11 +12,11 @@
     },
     {
       "url": "http://localhost:8000",
-      "description": "Local `php artisan serve` (default port)"
+      "description": "Local Go API (`make run-api` or `go run ./cmd/api`, default port 8000)"
     }
   ],
   "tags": [
-    { "name": "Authentication", "description": "`POST /api/auth/token` and `GET /api/auth/user` (Sanctum)." },
+    { "name": "Authentication", "description": "`POST /api/auth/token` and `GET /api/auth/user` (dashboard PAT / machine login)." },
     { "name": "MLS Data - Listings", "description": "Bridge-backed Property and listing resources (`domain.token` + `mls.access`)." },
     { "name": "MLS Data - Agents & Offices", "description": "Agents, offices, and RESO office resources." },
     { "name": "MLS Data - Open Houses", "description": "Open house collections and RESO open house resources." },
@@ -33,7 +33,7 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Bearer token for Sanctum `PersonalAccessToken` routes guarded by `domain.token` (`/api/v1/*`, `/api/images/*`). Typical abilities: **`idx:full`** (dashboard PATs, `POST /api/auth/token`) or **`idx:access`** (some tokens / domain flows). `idx:access` applies teaser caps on list-shaped MLS JSON; `idx:full` does not. Pair calls with `X-Domain-Slug` or `?domain=` when your token is not domain-scoped by referer."
+        "description": "Bearer PAT (SHA-256 stored in `personal_access_tokens`) on routes guarded by `domain.token` (`/api/v1/*`, `/api/images/*`). Abilities: **`idx:full`** (dashboard PATs, `POST /api/auth/token`) or **`idx:access`**. Pair with **`X-Domain-Slug`** or **`?domain=`** for a TXT-verified domain on the token owner's account. Docs may reference `idx:full` for premium comps modes; verify enforcement in `internal/service/comps`."
       }
     },
     "schemas": {
@@ -134,7 +134,7 @@
       "post": {
         "tags": ["Authentication"],
         "summary": "Login - Get API Token",
-        "description": "Authenticate and obtain a Sanctum bearer token (`idx:full`). Use the returned token in the Authorization header together with `X-Domain-Slug` or `?domain=` for `/api/v1/*` calls.\n\n**Test credentials (local / seeded):**\n- Email: test@example.com\n- Password: password",
+        "description": "Authenticate and obtain a bearer PAT (`idx:full`). Use the returned token in the Authorization header together with `X-Domain-Slug` or `?domain=` for `/api/v1/*` calls.\n\n**Test credentials (local / `make seed-admin`):**\n- Email: from `ADMIN_SEED_EMAIL` in `.env`\n- Password: from `ADMIN_SEED_PASSWORD` in `.env`",
         "requestBody": {
           "required": true,
           "content": {
@@ -521,7 +521,7 @@
       "post": {
         "tags": ["Comps Engine"],
         "summary": "Run comparables, investor analysis, BPO, or home value",
-        "description": "Bridge-backed comps endpoint. Modes **A–E** are sales-comp grids; **`rent_hold_cashflow`**, **`flip_vs_hold`**, **`appraiser_simulation`**, **`bpo`**, and **`home_value`** require **`idx:full`** (see `CompsRunRequest` + `BridgeCompsService`). **`home_value`** uses distinct `subject.*` and optional `home_value_params` (see validation rules in code).",
+        "description": "MLS comps engine (`internal/service/comps`). Modes **A–E**: sold + optional competition comps with adjustment grid. Premium modes: **`rent_hold_cashflow`**, **`flip_vs_hold`**, **`appraiser_simulation`**, **`bpo`** (14-line URAR grid + market-derived rates + renovation credits), **`home_value`** (BPO-style estimate + optional Google geocoding). Closed comps: live Bridge/Spark RESO; Active/Pending: PostGIS `listings` mirror. See [comps-api.md](comps-api.md). Optional `bpo_params`, `home_value_params`.",
         "security": [{ "bearerAuth": [] }],
         "requestBody": {
           "required": true,
@@ -564,7 +564,9 @@
                   "filters": { "type": "object" },
                   "rental_params": { "type": "object" },
                   "flip_params": { "type": "object" },
-                  "simulation_params": { "type": "object" }
+                  "simulation_params": { "type": "object" },
+                  "bpo_params": { "type": "object", "description": "max_comps, sold_months_back, min_comps_for_regression, exclude_outlier_zscore, confidence_threshold" },
+                  "home_value_params": { "type": "object", "description": "sold_months_back, max_comps" }
                 }
               },
               "examples": {
@@ -1036,7 +1038,7 @@
       "get": {
         "tags": ["Images"],
         "summary": "Stream a listing photo (Bridge origin)",
-        "description": "Proxies the Bridge listing photo binary through idx-api. Registered with `domain.token` in `bootstrap/app.php` (same identity resolution as MLS JSON). Clients normally consume photos via the public image edge host; this operation documents the API path shape.",
+        "description": "Streams listing photos through idx-api (`internal/handler/images`, `domain.token`). Bridge and Spark (`MediaURL` / template paths). Clients usually use the **idx-images** edge host; this path documents the API shape.",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           {

@@ -8,16 +8,18 @@ Schema is managed with **[goose](https://github.com/pressly/goose)** SQL migrati
 
 | File | Tables / purpose |
 |------|------------------|
-| `00001_initial.sql` | Single consolidated schema: `users`, `sessions`, `cache`, `jobs`, `job_batches`, `failed_jobs`, `personal_access_tokens`, `user_invitations`, `domains`, `listings_cache`, `mls_search_cache`, `mls_proxy_audit_logs`, `gis_*`, `crypto_price_snapshots`, PostGIS `listings` (`raw_data` + `media`/`unit`/`room`/`open_house` JSONB + `custom_fields`; single `modification_timestamp`), `listing_sync_cursors` (`last_modification_timestamp`), `replica_pages` (`fetch_url`, `upstream_url`, `odata_query`, `batch_id`) |
+| `00001_initial.sql` | **Single consolidated schema** for fresh databases (staging cutover and greenfield installs). Includes `users`, `sessions`, `cache`, `jobs`, `job_batches`, `failed_jobs`, `personal_access_tokens`, `user_invitations`, `domains`, `listings_cache` (legacy table; not used for Active/Pending pre-warm), `mls_search_cache` (on-demand live proxy cache), `mls_proxy_audit_logs` (**`cache_hit`** `VARCHAR(8)` for `HIT`/`MISS`), `gis_cache`, `gis_source_states`, `crypto_price_snapshots`, PostGIS `listings` (`raw_data` + `media`/`unit`/`room`/`open_house` JSONB + `custom_fields`; single `modification_timestamp`), `listing_sync_cursors` (`last_modification_timestamp`), `replica_pages` (`fetch_url`, `upstream_url`, `odata_query`, `batch_id`) |
 
-**Note:** Laravel Telescope/Pulse tables are **not** included in the Go cutover migration.
+There is **no** `00002_*.sql` — `cache_hit` on `mls_proxy_audit_logs` is part of `00001_initial.sql`.
+
+**Note:** Laravel Telescope/Pulse tables are **not** included.
 
 ---
 
 ## Commands
 
 ```bash
-# From project root (.env DB_* or explicit DSN)
+# From project root — set DSN (match DB_* in .env)
 export GOOSE_DBSTRING="postgres://user:pass@host:5432/dbname?sslmode=require"
 make migrate
 
@@ -29,29 +31,44 @@ Install goose on PATH (optional): `make migrate-install`
 
 ---
 
+## Fresh staging / greenfield
+
+Use a **new database** (or drop all objects) and apply only `00001`:
+
+```bash
+export GOOSE_DBSTRING="postgres://..."
+make migrate
+make seed-admin
+```
+
+Then run **API**, **worker**, and **scheduler** against the same DSN (`DB_*` in `.env`).
+
+---
+
+## Existing databases (pre-merge)
+
+If a database was created from an **older** `00001` **without** `mls_proxy_audit_logs.cache_hit`, either:
+
+- **Rebuild** (recommended for staging): new DB + `make migrate`, or  
+- **Patch once:**
+
+```sql
+ALTER TABLE mls_proxy_audit_logs ADD COLUMN IF NOT EXISTS cache_hit VARCHAR(8) NULL;
+```
+
+---
+
 ## PostGIS
 
 `00001_initial.sql` runs `CREATE EXTENSION IF NOT EXISTS postgis`. On managed Postgres without superuser, create the extension once before migrating.
 
-**Mirror scope:** replication stores **Active + Pending** in `listings`; **Closed** is on-demand via live Bridge/Spark API.
+**Mirror scope:** replication stores **Active + Pending** in `listings`; **Closed** is fetched on-demand via live Bridge/Spark RESO.
 
 **Extension columns:** `flood_zone_code`, `low_risk_flood_zone_yn`, `estimated_total_monthly_fees` on `listings` (set at mirror persist from RESO; `low_risk_flood_zone_yn` derived from `flood_zone_code`).
 
 **Go services:** `internal/service/sync` (mirror persist), `internal/service/search/postgis.go` (hybrid search).
 
 **Payload layout:** expanded collections (`media`, `unit`, `room`, `open_house`), overflow in `custom_fields`, canonical `modification_timestamp`, cursor `last_modification_timestamp`. See [Listings mirror](listings-mirror.md).
-
----
-
-## Fresh / disposable databases
-
-```bash
-# Drop all tables manually or use a new database, then:
-make migrate
-make seed-admin
-```
-
-Use dedicated DB names for tests (`TEST_DATABASE_URL`).
 
 ---
 

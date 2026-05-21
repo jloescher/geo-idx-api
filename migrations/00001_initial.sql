@@ -164,6 +164,7 @@ CREATE TABLE mls_proxy_audit_logs (
     token_name VARCHAR(255) NULL,
     request_type VARCHAR(255) NOT NULL,
     listing_count INT NULL,
+    cache_hit VARCHAR(8) NULL,
     ip_address VARCHAR(45) NULL,
     user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL
 );

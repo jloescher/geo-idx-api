@@ -7,14 +7,14 @@ type HybridSearchRouteMode int
 
 const (
 	RoutePostgresOnly HybridSearchRouteMode = iota
-	RouteBridgeOnly
+	RouteUpstreamOnly
 	RouteSplit
 )
 
 // DecideRoute implements HybridReplicaSearchDecision parity.
 func DecideRoute(req SearchRequest) HybridSearchRouteMode {
 	if req.PriceReducedWithinDays != nil && *req.PriceReducedWithinDays > 0 {
-		return RouteBridgeOnly
+		return RouteUpstreamOnly
 	}
 	hasAP, hasClosed := false, false
 	for _, st := range req.Statuses {
@@ -27,7 +27,7 @@ func DecideRoute(req SearchRequest) HybridSearchRouteMode {
 	}
 	if len(req.Statuses) == 0 {
 		if req.ActiveOnly != nil && !*req.ActiveOnly {
-			return RouteBridgeOnly
+			return RouteUpstreamOnly
 		}
 		return RoutePostgresOnly
 	}
@@ -35,12 +35,12 @@ func DecideRoute(req SearchRequest) HybridSearchRouteMode {
 		return RouteSplit
 	}
 	if hasClosed && !hasAP {
-		return RouteBridgeOnly
+		return RouteUpstreamOnly
 	}
 	if hasAP && !hasClosed {
 		return RoutePostgresOnly
 	}
-	return RouteBridgeOnly
+	return RouteUpstreamOnly
 }
 
 func MergeResults(a, b SearchResult) SearchResult {

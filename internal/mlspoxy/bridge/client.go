@@ -1,14 +1,16 @@
 package bridge
 
 import (
+	"bytes"
 	"fmt"
-	"github.com/gofiber/fiber/v2"
-	"github.com/quantyralabs/idx-api/internal/config"
-	"github.com/quantyralabs/idx-api/internal/service/mls"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/quantyralabs/idx-api/internal/config"
+	dom "github.com/quantyralabs/idx-api/internal/domain"
 )
 
 // Client proxies Bridge Data Output web + RESO APIs.
@@ -18,7 +20,7 @@ type Client struct {
 	apiKey string
 }
 
-func NewClient(cfg config.Config, feed mls.FeedDefinition) *Client {
+func NewClient(cfg config.Config, feed dom.FeedDefinition) *Client {
 	key := cfg.Bridge.APIKey
 	return &Client{
 		cfg:    cfg.Bridge,
@@ -56,17 +58,28 @@ func (c *Client) ResoURL(path string, dataset string) string {
 
 // Proxy forwards the incoming Fiber request to upstream and returns status + body.
 func (c *Client) Proxy(fc *fiber.Ctx, upstream string) (int, []byte, http.Header, error) {
+	return c.proxy(fc, upstream, true)
+}
+
+// ProxyUpstream forwards without merging client query params (search OData URLs).
+func (c *Client) ProxyUpstream(fc *fiber.Ctx, upstream string) (int, []byte, http.Header, error) {
+	return c.proxy(fc, upstream, false)
+}
+
+func (c *Client) proxy(fc *fiber.Ctx, upstream string, mergeQuery bool) (int, []byte, http.Header, error) {
 	u, err := url.Parse(upstream)
 	if err != nil {
 		return 0, nil, nil, err
 	}
-	q := u.Query()
-	for k, v := range fc.Queries() {
-		q.Set(k, v)
+	if mergeQuery {
+		q := u.Query()
+		for k, v := range fc.Queries() {
+			q.Set(k, v)
+		}
+		u.RawQuery = q.Encode()
 	}
-	u.RawQuery = q.Encode()
 
-	req, err := http.NewRequestWithContext(fc.Context(), fc.Method(), u.String(), nil)
+	req, err := http.NewRequestWithContext(fc.Context(), fc.Method(), u.String(), requestBody(fc))
 	if err != nil {
 		return 0, nil, nil, err
 	}
@@ -74,6 +87,9 @@ func (c *Client) Proxy(fc *fiber.Ctx, upstream string) (int, []byte, http.Header
 	req.Header.Set("Accept", "application/json")
 	if accept := fc.Get("Accept"); accept != "" {
 		req.Header.Set("Accept", accept)
+	}
+	if ct := fc.Get("Content-Type"); ct != "" {
+		req.Header.Set("Content-Type", ct)
 	}
 
 	resp, err := c.http.Do(req)
@@ -85,9 +101,17 @@ func (c *Client) Proxy(fc *fiber.Ctx, upstream string) (int, []byte, http.Header
 	return resp.StatusCode, body, resp.Header, err
 }
 
-func DatasetFromFeed(feed mls.FeedDefinition, fallback string) string {
-	if feed.Dataset != "" {
-		return feed.Dataset
+func requestBody(c *fiber.Ctx) io.Reader {
+	if c.Method() == fiber.MethodGet || c.Method() == fiber.MethodHead {
+		return nil
 	}
-	return fallback
+	b := c.Body()
+	if len(b) == 0 {
+		return nil
+	}
+	return bytes.NewReader(b)
+}
+
+func DatasetFromFeed(feed dom.FeedDefinition, fallback string) string {
+	return dom.DatasetSlug(feed, fallback)
 }

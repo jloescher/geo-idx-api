@@ -29,11 +29,11 @@ func TestDomainTokenSlugHeader(t *testing.T) {
 	// Without DB, only test middleware chain with nil repos would panic — skip DB integration here.
 	app := fiber.New()
 	app.Use(func(c *fiber.Ctx) error {
-		c.Locals(ctxkeys.BridgeDomainSlug, "example.com")
+		c.Locals(ctxkeys.MLSDomainSlug, "example.com")
 		return c.Next()
 	})
 	app.Get("/", func(c *fiber.Ctx) error {
-		slug, _ := c.Locals(ctxkeys.BridgeDomainSlug).(string)
+		slug, _ := c.Locals(ctxkeys.MLSDomainSlug).(string)
 		return c.SendString(slug)
 	})
 	req := httptest.NewRequest("GET", "/", nil)

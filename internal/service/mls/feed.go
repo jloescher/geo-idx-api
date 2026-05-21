@@ -10,12 +10,8 @@ import (
 	dom "github.com/quantyralabs/idx-api/internal/domain"
 )
 
-// FeedDefinition describes a catalog feed.
-type FeedDefinition struct {
-	Code     string `json:"code"`
-	Provider string `json:"provider"` // bridge | spark
-	Dataset  string `json:"dataset"`  // stellar | beaches
-}
+// FeedDefinition describes a catalog feed (see domain.FeedDefinition).
+type FeedDefinition = dom.FeedDefinition
 
 // Resolver resolves MLS feed from request (CheckMlsAccess parity).
 type Resolver struct {
@@ -49,7 +45,7 @@ func (r *Resolver) ResolveFeedCode(c *fiber.Ctx) (string, error) {
 	if BypassGIS(c.Path()) {
 		return "", nil
 	}
-	d, _ := c.Locals(ctxkeys.BridgeDomain).(*dom.Domain)
+	d, _ := c.Locals(ctxkeys.MLSDomain).(*dom.Domain)
 	allowed := r.enabledForDomain(d)
 	if len(allowed) == 0 {
 		return "", fiber.NewError(fiber.StatusServiceUnavailable, "No MLS feeds enabled for this site.")
@@ -71,12 +67,38 @@ func (r *Resolver) ResolveFeedCode(c *fiber.Ctx) (string, error) {
 }
 
 func (r *Resolver) FeedDefinition(code string) FeedDefinition {
-	for _, f := range r.Catalog() {
-		if f.Code == code {
-			return f
+	return FeedDefinitionFromCode(r.cfg, code)
+}
+
+// FeedDefinitionFromCode resolves catalog feed metadata from middleware feed code.
+func FeedDefinitionFromCode(cfg config.Config, feedCode string) FeedDefinition {
+	code := strings.ToLower(strings.TrimSpace(feedCode))
+	for _, ds := range cfg.Bridge.Datasets {
+		slug := strings.ToLower(ds)
+		if code == "bridge_"+slug || code == slug {
+			return FeedDefinition{Code: "bridge_" + slug, Provider: "bridge", Dataset: slug}
 		}
 	}
-	return FeedDefinition{Code: code, Provider: "bridge", Dataset: r.cfg.Bridge.Dataset}
+	for _, ds := range cfg.Spark.Datasets {
+		slug := strings.ToLower(ds)
+		if code == "spark_"+slug || code == slug {
+			return FeedDefinition{Code: "spark_" + slug, Provider: "spark", Dataset: slug}
+		}
+	}
+	if strings.HasPrefix(code, "spark_") {
+		return FeedDefinition{Code: code, Provider: "spark", Dataset: strings.TrimPrefix(code, "spark_")}
+	}
+	if strings.HasPrefix(code, "bridge_") {
+		return FeedDefinition{Code: code, Provider: "bridge", Dataset: strings.TrimPrefix(code, "bridge_")}
+	}
+	ds := strings.ToLower(cfg.Bridge.Dataset)
+	return FeedDefinition{Code: "bridge_" + ds, Provider: "bridge", Dataset: ds}
+}
+
+// DatasetSlugFromFeedCode returns listings.dataset_slug (stellar, beaches, …).
+func DatasetSlugFromFeedCode(feedCode string) string {
+	code := strings.ToLower(strings.TrimSpace(feedCode))
+	return strings.TrimPrefix(strings.TrimPrefix(code, "bridge_"), "spark_")
 }
 
 func (r *Resolver) normalizeFeedCode(ds string) string {

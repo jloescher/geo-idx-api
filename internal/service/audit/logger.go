@@ -17,21 +17,21 @@ func NewLogger(db *repository.DB) *Logger {
 	return &Logger{db: db}
 }
 
-func (l *Logger) Log(c *fiber.Ctx, requestType string, listingCount *int) {
-	slug, _ := c.Locals(ctxkeys.BridgeDomainSlug).(string)
+func (l *Logger) Log(c *fiber.Ctx, requestType string, listingCount *int, cacheHit *string) {
+	slug, _ := c.Locals(ctxkeys.MLSDomainSlug).(string)
 	var tokenName *string
-	if tn, ok := c.Locals(ctxkeys.BridgeTokenName).(*string); ok {
+	if tn, ok := c.Locals(ctxkeys.MLSTokenName).(*string); ok {
 		tokenName = tn
 	}
 	var userID *int64
-	if uid, ok := c.Locals(ctxkeys.BridgeUserID).(*int64); ok {
+	if uid, ok := c.Locals(ctxkeys.MLSUserID).(*int64); ok {
 		userID = uid
 	}
 	ip := c.IP()
 	_, _ = l.db.Pool.Exec(context.Background(), `
-		INSERT INTO mls_proxy_audit_logs (domain_slug, token_name, request_type, listing_count, ip_address, user_id)
-		VALUES ($1, $2, $3, $4, $5, $6)
-	`, nullStr(slug), tokenName, requestType, listingCount, ip, userID)
+		INSERT INTO mls_proxy_audit_logs (domain_slug, token_name, request_type, listing_count, ip_address, user_id, cache_hit)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, nullStr(slug), tokenName, requestType, listingCount, ip, userID, cacheHit)
 }
 
 func nullStr(s string) any {

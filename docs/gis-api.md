@@ -112,15 +112,13 @@ When **degraded** (`meta.degraded=true`), `features` is empty and `meta.leaflet_
 |-------|--------|-------|
 | **Laravel `Cache` (edge)** | `GIS_EDGE_CACHE_TTL` (seconds, default 900; falls back to legacy `GIS_CACHE_TTL`) | Full JSON payload keyed by `query_hash`. First read path for hot repeat requests. |
 | **PostgreSQL `gis_cache` (origin)** | Per-source **max age in days** (`GIS_ORIGIN_MAX_DAYS_PRIMARY` default 90 for statewide, `GIS_ORIGIN_MAX_DAYS_COUNTY` default 30 for county layers, degraded 1 day) | `meta.cache_generation` + column `source_generation` must match `gis_source_states.generation` for that `source_used`. |
-| **`gis_source_states`** | Weekly scheduled probe | `php artisan gis:probe-sources` (or `--queued`) fetches each layer `?f=json`, fingerprints `currentVersion` + `editingInfo` + `serviceItemId`; fingerprint change **increments `generation`**, invalidating edge + origin rows for that source. |
+| **`gis_source_states`** | Weekly scheduled probe | Job `gis.probe_sources` (cron Monday 06:30, queue `GIS_QUEUE`) fetches each layer `?f=json`, fingerprints metadata; fingerprint change **increments `generation`**, invalidating edge + origin rows for that source. |
 | **Filesystem `gis_backup`** | Snapshot per `query_hash` | `GIS_BACKUP_PATH`; optional `GIS_QUEUE_BACKUP_WRITES` on `GIS_QUEUE`. |
 
 **Operations**
 
-- `php artisan gis:probe-sources` — run metadata fingerprints now (sync).
-- `php artisan gis:probe-sources --queued` — dispatch `RefreshGisSourceMetadataJob` on the GIS queue.
-- `php artisan gis:clear-cache --source=pinellas_enterprise_parcels` — delete origin rows for one source and bump its generation.
-- `php artisan gis:clear-cache --all` — truncate `gis_cache` and bump **all** source generations.
+- Enqueue `gis.probe_sources` on the GIS queue (scheduler does this weekly), or run the probe handler inline in development.
+- Clear cache: `DELETE FROM gis_cache` for affected sources and bump `gis_source_states.generation` (ops/SQL); no Artisan CLI in the Go service.
 
 **Scheduler:** `routes/console.php` dispatches `RefreshGisSourceMetadataJob` **weekly** (Monday 06:30 app timezone). Requires `schedule:run` / `schedule:work` and a **queue worker** when using `--queued` probes or queued backup writes.
 

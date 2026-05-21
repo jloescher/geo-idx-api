@@ -48,7 +48,7 @@ func handleToken(c *fiber.Ctx, domains *repository.DomainRepo, tokens *repositor
 		return fiber.NewError(fiber.StatusForbidden, "Domain must be TXT-verified before API token access is allowed.")
 	}
 	fullAccess := tokens.HasAbility(tok, "idx:full")
-	setBridgeLocals(c, "token", d, &tok.Name, &user.ID, fullAccess)
+	setMLSLocals(c, "token", d, &tok.Name, &user.ID, fullAccess)
 	return c.Next()
 }
 
@@ -64,17 +64,17 @@ func handleDomain(c *fiber.Ctx, domains *repository.DomainRepo) error {
 	if d == nil {
 		return fiber.NewError(fiber.StatusForbidden, "Domain is not registered or inactive.")
 	}
-	setBridgeLocals(c, "domain", d, nil, nil, true)
+	setMLSLocals(c, "domain", d, nil, nil, true)
 	return c.Next()
 }
 
-func setBridgeLocals(c *fiber.Ctx, auth string, d *dom.Domain, tokenName *string, userID *int64, fullAccess bool) {
-	c.Locals(ctxkeys.BridgeAuth, auth)
-	c.Locals(ctxkeys.BridgeDomain, d)
-	c.Locals(ctxkeys.BridgeDomainSlug, d.DomainSlug)
-	c.Locals(ctxkeys.BridgeTokenName, tokenName)
-	c.Locals(ctxkeys.BridgeUserID, userID)
-	c.Locals(ctxkeys.BridgeFullAccess, fullAccess)
+func setMLSLocals(c *fiber.Ctx, auth string, d *dom.Domain, tokenName *string, userID *int64, fullAccess bool) {
+	c.Locals(ctxkeys.MLSAuth, auth)
+	c.Locals(ctxkeys.MLSDomain, d)
+	c.Locals(ctxkeys.MLSDomainSlug, d.DomainSlug)
+	c.Locals(ctxkeys.MLSTokenName, tokenName)
+	c.Locals(ctxkeys.MLSUserID, userID)
+	c.Locals(ctxkeys.MLSFullAccess, fullAccess)
 }
 
 func resolveSlugForToken(c *fiber.Ctx) string {

@@ -166,6 +166,18 @@ func (s *ReplicaPageStore) PurgeEligible(ctx context.Context) error {
 		DELETE FROM replica_pages
 		WHERE status = 'completed' AND processed_at < $1
 	`, cutoff)
+	if err != nil {
+		return err
+	}
+	failedDays := s.cfg.MLS.ReplicaPageFailedRetentionDays
+	if failedDays <= 0 {
+		failedDays = 7
+	}
+	failedCutoff := time.Now().AddDate(0, 0, -failedDays)
+	_, err = s.db.Pool.Exec(ctx, `
+		DELETE FROM replica_pages
+		WHERE status = 'failed' AND created_at < $1
+	`, failedCutoff)
 	return err
 }
 

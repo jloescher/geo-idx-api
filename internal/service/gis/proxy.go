@@ -35,20 +35,90 @@ func (s *ProxyService) Fetch(c *fiber.Ctx, mlsCode *string) error {
 	if mlsCode != nil && !s.allowedMLS(*mlsCode) {
 		return fiber.NewError(fiber.StatusNotFound, "MLS code not supported for GIS")
 	}
+	bbox, err := ParseBBox(c)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	if bbox.SpanDeg() > s.cfg.GIS.MaxBboxSpanDeg {
+		return fiber.NewError(fiber.StatusUnprocessableEntity, "bbox span exceeds limit")
+	}
+
 	hash := queryHash(c)
-	if body, ok := s.fromCache(c.Context(), hash); ok {
+	if body, meta, ok := s.fromCache(c.Context(), hash); ok {
 		c.Set("Content-Type", "application/geo+json")
 		c.Set("X-IDX-Cache", "edge")
-		return c.Send(body)
+		return c.Send(wrapWithMeta(body, meta))
 	}
-	body, err := s.fetchArcGIS(c)
-	if err != nil {
-		return fiber.NewError(fiber.StatusBadGateway, err.Error())
+
+	var lastErr error
+	var used Source
+	var raw []byte
+	for _, src := range sourcesForBBox(bbox) {
+		raw, lastErr = s.fetchSource(src, bbox)
+		if lastErr == nil && len(raw) > 0 {
+			used = src
+			break
+		}
 	}
-	_ = s.storeCache(c.Context(), hash, body)
+	meta := s.buildMeta(c, bbox, used, lastErr)
+	if lastErr != nil && len(raw) == 0 {
+		raw = []byte(`{"type":"FeatureCollection","features":[]}`)
+		meta.Degraded = true
+		fallback := "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+		meta.LeafletFallback = &fallback
+	}
+	gen, _ := s.sourceGeneration(c.Context(), meta.SourceUsed)
+	_ = s.storeCache(c.Context(), hash, raw, meta.SourceUsed, gen)
 	c.Set("Content-Type", "application/geo+json")
 	c.Set("X-IDX-Cache", "miss")
-	return c.Send(body)
+	return c.Send(wrapWithMeta(raw, meta))
+}
+
+type responseMeta struct {
+	SourceUsed        string  `json:"source_used"`
+	SourceTier        string  `json:"source_tier"`
+	CountyHint        string  `json:"county_hint"`
+	Teaser            bool    `json:"teaser"`
+	FullAccess        bool    `json:"full_access"`
+	Degraded          bool    `json:"degraded"`
+	LeafletFallback   *string `json:"leaflet_fallback"`
+	CacheGeneration   int64   `json:"cache_generation"`
+	Cached            bool    `json:"cached"`
+	CacheHit          *string `json:"cache_hit"`
+}
+
+func (s *ProxyService) buildMeta(c *fiber.Ctx, bbox BBox, src Source, fetchErr error) responseMeta {
+	lat, lng := bbox.Centroid()
+	hint := countyHint(lat, lng)
+	gen, _ := s.sourceGeneration(c.Context(), src.Key)
+	m := responseMeta{
+		SourceUsed:      src.Key,
+		SourceTier:      src.Tier,
+		CountyHint:      hint,
+		Teaser:          false,
+		FullAccess:      true,
+		Degraded:        fetchErr != nil,
+		CacheGeneration: gen,
+		Cached:          false,
+	}
+	if m.SourceUsed == "" {
+		m.SourceUsed = "florida_statewide_cadastral"
+		m.SourceTier = "statewide"
+	}
+	return m
+}
+
+func wrapWithMeta(geojson []byte, meta responseMeta) []byte {
+	var fc map[string]any
+	if err := json.Unmarshal(geojson, &fc); err != nil {
+		return geojson
+	}
+	fc["meta"] = meta
+	out, err := json.Marshal(fc)
+	if err != nil {
+		return geojson
+	}
+	return out
 }
 
 func (s *ProxyService) allowedMLS(code string) bool {
@@ -65,47 +135,68 @@ func queryHash(c *fiber.Ctx) string {
 	return fmt.Sprintf("%x", c.Request().URI().QueryArgs().String())
 }
 
-func (s *ProxyService) fromCache(ctx context.Context, hash string) ([]byte, bool) {
-	var geojson string
-	err := s.db.Pool.QueryRow(ctx, `
-		SELECT geojson FROM gis_cache WHERE query_hash = $1 AND expires_at > NOW()
-	`, hash).Scan(&geojson)
-	if err != nil {
-		return nil, false
-	}
-	return []byte(geojson), true
+func (s *ProxyService) sourceGeneration(ctx context.Context, key string) (int64, error) {
+	var gen int64
+	err := s.db.Pool.QueryRow(ctx, `SELECT generation FROM gis_source_states WHERE source_key = $1`, key).Scan(&gen)
+	return gen, err
 }
 
-func (s *ProxyService) storeCache(ctx context.Context, hash string, body []byte) error {
+func (s *ProxyService) fromCache(ctx context.Context, hash string) ([]byte, responseMeta, bool) {
+	var geojson, sourceUsed string
+	var gen int64
+	err := s.db.Pool.QueryRow(ctx, `
+		SELECT geojson, source_used, source_generation FROM gis_cache
+		WHERE query_hash = $1 AND expires_at > NOW()
+	`, hash).Scan(&geojson, &sourceUsed, &gen)
+	if err != nil {
+		return nil, responseMeta{}, false
+	}
+	hit := "edge"
+	meta := responseMeta{
+		SourceUsed:      sourceUsed,
+		CacheGeneration: gen,
+		Cached:          true,
+		CacheHit:        &hit,
+		Teaser:          false,
+		FullAccess:      true,
+	}
+	return []byte(geojson), meta, true
+}
+
+func (s *ProxyService) storeCache(ctx context.Context, hash string, body []byte, sourceKey string, gen int64) error {
 	exp := time.Now().Add(s.cfg.GIS.EdgeCacheTTL)
 	_, err := s.db.Pool.Exec(ctx, `
 		INSERT INTO gis_cache (query_hash, geojson, expires_at, source_used, source_generation, created_at, updated_at)
-		VALUES ($1, $2, $3, 'arcgis', 0, NOW(), NOW())
-		ON CONFLICT (query_hash) DO UPDATE SET geojson = EXCLUDED.geojson, expires_at = EXCLUDED.expires_at, updated_at = NOW()
-	`, hash, string(body), exp)
+		VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+		ON CONFLICT (query_hash) DO UPDATE SET geojson = EXCLUDED.geojson, expires_at = EXCLUDED.expires_at,
+			source_used = EXCLUDED.source_used, source_generation = EXCLUDED.source_generation, updated_at = NOW()
+	`, hash, string(body), exp, sourceKey, gen)
 	return err
 }
 
-func (s *ProxyService) fetchArcGIS(c *fiber.Ctx) ([]byte, error) {
-	// Default Florida statewide layer when bbox present
-	bbox := c.Query("bbox")
-	if bbox == "" {
-		return json.Marshal(map[string]any{"type": "FeatureCollection", "features": []any{}})
+func (s *ProxyService) fetchSource(src Source, bbox BBox) ([]byte, error) {
+	u, err := url.Parse(src.QueryURL)
+	if err != nil {
+		return nil, err
 	}
-	layerURL := "https://services.arcgis.com/HRPe58PVRWYor63Q/arcgis/rest/services/Florida_Statewide_Cadastral/FeatureServer/0/query"
-	u, _ := url.Parse(layerURL)
 	q := u.Query()
 	q.Set("f", "geojson")
-	q.Set("geometry", bbox)
+	q.Set("geometry", bbox.EsriEnvelope())
 	q.Set("geometryType", "esriGeometryEnvelope")
 	q.Set("spatialRel", "esriSpatialRelIntersects")
 	q.Set("outFields", "*")
 	q.Set("returnGeometry", "true")
+	if src.CountyCO != "" {
+		q.Set("where", "CO_NO='"+src.CountyCO+"'")
+	}
 	u.RawQuery = q.Encode()
 	resp, err := s.http.Get(u.String())
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("arcgis status %d", resp.StatusCode)
+	}
 	return io.ReadAll(resp.Body)
 }
