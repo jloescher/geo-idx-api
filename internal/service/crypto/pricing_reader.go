@@ -18,7 +18,11 @@ func NewPricingReader(db *repository.DB) *PricingReader {
 
 // LatestSnapshot returns asset prices keyed by asset_key (btc, eth, sol).
 func (p *PricingReader) LatestSnapshot(ctx context.Context) (map[string]float64, error) {
-	rows, err := p.db.Pool.Query(ctx, `
+	pool, err := p.db.ReadPool(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := pool.Query(ctx, `
 		SELECT asset_key, price FROM crypto_price_snapshots WHERE vs_currency = 'usd'
 	`)
 	if err != nil {

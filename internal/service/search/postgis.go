@@ -151,7 +151,11 @@ func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchR
 	q += fmt.Sprintf(" ORDER BY modification_timestamp DESC NULLS LAST LIMIT $%d OFFSET $%d", n, n+1)
 	args = append(args, limit+1, skip)
 
-	rows, err := p.db.Pool.Query(ctx, q, args...)
+	pool, err := p.db.ReadPool(ctx)
+	if err != nil {
+		return SearchResult{}, err
+	}
+	rows, err := pool.Query(ctx, q, args...)
 	if err != nil {
 		return SearchResult{}, err
 	}

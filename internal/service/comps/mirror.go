@@ -74,7 +74,11 @@ func (e *Engine) findMirrorComps(
 	q += fmt.Sprintf(" ORDER BY modification_timestamp DESC NULLS LAST LIMIT $%d", n)
 	args = append(args, limit)
 
-	rows, err := e.db.Pool.Query(ctx, q, args...)
+	pool, err := e.db.ReadPool(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -17,7 +17,11 @@ func NewStatsService(db *repository.DB) *StatsService {
 }
 
 func (s *StatsService) Handle(c *fiber.Ctx) error {
-	rows, err := s.db.Pool.Query(c.Context(), `
+	pool, err := s.db.ReadPool(c.Context())
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	rows, err := pool.Query(c.Context(), `
 		SELECT COALESCE(c.dataset_slug, s.dataset_slug) AS dataset_slug,
 		       COALESCE(s.active_pending, 0) AS active_pending,
 		       s.latest_mod,

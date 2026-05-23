@@ -36,9 +36,13 @@ func stringsHasSuffix(s, suffix string) bool {
 // Get returns decompressed body when a fresh row exists.
 func (p *ProxyCache) Get(ctx context.Context, partition, fingerprint string) ([]byte, bool, error) {
 	ttl := p.TTLForPartition(partition)
+	pool, err := p.db.ReadPool(ctx)
+	if err != nil {
+		return nil, false, err
+	}
 	var compressed []byte
 	var lastUpdated time.Time
-	err := p.db.Pool.QueryRow(ctx, `
+	err = pool.QueryRow(ctx, `
 		SELECT compressed_data, last_updated FROM mls_search_cache
 		WHERE partition_key = $1 AND fingerprint = $2
 	`, partition, fingerprint).Scan(&compressed, &lastUpdated)

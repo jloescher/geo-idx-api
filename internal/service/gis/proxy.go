@@ -79,16 +79,16 @@ func (s *ProxyService) Fetch(c *fiber.Ctx, mlsCode *string) error {
 }
 
 type responseMeta struct {
-	SourceUsed        string  `json:"source_used"`
-	SourceTier        string  `json:"source_tier"`
-	CountyHint        string  `json:"county_hint"`
-	Teaser            bool    `json:"teaser"`
-	FullAccess        bool    `json:"full_access"`
-	Degraded          bool    `json:"degraded"`
-	LeafletFallback   *string `json:"leaflet_fallback"`
-	CacheGeneration   int64   `json:"cache_generation"`
-	Cached            bool    `json:"cached"`
-	CacheHit          *string `json:"cache_hit"`
+	SourceUsed      string  `json:"source_used"`
+	SourceTier      string  `json:"source_tier"`
+	CountyHint      string  `json:"county_hint"`
+	Teaser          bool    `json:"teaser"`
+	FullAccess      bool    `json:"full_access"`
+	Degraded        bool    `json:"degraded"`
+	LeafletFallback *string `json:"leaflet_fallback"`
+	CacheGeneration int64   `json:"cache_generation"`
+	Cached          bool    `json:"cached"`
+	CacheHit        *string `json:"cache_hit"`
 }
 
 func (s *ProxyService) buildMeta(c *fiber.Ctx, bbox BBox, src Source, fetchErr error, fullAccess bool) responseMeta {
@@ -140,15 +140,23 @@ func queryHash(c *fiber.Ctx) string {
 }
 
 func (s *ProxyService) sourceGeneration(ctx context.Context, key string) (int64, error) {
+	pool, err := s.db.ReadPool(ctx)
+	if err != nil {
+		return 0, err
+	}
 	var gen int64
-	err := s.db.Pool.QueryRow(ctx, `SELECT generation FROM gis_source_states WHERE source_key = $1`, key).Scan(&gen)
+	err = pool.QueryRow(ctx, `SELECT generation FROM gis_source_states WHERE source_key = $1`, key).Scan(&gen)
 	return gen, err
 }
 
 func (s *ProxyService) fromCache(ctx context.Context, hash string, fullAccess bool) ([]byte, responseMeta, bool) {
+	pool, err := s.db.ReadPool(ctx)
+	if err != nil {
+		return nil, responseMeta{}, false
+	}
 	var geojson, sourceUsed string
 	var gen int64
-	err := s.db.Pool.QueryRow(ctx, `
+	err = pool.QueryRow(ctx, `
 		SELECT geojson, source_used, source_generation FROM gis_cache
 		WHERE query_hash = $1 AND expires_at > NOW()
 	`, hash).Scan(&geojson, &sourceUsed, &gen)

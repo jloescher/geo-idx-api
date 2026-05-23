@@ -19,8 +19,8 @@ import (
 
 // Handler provides invite-only dashboard (domains, API keys).
 type Handler struct {
-	cfg      config.Config
-	db       *repository.DB
+	cfg         config.Config
+	db          *repository.DB
 	tokens      *repository.TokenRepo
 	domains     *repository.DomainRepo
 	invitations *auth.InvitationService
@@ -33,8 +33,8 @@ func NewHandler(cfg config.Config, db *repository.DB, logger *slog.Logger) *Hand
 		Expiration: cfg.Auth.SessionLifetime,
 	})
 	return &Handler{
-		cfg:      cfg,
-		db:       db,
+		cfg:         cfg,
+		db:          db,
 		tokens:      repository.NewTokenRepo(db),
 		domains:     repository.NewDomainRepo(db),
 		invitations: auth.NewInvitationService(cfg, db),
@@ -71,8 +71,12 @@ func (h *Handler) requireAuth(c *fiber.Ctx) error {
 
 func (h *Handler) requireAdmin(c *fiber.Ctx) error {
 	uid, _ := c.Locals("user_id").(int64)
+	pool, err := h.db.ReadPool(c.Context())
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
 	var isAdmin bool
-	err := h.db.Pool.QueryRow(c.Context(), `SELECT is_admin FROM users WHERE id = $1`, uid).Scan(&isAdmin)
+	err = pool.QueryRow(c.Context(), `SELECT is_admin FROM users WHERE id = $1`, uid).Scan(&isAdmin)
 	if err != nil || !isAdmin {
 		return fiber.NewError(fiber.StatusForbidden, "admin only")
 	}
@@ -91,9 +95,13 @@ func (h *Handler) LoginForm(c *fiber.Ctx) error {
 func (h *Handler) Login(c *fiber.Ctx) error {
 	email := c.FormValue("email")
 	pass := c.FormValue("password")
+	pool, err := h.db.ReadPool(c.Context())
+	if err != nil {
+		return c.Status(500).SendString("Database error")
+	}
 	var id int64
 	var hash string
-	err := h.db.SQLX.QueryRow(`SELECT id, password FROM users WHERE LOWER(email) = LOWER($1)`, email).Scan(&id, &hash)
+	err = pool.QueryRow(c.Context(), `SELECT id, password FROM users WHERE LOWER(email) = LOWER($1)`, email).Scan(&id, &hash)
 	if err != nil || password.Verify(pass, hash) != nil {
 		return c.Status(401).SendString("Invalid credentials")
 	}
@@ -116,7 +124,11 @@ func (h *Handler) Logout(c *fiber.Ctx) error {
 
 func (h *Handler) Dashboard(c *fiber.Ctx) error {
 	uid, _ := c.Locals("user_id").(int64)
-	rows, _ := h.db.Pool.Query(c.Context(), `
+	pool, err := h.db.ReadPool(c.Context())
+	if err != nil {
+		return c.Status(500).SendString("Database error")
+	}
+	rows, _ := pool.Query(c.Context(), `
 		SELECT id, domain_slug, verification_status FROM domains WHERE user_id = $1 ORDER BY id
 	`, uid)
 	defer rows.Close()
@@ -135,7 +147,7 @@ func (h *Handler) Dashboard(c *fiber.Ctx) error {
 	}
 	b.WriteString(`</ul></div>
 <div class="card"><h2>API keys</h2><ul class="domain-list">`)
-	tokRows, _ := h.db.Pool.Query(c.Context(), `
+	tokRows, _ := pool.Query(c.Context(), `
 		SELECT id, name, created_at::text FROM personal_access_tokens
 		WHERE tokenable_type = 'App\Models\User' AND tokenable_id = $1
 		ORDER BY id DESC
@@ -166,7 +178,7 @@ func (h *Handler) Dashboard(c *fiber.Ctx) error {
 <button type="submit" class="btn btn-primary">Add domain</button>
 </form></div>`)
 	var isAdmin bool
-	_ = h.db.Pool.QueryRow(c.Context(), `SELECT is_admin FROM users WHERE id = $1`, uid).Scan(&isAdmin)
+	_ = pool.QueryRow(c.Context(), `SELECT is_admin FROM users WHERE id = $1`, uid).Scan(&isAdmin)
 	if isAdmin {
 		b.WriteString(`<div class="card"><h2>Invite user</h2>
 <form method="post" action="/dashboard/invitations" class="inline-form">
@@ -197,7 +209,11 @@ func (h *Handler) VerifyTXT(c *fiber.Ctx) error {
 	uid, _ := c.Locals("user_id").(int64)
 	id := c.Params("id")
 	var txtHost, txtVal string
-	err := h.db.Pool.QueryRow(c.Context(), `
+	readPool, err := h.db.ReadPool(c.Context())
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	err = readPool.QueryRow(c.Context(), `
 		SELECT txt_verification_name, txt_verification_value FROM domains WHERE id = $1 AND user_id = $2
 	`, id, uid).Scan(&txtHost, &txtVal)
 	if err != nil {
@@ -228,8 +244,12 @@ func (h *Handler) VerifyTXT(c *fiber.Ctx) error {
 
 func (h *Handler) CreateStagingToken(c *fiber.Ctx) error {
 	uid, _ := c.Locals("user_id").(int64)
+	pool, err := h.db.ReadPool(c.Context())
+	if err != nil {
+		return err
+	}
 	var exists int
-	_ = h.db.Pool.QueryRow(c.Context(), `
+	_ = pool.QueryRow(c.Context(), `
 		SELECT COUNT(*) FROM personal_access_tokens
 		WHERE tokenable_type = 'App\Models\User' AND tokenable_id = $1 AND name = 'Staging'
 	`, uid).Scan(&exists)

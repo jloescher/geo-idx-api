@@ -13,6 +13,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/quantyralabs/idx-api/internal/api"
 	"github.com/quantyralabs/idx-api/internal/config"
+	"github.com/quantyralabs/idx-api/internal/db"
 	"github.com/quantyralabs/idx-api/internal/repository"
 )
 
@@ -31,12 +32,30 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	db, err := repository.New(ctx, cfg.DB)
+	dbConn, err := repository.New(ctx, cfg.DB)
 	if err != nil {
 		logger.Error("database", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+
+	var selector *db.ReplicaSelector
+	if cfg.DB.ReadOnlyBaseDSN != "" {
+		selector, err = db.NewReplicaSelector(ctx, cfg.DB.PatroniHosts, cfg.DB.ReadOnlyBaseDSN, dbConn.Pool, logger)
+		if err != nil {
+			logger.Error("replica selector", "error", err)
+			dbConn.Close()
+			os.Exit(1)
+		}
+		dbConn.Selector = selector
+		logger.Info("read replica selector enabled", "patroni_hosts", cfg.DB.PatroniHosts)
+	}
+
+	defer func() {
+		if selector != nil {
+			selector.Close()
+		}
+		dbConn.Close()
+	}()
 
 	app := fiber.New(fiber.Config{
 		AppName:      cfg.App.Name,
@@ -46,7 +65,7 @@ func main() {
 	})
 	app.Use(recover.New())
 
-	api.RegisterRoutes(app, cfg, db, logger)
+	api.RegisterRoutes(app, cfg, dbConn, logger)
 
 	go func() {
 		sigCh := make(chan os.Signal, 1)

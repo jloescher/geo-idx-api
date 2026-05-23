@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/adaptor"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/quantyralabs/idx-api/internal/api/middleware"
 	"github.com/quantyralabs/idx-api/internal/config"
 	"github.com/quantyralabs/idx-api/internal/handler/auth"
@@ -27,6 +29,8 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 
 	app.Get("/healthz", healthz)
 	app.Get("/readyz", readyz(db))
+	app.Get("/health/replicas", healthReplicas(db))
+	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
 
 	domains := repository.NewDomainRepo(db)
 	tokens := repository.NewTokenRepo(db)
@@ -111,5 +115,28 @@ func readyz(db *repository.DB) fiber.Handler {
 		}
 		ver, _ := db.PostGISVersion(ctx)
 		return c.JSON(fiber.Map{"ready": true, "postgis": ver})
+	}
+}
+
+func healthReplicas(db *repository.DB) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		if db.Selector == nil {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": "read replica selector not configured",
+			})
+		}
+		ctx, cancel := context.WithTimeout(c.Context(), 3*time.Second)
+		defer cancel()
+
+		snap := db.Selector.Snapshot()
+		if err := db.Ping(ctx); err != nil && snap.FallbackActive {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error":           err.Error(),
+				"replicas":        snap.Replicas,
+				"selected":        snap.Selected,
+				"fallback_active": snap.FallbackActive,
+			})
+		}
+		return c.JSON(snap)
 	}
 }

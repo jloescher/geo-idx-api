@@ -23,7 +23,11 @@ func (r *InvitationRepo) Create(ctx context.Context, email, tokenHash string, in
 }
 
 func (r *InvitationRepo) FindOpenByHash(ctx context.Context, tokenHash string) (email string, expiresAt time.Time, err error) {
-	err = r.db.Pool.QueryRow(ctx, `
+	pool, err := r.db.ReadPool(ctx)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	err = pool.QueryRow(ctx, `
 		SELECT email, expires_at FROM user_invitations
 		WHERE token_hash = $1 AND accepted_at IS NULL AND expires_at > NOW()
 	`, tokenHash).Scan(&email, &expiresAt)

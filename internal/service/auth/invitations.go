@@ -98,8 +98,12 @@ func hashInviteToken(plain string) string {
 // Valid returns true when email has an unexpired, unused invitation matching token.
 func (s *InvitationService) Valid(ctx context.Context, email, plainToken string) (bool, error) {
 	hash := hashInviteToken(plainToken)
+	pool, err := s.db.ReadPool(ctx)
+	if err != nil {
+		return false, err
+	}
 	var id int64
-	err := s.db.Pool.QueryRow(ctx, `
+	err = pool.QueryRow(ctx, `
 		SELECT id FROM user_invitations
 		WHERE LOWER(email) = LOWER($1) AND token_hash = $2
 		  AND accepted_at IS NULL AND expires_at > NOW()

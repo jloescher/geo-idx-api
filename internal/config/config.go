@@ -41,17 +41,28 @@ type AppConfig struct {
 }
 
 type DBConfig struct {
-	Host     string
-	Port     string
-	Database string
-	User     string
-	Password string
-	SSLMode  string
+	Host            string
+	Port            string
+	Database        string
+	User            string
+	Password        string
+	SSLMode         string
+	RWDSN           string   // DB_RW_DSN — HAProxy write port
+	ReadOnlyBaseDSN string   // DB_READONLY_BASE_DSN — key=value without host
+	PatroniHosts    []string // PATRONI_ENDPOINTS — comma-separated Tailscale IPs
 }
 
 func (d DBConfig) DSN() string {
 	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
 		d.User, d.Password, d.Host, d.Port, d.Database, d.SSLMode)
+}
+
+// RWDSNOrDefault returns DB_RW_DSN when set, otherwise the legacy DSN() from DB_* fields.
+func (d DBConfig) RWDSNOrDefault() string {
+	if strings.TrimSpace(d.RWDSN) != "" {
+		return strings.TrimSpace(d.RWDSN)
+	}
+	return d.DSN()
 }
 
 type QueueConfig struct {
@@ -189,12 +200,15 @@ func Load() (Config, error) {
 			LogJSON: env("LOG_FORMAT", "") == "json" || env("APP_ENV", "local") == "production",
 		},
 		DB: DBConfig{
-			Host:     env("DB_HOST", "127.0.0.1"),
-			Port:     env("DB_PORT", "5432"),
-			Database: env("DB_DATABASE", "idx_api"),
-			User:     env("DB_USERNAME", "postgres"),
-			Password: env("DB_PASSWORD", ""),
-			SSLMode:  defaultDBSSLMode(),
+			Host:            env("DB_HOST", "127.0.0.1"),
+			Port:            env("DB_PORT", "5432"),
+			Database:        env("DB_DATABASE", "idx_api"),
+			User:            env("DB_USERNAME", "postgres"),
+			Password:        env("DB_PASSWORD", ""),
+			SSLMode:         defaultDBSSLMode(),
+			RWDSN:           env("DB_RW_DSN", ""),
+			ReadOnlyBaseDSN: env("DB_READONLY_BASE_DSN", ""),
+			PatroniHosts:    envPatroniHosts(),
 		},
 		Queue: QueueConfig{
 			Table:         env("DB_QUEUE_TABLE", "jobs"),
@@ -457,4 +471,16 @@ func envBridgeSyncExpand() string {
 		env("MLS_SYNC_EXPAND", ""),
 		"Media,OpenHouses,Rooms,UnitTypes",
 	)
+}
+
+func envPatroniHosts() []string {
+	raw := env("PATRONI_ENDPOINTS", "100.126.103.51,100.114.117.46,100.115.75.119")
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }

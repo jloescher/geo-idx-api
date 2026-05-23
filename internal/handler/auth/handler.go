@@ -32,17 +32,22 @@ func (h *Handler) Token(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
 	}
-	var user struct {
-		ID       int64  `db:"id"`
-		Password string `db:"password"`
+	pool, err := h.db.ReadPool(c.Context())
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
-	err := h.db.SQLX.Get(&user, `SELECT id, password FROM users WHERE LOWER(email) = LOWER($1)`, req.Email)
+	var user struct {
+		ID       int64
+		Password string
+	}
+	err = pool.QueryRow(c.Context(), `SELECT id, password FROM users WHERE LOWER(email) = LOWER($1)`, req.Email).
+		Scan(&user.ID, &user.Password)
 	if err != nil || password.Verify(req.Password, user.Password) != nil {
 		return fiber.NewError(fiber.StatusUnauthorized, "Invalid credentials.")
 	}
 	if password.NeedsRehash(user.Password) {
 		if upgraded, err := password.Hash(req.Password, password.DefaultParams); err == nil {
-			_, _ = h.db.SQLX.ExecContext(c.Context(), `UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2`, upgraded, user.ID)
+			_, _ = h.db.Pool.Exec(c.Context(), `UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2`, upgraded, user.ID)
 		}
 	}
 	plain, err := h.tokens.Create(c.Context(), user.ID, "API Login", []string{"idx:full"})

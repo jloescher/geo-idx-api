@@ -4,13 +4,13 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/quantyralabs/idx-api/internal/domain"
 )
 
@@ -30,14 +30,18 @@ func HashToken(plain string) string {
 
 func (r *TokenRepo) FindByPlaintext(ctx context.Context, plain string) (*domain.APIToken, *domain.User, error) {
 	hash := HashToken(plain)
+	pool, err := r.db.ReadPool(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
 	var tok domain.APIToken
-	err := r.db.SQLX.GetContext(ctx, &tok, `
+	err = pool.QueryRow(ctx, `
 		SELECT id, tokenable_id, name, token, abilities, last_used_at, expires_at
 		FROM personal_access_tokens
 		WHERE tokenable_type = 'App\\Models\\User' AND token = $1
 		LIMIT 1
-	`, hash)
-	if errors.Is(err, sql.ErrNoRows) {
+	`, hash).Scan(&tok.ID, &tok.UserID, &tok.Name, &tok.TokenHash, &tok.Abilities, &tok.LastUsedAt, &tok.ExpiresAt)
+	if errors.Is(err, pgx.ErrNoRows) {
 		// Legacy Sanctum: token id|secret — re-issue required; not supported in Go path
 		return nil, nil, nil
 	}
@@ -48,8 +52,9 @@ func (r *TokenRepo) FindByPlaintext(ctx context.Context, plain string) (*domain.
 		return nil, nil, nil
 	}
 	var user domain.User
-	err = r.db.SQLX.GetContext(ctx, &user, `SELECT id, name, email, password, is_admin FROM users WHERE id = $1`, tok.UserID)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = pool.QueryRow(ctx, `SELECT id, name, email, password, is_admin FROM users WHERE id = $1`, tok.UserID).
+		Scan(&user.ID, &user.Name, &user.Email, &user.Password, &user.IsAdmin)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil, nil
 	}
 	if err != nil {

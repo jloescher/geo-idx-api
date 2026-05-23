@@ -81,8 +81,12 @@ func (h *Handler) publicURL(listingKey, photoID string) string {
 }
 
 func (h *Handler) sparkMediaURL(ctx context.Context, dataset, listingKey, photoID string) string {
+	pool, err := h.db.ReadPool(ctx)
+	if err != nil {
+		return ""
+	}
 	var media []byte
-	err := h.db.Pool.QueryRow(ctx, `
+	err = pool.QueryRow(ctx, `
 		SELECT media FROM listings WHERE dataset_slug = $1 AND listing_key = $2
 	`, dataset, listingKey).Scan(&media)
 	if err != nil || len(media) == 0 {

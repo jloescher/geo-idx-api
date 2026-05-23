@@ -42,7 +42,11 @@ func (e *Engine) subjectFromMLS(ctx context.Context, dataset string, in SubjectI
 	}
 	var raw, media, unit, room, openHouse, custom []byte
 	var listPrice *float64
-	err := e.db.Pool.QueryRow(ctx, `
+	pool, err := e.db.ReadPool(ctx)
+	if err != nil {
+		return SubjectProfile{}, err
+	}
+	err = pool.QueryRow(ctx, `
 		SELECT raw_data, media, unit, room, open_house, custom_fields, list_price
 		FROM listings WHERE dataset_slug = $1 AND listing_key = $2
 	`, ds, key).Scan(&raw, &media, &unit, &room, &openHouse, &custom, &listPrice)
