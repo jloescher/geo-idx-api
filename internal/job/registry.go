@@ -26,6 +26,9 @@ type Registry struct {
 	mirrorPurge        *sync.PurgeClosed
 	replicaStore       *sync.ReplicaPageStore
 	gisMeta            *gis.MetadataService
+	gisParcelSync      *gis.ParcelSyncService
+	gisBoundarySync    *gis.BoundarySyncService
+	gisInitialSync     *gis.InitialSyncService
 	crypto             *crypto.PricingService
 }
 
@@ -47,6 +50,10 @@ func (r *Registry) RegisterAll(w *queue.Worker) {
 	w.Register(queue.TypeMLSPurgeClosed, r.handlePurgeClosed)
 	w.Register(queue.TypeMLSPurgeReplicaPages, r.handlePurgeReplicaPages)
 	w.Register(queue.TypeGISProbeSources, r.handleGISProbe)
+	w.Register(queue.TypeGISMonthlyParcelRefresh, r.handleGISMonthlyParcelRefresh)
+	w.Register(queue.TypeGISAnnualBoundariesRefresh, r.handleGISAnnualBoundariesRefresh)
+	w.Register(queue.TypeGISInitialSync, r.handleGISInitialSync)
+	w.Register(queue.TypeGISParcelSyncPage, r.handleGISParcelSyncPage)
 	w.Register(queue.TypeCryptoRefreshPricing, r.handleCryptoRefresh)
 }
 

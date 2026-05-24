@@ -1,12 +1,12 @@
 # GIS Data Proxy API (Florida public government layers)
 
-Quantyra GeoIDX **idx-api** exposes a GIS proxy that returns **public Florida government parcel polygons** as **GeoJSON** (with a `meta` foreign member) optimized for **Leaflet**. **No MLS or Bridge RESO data** is read or merged into this endpoint—only external open-government ArcGIS services.
+Quantyra GeoIDX **idx-api** exposes a GIS proxy that returns **public Florida government parcel polygons and administrative boundaries** as **GeoJSON** (with a `meta` foreign member) optimized for **Leaflet**. **No MLS or Bridge RESO data** is read or merged into this endpoint—only external open-government ArcGIS services (synced into PostGIS for fast reads).
 
 ## Product and compliance notes
 
-- **Map UX:** Parcel overlays pair with listing markers so consumers get cadastral context without expanding MLS processing beyond Bridge-backed listing calls.
-- **Infra:** PostgreSQL origin cache + edge TTL (`GIS_EDGE_CACHE_TTL`) so upstream ArcGIS instability does not scale linearly with traffic.
-- **Stellar MLS PDA / IDX:** This layer uses **public** cadastral and county GIS only, consistent with enhancing IDX display with non-MLS context.
+- **Map UX:** Parcel and boundary overlays pair with listing markers so consumers get cadastral context without expanding MLS processing beyond Bridge-backed listing calls.
+- **Infra:** PostGIS persistent tables + edge TTL (`GIS_EDGE_CACHE_TTL`) so upstream ArcGIS instability does not scale linearly with traffic.
+- **Stellar MLS PDA / IDX:** This layer uses **public** cadastral, county GIS, and FDOT admin boundaries only.
 
 ## Authentication
 
@@ -24,43 +24,48 @@ Same as other `/api/v1/*` Bridge proxy routes:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/gis` | Florida GIS parcels for the authenticated domain/token. |
+| GET | `/api/v1/gis` | Florida GIS features for the authenticated domain/token. |
 | GET | `/api/v1/mls/{mlsCode}/gis` | Same payload, MLS-scoped for analytics / future routing (`mlsCode` must be listed in `GIS_FLORIDA_MLS_CODES`). |
 
 ## Query parameters
 
-Aligned with typical geo-web listing map queries:
-
 | Parameter | Required | Description |
 |-----------|----------|-------------|
+| `type` | no | Feature layer: `parcel` (default), `city`, `county`, or `zip`. |
 | `bbox` | one-of | Comma-separated **west,south,east,north** (WGS84), e.g. Clearwater pilot: `-82.83,27.95,-82.79,27.98`. |
 | `north`, `south`, `east`, `west` | one-of | Alternative bounding box. |
 | `lat` / `latitude` + `lng` / `lon` / `longitude` + `radius` | one-of | Radius in **meters** (50–500000). Builds a square envelope. |
-| `limit` | no | Max ArcGIS features (capped by `GIS_MAX_FEATURES`, default 500). |
-| `layers` | no | Reserved comma list (default `parcels`). Full access may expose future multi-layer orchestration. |
+| `limit` | no | Max features returned (capped by `GIS_MAX_FEATURES`, default 500). |
 
 **BBox span guard:** `GIS_MAX_BBOX_SPAN_DEG` (default `0.35`) rejects abusive world queries with `422`.
 
 ## Example requests
 
-**Clearwater / Pinellas (bbox)**
+**Parcels (default)**
 
 ```http
 GET /api/v1/gis?bbox=-82.83,27.95,-82.79,27.98&limit=120
 X-Domain-Slug: your-registered-domain.com
 ```
 
-**Tampa / Hillsborough overlap (lat/lng + radius)**
+**City boundaries**
 
 ```http
-GET /api/v1/gis?lat=27.9506&lng=-82.4572&radius=800&limit=80
+GET /api/v1/gis?type=city&bbox=-82.83,27.95,-82.79,27.98
 X-Domain-Slug: your-registered-domain.com
 ```
 
-**MLS-scoped (Stellar)**
+**County boundaries**
 
 ```http
-GET /api/v1/mls/stellar/gis?bbox=-82.48,27.92,-82.44,27.96&limit=50
+GET /api/v1/gis?type=county&bbox=-82.5,27.5,-82.0,28.0
+X-Domain-Slug: your-registered-domain.com
+```
+
+**ZIP code boundaries**
+
+```http
+GET /api/v1/gis?type=zip&bbox=-82.83,27.95,-82.79,27.98
 X-Domain-Slug: your-registered-domain.com
 ```
 
@@ -72,65 +77,84 @@ X-Domain-Slug: your-registered-domain.com
   "features": [
     {
       "type": "Feature",
-      "geometry": { "type": "Polygon", "coordinates": [] },
+      "geometry": { "type": "MultiPolygon", "coordinates": [] },
       "properties": { "PARCELID": "…" }
     }
   ],
   "meta": {
-    "source_used": "pinellas_enterprise_parcels",
-    "source_tier": "pinellas",
+    "source_used": "gis_parcels",
+    "source_tier": "persistent",
     "county_hint": "pinellas",
+    "query_type": "parcel",
     "teaser": false,
     "full_access": true,
-    "mls_code": null,
-    "layers": ["parcels"],
-    "cached": false,
-    "cache_hit": null,
-    "cache_generation": 0,
-    "blob_valid_until": "2026-05-24T00:00:00+00:00",
-    "warnings": ["Served from Pinellas County Enterprise GIS parcels."],
-    "degraded": false,
-    "bbox": { "min_lon": -82.83, "min_lat": 27.95, "max_lon": -82.79, "max_lat": 27.98 },
-    "expires_at": "2026-05-24T00:00:00+00:00",
-    "context_layers": [],
-    "leaflet_fallback": null
+    "cache_generation": 3,
+    "cached": false
   }
 }
 ```
 
-When **degraded** (`meta.degraded=true`), `features` is empty and `meta.leaflet_fallback` contains a public OSM raster tile template for Leaflet `L.tileLayer`.
+When **degraded** (`meta.degraded=true`), `features` may be empty and `meta.leaflet_fallback` contains a public OSM raster tile template for Leaflet `L.tileLayer`.
 
-## Failover behavior (server-side)
+## Persistent PostGIS tables
 
-1. **Primary:** Florida Department of Revenue / FGIO statewide cadastral (`FeatureServer/0`). When `county_hint` is `pinellas` or `hillsborough`, a `CO_NO=` filter is applied to shrink the query.
-2. **Failover 1 — Pinellas:** Only if the bbox intersects the Pinellas envelope in `config/gis.php`.
-3. **Failover 2 — Hillsborough:** Only if the bbox intersects the Hillsborough envelope.
-4. **Graceful degrade:** Empty `FeatureCollection` + `warnings` + OSM tile fallback metadata.
+| Table | Refresh | Source |
+|-------|---------|--------|
+| `gis_parcels` | Monthly (`gis.monthly_parcel_refresh`, 1st @ 02:00) | Florida statewide cadastral + Pinellas + Hillsborough county layers |
+| `gis_cities` | Annual (`gis.annual_boundaries_refresh`, Jan 1 @ 03:00) | FDOT Admin_Boundaries layer 7 |
+| `gis_counties` | Annual | FDOT Admin_Boundaries layer 6 |
+| `gis_zips` | Annual | FDOT Admin_Boundaries layer 8 |
 
-## Caching & durability (layered)
+All tables use **GIST** spatial indexes and `ST_Intersects` + envelope prefilter for bbox queries.
+
+**Initial sync:** On scheduler startup, if all persistent GIS tables are empty, `gis.initial_sync` is enqueued once (parcels + boundaries).
+
+## Read path (layered)
 
 | Layer | Policy | Notes |
 |-------|--------|-------|
-| **Edge (Postgres `gis_cache`)** | `GIS_EDGE_CACHE_TTL` (seconds, default 900) | `internal/service/gis/proxy.go` reads fresh rows by `query_hash` before calling ArcGIS. Response header `X-IDX-Cache`: `edge` on hit, `miss` on origin fetch. |
-| **PostgreSQL `gis_cache` (origin)** | Per-source **max age in days** (`GIS_ORIGIN_MAX_DAYS_PRIMARY` default 90 for statewide, `GIS_ORIGIN_MAX_DAYS_COUNTY` default 30 for county layers, degraded 1 day) | `meta.cache_generation` + column `source_generation` must match `gis_source_states.generation` for that `source_used`. |
-| **`gis_source_states`** | Weekly scheduled probe | Job `gis.probe_sources` (cron Monday 06:30, queue `GIS_QUEUE`) fetches each layer `?f=json`, fingerprints metadata; fingerprint change **increments `generation`**, invalidating edge + origin rows for that source. |
-| **Filesystem `gis_backup`** | Snapshot per `query_hash` | `GIS_BACKUP_PATH`; optional `GIS_QUEUE_BACKUP_WRITES` on `GIS_QUEUE`. |
+| **Edge (`gis_cache`)** | `GIS_EDGE_CACHE_TTL` (seconds, default 900) | Keyed by full query string (includes `type`). Header `X-IDX-Cache`: `edge`, `persistent`, or `miss`. |
+| **PostGIS persistent** | Monthly / annual sync jobs | Primary origin for `type=parcel|city|county|zip`. `meta.source_tier=persistent`. |
+| **ArcGIS live fallback** | Parcels only | When persistent parcel table has no rows for the bbox, existing county failover runs (statewide → Pinellas → Hillsborough). |
 
-**Operations**
+## Background jobs
 
-- Enqueue `gis.probe_sources` on the GIS queue (scheduler does this weekly), or run the probe handler inline in development.
-- Clear cache: `DELETE FROM gis_cache` for affected sources and bump `gis_source_states.generation` (ops/SQL), or enqueue job type `gis.probe_sources`.
+| Job type | Schedule | Queue | Purpose |
+|----------|----------|-------|---------|
+| `gis.probe_sources` | Weekly Mon 06:30 | `GIS_QUEUE` | ArcGIS metadata fingerprint; bumps `gis_source_states.generation` on change. |
+| `gis.monthly_parcel_refresh` | 1st of month 02:00 | `GIS_SYNC_QUEUE` | Full parcel sync with paginated sub-jobs (`gis.parcel_sync_page`). |
+| `gis.annual_boundaries_refresh` | Jan 1 03:00 | `GIS_SYNC_QUEUE` | FDOT cities/counties/zips sync. |
+| `gis.initial_sync` | Scheduler startup (if empty) | `GIS_SYNC_QUEUE` | First-run parcel + boundary load. |
 
-**Scheduler:** `cmd/scheduler` enqueues `gis.probe_sources` **weekly** (Monday 06:30). Requires `cmd/worker` on the GIS queue (`GIS_QUEUE`, default `default`).
+**Worker queues:** Include `GIS_SYNC_QUEUE` (default `default`) in `WORKER_QUEUES` alongside `GIS_QUEUE`.
 
-**Teaser:** Implemented in `internal/service/gis/teaser.go` when `MLSFullAccess` is false (typical for `idx:access`-only PATs). Domain header auth and `idx:full` tokens receive full payloads.
+## Failover behavior (parcel ArcGIS fallback)
 
-**HTTP client:** `GIS_HTTP_TIMEOUT` / `GIS_HTTP_CONNECT_TIMEOUT` for parcel queries; `GIS_METADATA_TIMEOUT` for cheap layer metadata probes.
+When persistent `gis_parcels` has no data for the requested bbox:
+
+1. **Primary:** Florida statewide cadastral with optional `CO_NO=` county filter.
+2. **Failover — Pinellas:** When bbox intersects Pinellas envelope.
+3. **Failover — Hillsborough:** When bbox intersects Hillsborough envelope.
+4. **Graceful degrade:** Empty `FeatureCollection` + OSM tile fallback metadata.
+
+Boundary types (`city`, `county`, `zip`) do not live-fallback to ArcGIS; run `gis.annual_boundaries_refresh` if empty.
 
 ## Chaining with `/listings`
 
-Geo-web can call `/api/v1/listings` then `/api/v1/gis` with the **same map bbox** (or derived from `lat`/`lng`/`radius`) so markers and parcels stay aligned—no MLS data crosses into GIS responses.
+Geo-web can call `/api/v1/listings` then `/api/v1/gis` with the **same map bbox** so markers and parcels stay aligned.
 
 ## Configuration reference
 
-See `internal/service/gis/sources.go` and `GIS_*` env vars in `.env.example` for source URLs, county bounding boxes, and Florida MLS allow-list (`GIS_FLORIDA_MLS_CODES`).
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GIS_MAX_FEATURES` | 500 | API `limit` cap |
+| `GIS_SYNC_PAGE_SIZE` | 2000 | ArcGIS pagination page size |
+| `GIS_SYNC_UPSERT_CHUNK` | 500 | Bulk upsert batch size |
+| `GIS_HTTP_TIMEOUT` | 12s | ArcGIS HTTP timeout |
+| `GIS_SYNC_QUEUE` | `default` | Queue for sync jobs |
+| `GIS_QUEUE` | `default` | Queue for `gis.probe_sources` |
+| `GIS_EDGE_CACHE_TTL` | 900 | Edge cache TTL (seconds) |
+| `GIS_TEASER_MAX_FEATURES` | 40 | Teaser feature cap |
+| `GIS_TEASER_COORD_DECIMALS` | 4 | Teaser coordinate rounding |
+
+See `internal/service/gis/sources.go` and `GIS_*` env vars in `.env.example` for source URLs and Florida MLS allow-list.

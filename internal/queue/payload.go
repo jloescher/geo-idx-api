@@ -10,20 +10,24 @@ type Payload struct {
 
 // Job types — revenue impact: explicit types enable memory-bounded workers per MLS pipeline stage.
 const (
-	TypeNoop                    = "noop"
-	TypeBridgeFetchPage         = "bridge.fetch_page"
-	TypeBridgePersistChunk      = "bridge.persist_chunk"
-	TypeBridgePersistFinalize   = "bridge.persist_finalize"
-	TypeSparkFetchPage          = "spark.fetch_page"
-	TypeSparkPersistChunk       = "spark.persist_chunk"
-	TypeSparkPersistFinalize    = "spark.persist_finalize"
-	TypeMLSReplicationKickoff   = "mls.replication_kickoff"
-	TypeMLSProxyCachePurge = "mls.proxy_cache_purge"
-	TypeMLSPurgeClosed          = "mls.purge_closed_listings"
-	TypeMLSPurgeReplicaPages    = "mls.purge_replica_pages"
-	TypeGISProbeSources         = "gis.probe_sources"
-	TypeCryptoRefreshPricing    = "crypto.refresh_pricing"
-	TypeBatchComplete           = "queue.batch_complete"
+	TypeNoop                       = "noop"
+	TypeBridgeFetchPage            = "bridge.fetch_page"
+	TypeBridgePersistChunk         = "bridge.persist_chunk"
+	TypeBridgePersistFinalize      = "bridge.persist_finalize"
+	TypeSparkFetchPage             = "spark.fetch_page"
+	TypeSparkPersistChunk          = "spark.persist_chunk"
+	TypeSparkPersistFinalize       = "spark.persist_finalize"
+	TypeMLSReplicationKickoff      = "mls.replication_kickoff"
+	TypeMLSProxyCachePurge         = "mls.proxy_cache_purge"
+	TypeMLSPurgeClosed             = "mls.purge_closed_listings"
+	TypeMLSPurgeReplicaPages       = "mls.purge_replica_pages"
+	TypeGISProbeSources            = "gis.probe_sources"
+	TypeGISMonthlyParcelRefresh    = "gis.monthly_parcel_refresh"
+	TypeGISAnnualBoundariesRefresh = "gis.annual_boundaries_refresh"
+	TypeGISInitialSync             = "gis.initial_sync"
+	TypeGISParcelSyncPage          = "gis.parcel_sync_page"
+	TypeCryptoRefreshPricing       = "crypto.refresh_pricing"
+	TypeBatchComplete              = "queue.batch_complete"
 )
 
 func MarshalPayload(typ string, args any) ([]byte, error) {

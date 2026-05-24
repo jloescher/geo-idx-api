@@ -149,6 +149,11 @@ type GISConfig struct {
 	TeaserMaxFeatures    int
 	TeaserCoordDecimals  int
 	MaxBboxSpanDeg       float64
+	MaxFeatures          int
+	SyncPageSize         int
+	SyncUpsertChunk      int
+	HTTPTimeout          time.Duration
+	SyncQueue            string
 	FloridaMLSCodes      []string
 	Queue                string
 }
@@ -289,6 +294,11 @@ func Load() (Config, error) {
 			TeaserMaxFeatures:    envInt("GIS_TEASER_MAX_FEATURES", 40),
 			TeaserCoordDecimals:  envInt("GIS_TEASER_COORD_DECIMALS", 4),
 			MaxBboxSpanDeg:       envFloat("GIS_MAX_BBOX_SPAN_DEG", 0.35),
+			MaxFeatures:          envInt("GIS_MAX_FEATURES", 500),
+			SyncPageSize:         envInt("GIS_SYNC_PAGE_SIZE", 2000),
+			SyncUpsertChunk:      envInt("GIS_SYNC_UPSERT_CHUNK", 500),
+			HTTPTimeout:          envDuration("GIS_HTTP_TIMEOUT", 12*time.Second),
+			SyncQueue:            env("GIS_SYNC_QUEUE", "default"),
 			FloridaMLSCodes:      splitCSV(env("GIS_FLORIDA_MLS_CODES", "stellar")),
 			Queue:                env("GIS_QUEUE", "default"),
 		},

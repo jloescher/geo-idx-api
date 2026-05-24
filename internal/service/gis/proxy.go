@@ -4,30 +4,35 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/quantyralabs/idx-api/internal/config"
 	"github.com/quantyralabs/idx-api/internal/repository"
+	gisrepo "github.com/quantyralabs/idx-api/internal/repository/gis"
 )
 
-// ProxyService implements GIS parcel proxy with edge + origin cache tiers.
-// Revenue impact: cached parcels reduce ArcGIS load and improve map UX conversion.
+// ProxyService implements GIS parcel proxy with edge cache and persistent PostGIS reads.
+// Persistent GIS tables + monthly parcel refresh deliver instant Leaflet map performance →
+// higher visitor engagement before the 3-listing hard gate → more OTP registrations and
+// qualified leads while keeping marginal cost at zero.
 type ProxyService struct {
-	cfg  config.Config
-	db   *repository.DB
-	http *http.Client
+	cfg        config.Config
+	db         *repository.DB
+	repo       *gisrepo.Repository
+	persistent *PersistentQueryService
+	arcgis     *ArcGISClient
 }
 
 func NewProxyService(cfg config.Config, db *repository.DB) *ProxyService {
+	repo := gisrepo.New(db)
 	return &ProxyService{
-		cfg:  cfg,
-		db:   db,
-		http: &http.Client{Timeout: 12 * time.Second},
+		cfg:        cfg,
+		db:         db,
+		repo:       repo,
+		persistent: NewPersistentQueryService(cfg, repo),
+		arcgis:     NewArcGISClient(cfg.GIS),
 	}
 }
 
@@ -43,13 +48,41 @@ func (s *ProxyService) Fetch(c *fiber.Ctx, mlsCode *string) error {
 		return fiber.NewError(fiber.StatusUnprocessableEntity, "bbox span exceeds limit")
 	}
 
+	qtype := ParseQueryType(c.Query("type"))
+	limit := ParseLimit(c.Query("limit"), s.cfg.GIS)
 	fullAccess := requestFullAccess(c)
 
 	hash := queryHash(c)
-	if body, meta, ok := s.fromCache(c.Context(), hash, fullAccess); ok {
+	if body, meta, ok := s.fromCache(c.Context(), hash, fullAccess, qtype); ok {
 		body, _ = applyTeaser(body, s.cfg.GIS, fullAccess)
 		c.Set("Content-Type", "application/geo+json")
 		c.Set("X-IDX-Cache", "edge")
+		return c.Send(wrapWithMeta(body, meta))
+	}
+
+	hasData, err := s.persistent.HasData(c.Context(), qtype, bbox)
+	if err == nil && hasData {
+		raw, _, qerr := s.persistent.Query(c.Context(), qtype, bbox, limit)
+		if qerr == nil && len(raw) > 0 {
+			meta := s.buildPersistentMeta(c, bbox, qtype, fullAccess)
+			gen, _ := s.repo.SourceGeneration(c.Context(), meta.SourceUsed)
+			_ = s.storeCache(c.Context(), hash, raw, meta.SourceUsed, gen)
+			body, _ := applyTeaser(raw, s.cfg.GIS, fullAccess)
+			c.Set("Content-Type", "application/geo+json")
+			c.Set("X-IDX-Cache", "persistent")
+			return c.Send(wrapWithMeta(body, meta))
+		}
+	}
+
+	if qtype != QueryTypeParcel {
+		raw := []byte(`{"type":"FeatureCollection","features":[]}`)
+		meta := s.buildPersistentMeta(c, bbox, qtype, fullAccess)
+		meta.Degraded = true
+		warn := fmt.Sprintf("No persistent %s boundaries loaded for this area; run gis.annual_boundaries_refresh.", qtype)
+		meta.Warnings = []string{warn}
+		body, _ := applyTeaser(raw, s.cfg.GIS, fullAccess)
+		c.Set("Content-Type", "application/geo+json")
+		c.Set("X-IDX-Cache", "miss")
 		return c.Send(wrapWithMeta(body, meta))
 	}
 
@@ -79,16 +112,47 @@ func (s *ProxyService) Fetch(c *fiber.Ctx, mlsCode *string) error {
 }
 
 type responseMeta struct {
-	SourceUsed      string  `json:"source_used"`
-	SourceTier      string  `json:"source_tier"`
-	CountyHint      string  `json:"county_hint"`
-	Teaser          bool    `json:"teaser"`
-	FullAccess      bool    `json:"full_access"`
-	Degraded        bool    `json:"degraded"`
-	LeafletFallback *string `json:"leaflet_fallback"`
-	CacheGeneration int64   `json:"cache_generation"`
-	Cached          bool    `json:"cached"`
-	CacheHit        *string `json:"cache_hit"`
+	SourceUsed      string   `json:"source_used"`
+	SourceTier      string   `json:"source_tier"`
+	CountyHint      string   `json:"county_hint"`
+	QueryType       string   `json:"query_type,omitempty"`
+	Teaser          bool     `json:"teaser"`
+	FullAccess      bool     `json:"full_access"`
+	Degraded        bool     `json:"degraded"`
+	LeafletFallback *string  `json:"leaflet_fallback"`
+	CacheGeneration int64    `json:"cache_generation"`
+	Cached          bool     `json:"cached"`
+	CacheHit        *string  `json:"cache_hit"`
+	Warnings        []string `json:"warnings,omitempty"`
+}
+
+func (s *ProxyService) buildPersistentMeta(c *fiber.Ctx, bbox BBox, qtype QueryType, fullAccess bool) responseMeta {
+	lat, lng := bbox.Centroid()
+	hint := countyHint(lat, lng)
+	sourceUsed := "gis_parcels"
+	tier := "persistent"
+	switch qtype {
+	case QueryTypeCity:
+		sourceUsed = "gis_cities"
+	case QueryTypeCounty:
+		sourceUsed = "gis_counties"
+	case QueryTypeZip:
+		sourceUsed = "gis_zips"
+	}
+	gen, _ := s.repo.SourceGeneration(c.Context(), sourceUsed)
+	if gen == 0 {
+		gen, _ = s.repo.SourceGeneration(c.Context(), FDOTAdminBoundariesKey)
+	}
+	return responseMeta{
+		SourceUsed:      sourceUsed,
+		SourceTier:      tier,
+		CountyHint:      hint,
+		QueryType:       string(qtype),
+		Teaser:          !fullAccess,
+		FullAccess:      fullAccess,
+		CacheGeneration: gen,
+		Cached:          false,
+	}
 }
 
 func (s *ProxyService) buildMeta(c *fiber.Ctx, bbox BBox, src Source, fetchErr error, fullAccess bool) responseMeta {
@@ -99,6 +163,7 @@ func (s *ProxyService) buildMeta(c *fiber.Ctx, bbox BBox, src Source, fetchErr e
 		SourceUsed:      src.Key,
 		SourceTier:      src.Tier,
 		CountyHint:      hint,
+		QueryType:       "parcel",
 		Teaser:          !fullAccess,
 		FullAccess:      fullAccess,
 		Degraded:        fetchErr != nil,
@@ -140,16 +205,10 @@ func queryHash(c *fiber.Ctx) string {
 }
 
 func (s *ProxyService) sourceGeneration(ctx context.Context, key string) (int64, error) {
-	pool, err := s.db.ReadPool(ctx)
-	if err != nil {
-		return 0, err
-	}
-	var gen int64
-	err = pool.QueryRow(ctx, `SELECT generation FROM gis_source_states WHERE source_key = $1`, key).Scan(&gen)
-	return gen, err
+	return s.repo.SourceGeneration(ctx, key)
 }
 
-func (s *ProxyService) fromCache(ctx context.Context, hash string, fullAccess bool) ([]byte, responseMeta, bool) {
+func (s *ProxyService) fromCache(ctx context.Context, hash string, fullAccess bool, qtype QueryType) ([]byte, responseMeta, bool) {
 	pool, err := s.db.ReadPool(ctx)
 	if err != nil {
 		return nil, responseMeta{}, false
@@ -166,11 +225,13 @@ func (s *ProxyService) fromCache(ctx context.Context, hash string, fullAccess bo
 	hit := "edge"
 	meta := responseMeta{
 		SourceUsed:      sourceUsed,
+		QueryType:       string(qtype),
 		CacheGeneration: gen,
 		Cached:          true,
 		CacheHit:        &hit,
 		Teaser:          !fullAccess,
 		FullAccess:      fullAccess,
+		SourceTier:      "cached",
 	}
 	return []byte(geojson), meta, true
 }
@@ -187,28 +248,9 @@ func (s *ProxyService) storeCache(ctx context.Context, hash string, body []byte,
 }
 
 func (s *ProxyService) fetchSource(src Source, bbox BBox) ([]byte, error) {
-	u, err := url.Parse(src.QueryURL)
-	if err != nil {
-		return nil, err
+	limit := s.cfg.GIS.MaxFeatures
+	if limit <= 0 {
+		limit = 500
 	}
-	q := u.Query()
-	q.Set("f", "geojson")
-	q.Set("geometry", bbox.EsriEnvelope())
-	q.Set("geometryType", "esriGeometryEnvelope")
-	q.Set("spatialRel", "esriSpatialRelIntersects")
-	q.Set("outFields", "*")
-	q.Set("returnGeometry", "true")
-	if src.CountyCO != "" {
-		q.Set("where", "CO_NO='"+src.CountyCO+"'")
-	}
-	u.RawQuery = q.Encode()
-	resp, err := s.http.Get(u.String())
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("arcgis status %d", resp.StatusCode)
-	}
-	return io.ReadAll(resp.Body)
+	return s.arcgis.FetchBBoxPage(src, bbox, 0, limit)
 }

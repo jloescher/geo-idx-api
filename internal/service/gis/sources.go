@@ -2,10 +2,10 @@ package gis
 
 // Source describes an ArcGIS layer endpoint.
 type Source struct {
-	Key       string
-	QueryURL  string
-	Tier      string
-	CountyCO  string // statewide CO_NO filter when using primary with county hint
+	Key      string
+	QueryURL string
+	Tier     string
+	CountyCO string // statewide CO_NO filter when using primary with county hint
 }
 
 var pinellasBBox = BBox{West: -82.9, South: 27.6, East: -82.6, North: 28.2}

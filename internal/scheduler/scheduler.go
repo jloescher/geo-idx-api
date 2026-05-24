@@ -9,6 +9,7 @@ import (
 	"github.com/quantyralabs/idx-api/internal/config"
 	"github.com/quantyralabs/idx-api/internal/queue"
 	"github.com/quantyralabs/idx-api/internal/repository"
+	gisrepo "github.com/quantyralabs/idx-api/internal/repository/gis"
 	"github.com/robfig/cron/v3"
 )
 
@@ -79,15 +80,20 @@ func (s *Scheduler) runAsLeader(ctx context.Context) error {
 	s.addJob(ctx, "purge-replica", "0 15 4 * * *", "default", queue.TypeMLSPurgeReplicaPages)
 	s.addJob(ctx, "purge-closed", "0 5 3 * * *", "default", queue.TypeMLSPurgeClosed)
 	s.addJob(ctx, "gis-probe", "0 30 6 * * 1", s.cfg.GIS.Queue, queue.TypeGISProbeSources)
+	s.addJob(ctx, "gis-monthly-parcel-refresh", "0 0 2 1 * *", s.cfg.GIS.SyncQueue, queue.TypeGISMonthlyParcelRefresh)
+	s.addJob(ctx, "gis-annual-boundaries-refresh", "0 0 3 1 1 *", s.cfg.GIS.SyncQueue, queue.TypeGISAnnualBoundariesRefresh)
 
 	s.logger.Info("cron schedules registered",
 		"mls_kickoff", "every minute at :00",
 		"mls_proxy_cache_purge", "every 15 min",
 		"coingecko", "every 10 min",
+		"gis_monthly_parcel_refresh", "1st of month 02:00",
+		"gis_annual_boundaries_refresh", "Jan 1 03:00",
 	)
 
 	// First tick is up to ~60s away; enqueue kickoff once so dev workers show activity immediately.
 	s.enqueue(ctx, "mls-kickoff-startup", s.cfg.MLS.SyncKickoffQueue, queue.TypeMLSReplicationKickoff, nil)
+	s.enqueueGISInitialIfEmpty(ctx)
 
 	s.cron.Start()
 	<-ctx.Done()
@@ -126,4 +132,21 @@ func (s *Scheduler) withoutOverlap(name string, fn func()) func() {
 		defer s.locks.Delete(name)
 		fn()
 	}
+}
+
+func (s *Scheduler) enqueueGISInitialIfEmpty(ctx context.Context) {
+	repo := gisrepo.New(s.db)
+	empty, err := repo.IsPersistentEmpty(ctx)
+	if err != nil {
+		s.logger.Warn("gis initial sync check failed", "error", err)
+		return
+	}
+	if !empty {
+		return
+	}
+	queueName := s.cfg.GIS.SyncQueue
+	if queueName == "" {
+		queueName = "default"
+	}
+	s.enqueue(ctx, "gis-initial-sync-startup", queueName, queue.TypeGISInitialSync, nil)
 }
