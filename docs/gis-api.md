@@ -107,7 +107,50 @@ When **degraded** (`meta.degraded=true`), `features` may be empty and `meta.leaf
 
 All tables use **GIST** spatial indexes and `ST_Intersects` + envelope prefilter for bbox queries.
 
-**Initial sync:** On scheduler startup, if all persistent GIS tables are empty, `gis.initial_sync` is enqueued once (parcels + boundaries).
+**Initial sync and gap-fill:** On scheduler startup (and every 6 hours via `gis-bootstrap-recheck`), the leader inspects row counts per layer:
+
+| Condition | Enqueued job |
+|-----------|--------------|
+| All four tables empty (fresh DB) | `gis.initial_sync` (boundaries inline, then parcel kickoff) |
+| `gis_parcels` empty, boundaries present | `gis.monthly_parcel_refresh` |
+| `gis_zips` empty | `gis.zip_sync` (FDOT layer 8 only) |
+| cities or counties empty | `gis.annual_boundaries_refresh` |
+
+## Fresh database bootstrap
+
+Required order on a greenfield deploy:
+
+1. `make migrate` (includes `00002_gis_persistent_tables.sql`)
+2. Start **worker** with `GIS_SYNC_QUEUE` in `WORKER_QUEUES` (default `default` is fine when `GIS_SYNC_QUEUE=default`)
+3. Start **scheduler** (leader enqueues bootstrap jobs + periodic recheck)
+4. Optional: `make run-api` for monitoring UI
+
+Expect cities, counties, and zips within ~5–15 minutes; parcel counts climb as `gis.parcel_sync_page` jobs complete (30–60+ minutes for full statewide coverage).
+
+## Manual backfill (partial DB)
+
+Prerequisites: migration `00002` applied; worker running with `GIS_SYNC_QUEUE` in `WORKER_QUEUES`.
+
+```bash
+# Terminal 1 — worker
+export WORKER_QUEUES=default,sync-kickoff,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist
+make run-worker
+
+# Terminal 2 — enqueue
+make gis-enqueue-parcels   # → gis.monthly_parcel_refresh
+make gis-enqueue-zips      # → gis.zip_sync
+```
+
+Verify with SQL:
+
+```sql
+SELECT COUNT(*) FROM gis_parcels;
+SELECT COUNT(*) FROM gis_zips;
+SELECT MAX(last_synced_at) FROM gis_parcels;
+SELECT MAX(last_synced_at) FROM gis_zips;
+```
+
+Monitoring JSON includes `parcels_last_synced_at` and `zips_last_synced_at` on the GIS metric object.
 
 ## Read path (layered)
 
@@ -124,9 +167,12 @@ All tables use **GIST** spatial indexes and `ST_Intersects` + envelope prefilter
 | `gis.probe_sources` | Weekly Mon 06:30 | `GIS_QUEUE` | ArcGIS metadata fingerprint; bumps `gis_source_states.generation` on change. |
 | `gis.monthly_parcel_refresh` | 1st of month 02:00 | `GIS_SYNC_QUEUE` | Full parcel sync with paginated sub-jobs (`gis.parcel_sync_page`). |
 | `gis.annual_boundaries_refresh` | Jan 1 03:00 | `GIS_SYNC_QUEUE` | FDOT cities/counties/zips sync. |
-| `gis.initial_sync` | Scheduler startup (if empty) | `GIS_SYNC_QUEUE` | First-run parcel + boundary load. |
+| `gis.zip_sync` | Gap-fill / manual | `GIS_SYNC_QUEUE` | FDOT zip boundaries only (layer 8). |
+| `gis.initial_sync` | Bootstrap (fresh DB) | `GIS_SYNC_QUEUE` | Boundaries inline, then parcel kickoff. |
 
-**Worker queues:** Include `GIS_SYNC_QUEUE` (default `default`) in `WORKER_QUEUES` alongside `GIS_QUEUE`.
+**Scheduler bootstrap recheck:** Every 6 hours at `:15`, the leader re-runs gap-fill enqueue logic when any layer count is still zero.
+
+**Worker queues:** Include `GIS_SYNC_QUEUE` (default `default`) in `WORKER_QUEUES` alongside `GIS_QUEUE`. Parcel page jobs (`gis.parcel_sync_page`) require a worker consuming that queue — start the worker **before or with** the scheduler on first bootstrap.
 
 ## Failover behavior (parcel ArcGIS fallback)
 

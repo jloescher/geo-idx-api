@@ -64,6 +64,10 @@ func (r *Registry) handleGISInitialSync(ctx context.Context, job *queue.Reserved
 	return r.gisInitialSync.Run(ctx)
 }
 
+func (r *Registry) handleGISZipSync(ctx context.Context, job *queue.ReservedJob) error {
+	return r.gisBoundarySync.RunZipSync(ctx)
+}
+
 func (r *Registry) handleGISParcelSyncPage(ctx context.Context, job *queue.ReservedJob) error {
 	args, err := gis.UnmarshalParcelSyncPageArgs(job.Payload.Args)
 	if err != nil {

@@ -32,6 +32,8 @@ MLS_SYNC_KICKOFF_QUEUE=sync-kickoff
 WORKER_QUEUES=default,sync-kickoff,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist
 ```
 
+**First environment bootstrap:** deploy the **worker before or with the scheduler** so `gis.parcel_sync_page` jobs drain as soon as the scheduler enqueues parcel kickoff. The `default` queue (or `GIS_SYNC_QUEUE`) must appear in `WORKER_QUEUES` for GIS sync jobs.
+
 Workers with **multiple queues** use **fair reservation** (`ReserveFair`): each poll rotates across queue names so Bridge backlog cannot starve `spark-sync-fetch` on lowest `jobs.id`. When both fetch and persist queues are listed, workers **alternate pools** (fetch vs persist) before falling back to per-queue rotation.
 
 **Replication pipeline (kickoff + fetch):**

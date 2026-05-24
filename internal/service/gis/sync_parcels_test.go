@@ -17,6 +17,12 @@ func TestArcGISClientFetchBBoxPage(t *testing.T) {
 		if r.URL.Query().Get("f") != "geojson" {
 			t.Fatalf("f=%q", r.URL.Query().Get("f"))
 		}
+		if r.URL.Query().Get("inSR") != "4326" {
+			t.Fatalf("inSR=%q", r.URL.Query().Get("inSR"))
+		}
+		if got := r.URL.Query().Get("where"); got != "CO_NO=52" {
+			t.Fatalf("where=%q", got)
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"type": "FeatureCollection",
 			"features": []map[string]any{

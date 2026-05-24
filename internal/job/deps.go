@@ -21,6 +21,6 @@ func (r *Registry) InitServices(q *queue.Client) {
 	gisRepo := gisrepo.New(r.db)
 	r.gisParcelSync = gis.NewParcelSyncService(r.cfg, gisRepo, q, r.logger)
 	r.gisBoundarySync = gis.NewBoundarySyncService(r.cfg, gisRepo, r.logger)
-	r.gisInitialSync = gis.NewInitialSyncService(r.gisParcelSync, r.gisBoundarySync, r.logger)
+	r.gisInitialSync = gis.NewInitialSyncService(r.gisParcelSync, r.gisBoundarySync, gisRepo, r.logger)
 	r.crypto = crypto.NewPricingService(r.cfg, r.db, r.logger)
 }

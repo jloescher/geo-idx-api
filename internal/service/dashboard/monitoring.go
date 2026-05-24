@@ -57,13 +57,15 @@ type ListingMetric struct {
 }
 
 type GISMetric struct {
-	ParcelsTotal  int64                    `json:"parcels_total"`
-	ByCounty      map[string]int64         `json:"by_county"`
-	CitiesTotal   int64                    `json:"cities_total"`
-	CountiesTotal int64                    `json:"counties_total"`
-	ZipsTotal     int64                    `json:"zips_total"`
-	Sources       []gisrepo.SourceStateRow `json:"sources"`
-	Status        string                   `json:"status"`
+	ParcelsTotal        int64                    `json:"parcels_total"`
+	ParcelsLastSyncedAt *time.Time               `json:"parcels_last_synced_at,omitempty"`
+	ByCounty            map[string]int64         `json:"by_county"`
+	CitiesTotal         int64                    `json:"cities_total"`
+	CountiesTotal       int64                    `json:"counties_total"`
+	ZipsTotal           int64                    `json:"zips_total"`
+	ZipsLastSyncedAt    *time.Time               `json:"zips_last_synced_at,omitempty"`
+	Sources             []gisrepo.SourceStateRow `json:"sources"`
+	Status              string                   `json:"status"`
 }
 
 type CryptoAssetMetric struct {
@@ -162,6 +164,14 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 	if err != nil {
 		return nil, err
 	}
+	parcelsSyncedAt, err := s.gis.MaxParcelSyncedAt(ctx)
+	if err != nil {
+		return nil, err
+	}
+	zipsSyncedAt, err := s.gis.MaxZipSyncedAt(ctx)
+	if err != nil {
+		return nil, err
+	}
 	gisStatus := "healthy"
 	for _, src := range sources {
 		if src.Status == "stale" {
@@ -170,13 +180,15 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 		}
 	}
 	snap.GIS = GISMetric{
-		ParcelsTotal:  counts.ParcelsTotal,
-		ByCounty:      byCounty,
-		CitiesTotal:   counts.CitiesTotal,
-		CountiesTotal: counts.CountiesTotal,
-		ZipsTotal:     counts.ZipsTotal,
-		Sources:       sources,
-		Status:        gisStatus,
+		ParcelsTotal:        counts.ParcelsTotal,
+		ParcelsLastSyncedAt: parcelsSyncedAt,
+		ByCounty:            byCounty,
+		CitiesTotal:         counts.CitiesTotal,
+		CountiesTotal:       counts.CountiesTotal,
+		ZipsTotal:           counts.ZipsTotal,
+		ZipsLastSyncedAt:    zipsSyncedAt,
+		Sources:             sources,
+		Status:              gisStatus,
 	}
 
 	prices, err := s.crypto.LatestPrices(ctx)

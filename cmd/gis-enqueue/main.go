@@ -1,0 +1,63 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"log/slog"
+	"os"
+
+	"github.com/joho/godotenv"
+	"github.com/quantyralabs/idx-api/internal/config"
+	"github.com/quantyralabs/idx-api/internal/queue"
+	"github.com/quantyralabs/idx-api/internal/repository"
+)
+
+func main() {
+	job := flag.String("job", "", "Job to enqueue: parcels or zips")
+	flag.Parse()
+
+	switch *job {
+	case "parcels", "zips":
+	default:
+		slog.Error("usage: gis-enqueue -job parcels|zips")
+		os.Exit(1)
+	}
+
+	_ = godotenv.Load()
+
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("config", "error", err)
+		os.Exit(1)
+	}
+
+	ctx := context.Background()
+	db, err := repository.New(ctx, cfg.DB)
+	if err != nil {
+		slog.Error("database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	q := queue.NewClient(db.Pool, cfg.Queue.Table, cfg.Queue.NotifyChannel, cfg.Queue.RetryAfter)
+	queueName := cfg.GIS.SyncQueue
+	if queueName == "" {
+		queueName = "default"
+	}
+
+	var jobType string
+	switch *job {
+	case "parcels":
+		jobType = queue.TypeGISMonthlyParcelRefresh
+	case "zips":
+		jobType = queue.TypeGISZipSync
+	}
+
+	id, err := q.Enqueue(ctx, queueName, jobType, nil, 0)
+	if err != nil {
+		slog.Error("enqueue failed", "job", *job, "type", jobType, "queue", queueName, "error", err)
+		os.Exit(1)
+	}
+
+	slog.Info("gis job enqueued", "job", *job, "type", jobType, "queue", queueName, "job_id", id)
+}

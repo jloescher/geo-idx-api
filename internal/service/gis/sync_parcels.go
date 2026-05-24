@@ -77,6 +77,11 @@ func (s *ParcelSyncService) RunInitialSync(ctx context.Context) error {
 	return s.kickoff(ctx)
 }
 
+// Kickoff enqueues paginated parcel sync jobs for all configured sources.
+func (s *ParcelSyncService) Kickoff(ctx context.Context) error {
+	return s.kickoff(ctx)
+}
+
 func (s *ParcelSyncService) kickoff(ctx context.Context) error {
 	targets := parcelSyncTargets()
 	seen := map[string]int{}
@@ -108,17 +113,17 @@ func (s *ParcelSyncService) kickoff(ctx context.Context) error {
 func parcelSyncTargets() []parcelSyncTarget {
 	pinellas := Source{
 		Key:      "pinellas_enterprise_parcels",
-		QueryURL: "https://egis.pinellascounty.org/arcgis/rest/services/PARCEL/MapServer/0/query",
+		QueryURL: PinellasParcelsQueryURL,
 		Tier:     "pinellas",
 	}
 	hillsborough := Source{
 		Key:      "hillsborough_hc_parcels",
-		QueryURL: "https://gis.hcpafl.org/arcgis/rest/services/Hillsborough_County_Parcels/MapServer/0/query",
+		QueryURL: HillsboroughParcelsQueryURL,
 		Tier:     "hillsborough",
 	}
 	statewide := Source{
 		Key:      "florida_statewide_cadastral",
-		QueryURL: "https://services.arcgis.com/HRPe58PVRWYor63Q/arcgis/rest/services/Florida_Statewide_Cadastral/FeatureServer/0/query",
+		QueryURL: FloridaStatewideCadastralQueryURL,
 		Tier:     "statewide",
 	}
 	return []parcelSyncTarget{
@@ -137,9 +142,8 @@ func (s *ParcelSyncService) SyncPage(ctx context.Context, args ParcelSyncPageArg
 		Tier:     args.Tier,
 		CountyCO: args.CountyCO,
 	}
-	// Full-layer sync uses Florida bounding box envelope.
-	flBBox := BBox{West: -87.6, South: 24.4, East: -79.8, North: 31.1}
-	body, err := s.client.FetchBBoxPage(src, flBBox, args.Offset, s.cfg.GIS.SyncPageSize)
+	bbox := syncBBoxForCounty(args.County)
+	body, err := s.client.FetchBBoxPage(src, bbox, args.Offset, s.cfg.GIS.SyncPageSize)
 	if err != nil {
 		return err
 	}

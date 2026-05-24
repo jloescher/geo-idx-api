@@ -62,17 +62,75 @@ func (s *BoundarySyncService) RunAnnualRefresh(ctx context.Context) error {
 	return nil
 }
 
-// RunInitialSync syncs boundaries when tables are empty.
+// RunInitialSync syncs any boundary layers that are still empty (per-layer gap-fill).
 func (s *BoundarySyncService) RunInitialSync(ctx context.Context) error {
+	return s.RunGapFill(ctx)
+}
+
+// RunGapFill syncs only boundary layers with zero rows.
+func (s *BoundarySyncService) RunGapFill(ctx context.Context) error {
 	cities, counties, zips, err := s.db.CountBoundaries(ctx)
 	if err != nil {
 		return err
 	}
-	if cities > 0 || counties > 0 || zips > 0 {
-		s.logger.Info("gis initial boundary sync skipped", "cities", cities, "counties", counties, "zips", zips)
+	if cities > 0 && counties > 0 && zips > 0 {
+		s.logger.Info("gis boundary gap-fill skipped, all layers present",
+			"cities", cities, "counties", counties, "zips", zips)
 		return nil
 	}
-	return s.RunAnnualRefresh(ctx)
+	gen64, err := s.db.BumpSourceGeneration(ctx, FDOTAdminBoundariesKey)
+	if err != nil {
+		return fmt.Errorf("bump fdot generation: %w", err)
+	}
+	gen := int(gen64)
+	fp := "fdot_gap_fill"
+
+	if counties == 0 {
+		if err := s.syncLayer(ctx, FDOTCountiesURL, gen, &fp, s.syncCounties); err != nil {
+			return err
+		}
+		if _, err := s.db.DeleteStaleCounties(ctx, FDOTAdminBoundariesKey, gen); err != nil {
+			return err
+		}
+	}
+	if cities == 0 {
+		if err := s.syncLayer(ctx, FDOTCitiesURL, gen, &fp, s.syncCities); err != nil {
+			return err
+		}
+		if _, err := s.db.DeleteStaleCities(ctx, FDOTAdminBoundariesKey, gen); err != nil {
+			return err
+		}
+	}
+	if zips == 0 {
+		if err := s.syncLayer(ctx, FDOTZipsURL, gen, &fp, s.syncZips); err != nil {
+			return err
+		}
+		if _, err := s.db.DeleteStaleZips(ctx, FDOTAdminBoundariesKey, gen); err != nil {
+			return err
+		}
+	}
+	s.logger.Info("gis boundary gap-fill complete", "generation", gen,
+		"cities_before", cities, "counties_before", counties, "zips_before", zips)
+	return nil
+}
+
+// RunZipSync refreshes FDOT zip boundaries only (layer 8).
+func (s *BoundarySyncService) RunZipSync(ctx context.Context) error {
+	gen64, err := s.db.BumpSourceGeneration(ctx, FDOTAdminBoundariesKey)
+	if err != nil {
+		return fmt.Errorf("bump fdot generation: %w", err)
+	}
+	gen := int(gen64)
+	fp := "fdot_zip_sync"
+	if err := s.syncLayer(ctx, FDOTZipsURL, gen, &fp, s.syncZips); err != nil {
+		return err
+	}
+	deleted, err := s.db.DeleteStaleZips(ctx, FDOTAdminBoundariesKey, gen)
+	if err != nil {
+		return err
+	}
+	s.logger.Info("gis zip sync complete", "generation", gen, "deleted_stale", deleted)
+	return nil
 }
 
 type boundaryUpserter func(ctx context.Context, feats []ArcGISFeature, gen int, fp *string) error
@@ -177,24 +235,4 @@ func (s *BoundarySyncService) syncZips(ctx context.Context, feats []ArcGISFeatur
 		return s.db.BulkUpsertZips(ctx, batch)
 	}
 	return nil
-}
-
-// InitialSyncService coordinates first-run parcel + boundary sync.
-type InitialSyncService struct {
-	parcels    *ParcelSyncService
-	boundaries *BoundarySyncService
-	logger     *slog.Logger
-}
-
-// NewInitialSyncService creates the combined initial sync coordinator.
-func NewInitialSyncService(parcels *ParcelSyncService, boundaries *BoundarySyncService, logger *slog.Logger) *InitialSyncService {
-	return &InitialSyncService{parcels: parcels, boundaries: boundaries, logger: logger}
-}
-
-// Run executes initial sync for empty persistent tables.
-func (s *InitialSyncService) Run(ctx context.Context) error {
-	if err := s.parcels.RunInitialSync(ctx); err != nil {
-		return err
-	}
-	return s.boundaries.RunInitialSync(ctx)
 }

@@ -60,9 +60,11 @@ func (c *ArcGISClient) FetchBBoxPage(src Source, bbox BBox, offset, pageSize int
 	q := baseQueryParams()
 	q.Set("geometry", bbox.EsriEnvelope())
 	q.Set("geometryType", "esriGeometryEnvelope")
+	q.Set("inSR", "4326")
 	q.Set("spatialRel", "esriSpatialRelIntersects")
 	if src.CountyCO != "" {
-		q.Set("where", "CO_NO='"+src.CountyCO+"'")
+		// FDOR statewide CO_NO is numeric (esriFieldTypeDouble).
+		q.Set("where", "CO_NO="+src.CountyCO)
 	}
 	q.Set("resultOffset", fmt.Sprintf("%d", offset))
 	q.Set("resultRecordCount", fmt.Sprintf("%d", pageSize))

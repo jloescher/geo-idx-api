@@ -35,9 +35,9 @@ func NewMetadataService(cfg config.Config, db *repository.DB, logger *slog.Logge
 }
 
 var probeEndpoints = map[string]string{
-	"florida_statewide_cadastral": "https://services.arcgis.com/HRPe58PVRWYor63Q/arcgis/rest/services/Florida_Statewide_Cadastral/FeatureServer/0?f=json",
-	"pinellas_enterprise_parcels": "https://egis.pinellascounty.org/arcgis/rest/services/PARCEL/MapServer/0?f=json",
-	"hillsborough_hc_parcels":     "https://gis.hcpafl.org/arcgis/rest/services/Hillsborough_County_Parcels/MapServer/0?f=json",
+	"florida_statewide_cadastral": FloridaStatewideCadastralMetaURL,
+	"pinellas_enterprise_parcels": PinellasParcelsMetaURL,
+	"hillsborough_hc_parcels":     HillsboroughParcelsMetaURL,
 	"fdot_admin_boundaries":       "https://gis.fdot.gov/arcgis/rest/services/Admin_Boundaries/FeatureServer/6?f=json",
 }
 

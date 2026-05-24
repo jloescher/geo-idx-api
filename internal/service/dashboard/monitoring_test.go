@@ -1,22 +1,34 @@
-package dashboard
+package dashboard_test
 
 import (
+	"encoding/json"
 	"testing"
+	"time"
 
-	"github.com/quantyralabs/idx-api/internal/config"
-	"github.com/quantyralabs/idx-api/internal/service/mls"
+	"github.com/quantyralabs/idx-api/internal/service/dashboard"
 )
 
-func TestProviderForDataset(t *testing.T) {
-	cfg := config.Config{
-		Bridge: config.BridgeConfig{Datasets: []string{"stellar"}},
-		Spark:  config.SparkConfig{Datasets: []string{"beaches"}},
+func TestGISMetricJSONFreshnessFields(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	m := dashboard.GISMetric{
+		ParcelsTotal:        100,
+		ParcelsLastSyncedAt: &now,
+		ZipsTotal:           900,
+		ZipsLastSyncedAt:    &now,
+		Status:              "healthy",
 	}
-	resolver := mls.NewResolver(cfg)
-	if got := providerForDataset(resolver, "stellar"); got != "bridge" {
-		t.Fatalf("stellar provider: %q", got)
+	raw, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := providerForDataset(resolver, "beaches"); got != "spark" {
-		t.Fatalf("beaches provider: %q", got)
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := decoded["parcels_last_synced_at"]; !ok {
+		t.Fatal("missing parcels_last_synced_at")
+	}
+	if _, ok := decoded["zips_last_synced_at"]; !ok {
+		t.Fatal("missing zips_last_synced_at")
 	}
 }

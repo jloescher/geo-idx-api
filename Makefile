@@ -1,4 +1,4 @@
-.PHONY: build test fmt lint run-api run-worker run-scheduler migrate migrate-install seed-admin
+.PHONY: build test fmt lint run-api run-worker run-scheduler migrate migrate-install seed-admin gis-enqueue-parcels gis-enqueue-zips
 
 GOFLAGS ?= -mod=mod
 GOOSE_PKG := github.com/pressly/goose/v3/cmd/goose@v3.24.3
@@ -29,6 +29,13 @@ run-scheduler:
 # Bootstrap admin from ADMIN_SEED_EMAIL / ADMIN_SEED_PASSWORD in .env
 seed-admin:
 	GOFLAGS=$(GOFLAGS) go run ./cmd/seed
+
+# Enqueue GIS backfill jobs into the PostgreSQL queue (worker must be running).
+gis-enqueue-parcels:
+	GOFLAGS=$(GOFLAGS) go run ./cmd/gis-enqueue -job parcels
+
+gis-enqueue-zips:
+	GOFLAGS=$(GOFLAGS) go run ./cmd/gis-enqueue -job zips
 
 # Run migrations without a global goose binary (uses go run).
 # Example: GOOSE_DBSTRING='postgres://postgres:@127.0.0.1:5432/idx_api?sslmode=disable' make migrate

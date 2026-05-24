@@ -10,6 +10,7 @@ import (
 	"github.com/quantyralabs/idx-api/internal/queue"
 	"github.com/quantyralabs/idx-api/internal/repository"
 	gisrepo "github.com/quantyralabs/idx-api/internal/repository/gis"
+	"github.com/quantyralabs/idx-api/internal/service/gis"
 	"github.com/robfig/cron/v3"
 )
 
@@ -82,6 +83,11 @@ func (s *Scheduler) runAsLeader(ctx context.Context) error {
 	s.addJob(ctx, "gis-probe", "0 30 6 * * 1", s.cfg.GIS.Queue, queue.TypeGISProbeSources)
 	s.addJob(ctx, "gis-monthly-parcel-refresh", "0 0 2 1 * *", s.cfg.GIS.SyncQueue, queue.TypeGISMonthlyParcelRefresh)
 	s.addJob(ctx, "gis-annual-boundaries-refresh", "0 0 3 1 1 *", s.cfg.GIS.SyncQueue, queue.TypeGISAnnualBoundariesRefresh)
+	if _, err := s.cron.AddFunc("0 15 */6 * * *", s.withoutOverlap("gis-bootstrap-recheck", func() {
+		s.enqueueGISSyncBootstrap(ctx)
+	})); err != nil {
+		s.logger.Error("cron register failed", "name", "gis-bootstrap-recheck", "error", err)
+	}
 
 	s.logger.Info("cron schedules registered",
 		"mls_kickoff", "every minute at :00",
@@ -89,11 +95,12 @@ func (s *Scheduler) runAsLeader(ctx context.Context) error {
 		"coingecko", "every 10 min",
 		"gis_monthly_parcel_refresh", "1st of month 02:00",
 		"gis_annual_boundaries_refresh", "Jan 1 03:00",
+		"gis_bootstrap_recheck", "every 6 hours at :15",
 	)
 
 	// First tick is up to ~60s away; enqueue kickoff once so dev workers show activity immediately.
 	s.enqueue(ctx, "mls-kickoff-startup", s.cfg.MLS.SyncKickoffQueue, queue.TypeMLSReplicationKickoff, nil)
-	s.enqueueGISInitialIfEmpty(ctx)
+	s.enqueueGISSyncBootstrap(ctx)
 
 	s.cron.Start()
 	<-ctx.Done()
@@ -134,19 +141,21 @@ func (s *Scheduler) withoutOverlap(name string, fn func()) func() {
 	}
 }
 
-func (s *Scheduler) enqueueGISInitialIfEmpty(ctx context.Context) {
+func (s *Scheduler) enqueueGISSyncBootstrap(ctx context.Context) {
 	repo := gisrepo.New(s.db)
-	empty, err := repo.IsPersistentEmpty(ctx)
+	counts, err := repo.LoadLayerCounts(ctx)
 	if err != nil {
-		s.logger.Warn("gis initial sync check failed", "error", err)
+		s.logger.Warn("gis bootstrap check failed", "error", err)
 		return
 	}
-	if !empty {
+	if !counts.NeedsBootstrap() {
 		return
 	}
 	queueName := s.cfg.GIS.SyncQueue
 	if queueName == "" {
 		queueName = "default"
 	}
-	s.enqueue(ctx, "gis-initial-sync-startup", queueName, queue.TypeGISInitialSync, nil)
+	for _, action := range gis.PlanBootstrapActions(counts) {
+		s.enqueue(ctx, action.Name, queueName, action.JobType, nil)
+	}
 }

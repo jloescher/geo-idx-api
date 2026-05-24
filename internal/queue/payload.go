@@ -25,6 +25,7 @@ const (
 	TypeGISMonthlyParcelRefresh    = "gis.monthly_parcel_refresh"
 	TypeGISAnnualBoundariesRefresh = "gis.annual_boundaries_refresh"
 	TypeGISInitialSync             = "gis.initial_sync"
+	TypeGISZipSync                 = "gis.zip_sync"
 	TypeGISParcelSyncPage          = "gis.parcel_sync_page"
 	TypeCryptoRefreshPricing       = "crypto.refresh_pricing"
 	TypeBatchComplete              = "queue.batch_complete"

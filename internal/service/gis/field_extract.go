@@ -18,7 +18,7 @@ func ExtractParcelRow(feat ArcGISFeature, sourceKey, county string, gen int, fin
 	}
 	propsJSON, _ := json.Marshal(feat.Properties)
 	parcelID := firstString(feat.Properties,
-		"PARCELID", "PARCEL_ID", "PARCELNO", "PARCEL_NO", "PC_PID", "PIN", "FOLIO", "OBJECTID")
+		"PARCEL_ID", "PARCELID", "PARCELNO", "PARCEL_NO", "PC_PID", "PIN", "FOLIO", "OBJECTID")
 	if parcelID == "" {
 		parcelID = firstString(feat.Properties, "GlobalID", "FID")
 	}

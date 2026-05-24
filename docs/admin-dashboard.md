@@ -47,7 +47,7 @@ Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sess
 | Section | Fields | Notes |
 |---------|--------|-------|
 | **Listings** | total, active/pending, lag, freshness mode | Per `dataset_slug`; drill-down → `/api/v1/bridge/stats` |
-| **GIS** | parcels, cities, counties, zips, source states | Stale if parcel sync &gt;35d or generation mismatch |
+| **GIS** | parcels, cities, counties, zips, source states, layer freshness | Stale if parcel/zip sync &gt;35d or generation mismatch |
 | **Crypto** | BTC/ETH/SOL USD + age | Stale if snapshot &gt;1h |
 | **Cache** | 15m hit rate from `mls_proxy_audit_logs` | |
 | **Queues** | pending/reserved/failed by queue | PostgreSQL `jobs` / `failed_jobs` (not Asynq) |
@@ -55,7 +55,7 @@ Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sess
 
 ### GIS freshness {#gis-freshness}
 
-GIS tiles show **stale** when parcel `last_synced_at` is older than 35 days or stored parcel generation does not match `gis_source_states.generation`.
+Parcels and ZIP tiles show a subtitle from `parcels_last_synced_at` / `zips_last_synced_at` (e.g. “Synced 2d ago” or “Never synced”) and an amber **stale** badge when the timestamp is older than 35 days. Parcel source rows also mark stale when stored generation does not match `gis_source_states.generation`.
 
 ## UI state matrix
 

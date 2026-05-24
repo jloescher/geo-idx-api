@@ -53,6 +53,7 @@ func (r *Registry) RegisterAll(w *queue.Worker) {
 	w.Register(queue.TypeGISMonthlyParcelRefresh, r.handleGISMonthlyParcelRefresh)
 	w.Register(queue.TypeGISAnnualBoundariesRefresh, r.handleGISAnnualBoundariesRefresh)
 	w.Register(queue.TypeGISInitialSync, r.handleGISInitialSync)
+	w.Register(queue.TypeGISZipSync, r.handleGISZipSync)
 	w.Register(queue.TypeGISParcelSyncPage, r.handleGISParcelSyncPage)
 	w.Register(queue.TypeCryptoRefreshPricing, r.handleCryptoRefresh)
 }

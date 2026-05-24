@@ -48,6 +48,21 @@ ${statusChip}
     return `<div class="metric-group"><h3 class="metric-group-title">${title}</h3><div class="monitoring-grid">${tiles.join("")}</div></div>`;
   }
 
+  function fmtSyncAge(iso) {
+    if (!iso) return "Never synced";
+    const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+    if (days <= 0) return "Synced today";
+    if (days === 1) return "Synced 1d ago";
+    return `Synced ${days}d ago`;
+  }
+
+  function layerStatus(lastSyncedAt, total) {
+    if (!total) return "unknown";
+    if (!lastSyncedAt) return "unknown";
+    const days = (Date.now() - new Date(lastSyncedAt).getTime()) / 86400000;
+    return days > 35 ? "stale" : "healthy";
+  }
+
   function renderMonitoring(data) {
     const listings = (data.listings || []).map((row) => {
       const sub = `${fmtNum(row.active_pending)} active/pending · ${row.freshness_mode || "—"}`;
@@ -63,10 +78,10 @@ ${statusChip}
 
     const gis = data.gis || {};
     const gisTiles = [
-      tile("Parcels", fmtNum(gis.parcels_total), "PostGIS mirror", null, gis.status, "GIS parcels"),
+      tile("Parcels", fmtNum(gis.parcels_total), fmtSyncAge(gis.parcels_last_synced_at), null, layerStatus(gis.parcels_last_synced_at, gis.parcels_total), "GIS parcels"),
       tile("Cities", fmtNum(gis.cities_total), "Boundaries", null, gis.status, "GIS cities"),
       tile("Counties", fmtNum(gis.counties_total), "Boundaries", null, gis.status, "GIS counties"),
-      tile("ZIPs", fmtNum(gis.zips_total), "Boundaries", null, gis.status, "GIS zips"),
+      tile("ZIPs", fmtNum(gis.zips_total), fmtSyncAge(gis.zips_last_synced_at), null, layerStatus(gis.zips_last_synced_at, gis.zips_total), "GIS zips"),
     ];
 
     const cryptoAssets = (data.crypto && data.crypto.assets) || [];

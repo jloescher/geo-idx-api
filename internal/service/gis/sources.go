@@ -1,5 +1,16 @@
 package gis
 
+// ArcGIS parcel layer endpoints (FDOR 2025 statewide + county mirrors).
+const (
+	FloridaStatewideCadastralQueryURL = "https://services9.arcgis.com/Gh9awoU677aKree0/ArcGIS/rest/services/Florida_Statewide_Cadastral/FeatureServer/0/query"
+	PinellasParcelsQueryURL           = "https://egis.pinellascounty.org/arcgis/rest/services/PARCEL/MapServer/0/query"
+	HillsboroughParcelsQueryURL       = "https://maps.hillsboroughcounty.org/arcgis/rest/services/InfoLayers/HC_ParcelsPublic/FeatureServer/0/query"
+
+	FloridaStatewideCadastralMetaURL = "https://services9.arcgis.com/Gh9awoU677aKree0/ArcGIS/rest/services/Florida_Statewide_Cadastral/FeatureServer/0?f=json"
+	PinellasParcelsMetaURL           = "https://egis.pinellascounty.org/arcgis/rest/services/PARCEL/MapServer/0?f=json"
+	HillsboroughParcelsMetaURL       = "https://maps.hillsboroughcounty.org/arcgis/rest/services/InfoLayers/HC_ParcelsPublic/FeatureServer/0?f=json"
+)
+
 // Source describes an ArcGIS layer endpoint.
 type Source struct {
 	Key      string
@@ -16,25 +27,37 @@ func sourcesForBBox(b BBox) []Source {
 	hint := countyHint(lat, lng)
 	out := []Source{{
 		Key:      "florida_statewide_cadastral",
-		QueryURL: "https://services.arcgis.com/HRPe58PVRWYor63Q/arcgis/rest/services/Florida_Statewide_Cadastral/FeatureServer/0/query",
+		QueryURL: FloridaStatewideCadastralQueryURL,
 		Tier:     "statewide",
 		CountyCO: coNoForCounty(hint),
 	}}
 	if intersects(b, pinellasBBox) {
 		out = append(out, Source{
 			Key:      "pinellas_enterprise_parcels",
-			QueryURL: "https://egis.pinellascounty.org/arcgis/rest/services/PARCEL/MapServer/0/query",
+			QueryURL: PinellasParcelsQueryURL,
 			Tier:     "pinellas",
 		})
 	}
 	if intersects(b, hillsboroughBBox) {
 		out = append(out, Source{
 			Key:      "hillsborough_hc_parcels",
-			QueryURL: "https://gis.hcpafl.org/arcgis/rest/services/Hillsborough_County_Parcels/MapServer/0/query",
+			QueryURL: HillsboroughParcelsQueryURL,
 			Tier:     "hillsborough",
 		})
 	}
 	return out
+}
+
+// syncBBoxForCounty returns the WGS84 envelope used for full-layer parcel sync jobs.
+func syncBBoxForCounty(county string) BBox {
+	switch county {
+	case "pinellas":
+		return pinellasBBox
+	case "hillsborough":
+		return hillsboroughBBox
+	default:
+		return BBox{West: -87.6, South: 24.4, East: -79.8, North: 31.1}
+	}
 }
 
 func countyHint(lat, lng float64) string {
