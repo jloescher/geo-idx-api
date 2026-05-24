@@ -3,6 +3,7 @@ package crypto
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/quantyralabs/idx-api/internal/repository"
 )
@@ -14,6 +15,38 @@ type PricingReader struct {
 
 func NewPricingReader(db *repository.DB) *PricingReader {
 	return &PricingReader{db: db}
+}
+
+// PricePoint is a single asset quote with capture time.
+type PricePoint struct {
+	AssetKey   string    `json:"asset_key"`
+	Price      float64   `json:"price"`
+	CapturedAt time.Time `json:"captured_at"`
+}
+
+// LatestPrices returns USD prices with capture timestamps.
+func (p *PricingReader) LatestPrices(ctx context.Context) ([]PricePoint, error) {
+	pool, err := p.db.ReadPool(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := pool.Query(ctx, `
+		SELECT asset_key, price, captured_at FROM crypto_price_snapshots WHERE vs_currency = 'usd'
+		ORDER BY asset_key
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PricePoint
+	for rows.Next() {
+		var pt PricePoint
+		if err := rows.Scan(&pt.AssetKey, &pt.Price, &pt.CapturedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, pt)
+	}
+	return out, rows.Err()
 }
 
 // LatestSnapshot returns asset prices keyed by asset_key (btc, eth, sol).

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/quantyralabs/idx-api/internal/domain"
 )
 
@@ -73,13 +74,26 @@ func (r *TokenRepo) HasAbility(tok *domain.APIToken, ability string) bool {
 }
 
 func (r *TokenRepo) Create(ctx context.Context, userID int64, name string, abilities []string) (plain string, err error) {
+	return r.createToken(ctx, r.db.Pool, userID, name, abilities)
+}
+
+// CreateWithTx mints a token inside an existing transaction.
+func (r *TokenRepo) CreateWithTx(ctx context.Context, tx pgx.Tx, userID int64, name string, abilities []string) (plain string, err error) {
+	return r.createToken(ctx, tx, userID, name, abilities)
+}
+
+type execer interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+}
+
+func (r *TokenRepo) createToken(ctx context.Context, db execer, userID int64, name string, abilities []string) (plain string, err error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
 	plain = "idx_" + hex.EncodeToString(b)
 	abil := `["` + strings.Join(abilities, `","`) + `"]`
-	_, err = r.db.Pool.Exec(ctx, `
+	_, err = db.Exec(ctx, `
 		INSERT INTO personal_access_tokens (tokenable_type, tokenable_id, name, token, abilities, created_at, updated_at)
 		VALUES ('App\\Models\\User', $1, $2, $3, $4, NOW(), NOW())
 	`, userID, name, HashToken(plain), abil)

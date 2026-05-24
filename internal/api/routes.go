@@ -100,6 +100,9 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 	// Platform routes (host-checked in middleware or separate mount)
 	app.Get("/", mktH.Home)
 	dashH.Register(app)
+
+	admin := api.Group("/v1/admin", dashH.SessionAuthMiddleware)
+	admin.Get("/monitoring", dashH.MonitoringJSON)
 }
 
 func healthz(c *fiber.Ctx) error {

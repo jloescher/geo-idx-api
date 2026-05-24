@@ -8,6 +8,15 @@ import (
 
 // Page wraps body HTML with site chrome and asset links.
 func Page(title, body string) string {
+	return dashboardShell(title, "", body, false)
+}
+
+// DashboardPage renders dashboard chrome with section navigation.
+func DashboardPage(title, navHTML, body string, _ bool) string {
+	return dashboardShell(title, navHTML, body, true)
+}
+
+func dashboardShell(title, navHTML, body string, dashboardLayout bool) string {
 	title = html.EscapeString(title)
 	var b strings.Builder
 	b.WriteString("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n")
@@ -16,13 +25,30 @@ func Page(title, body string) string {
 	fmt.Fprintf(&b, "<title>%s · Quantyra IDX</title>\n", title)
 	b.WriteString("<link rel=\"stylesheet\" href=\"/static/css/app.css\">\n")
 	b.WriteString("<script src=\"/static/js/app.js\" defer></script>\n")
+	if dashboardLayout {
+		b.WriteString("<script src=\"/static/js/dashboard.js?v=20260524b\" defer></script>\n")
+	}
 	b.WriteString("</head>\n<body>\n")
 	b.WriteString("<header class=\"site-header\">\n")
 	b.WriteString("<a class=\"brand\" href=\"/\">Quantyra IDX</a>\n")
-	b.WriteString("<nav><a href=\"/dashboard\">Dashboard</a><a href=\"/login\">Login</a></nav>\n")
-	b.WriteString("</header>\n<main>\n")
+	b.WriteString("<nav class=\"site-header-actions\"><a href=\"/dashboard/monitoring\">Dashboard</a><a href=\"/logout\">Sign out</a></nav>\n")
+	b.WriteString("</header>\n")
+	if dashboardLayout {
+		b.WriteString("<div class=\"dashboard-layout\">\n")
+		if navHTML != "" {
+			b.WriteString(navHTML)
+		}
+		b.WriteString("<main class=\"dashboard-main\">\n")
+	} else {
+		b.WriteString("<main>\n")
+	}
 	b.WriteString(body)
-	b.WriteString("\n</main>\n</body>\n</html>")
+	if dashboardLayout {
+		b.WriteString("\n</main></div>\n")
+	} else {
+		b.WriteString("\n</main>\n")
+	}
+	b.WriteString("</body>\n</html>")
 	return b.String()
 }
 

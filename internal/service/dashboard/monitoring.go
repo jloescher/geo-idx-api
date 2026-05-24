@@ -1,0 +1,260 @@
+package dashboard
+
+import (
+	"context"
+	"time"
+
+	"github.com/quantyralabs/idx-api/internal/config"
+	"github.com/quantyralabs/idx-api/internal/repository"
+	gisrepo "github.com/quantyralabs/idx-api/internal/repository/gis"
+	"github.com/quantyralabs/idx-api/internal/service/crypto"
+	"github.com/quantyralabs/idx-api/internal/service/mls"
+	"github.com/quantyralabs/idx-api/internal/service/sync"
+)
+
+// MonitoringService composes ops metrics for the dashboard JSON API.
+type MonitoringService struct {
+	cfg    config.Config
+	repo   *repository.MonitoringRepo
+	gis    *gisrepo.Repository
+	crypto *crypto.PricingReader
+	fresh  *sync.Freshness
+}
+
+// NewMonitoringService wires monitoring dependencies.
+func NewMonitoringService(cfg config.Config, db *repository.DB) *MonitoringService {
+	return &MonitoringService{
+		cfg:    cfg,
+		repo:   repository.NewMonitoringRepo(db),
+		gis:    gisrepo.New(db),
+		crypto: crypto.NewPricingReader(db),
+		fresh:  sync.NewFreshness(cfg, db),
+	}
+}
+
+// Snapshot is the monitoring JSON payload.
+type Snapshot struct {
+	GeneratedAt time.Time        `json:"generated_at"`
+	Listings    []ListingMetric  `json:"listings"`
+	GIS         GISMetric        `json:"gis"`
+	Crypto      CryptoMetric     `json:"crypto"`
+	Cache       CacheMetric      `json:"cache"`
+	Queues      QueuesMetric     `json:"queues"`
+	Activation  ActivationMetric `json:"activation"`
+}
+
+type ListingMetric struct {
+	DatasetSlug           string     `json:"dataset_slug"`
+	Total                 int64      `json:"total"`
+	ActivePending         int64      `json:"active_pending"`
+	OldestListingAgeDays  *float64   `json:"oldest_listing_age_days,omitempty"`
+	LatestModification    *time.Time `json:"latest_modification,omitempty"`
+	LastSyncFinishedAt    *time.Time `json:"last_sync_finished_at,omitempty"`
+	ReplicationInProgress bool       `json:"replication_in_progress"`
+	LagSeconds            *int64     `json:"lag_seconds,omitempty"`
+	FreshnessMode         string     `json:"freshness_mode"`
+	Status                string     `json:"status"`
+}
+
+type GISMetric struct {
+	ParcelsTotal  int64                    `json:"parcels_total"`
+	ByCounty      map[string]int64         `json:"by_county"`
+	CitiesTotal   int64                    `json:"cities_total"`
+	CountiesTotal int64                    `json:"counties_total"`
+	ZipsTotal     int64                    `json:"zips_total"`
+	Sources       []gisrepo.SourceStateRow `json:"sources"`
+	Status        string                   `json:"status"`
+}
+
+type CryptoAssetMetric struct {
+	AssetKey   string    `json:"asset_key"`
+	PriceUSD   float64   `json:"price_usd"`
+	CapturedAt time.Time `json:"captured_at"`
+	AgeSeconds int64     `json:"age_seconds"`
+	Stale      bool      `json:"stale"`
+}
+
+type CryptoMetric struct {
+	Assets []CryptoAssetMetric `json:"assets"`
+	Status string              `json:"status"`
+}
+
+type CacheMetric struct {
+	WindowMinutes int     `json:"window_minutes"`
+	Total         int64   `json:"total"`
+	Hits          int64   `json:"hits"`
+	Misses        int64   `json:"misses"`
+	HitRatePct    float64 `json:"hit_rate_pct"`
+}
+
+type QueuesMetric struct {
+	ByQueue      []repository.QueueCount   `json:"by_queue"`
+	TopTypes     []repository.JobTypeCount `json:"top_job_types"`
+	TotalPending int64                     `json:"total_pending"`
+}
+
+type ActivationMetric struct {
+	DomainCount           int64 `json:"domain_count"`
+	VerifiedDomainCount   int64 `json:"verified_domain_count"`
+	TokenCount            int64 `json:"token_count"`
+	InvitationsAccepted   int64 `json:"invitations_accepted"`
+	DomainsWithTraffic30d int64 `json:"domains_with_traffic_30d"`
+}
+
+// BuildSnapshot loads all monitoring sections.
+// Revenue impact: live freshness signals reduce time-to-diagnose stale maps and protect conversion.
+func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error) {
+	now := time.Now()
+	snap := &Snapshot{GeneratedAt: now}
+
+	listRows, err := s.repo.ListListingStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resolver := mls.NewResolver(s.cfg)
+	for _, row := range listRows {
+		m := ListingMetric{
+			DatasetSlug:           row.DatasetSlug,
+			Total:                 row.Total,
+			ActivePending:         row.ActivePending,
+			LatestModification:    row.LatestModification,
+			LastSyncFinishedAt:    row.LastSyncFinishedAt,
+			ReplicationInProgress: row.ReplicationInProgress,
+			FreshnessMode:         sync.ModeCatchUp,
+			Status:                "unknown",
+		}
+		if row.OldestModification != nil {
+			days := now.Sub(*row.OldestModification).Hours() / 24
+			m.OldestListingAgeDays = &days
+		}
+		if row.LastSyncFinishedAt != nil {
+			lag := int64(now.Sub(*row.LastSyncFinishedAt).Seconds())
+			m.LagSeconds = &lag
+		}
+		provider := providerForDataset(resolver, row.DatasetSlug)
+		if provider != "" {
+			current, err := s.fresh.IsCurrent(ctx, row.DatasetSlug, provider)
+			if err == nil {
+				if current {
+					m.FreshnessMode = sync.ModeSteady
+					m.Status = "healthy"
+				} else {
+					m.FreshnessMode = sync.ModeCatchUp
+					m.Status = "stale"
+				}
+			}
+		}
+		if row.ReplicationInProgress {
+			m.Status = "stale"
+		}
+		snap.Listings = append(snap.Listings, m)
+	}
+
+	counts, err := s.gis.MonitoringCounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	byCounty, err := s.gis.ParcelsByCounty(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sources, err := s.gis.ListSourceStates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	gisStatus := "healthy"
+	for _, src := range sources {
+		if src.Status == "stale" {
+			gisStatus = "stale"
+			break
+		}
+	}
+	snap.GIS = GISMetric{
+		ParcelsTotal:  counts.ParcelsTotal,
+		ByCounty:      byCounty,
+		CitiesTotal:   counts.CitiesTotal,
+		CountiesTotal: counts.CountiesTotal,
+		ZipsTotal:     counts.ZipsTotal,
+		Sources:       sources,
+		Status:        gisStatus,
+	}
+
+	prices, err := s.crypto.LatestPrices(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cryptoStatus := "unknown"
+	if len(prices) > 0 {
+		cryptoStatus = "healthy"
+	}
+	for _, p := range prices {
+		age := int64(now.Sub(p.CapturedAt).Seconds())
+		stale := age > 3600
+		if stale {
+			cryptoStatus = "stale"
+		}
+		snap.Crypto.Assets = append(snap.Crypto.Assets, CryptoAssetMetric{
+			AssetKey:   p.AssetKey,
+			PriceUSD:   p.Price,
+			CapturedAt: p.CapturedAt,
+			AgeSeconds: age,
+			Stale:      stale,
+		})
+	}
+	snap.Crypto.Status = cryptoStatus
+
+	cache, err := s.repo.CacheHitRate15m(ctx)
+	if err != nil {
+		return nil, err
+	}
+	snap.Cache = CacheMetric{
+		WindowMinutes: 15,
+		Total:         cache.Total,
+		Hits:          cache.Hits,
+		Misses:        cache.Misses,
+		HitRatePct:    cache.HitRatePct,
+	}
+
+	queues, err := s.repo.ListQueueCounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	topTypes, err := s.repo.TopPendingJobTypes(ctx, 10)
+	if err != nil {
+		return nil, err
+	}
+	var pending int64
+	for _, q := range queues {
+		pending += q.Pending
+	}
+	snap.Queues = QueuesMetric{ByQueue: queues, TopTypes: topTypes, TotalPending: pending}
+
+	act, err := s.repo.Activation(ctx)
+	if err != nil {
+		return nil, err
+	}
+	snap.Activation = ActivationMetric{
+		DomainCount:           act.DomainCount,
+		VerifiedDomainCount:   act.VerifiedDomainCount,
+		TokenCount:            act.TokenCount,
+		InvitationsAccepted:   act.InvitationsAccepted,
+		DomainsWithTraffic30d: act.DomainsWithTraffic30d,
+	}
+
+	return snap, nil
+}
+
+func providerForDataset(resolver *mls.Resolver, datasetSlug string) string {
+	for _, f := range resolver.Catalog() {
+		if f.Dataset == datasetSlug {
+			return f.Provider
+		}
+	}
+	if datasetSlug == "stellar" {
+		return "bridge"
+	}
+	if datasetSlug == "beaches" {
+		return "spark"
+	}
+	return ""
+}
