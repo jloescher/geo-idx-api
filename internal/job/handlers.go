@@ -53,19 +53,19 @@ func (r *Registry) handleGISProbe(ctx context.Context, job *queue.ReservedJob) e
 }
 
 func (r *Registry) handleGISMonthlyParcelRefresh(ctx context.Context, job *queue.ReservedJob) error {
-	return r.gisParcelSync.RunMonthlyRefresh(ctx)
+	return r.gisPersistent.RunMonthlyParcelRefresh(ctx)
 }
 
 func (r *Registry) handleGISAnnualBoundariesRefresh(ctx context.Context, job *queue.ReservedJob) error {
-	return r.gisBoundarySync.RunAnnualRefresh(ctx)
+	return r.gisPersistent.RunAnnualBoundariesRefresh(ctx)
 }
 
 func (r *Registry) handleGISInitialSync(ctx context.Context, job *queue.ReservedJob) error {
-	return r.gisInitialSync.Run(ctx)
+	return r.gisPersistent.RunInitialSync(ctx)
 }
 
 func (r *Registry) handleGISZipSync(ctx context.Context, job *queue.ReservedJob) error {
-	return r.gisBoundarySync.RunZipSync(ctx)
+	return r.gisPersistent.RunZipSync(ctx)
 }
 
 func (r *Registry) handleGISParcelSyncPage(ctx context.Context, job *queue.ReservedJob) error {
@@ -73,7 +73,7 @@ func (r *Registry) handleGISParcelSyncPage(ctx context.Context, job *queue.Reser
 	if err != nil {
 		return err
 	}
-	return r.gisParcelSync.SyncPage(ctx, args)
+	return r.gisPersistent.SyncParcelPage(ctx, args)
 }
 
 func (r *Registry) handleCryptoRefresh(ctx context.Context, job *queue.ReservedJob) error {

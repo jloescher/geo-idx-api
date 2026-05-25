@@ -195,8 +195,21 @@ func (s *ParcelSyncService) SyncPage(ctx context.Context, args ParcelSyncPageArg
 		chunk = 500
 	}
 	var batch []gisrepo.ParcelRow
+	statewide := IsStatewideCadastralSource(args.SourceKey)
 	for _, feat := range page.Features {
-		row, err := ExtractParcelRow(feat, args.SourceKey, args.County, args.Generation, &fpStr, args.ParcelIDFields)
+		county := args.County
+		if statewide {
+			coNo, ok := CONOFromProperties(feat.Properties)
+			if !ok {
+				continue
+			}
+			slug, ok := CountySlugFromCONO(coNo)
+			if !ok || !IsMLSPilotCounty(slug) {
+				continue
+			}
+			county = slug
+		}
+		row, err := ExtractParcelRow(feat, args.SourceKey, county, args.Generation, &fpStr, args.ParcelIDFields)
 		if err != nil {
 			continue
 		}
@@ -225,7 +238,11 @@ func (s *ParcelSyncService) SyncPage(ctx context.Context, args ParcelSyncPageArg
 		next.Offset = args.Offset + pageSize
 		return s.enqueuePage(ctx, next)
 	}
-	deleted, err := s.db.DeleteStaleParcels(ctx, args.SourceKey, args.County, args.Generation)
+	staleCounty := args.County
+	if statewide {
+		staleCounty = ""
+	}
+	deleted, err := s.db.DeleteStaleParcels(ctx, args.SourceKey, staleCounty, args.Generation)
 	if err != nil {
 		return err
 	}

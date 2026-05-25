@@ -26,9 +26,7 @@ type Registry struct {
 	mirrorPurge        *sync.PurgeClosed
 	replicaStore       *sync.ReplicaPageStore
 	gisMeta            *gis.MetadataService
-	gisParcelSync      *gis.ParcelSyncService
-	gisBoundarySync    *gis.BoundarySyncService
-	gisInitialSync     *gis.InitialSyncService
+	gisPersistent      *gis.PersistentGISService
 	crypto             *crypto.PricingService
 }
 

@@ -10,27 +10,19 @@ import (
 
 func TestParcelSourceCatalogCoverage(t *testing.T) {
 	catalog := ParcelSourceCatalog()
-	if len(catalog) != 22 {
-		t.Fatalf("catalog len=%d, want 22 (21 enabled + Osceola stub)", len(catalog))
+	if len(catalog) != 3 {
+		t.Fatalf("catalog len=%d, want 3 (statewide + pinellas + hillsborough)", len(catalog))
 	}
-	enabled := 0
-	slugs := map[string]bool{}
+	if catalog[0].SourceKey != FloridaStatewideCadastralKey {
+		t.Fatalf("primary source=%q", catalog[0].SourceKey)
+	}
 	for _, s := range catalog {
-		if s.Enabled {
-			enabled++
-		}
-		if s.CountySlug != "" {
-			slugs[s.CountySlug] = true
+		if !s.Enabled {
+			t.Fatalf("source disabled: %s", s.SourceKey)
 		}
 		if s.SourceKey == "" || s.QueryURL == "" {
 			t.Fatalf("incomplete spec: %+v", s)
 		}
-	}
-	if enabled != 21 {
-		t.Fatalf("enabled=%d, want 21 (22 MLS counties minus Osceola)", enabled)
-	}
-	if len(slugs) != 22 {
-		t.Fatalf("unique county slugs=%d, want 22", len(slugs))
 	}
 }
 
@@ -38,7 +30,7 @@ func TestSourcesForBBoxPinellas(t *testing.T) {
 	bbox := BBox{West: -82.85, South: 27.95, East: -82.75, North: 28.05}
 	sources := SourcesForBBox(bbox)
 	if len(sources) == 0 {
-		t.Fatal("expected pinellas source")
+		t.Fatal("expected pinellas failover source")
 	}
 	found := false
 	for _, s := range sources {
@@ -51,6 +43,16 @@ func TestSourcesForBBoxPinellas(t *testing.T) {
 	}
 }
 
+func TestSourcesForBBoxOsceolaNoFailover(t *testing.T) {
+	bbox := countyBBox("osceola")
+	sources := SourcesForBBox(bbox)
+	for _, s := range sources {
+		if s.CountySlug == "osceola" {
+			t.Fatal("osceola should not have a dedicated failover source")
+		}
+	}
+}
+
 func TestArcGISClientPaginateMode(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("where") != "1=1" {
@@ -58,6 +60,9 @@ func TestArcGISClientPaginateMode(t *testing.T) {
 		}
 		if r.URL.Query().Get("geometry") != "" {
 			t.Fatal("paginate mode should not send geometry")
+		}
+		if r.URL.Query().Get("outSR") != "4326" {
+			t.Fatalf("outSR=%q", r.URL.Query().Get("outSR"))
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"type":"FeatureCollection","features":[]}`))
@@ -76,13 +81,10 @@ func TestArcGISClientPaginateMode(t *testing.T) {
 	}
 }
 
-func TestArcGISClientWhereFilterMode(t *testing.T) {
+func TestArcGISClientBBoxModeOutSR(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("where") != "CNTYNAME='Martin'" {
-			t.Fatalf("where=%q", r.URL.Query().Get("where"))
-		}
-		if r.URL.Query().Get("geometry") == "" {
-			t.Fatal("where_filter mode should send geometry")
+		if r.URL.Query().Get("outSR") != "4326" {
+			t.Fatalf("outSR=%q", r.URL.Query().Get("outSR"))
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"type":"FeatureCollection","features":[]}`))
@@ -92,11 +94,10 @@ func TestArcGISClientWhereFilterMode(t *testing.T) {
 	client := NewArcGISClient(config.GISConfig{SyncPageSize: 500})
 	spec := ParcelSourceSpec{
 		QueryURL:       srv.URL,
-		SyncMode:       SyncModeWhereFilter,
-		ArcGISWhere:    "CNTYNAME='Martin'",
+		SyncMode:       SyncModeBBox,
 		ResponseFormat: FormatGeoJSON,
 	}
-	bbox := countyBBox("martin")
+	bbox := countyBBox("hillsborough")
 	_, err := client.FetchParcelPage(spec, bbox, 0, 500)
 	if err != nil {
 		t.Fatal(err)

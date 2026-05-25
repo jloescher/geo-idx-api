@@ -8,9 +8,9 @@ Schema is managed with **[goose](https://github.com/pressly/goose)** SQL migrati
 
 | File | Tables / purpose |
 |------|------------------|
-| `00001_initial.sql` | **Single consolidated schema** for fresh databases (staging cutover and greenfield installs). Includes `users`, `sessions`, `cache`, `jobs`, `job_batches`, `failed_jobs`, `personal_access_tokens`, `user_invitations`, `domains`, `listings_cache` (legacy table; not used for Active/Pending pre-warm), `mls_search_cache` (on-demand live proxy cache), `mls_proxy_audit_logs` (**`cache_hit`** `VARCHAR(8)` for `HIT`/`MISS`), `gis_cache`, `gis_source_states`, **`gis_parcels`**, **`gis_counties`** (`county_slug`, `mls_stellar`, `mls_beaches`), **`gis_cities`**, **`gis_zips`**, **`gis_parcel_sources`** (22-county MLS catalog mirror), `crypto_price_snapshots`, PostGIS `listings` (`raw_data` + `media`/`unit`/`room`/`open_house` JSONB + `custom_fields`; single `modification_timestamp`), `listing_sync_cursors` (`last_modification_timestamp`), `replica_pages` (`fetch_url`, `upstream_url`, `odata_query`, `batch_id`) |
+| `00001_initial.sql` | **Single consolidated schema** for fresh databases (staging cutover and greenfield installs). Includes `users`, `sessions`, `dashboard_sessions`, `cache`, `jobs`, `job_batches`, `failed_jobs`, `personal_access_tokens`, `user_invitations`, `domains`, `listings_cache` (legacy table; not used for Active/Pending pre-warm), `mls_search_cache` (on-demand live proxy cache), `mls_proxy_audit_logs` (**`cache_hit`** `VARCHAR(8)` for `HIT`/`MISS`), `gis_cache`, `gis_source_states`, **`gis_parcels`**, **`gis_counties`** (`county_slug`, `mls_stellar`, `mls_beaches`), **`gis_cities`**, **`gis_zips`**, **`gis_parcel_sources`** (22-county MLS catalog mirror), `crypto_price_snapshots`, PostGIS `listings` (`raw_data` + `media`/`unit`/`room`/`open_house` JSONB + `custom_fields`; single `modification_timestamp`), `listing_sync_cursors` (`last_modification_timestamp`), `replica_pages` (`fetch_url`, `upstream_url`, `odata_query`, `batch_id`) |
 
-There is **no** `00002_*.sql` — `cache_hit` on `mls_proxy_audit_logs` is part of `00001_initial.sql`.
+There is **no** `00002_*.sql` or `00003_*.sql` — `cache_hit` on `mls_proxy_audit_logs` and `dashboard_sessions` are part of `00001_initial.sql`.
 
 **Note:** Laravel Telescope/Pulse tables are **not** included.
 

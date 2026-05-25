@@ -8,6 +8,18 @@ Use **separate Coolify projects** for staging and production, each with its own 
 
 **Related:** [README.md](../README.md), [deployment-operations.md](deployment-operations.md), [go-cutover.md](go-cutover.md).
 
+### Git branch (required)
+
+Coolify must build a commit that includes the Go [`Dockerfile`](../Dockerfile) at the **repository root**. Until `main` contains the Go cutover, point every Coolify app at branch **`staging`** (not `main`). Building `main` fails with:
+
+`failed to read dockerfile: open Dockerfile: no such file or directory`
+
+**Coolify source settings:** Branch `staging`, Base Directory `/` (empty), Dockerfile location `Dockerfile`, Docker Build Target `api` / `worker` / `scheduler` per app.
+
+Mark `APP_ENV`, `APP_DEBUG`, and other runtime-only vars as **Runtime only** in Coolify to avoid the Laravel build-time warning (harmless for Go, but noisy).
+
+**Health checks:** Coolify waits for Docker `HEALTHCHECK` when enabled (“use Dockerfile healthcheck”). The `api` target probes `GET /healthz`; `worker` and `scheduler` use a process check (`/proc/1/comm`). Do **not** point HTTP health checks at worker/scheduler (no listening port). If deploy fails with `map has no entry for key "Health"`, either enable Dockerfile healthcheck after pulling a image that includes worker/scheduler `HEALTHCHECK`, or set Coolify health check to **None** for those apps.
+
 ---
 
 ## 1. Applications per environment (single host)
@@ -15,8 +27,8 @@ Use **separate Coolify projects** for staging and production, each with its own 
 | App | Dockerfile | Build target | Port / health |
 |-----|------------|--------------|---------------|
 | **idx-api-web** | `Dockerfile` | `api` | **8000** — `GET /healthz` |
-| **idx-api-worker** | `Dockerfile` | `worker` | No HTTP — process health optional |
-| **idx-api-scheduler** | `Dockerfile` | `scheduler` | No HTTP |
+| **idx-api-worker** | `Dockerfile` | `worker` | No HTTP — Dockerfile `HEALTHCHECK` (PID 1 process) |
+| **idx-api-scheduler** | `Dockerfile` | `scheduler` | No HTTP — Dockerfile `HEALTHCHECK` (PID 1 process) |
 | **idx-images** | `Dockerfile.idx-images` | default | **8080** — `GET /health` |
 
 **Build context:** repository root (`.`).

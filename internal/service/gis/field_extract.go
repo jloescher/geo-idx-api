@@ -25,6 +25,7 @@ func ExtractParcelRow(feat ArcGISFeature, sourceKey, county string, gen int, fin
 	if parcelID == "" {
 		parcelID = firstString(feat.Properties, "GlobalID", "FID")
 	}
+	parcelID = strings.TrimSpace(parcelID)
 	if parcelID == "" {
 		return gisrepo.ParcelRow{}, errNoParcelID
 	}

@@ -7,13 +7,13 @@ import (
 
 // SourceStateRow is a GIS upstream source generation snapshot.
 type SourceStateRow struct {
-	SourceKey     string
-	Generation    int64
-	LastCheckedAt *time.Time
-	MaxGeneration int64
-	MaxSyncedAt   *time.Time
-	ParcelCount   int64
-	Status        string // healthy | stale | unknown
+	SourceKey     string     `json:"source_key"`
+	Generation    int64      `json:"generation"`
+	LastCheckedAt *time.Time `json:"last_checked_at,omitempty"`
+	MaxGeneration int64      `json:"max_generation"`
+	MaxSyncedAt   *time.Time `json:"max_synced_at,omitempty"`
+	ParcelCount   int64      `json:"parcel_count"`
+	Status        string     `json:"status"` // healthy | stale | unknown
 }
 
 // GISCounts holds aggregate GIS table counts.

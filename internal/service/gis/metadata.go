@@ -40,8 +40,12 @@ func NewMetadataService(cfg config.Config, db *repository.DB, logger *slog.Logge
 func (m *MetadataService) ProbeAll(ctx context.Context) error {
 	endpoints := map[string]string{
 		FDOTAdminBoundariesKey: "https://gis.fdot.gov/arcgis/rest/services/Admin_Boundaries/FeatureServer/6?f=json",
+		FloridaStatewideCadastralKey: queryMetaURL(FloridaStatewideCadastralURL),
 	}
 	for _, spec := range EnabledParcelSourcesForConfig(m.cfg.GIS) {
+		if spec.CountySlug == "" || spec.CountySlug == "statewide" {
+			continue
+		}
 		endpoints[spec.SourceKey] = queryMetaURL(spec.QueryURL)
 	}
 	for key, endpoint := range endpoints {

@@ -20,13 +20,18 @@ func TestCountyBBox(t *testing.T) {
 func TestParcelSyncTargetsDefault(t *testing.T) {
 	svc := NewParcelSyncService(config.Config{}, nil, nil, nil)
 	targets := svc.parcelSyncTargets("")
-	if len(targets) != 21 {
-		t.Fatalf("expected 21 enabled MLS targets, got %d", len(targets))
+	if len(targets) != 3 {
+		t.Fatalf("expected 3 sync targets (statewide + pinellas + hillsborough), got %d", len(targets))
 	}
+	keys := map[string]bool{}
 	for _, tgt := range targets {
 		if tgt.QueryURL == "" {
 			t.Fatalf("empty query url for %s", tgt.SourceKey)
 		}
+		keys[tgt.SourceKey] = true
+	}
+	if !keys[FloridaStatewideCadastralKey] || !keys["pinellas_enterprise_parcels"] || !keys["hillsborough_hc_parcels"] {
+		t.Fatalf("missing expected sources: %+v", keys)
 	}
 }
 

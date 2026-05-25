@@ -100,12 +100,14 @@ When **degraded** (`meta.degraded=true`), `features` may be empty and `meta.leaf
 
 | Table | Refresh | Source |
 |-------|---------|--------|
-| `gis_parcels` | Monthly (`gis.monthly_parcel_refresh`, 1st @ 02:00) | 22 MLS county ArcGIS layers (see [GIS sources](gis-sources.md)); catalog in `gis_parcel_sources` |
+| `gis_parcels` | Monthly (`gis.monthly_parcel_refresh`, 1st @ 02:00) | **Primary:** [Florida_Statewide_Cadastral](https://services9.arcgis.com/Gh9awoU677aKree0/arcgis/rest/services/Florida_Statewide_Cadastral/FeatureServer/0) (FDOR Cadastral 2025) via safe pagination; **failovers:** Pinellas enterprise + Hillsborough `HC_ParcelsPublic`. Catalog in `gis_parcel_sources`. |
 | `gis_cities` | Annual (`gis.annual_boundaries_refresh`, Jan 1 @ 03:00) | FDOT Admin_Boundaries layer 7; `county` slug assigned via spatial join to `gis_counties` after sync |
 | `gis_counties` | Annual | FDOT Admin_Boundaries layer 6 |
 | `gis_zips` | Annual | FDOT Admin_Boundaries layer 8 |
 
-**Source catalog:** [gis-sources.md](gis-sources.md) — MLS county coverage, verified county parcel REST endpoints, FDOR false-success behavior, FDOT city `county` NULL issue, regional fallbacks (SWFWMD/SFWMD), and probe script.
+**Osceola coverage:** Osceola County parcels are included via the statewide layer (`CO_NO=59`) during paginated sync. Rows are filtered in Go to the 22 MLS pilot counties — there is **no** separate Osceola ArcGIS county source.
+
+**ArcGIS statewide restriction:** The Florida_Statewide_Cadastral service restricts reliable direct `WHERE` + geometry queries (returns empty or errors). Background sync uses **pagination only** (`where=1=1`, no geometry envelope). Live bbox fallback uses Pinellas and Hillsborough county mirrors only — not the statewide layer.
 
 All tables use **GIST** spatial indexes and `ST_Intersects` + envelope prefilter for bbox queries.
 
@@ -120,7 +122,7 @@ All tables use **GIST** spatial indexes and `ST_Intersects` + envelope prefilter
 
 ## Fresh database bootstrap
 
-Required order on a greenfield deploy (single `00001_initial.sql` — no `00002`):
+Required order on a greenfield deploy (single `00001_initial.sql`):
 
 1. Drop/recreate DB (staging cutover) or use empty database
 2. `make migrate`
@@ -129,9 +131,9 @@ Required order on a greenfield deploy (single `00001_initial.sql` — no `00002`
 5. Start **scheduler** (leader enqueues bootstrap jobs + periodic recheck)
 6. Optional: `make run-api` for monitoring UI
 
-Expect cities, counties, and zips within ~5–15 minutes; parcel counts climb as `gis.parcel_sync_page` jobs complete for all **22 enabled counties** (24–48h initial bootstrap at `GIS_SYNC_PAGE_SIZE=500`).
+Expect cities, counties, and zips within ~5–15 minutes; parcel counts climb as `gis.parcel_sync_page` jobs paginate the statewide layer and apply MLS county filters (24–48h initial bootstrap at `GIS_SYNC_PAGE_SIZE=2000`).
 
-Single-county re-sync:
+Single-county failover re-sync (Pinellas or Hillsborough only):
 
 ```bash
 go run ./cmd/gis-enqueue -job parcels -county hillsborough
@@ -149,6 +151,7 @@ make run-worker
 # Terminal 2 — enqueue
 make gis-enqueue-parcels   # → gis.monthly_parcel_refresh
 make gis-enqueue-zips      # → gis.zip_sync
+go run ./cmd/gis-enqueue -job boundaries  # → gis.annual_boundaries_refresh
 ```
 
 Verify with SQL:
@@ -168,7 +171,7 @@ Monitoring JSON includes `parcels_last_synced_at` and `zips_last_synced_at` on t
 |-------|--------|-------|
 | **Edge (`gis_cache`)** | `GIS_EDGE_CACHE_TTL` (seconds, default 900) | Keyed by full query string (includes `type`). Header `X-IDX-Cache`: `edge`, `persistent`, or `miss`. |
 | **PostGIS persistent** | Monthly / annual sync jobs | Primary origin for `type=parcel|city|county|zip`. `meta.source_tier=persistent`. |
-| **ArcGIS live fallback** | Parcels only | When persistent parcel table has no rows for the bbox, county sources in `sourcesForBBox()` are tried in order (see [GIS sources](gis-sources.md)). **FDOR statewide is not reliable** — prefer county mirrors. |
+| **ArcGIS live fallback** | Parcels only | When persistent parcel table has no rows for the bbox, Pinellas enterprise and Hillsborough county mirrors are tried (see Failover behavior). Statewide layer is **not** used for live bbox queries. |
 
 ## Background jobs
 
@@ -186,17 +189,19 @@ Monitoring JSON includes `parcels_last_synced_at` and `zips_last_synced_at` on t
 
 ## Failover behavior (parcel ArcGIS fallback)
 
-When persistent `gis_parcels` has no data for the requested bbox, `internal/service/gis/sources.go` tries ArcGIS county layers. **Background sync** currently enqueues **Hillsborough** by default and **Pinellas** only when `GIS_SYNC_PINELLAS_ENTERPRISE=true`.
+When persistent `gis_parcels` has no data for the requested bbox, `internal/service/gis/sources.go` tries county failover layers only (statewide is sync-only):
 
-Live proxy order today (code in `sourcesForBBox()`):
+1. **Pinellas** enterprise — when bbox intersects Pinellas envelope.
+2. **Hillsborough** `HC_ParcelsPublic` — when bbox intersects Hillsborough envelope.
+3. **Graceful degrade:** Empty `FeatureCollection` + OSM tile fallback metadata.
 
-1. Florida statewide cadastral (FDOR 2025) — **broken for queries**; returns HTTP 200 with `count:0` or ArcGIS `error`. Do not depend on it. See [GIS sources § FDOR](gis-sources.md#fdor-statewide-2025--not-viable).
-2. **Pinellas** enterprise — when bbox intersects Pinellas envelope (timeout-prone).
-3. **Hillsborough** `HC_ParcelsPublic` — when bbox intersects Hillsborough envelope.
+**Background sync** (`gis.monthly_parcel_refresh`) enqueues three sources in order:
 
-4. **Graceful degrade:** Empty `FeatureCollection` + OSM tile fallback metadata.
+1. **Florida_Statewide_Cadastral** — paginated full-state fetch; Go filter on `CO_NO` for 22 MLS pilot counties (including Osceola `CO_NO=59`).
+2. **Pinellas** enterprise — higher-fidelity failover for Pinellas pilot maps.
+3. **Hillsborough** `HC_ParcelsPublic` — higher-fidelity failover for Hillsborough pilot maps.
 
-Multi-county MLS coverage (Stellar + Beaches) and verified REST endpoints for all 22 counties are documented in [gis-sources.md](gis-sources.md).
+Read path deduplicates by `parcel_id`, preferring county failover rows over statewide when both exist.
 
 Boundary types (`city`, `county`, `zip`) do not live-fallback to ArcGIS; run `gis.annual_boundaries_refresh` if empty.
 
@@ -213,12 +218,11 @@ Geo-web can call `/api/v1/listings` then `/api/v1/gis` with the **same map bbox*
 | `GIS_MAX_FEATURES` | 500 | API `limit` cap |
 | `GIS_SYNC_PAGE_SIZE` | 2000 | ArcGIS pagination page size |
 | `GIS_SYNC_UPSERT_CHUNK` | 500 | Bulk upsert batch size |
-| `GIS_HTTP_TIMEOUT` | 12s | ArcGIS HTTP timeout; use **120s** for slow counties (Broward, Pinellas) |
-| `GIS_SYNC_PINELLAS_ENTERPRISE` | false | Enqueue Pinellas enterprise parcel sync (often timeout-prone) |
+| `GIS_HTTP_TIMEOUT` | 12s | ArcGIS HTTP timeout; use **120s** for initial statewide bootstrap |
 | `GIS_SYNC_QUEUE` | `default` | Queue for sync jobs |
 | `GIS_QUEUE` | `default` | Queue for `gis.probe_sources` |
 | `GIS_EDGE_CACHE_TTL` | 900 | Edge cache TTL (seconds) |
 | `GIS_TEASER_MAX_FEATURES` | 40 | Teaser feature cap |
 | `GIS_TEASER_COORD_DECIMALS` | 4 | Teaser coordinate rounding |
 
-See [gis-sources.md](gis-sources.md), `internal/service/gis/sources.go`, and `GIS_*` env vars in `.env.example` for source URLs and Florida MLS allow-list.
+See `internal/service/gis/parcel_sources.go`, `internal/service/gis/county_co.go`, and `GIS_*` env vars in `.env.example` for source URLs and Florida MLS allow-list.

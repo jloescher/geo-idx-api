@@ -1,5 +1,8 @@
 package gis
 
+// Persistent statewide parcel sync (including Osceola) = instant complete Leaflet maps for all
+// pilot counties → maximum engagement before hard gate → more OTP leads.
+
 // ArcGIS parcel layer endpoints for county-specific mirrors.
 const (
 	PinellasParcelsQueryURL     = "https://egis.pinellascounty.org/arcgis/rest/services/PARCEL/MapServer/0/query"
@@ -15,12 +18,12 @@ type Source struct {
 	QueryURL string
 	Tier     string
 	Where    string
-	CountyCO string // legacy FDOR filter; unused in multi-county catalog
+	CountyCO string
 }
 
 func sourcesForBBox(b BBox) []Source {
 	var out []Source
-	for _, spec := range SourcesForBBox(b) {
+	for _, spec := range FailoverSourcesForBBox(b) {
 		out = append(out, Source{
 			Key:      spec.SourceKey,
 			QueryURL: spec.QueryURL,

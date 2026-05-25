@@ -39,10 +39,10 @@ func (s *BoundarySyncService) RunAnnualRefresh(ctx context.Context) error {
 	gen := int(gen64)
 	fp := "fdot_annual_sync"
 
-	if err := s.syncLayer(ctx, FDOTCountiesURL, gen, &fp, s.syncCounties); err != nil {
+	if err := s.syncLayer(ctx, FDOTCountiesURL, gen, &fp, s.syncCounties, 0); err != nil {
 		return err
 	}
-	if err := s.syncLayer(ctx, FDOTCitiesURL, gen, &fp, s.syncCities); err != nil {
+	if err := s.syncLayer(ctx, FDOTCitiesURL, gen, &fp, s.syncCities, 0); err != nil {
 		return err
 	}
 	updated, err := s.db.BackfillCityCounties(ctx, gen)
@@ -50,7 +50,7 @@ func (s *BoundarySyncService) RunAnnualRefresh(ctx context.Context) error {
 		return fmt.Errorf("backfill city counties: %w", err)
 	}
 	s.logger.Info("gis city county backfill", "generation", gen, "updated", updated)
-	if err := s.syncLayer(ctx, FDOTZipsURL, gen, &fp, s.syncZips); err != nil {
+	if err := s.syncLayer(ctx, FDOTZipsURL, gen, &fp, s.syncZips, 0); err != nil {
 		return err
 	}
 
@@ -91,7 +91,7 @@ func (s *BoundarySyncService) RunGapFill(ctx context.Context) error {
 	fp := "fdot_gap_fill"
 
 	if counties == 0 {
-		if err := s.syncLayer(ctx, FDOTCountiesURL, gen, &fp, s.syncCounties); err != nil {
+		if err := s.syncLayer(ctx, FDOTCountiesURL, gen, &fp, s.syncCounties, 0); err != nil {
 			return err
 		}
 		if _, err := s.db.DeleteStaleCounties(ctx, FDOTAdminBoundariesKey, gen); err != nil {
@@ -99,7 +99,7 @@ func (s *BoundarySyncService) RunGapFill(ctx context.Context) error {
 		}
 	}
 	if cities == 0 {
-		if err := s.syncLayer(ctx, FDOTCitiesURL, gen, &fp, s.syncCities); err != nil {
+		if err := s.syncLayer(ctx, FDOTCitiesURL, gen, &fp, s.syncCities, 0); err != nil {
 			return err
 		}
 		if updated, err := s.db.BackfillCityCounties(ctx, gen); err != nil {
@@ -112,7 +112,7 @@ func (s *BoundarySyncService) RunGapFill(ctx context.Context) error {
 		}
 	}
 	if zips == 0 {
-		if err := s.syncLayer(ctx, FDOTZipsURL, gen, &fp, s.syncZips); err != nil {
+		if err := s.syncLayer(ctx, FDOTZipsURL, gen, &fp, s.syncZips, zipSyncPageSize(s.cfg.GIS)); err != nil {
 			return err
 		}
 		if _, err := s.db.DeleteStaleZips(ctx, FDOTAdminBoundariesKey, gen); err != nil {
@@ -132,7 +132,7 @@ func (s *BoundarySyncService) RunZipSync(ctx context.Context) error {
 	}
 	gen := int(gen64)
 	fp := "fdot_zip_sync"
-	if err := s.syncLayer(ctx, FDOTZipsURL, gen, &fp, s.syncZips); err != nil {
+	if err := s.syncLayer(ctx, FDOTZipsURL, gen, &fp, s.syncZips, zipSyncPageSize(s.cfg.GIS)); err != nil {
 		return err
 	}
 	deleted, err := s.db.DeleteStaleZips(ctx, FDOTAdminBoundariesKey, gen)
@@ -145,9 +145,19 @@ func (s *BoundarySyncService) RunZipSync(ctx context.Context) error {
 
 type boundaryUpserter func(ctx context.Context, feats []ArcGISFeature, gen int, fp *string) error
 
-func (s *BoundarySyncService) syncLayer(ctx context.Context, endpoint string, gen int, fp *string, upsert boundaryUpserter) error {
+func zipSyncPageSize(cfg config.GISConfig) int {
+	// FDOT layer 8 returns HTTP 500 when resultRecordCount is too large.
+	if cfg.SyncPageSize > 0 && cfg.SyncPageSize < 500 {
+		return cfg.SyncPageSize
+	}
+	return 500
+}
+
+func (s *BoundarySyncService) syncLayer(ctx context.Context, endpoint string, gen int, fp *string, upsert boundaryUpserter, pageSize int) error {
 	offset := 0
-	pageSize := s.cfg.GIS.SyncPageSize
+	if pageSize <= 0 {
+		pageSize = s.cfg.GIS.SyncPageSize
+	}
 	if pageSize <= 0 {
 		pageSize = 2000
 	}

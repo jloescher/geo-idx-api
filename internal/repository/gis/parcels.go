@@ -140,6 +140,7 @@ func (r *Repository) HasParcelsInBBox(ctx context.Context, west, south, east, no
 }
 
 // QueryParcelsByBBox returns GeoJSON geometry + properties for parcels in bbox.
+// When multiple source_keys cover the same parcel_id, failover county sources win over statewide.
 func (r *Repository) QueryParcelsByBBox(ctx context.Context, west, south, east, north float64, counties []string, limit int) ([]FeatureResult, error) {
 	pool, err := r.db.ReadPool(ctx)
 	if err != nil {
@@ -147,14 +148,27 @@ func (r *Repository) QueryParcelsByBBox(ctx context.Context, west, south, east, 
 	}
 	q := fmt.Sprintf(`
 		SELECT ST_AsGeoJSON(geometry)::text, properties
-		FROM gis_parcels
-		WHERE geometry && %s AND ST_Intersects(geometry, %s)
+		FROM (
+			SELECT DISTINCT ON (parcel_id)
+				parcel_id, geometry, properties, source_key
+			FROM gis_parcels
+			WHERE geometry && %s AND ST_Intersects(geometry, %s)
 	`, bboxEnvelopeSQL, bboxEnvelopeSQL)
 	args := []any{west, south, east, north, west, south, east, north}
 	if len(counties) > 0 {
 		q += ` AND county = ANY($5)`
 		args = append(args, counties)
 	}
+	q += `
+			ORDER BY parcel_id,
+				CASE source_key
+					WHEN 'pinellas_enterprise_parcels' THEN 1
+					WHEN 'hillsborough_hc_parcels' THEN 2
+					WHEN 'florida_statewide_cadastral' THEN 3
+					ELSE 4
+				END
+		) ranked
+	`
 	q += fmt.Sprintf(` LIMIT $%d`, len(args)+1)
 	args = append(args, limit)
 

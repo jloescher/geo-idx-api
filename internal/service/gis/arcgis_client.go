@@ -74,6 +74,7 @@ func (c *ArcGISClient) FetchParcelPage(spec ParcelSourceSpec, bbox BBox, offset,
 			q.Set("where", spec.ArcGISWhere)
 		}
 	}
+	q.Set("outSR", "4326")
 	q.Set("resultOffset", fmt.Sprintf("%d", offset))
 	q.Set("resultRecordCount", fmt.Sprintf("%d", pageSize))
 	u.RawQuery = q.Encode()
@@ -109,6 +110,7 @@ func (c *ArcGISClient) FetchLayerPage(endpoint, where string, offset, pageSize i
 	} else {
 		q.Set("where", "1=1")
 	}
+	q.Set("outSR", "4326")
 	q.Set("resultOffset", fmt.Sprintf("%d", offset))
 	q.Set("resultRecordCount", fmt.Sprintf("%d", pageSize))
 	u.RawQuery = q.Encode()

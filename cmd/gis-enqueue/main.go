@@ -15,14 +15,14 @@ import (
 )
 
 func main() {
-	job := flag.String("job", "", "Job to enqueue: parcels or zips")
-	county := flag.String("county", "", "Optional county slug for single-county parcel sync (e.g. hillsborough)")
+	job := flag.String("job", "", "Job to enqueue: parcels, zips, or boundaries")
+	county := flag.String("county", "", "Optional county slug for single-county failover sync (pinellas or hillsborough)")
 	flag.Parse()
 
 	switch *job {
-	case "parcels", "zips":
+	case "parcels", "zips", "boundaries":
 	default:
-		slog.Error("usage: gis-enqueue -job parcels|zips [-county slug]")
+		slog.Error("usage: gis-enqueue -job parcels|zips|boundaries [-county slug]")
 		os.Exit(1)
 	}
 
@@ -48,9 +48,10 @@ func main() {
 		queueName = "default"
 	}
 
+	gisRepo := gisrepo.New(db)
+	svc := gis.NewPersistentGISService(cfg, gisRepo, q, slog.Default())
+
 	if *job == "parcels" && *county != "" {
-		gisRepo := gisrepo.New(db)
-		svc := gis.NewParcelSyncService(cfg, gisRepo, q, slog.Default())
 		if err := svc.KickoffCounty(ctx, *county); err != nil {
 			slog.Error("county parcel kickoff failed", "county", *county, "error", err)
 			os.Exit(1)
@@ -65,6 +66,8 @@ func main() {
 		jobType = queue.TypeGISMonthlyParcelRefresh
 	case "zips":
 		jobType = queue.TypeGISZipSync
+	case "boundaries":
+		jobType = queue.TypeGISAnnualBoundariesRefresh
 	}
 
 	id, err := q.Enqueue(ctx, queueName, jobType, nil, 0)

@@ -27,10 +27,14 @@ RUN apk add --no-cache ca-certificates tzdata && \
     mkdir -p /var/cache/geoidx/images
 COPY --from=build /out/worker /usr/local/bin/worker
 USER nobody
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD test "$(cat /proc/1/comm 2>/dev/null)" = "worker" || exit 1
 CMD ["/usr/local/bin/worker"]
 
 FROM alpine:3.21 AS scheduler
 RUN apk add --no-cache ca-certificates tzdata
 COPY --from=build /out/scheduler /usr/local/bin/scheduler
 USER nobody
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD test "$(cat /proc/1/comm 2>/dev/null)" = "scheduler" || exit 1
 CMD ["/usr/local/bin/scheduler"]

@@ -47,6 +47,13 @@ CREATE TABLE sessions (
 CREATE INDEX sessions_user_id_index ON sessions(user_id);
 CREATE INDEX sessions_last_activity_index ON sessions(last_activity);
 
+CREATE TABLE dashboard_sessions (
+    id VARCHAR(128) PRIMARY KEY,
+    payload BYTEA NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX dashboard_sessions_expires_at_idx ON dashboard_sessions(expires_at);
+
 CREATE TABLE cache (
     key VARCHAR(255) PRIMARY KEY,
     value TEXT NOT NULL,
@@ -452,6 +459,7 @@ DROP TABLE IF EXISTS job_batches;
 DROP TABLE IF EXISTS jobs;
 DROP TABLE IF EXISTS cache_locks;
 DROP TABLE IF EXISTS cache;
+DROP TABLE IF EXISTS dashboard_sessions;
 DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS password_reset_tokens;
 DROP TABLE IF EXISTS users;
