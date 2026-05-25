@@ -129,7 +129,15 @@ func (w *BridgeWorker) FetchPage(ctx context.Context, job *queue.ReservedJob) er
 	}
 
 	if len(result.Rows) == 0 && (args.Mode == "incremental" || args.Mode == "nav_hydrate") && !result.IncrementalHasMore {
-		return w.cursors.ApplyPatch(ctx, args.Dataset, CursorPatch{MarkSyncFinished: true})
+		if err := w.cursors.ApplyPatch(ctx, args.Dataset, CursorPatch{MarkSyncFinished: true}); err != nil {
+			return err
+		}
+		if w.femaEnrich != nil {
+			if err := w.femaEnrich.EnqueueKickoffIfAbsent(ctx, ""); err != nil {
+				w.logger.Warn("fema flood enrich kickoff", "error", err)
+			}
+		}
+		return nil
 	}
 
 	patch, dispatchIncremental, nextFetch := w.continuationPlan(args, result)

@@ -136,23 +136,13 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args FloodEnrichBatchA
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			u := femarepo.FEMAUpdate{
-				ID:                 r.ID,
-				FloodZoneUpdatedAt: now,
-				LowRiskFloodZoneYN: false,
-			}
-
 			attrs, err := s.client.QueryPoint(ctx, r.Latitude, r.Longitude)
 			if err != nil {
 				s.logger.Warn("fema point query failed", "listing_id", r.ID, "error", err)
-			} else if attrs != nil {
-				u.FEMAFloodZoneCode = attrs.FLDZone
-				u.FloodZoneSFHA_TF = attrs.SFHA_TF
-				if len(attrs.Raw) > 0 {
-					u.FloodZoneRaw = attrs.Raw
-				}
-				u.LowRiskFloodZoneYN = mls.ComputeLowRiskFloodZoneYN(attrs.FLDZone)
+				return
 			}
+
+			u := buildListingFEMAUpdate(r.ID, now, attrs)
 
 			mu.Lock()
 			updates = append(updates, u)
@@ -183,6 +173,24 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args FloodEnrichBatchA
 		return err
 	}
 	return nil
+}
+
+// buildListingFEMAUpdate maps a successful NFHL point query to a persistable row update.
+func buildListingFEMAUpdate(id int64, now time.Time, attrs *PointAttributes) femarepo.FEMAUpdate {
+	u := femarepo.FEMAUpdate{
+		ID:                 id,
+		FloodZoneUpdatedAt: now,
+		LowRiskFloodZoneYN: false,
+	}
+	if attrs != nil {
+		u.FEMAFloodZoneCode = attrs.FLDZone
+		u.FloodZoneSFHA_TF = attrs.SFHA_TF
+		if len(attrs.Raw) > 0 {
+			u.FloodZoneRaw = attrs.Raw
+		}
+		u.LowRiskFloodZoneYN = mls.ComputeLowRiskFloodZoneYN(attrs.FLDZone)
+	}
+	return u
 }
 
 // CountStaleForAdmin returns listings needing FEMA refresh.

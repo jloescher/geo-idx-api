@@ -106,7 +106,15 @@ func (w *SparkWorker) FetchPage(ctx context.Context, job *queue.ReservedJob) err
 		if result.IncrementalWindowEnd != nil {
 			patch.IncrementalWindowEnd = result.IncrementalWindowEnd
 		}
-		return w.cursors.ApplyPatch(ctx, args.Dataset, patch)
+		if err := w.cursors.ApplyPatch(ctx, args.Dataset, patch); err != nil {
+			return err
+		}
+		if w.femaEnrich != nil {
+			if err := w.femaEnrich.EnqueueKickoffIfAbsent(ctx, ""); err != nil {
+				w.logger.Warn("fema flood enrich kickoff", "error", err)
+			}
+		}
+		return nil
 	}
 
 	patch, dispatchIncremental, nextFetch := w.continuationPlan(args, result)
