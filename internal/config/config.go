@@ -156,7 +156,8 @@ type GISConfig struct {
 	SyncQueue               string
 	SyncPinellasEnterprise  bool
 	FloridaMLSCodes         []string
-	Queue                string
+	Queue                   string
+	BoundaryStaleDays       int
 }
 
 type ImageCacheConfig struct {
@@ -302,7 +303,8 @@ func Load() (Config, error) {
 			SyncQueue:              env("GIS_SYNC_QUEUE", "default"),
 			SyncPinellasEnterprise: envBool("GIS_SYNC_PINELLAS_ENTERPRISE", false),
 			FloridaMLSCodes:        splitCSV(env("GIS_FLORIDA_MLS_CODES", "stellar")),
-			Queue:                env("GIS_QUEUE", "default"),
+			Queue:                  env("GIS_QUEUE", "default"),
+			BoundaryStaleDays:      envInt("GIS_BOUNDARY_STALE_DAYS", 90),
 		},
 		Images: ImageCacheConfig{
 			Path: env("IMAGE_CACHE_PATH", "/var/cache/geoidx/images"),

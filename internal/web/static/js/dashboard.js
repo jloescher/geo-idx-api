@@ -56,13 +56,6 @@ ${statusChip}
     return `Synced ${days}d ago`;
   }
 
-  function layerStatus(lastSyncedAt, total) {
-    if (!total) return "unknown";
-    if (!lastSyncedAt) return "unknown";
-    const days = (Date.now() - new Date(lastSyncedAt).getTime()) / 86400000;
-    return days > 35 ? "stale" : "healthy";
-  }
-
   function renderMonitoring(data) {
     const listings = (data.listings || []).map((row) => {
       const sub = `${fmtNum(row.active_pending)} active/pending · ${row.freshness_mode || "—"}`;
@@ -78,10 +71,10 @@ ${statusChip}
 
     const gis = data.gis || {};
     const gisTiles = [
-      tile("Parcels", fmtNum(gis.parcels_total), fmtSyncAge(gis.parcels_last_synced_at), null, layerStatus(gis.parcels_last_synced_at, gis.parcels_total), "GIS parcels"),
-      tile("Cities", fmtNum(gis.cities_total), "Boundaries", null, gis.status, "GIS cities"),
-      tile("Counties", fmtNum(gis.counties_total), "Boundaries", null, gis.status, "GIS counties"),
-      tile("ZIPs", fmtNum(gis.zips_total), fmtSyncAge(gis.zips_last_synced_at), null, layerStatus(gis.zips_last_synced_at, gis.zips_total), "GIS zips"),
+      tile("Parcels", fmtNum(gis.parcels_total), fmtSyncAge(gis.parcels_last_synced_at), null, gis.parcels_status || "unknown", "GIS parcels"),
+      tile("Cities", fmtNum(gis.cities_total), fmtSyncAge(gis.cities_last_synced_at), null, gis.cities_status || "unknown", "GIS cities"),
+      tile("Counties", fmtNum(gis.counties_total), fmtSyncAge(gis.counties_last_synced_at), null, gis.counties_status || "unknown", "GIS counties"),
+      tile("ZIPs", fmtNum(gis.zips_total), fmtSyncAge(gis.zips_last_synced_at), null, gis.zips_status || "unknown", "GIS zips"),
     ];
 
     const cryptoAssets = (data.crypto && data.crypto.assets) || [];

@@ -122,6 +122,28 @@ func (r *Repository) MaxParcelSyncedAt(ctx context.Context) (*time.Time, error) 
 	return t, err
 }
 
+// MaxCitySyncedAt returns the newest city boundary sync timestamp.
+func (r *Repository) MaxCitySyncedAt(ctx context.Context) (*time.Time, error) {
+	pool, err := r.db.ReadPool(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var t *time.Time
+	err = pool.QueryRow(ctx, `SELECT MAX(last_synced_at) FROM gis_cities`).Scan(&t)
+	return t, err
+}
+
+// MaxCountySyncedAt returns the newest county boundary sync timestamp.
+func (r *Repository) MaxCountySyncedAt(ctx context.Context) (*time.Time, error) {
+	pool, err := r.db.ReadPool(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var t *time.Time
+	err = pool.QueryRow(ctx, `SELECT MAX(last_synced_at) FROM gis_counties`).Scan(&t)
+	return t, err
+}
+
 // MaxZipSyncedAt returns the newest zip boundary sync timestamp.
 func (r *Repository) MaxZipSyncedAt(ctx context.Context) (*time.Time, error) {
 	pool, err := r.db.ReadPool(ctx)

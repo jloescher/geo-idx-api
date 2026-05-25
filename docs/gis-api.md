@@ -111,6 +111,17 @@ When **degraded** (`meta.degraded=true`), `features` may be empty and `meta.leaf
 
 All tables use **GIST** spatial indexes and `ST_Intersects` + envelope prefilter for bbox queries.
 
+### Dashboard monitoring freshness
+
+The invite-only dashboard (`/dashboard/monitoring`) reports GIS health separately per layer:
+
+| Tile | Stale when | Default threshold |
+|------|------------|-------------------|
+| **Parcels** | Any `gis_source_states` / parcel sync row is behind upstream generation or `last_synced_at` &gt; ~35 days | Parcel-source checks (`ListSourceStates`) |
+| **Cities**, **Counties**, **ZIPs** | `MAX(last_synced_at)` on the boundary table is older than `GIS_BOUNDARY_STALE_DAYS` | **90 days** (quarterly SLA; sync cron remains annual/monthly) |
+
+Boundary tiles use `cities_status`, `counties_status`, and `zips_status` from the monitoring API — not parcel-source status. Configure with `GIS_BOUNDARY_STALE_DAYS` (see `.env.example`).
+
 **Initial sync and gap-fill:** On scheduler startup (and every 6 hours via `gis-bootstrap-recheck`), the leader inspects row counts per layer:
 
 | Condition | Enqueued job |

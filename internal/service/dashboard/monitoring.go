@@ -57,15 +57,37 @@ type ListingMetric struct {
 }
 
 type GISMetric struct {
-	ParcelsTotal        int64                    `json:"parcels_total"`
-	ParcelsLastSyncedAt *time.Time               `json:"parcels_last_synced_at,omitempty"`
-	ByCounty            map[string]int64         `json:"by_county"`
-	CitiesTotal         int64                    `json:"cities_total"`
-	CountiesTotal       int64                    `json:"counties_total"`
-	ZipsTotal           int64                    `json:"zips_total"`
-	ZipsLastSyncedAt    *time.Time               `json:"zips_last_synced_at,omitempty"`
-	Sources             []gisrepo.SourceStateRow `json:"sources"`
-	Status              string                   `json:"status"`
+	ParcelsTotal          int64                    `json:"parcels_total"`
+	ParcelsLastSyncedAt   *time.Time               `json:"parcels_last_synced_at,omitempty"`
+	ParcelsStatus         string                   `json:"parcels_status"`
+	ByCounty              map[string]int64         `json:"by_county"`
+	CitiesTotal           int64                    `json:"cities_total"`
+	CitiesLastSyncedAt    *time.Time               `json:"cities_last_synced_at,omitempty"`
+	CitiesStatus          string                   `json:"cities_status"`
+	CountiesTotal         int64                    `json:"counties_total"`
+	CountiesLastSyncedAt  *time.Time               `json:"counties_last_synced_at,omitempty"`
+	CountiesStatus        string                   `json:"counties_status"`
+	ZipsTotal             int64                    `json:"zips_total"`
+	ZipsLastSyncedAt      *time.Time               `json:"zips_last_synced_at,omitempty"`
+	ZipsStatus            string                   `json:"zips_status"`
+	BoundaryStaleDays     int                      `json:"boundary_stale_days"`
+	Sources               []gisrepo.SourceStateRow `json:"sources"`
+	Status                string                   `json:"status"`
+}
+
+// BoundaryLayerStatus reports healthy/stale/unknown for infrequently refreshed boundary tables.
+func BoundaryLayerStatus(lastSynced *time.Time, total int64, staleDays int, now time.Time) string {
+	if total == 0 || lastSynced == nil {
+		return "unknown"
+	}
+	if staleDays <= 0 {
+		staleDays = 90
+	}
+	cutoff := now.AddDate(0, 0, -staleDays)
+	if lastSynced.Before(cutoff) {
+		return "stale"
+	}
+	return "healthy"
 }
 
 type CryptoAssetMetric struct {
@@ -168,27 +190,63 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 	if err != nil {
 		return nil, err
 	}
+	citiesSyncedAt, err := s.gis.MaxCitySyncedAt(ctx)
+	if err != nil {
+		return nil, err
+	}
+	countiesSyncedAt, err := s.gis.MaxCountySyncedAt(ctx)
+	if err != nil {
+		return nil, err
+	}
 	zipsSyncedAt, err := s.gis.MaxZipSyncedAt(ctx)
 	if err != nil {
 		return nil, err
 	}
-	gisStatus := "healthy"
+
+	staleDays := s.cfg.GIS.BoundaryStaleDays
+	if staleDays <= 0 {
+		staleDays = 90
+	}
+
+	citiesStatus := BoundaryLayerStatus(citiesSyncedAt, counts.CitiesTotal, staleDays, now)
+	countiesStatus := BoundaryLayerStatus(countiesSyncedAt, counts.CountiesTotal, staleDays, now)
+	zipsStatus := BoundaryLayerStatus(zipsSyncedAt, counts.ZipsTotal, staleDays, now)
+
+	parcelsStatus := "unknown"
+	if counts.ParcelsTotal > 0 {
+		parcelsStatus = "healthy"
+	}
 	for _, src := range sources {
 		if src.Status == "stale" {
-			gisStatus = "stale"
+			parcelsStatus = "stale"
 			break
 		}
 	}
+
+	gisStatus := "healthy"
+	if parcelsStatus == "stale" || citiesStatus == "stale" || countiesStatus == "stale" || zipsStatus == "stale" {
+		gisStatus = "stale"
+	} else if parcelsStatus == "unknown" && citiesStatus == "unknown" && countiesStatus == "unknown" && zipsStatus == "unknown" {
+		gisStatus = "unknown"
+	}
+
 	snap.GIS = GISMetric{
-		ParcelsTotal:        counts.ParcelsTotal,
-		ParcelsLastSyncedAt: parcelsSyncedAt,
-		ByCounty:            byCounty,
-		CitiesTotal:         counts.CitiesTotal,
-		CountiesTotal:       counts.CountiesTotal,
-		ZipsTotal:           counts.ZipsTotal,
-		ZipsLastSyncedAt:    zipsSyncedAt,
-		Sources:             sources,
-		Status:              gisStatus,
+		ParcelsTotal:         counts.ParcelsTotal,
+		ParcelsLastSyncedAt:  parcelsSyncedAt,
+		ParcelsStatus:        parcelsStatus,
+		ByCounty:             byCounty,
+		CitiesTotal:          counts.CitiesTotal,
+		CitiesLastSyncedAt:   citiesSyncedAt,
+		CitiesStatus:         citiesStatus,
+		CountiesTotal:        counts.CountiesTotal,
+		CountiesLastSyncedAt: countiesSyncedAt,
+		CountiesStatus:       countiesStatus,
+		ZipsTotal:            counts.ZipsTotal,
+		ZipsLastSyncedAt:     zipsSyncedAt,
+		ZipsStatus:           zipsStatus,
+		BoundaryStaleDays:    staleDays,
+		Sources:              sources,
+		Status:               gisStatus,
 	}
 
 	prices, err := s.crypto.LatestPrices(ctx)
