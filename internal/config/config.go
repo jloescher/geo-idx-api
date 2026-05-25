@@ -87,11 +87,12 @@ func (d DBConfig) RWDSNOrDefault() string {
 }
 
 type QueueConfig struct {
-	Table         string
-	PollInterval  time.Duration
-	WorkerQueues  []string
-	RetryAfter    time.Duration
-	NotifyChannel string
+	Table               string
+	PollInterval        time.Duration
+	WorkerQueues        []string
+	RetryAfter          time.Duration
+	ReservationTimeout  time.Duration
+	NotifyChannel       string
 }
 
 type IdxURLsConfig struct {
@@ -218,6 +219,7 @@ func Load() (Config, error) {
 
 	pollMs, _ := strconv.Atoi(env("QUEUE_POLL_INTERVAL_MS", "1000"))
 	retryAfter, _ := strconv.Atoi(env("DB_QUEUE_RETRY_AFTER", "120"))
+	reservationTimeout, _ := strconv.Atoi(env("DB_QUEUE_RESERVATION_TIMEOUT", "3600"))
 
 	cfg := Config{
 		App: AppConfig{
@@ -239,11 +241,12 @@ func Load() (Config, error) {
 			PatroniHosts:    envPatroniHosts(),
 		},
 		Queue: QueueConfig{
-			Table:         env("DB_QUEUE_TABLE", "jobs"),
-			PollInterval:  time.Duration(pollMs) * time.Millisecond,
-			WorkerQueues:  splitCSV(env("WORKER_QUEUES", "default,sync-kickoff,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist")),
-			RetryAfter:    time.Duration(retryAfter) * time.Second,
-			NotifyChannel: env("QUEUE_NOTIFY_CHANNEL", "idx_jobs_wakeup"),
+			Table:              env("DB_QUEUE_TABLE", "jobs"),
+			PollInterval:       time.Duration(pollMs) * time.Millisecond,
+			WorkerQueues:       splitCSV(env("WORKER_QUEUES", "default,sync-kickoff,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist")),
+			RetryAfter:         time.Duration(retryAfter) * time.Second,
+			ReservationTimeout: time.Duration(reservationTimeout) * time.Second,
+			NotifyChannel:      env("QUEUE_NOTIFY_CHANNEL", "idx_jobs_wakeup"),
 		},
 		Idx: IdxURLsConfig{
 			PlatformURL:   firstNonEmpty(env("IDX_PLATFORM_URL", ""), env("APP_URL", "http://localhost:8000")),
@@ -320,7 +323,7 @@ func Load() (Config, error) {
 			MaxFeatures:          envInt("GIS_MAX_FEATURES", 500),
 			SyncPageSize:           envInt("GIS_SYNC_PAGE_SIZE", 2000),
 			SyncUpsertChunk:        envInt("GIS_SYNC_UPSERT_CHUNK", 500),
-			HTTPTimeout:            envDuration("GIS_HTTP_TIMEOUT", 12*time.Second),
+			HTTPTimeout:            envDuration("GIS_HTTP_TIMEOUT", 120*time.Second),
 			SyncQueue:              env("GIS_SYNC_QUEUE", "default"),
 			SyncPinellasEnterprise: envBool("GIS_SYNC_PINELLAS_ENTERPRISE", false),
 			FloridaMLSCodes:        splitCSV(env("GIS_FLORIDA_MLS_CODES", "stellar")),

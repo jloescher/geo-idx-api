@@ -14,24 +14,29 @@ import (
 // Client is a PostgreSQL-backed job queue (Laravel jobs table compatible).
 // Revenue impact: durable async work without Redis keeps ops cost low and survives restarts.
 type Client struct {
-	pool          *pgxpool.Pool
-	table         string
-	notifyChannel string
-	retryAfter    time.Duration
+	pool               *pgxpool.Pool
+	table              string
+	notifyChannel      string
+	retryAfter         time.Duration
+	reservationTimeout time.Duration
 }
 
-func NewClient(pool *pgxpool.Pool, table, notifyChannel string, retryAfter time.Duration) *Client {
+func NewClient(pool *pgxpool.Pool, table, notifyChannel string, retryAfter, reservationTimeout time.Duration) *Client {
 	if table == "" {
 		table = "jobs"
 	}
 	if notifyChannel == "" {
 		notifyChannel = "idx_jobs_wakeup"
 	}
+	if reservationTimeout <= 0 {
+		reservationTimeout = time.Hour
+	}
 	return &Client{
-		pool:          pool,
-		table:         table,
-		notifyChannel: notifyChannel,
-		retryAfter:    retryAfter,
+		pool:               pool,
+		table:              table,
+		notifyChannel:      notifyChannel,
+		retryAfter:         retryAfter,
+		reservationTimeout: reservationTimeout,
 	}
 }
 
@@ -190,12 +195,22 @@ func (c *Client) reserveFromQueues(ctx context.Context, queues []string) (*Reser
 		return nil, nil
 	}
 	now := time.Now().Unix()
+	staleBefore := now - int64(c.reservationTimeout.Seconds())
 
 	tx, err := c.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(ctx, fmt.Sprintf(`
+		UPDATE %s
+		SET reserved_at = NULL, available_at = $1
+		WHERE reserved_at IS NOT NULL AND reserved_at < $2
+	`, c.table), now, staleBefore)
+	if err != nil {
+		return nil, err
+	}
 
 	var id int64
 	var queue string

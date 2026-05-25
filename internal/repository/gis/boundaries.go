@@ -295,6 +295,39 @@ func (r *Repository) CountBoundaries(ctx context.Context) (cities, counties, zip
 	return
 }
 
+// CountCitiesMissingCounty returns cities with no county slug assigned.
+func (r *Repository) CountCitiesMissingCounty(ctx context.Context) (int64, error) {
+	var n int64
+	err := r.db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM gis_cities WHERE county IS NULL`).Scan(&n)
+	return n, err
+}
+
+// BackfillMissingCityCounties assigns county slugs to cities missing county via spatial join
+// within matching source_generation pairs.
+func (r *Repository) BackfillMissingCityCounties(ctx context.Context) (int64, error) {
+	tag, err := r.db.Pool.Exec(ctx, `
+		WITH ranked AS (
+			SELECT c.id,
+			       co.county_slug,
+			       ROW_NUMBER() OVER (
+			           PARTITION BY c.id
+			           ORDER BY ST_Area(ST_Intersection(c.geometry, co.geometry)) DESC
+			       ) AS rn
+			FROM gis_cities c
+			JOIN gis_counties co ON ST_Intersects(c.geometry, co.geometry)
+			WHERE c.county IS NULL AND c.source_generation = co.source_generation
+		)
+		UPDATE gis_cities c
+		SET county = ranked.county_slug
+		FROM ranked
+		WHERE c.id = ranked.id AND ranked.rn = 1
+	`)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 // BackfillCityCounties assigns county slugs to cities via largest-area intersection with county boundaries.
 func (r *Repository) BackfillCityCounties(ctx context.Context, generation int) (int64, error) {
 	tag, err := r.db.Pool.Exec(ctx, `

@@ -34,7 +34,7 @@ func main() {
 	}
 	defer db.Close()
 
-	q := queue.NewClient(db.Pool, cfg.Queue.Table, cfg.Queue.NotifyChannel, cfg.Queue.RetryAfter)
+	q := queue.NewClient(db.Pool, cfg.Queue.Table, cfg.Queue.NotifyChannel, cfg.Queue.RetryAfter, cfg.Queue.ReservationTimeout)
 	sched := scheduler.New(cfg, q, db, logger)
 
 	logger.Info("scheduler started")

@@ -52,3 +52,18 @@ func TestLayerCountsAllEmpty(t *testing.T) {
 		t.Fatal("expected not all empty")
 	}
 }
+
+func TestBoundariesAllEmpty(t *testing.T) {
+	if !gis.BoundariesAllEmpty(0, 0, 0) {
+		t.Fatal("expected all boundary layers empty")
+	}
+	if gis.BoundariesAllEmpty(1, 0, 0) {
+		t.Fatal("expected not empty when cities present")
+	}
+	if gis.BoundariesAllEmpty(0, 1, 0) {
+		t.Fatal("expected not empty when counties present")
+	}
+	if gis.BoundariesAllEmpty(0, 0, 1) {
+		t.Fatal("expected not empty when zips present")
+	}
+}

@@ -23,7 +23,7 @@ func TestReserveFairRotatesQueues(t *testing.T) {
 	}
 	defer pool.Close()
 
-	client := queue.NewClient(pool, "jobs", "idx_jobs_wakeup_fair_test", 90*time.Second)
+	client := queue.NewClient(pool, "jobs", "idx_jobs_wakeup_fair_test", 90*time.Second, time.Hour)
 
 	queues := []string{"fair-test-a", "fair-test-b"}
 	for _, q := range queues {
@@ -81,7 +81,7 @@ func TestReserveFairSkipsEmptyQueue(t *testing.T) {
 	}
 	defer pool.Close()
 
-	client := queue.NewClient(pool, "jobs", "idx_jobs_wakeup_fair_skip", 90*time.Second)
+	client := queue.NewClient(pool, "jobs", "idx_jobs_wakeup_fair_skip", 90*time.Second, time.Hour)
 	queues := []string{"fair-empty-a", "fair-has-b"}
 	if _, err := pool.Exec(ctx, `DELETE FROM jobs WHERE queue = ANY($1)`, queues); err != nil {
 		t.Fatal(err)

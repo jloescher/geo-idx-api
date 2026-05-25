@@ -229,7 +229,7 @@ Geo-web can call `/api/v1/listings` then `/api/v1/gis` with the **same map bbox*
 | `GIS_MAX_FEATURES` | 500 | API `limit` cap |
 | `GIS_SYNC_PAGE_SIZE` | 2000 | ArcGIS pagination page size |
 | `GIS_SYNC_UPSERT_CHUNK` | 500 | Bulk upsert batch size |
-| `GIS_HTTP_TIMEOUT` | 12s | ArcGIS HTTP timeout; use **120s** for initial statewide bootstrap |
+| `GIS_HTTP_TIMEOUT` | 120s | ArcGIS HTTP timeout; use **120s** for initial statewide bootstrap |
 | `GIS_SYNC_QUEUE` | `default` | Queue for sync jobs |
 | `GIS_QUEUE` | `default` | Queue for `gis.probe_sources` |
 | `GIS_EDGE_CACHE_TTL` | 900 | Edge cache TTL (seconds) |

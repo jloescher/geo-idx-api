@@ -41,7 +41,7 @@ func (h *FloodHandler) Enrich(c *fiber.Ctx) error {
 		}
 	}
 
-	q := queue.NewClient(h.db.Pool, h.cfg.Queue.Table, h.cfg.Queue.NotifyChannel, h.cfg.Queue.RetryAfter)
+	q := queue.NewClient(h.db.Pool, h.cfg.Queue.Table, h.cfg.Queue.NotifyChannel, h.cfg.Queue.RetryAfter, h.cfg.Queue.ReservationTimeout)
 	svc := fema.NewEnrichmentService(h.cfg, h.db, q, h.logger)
 
 	stale, err := svc.CountStaleForAdmin(c.Context(), req.DatasetSlug)

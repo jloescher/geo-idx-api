@@ -24,7 +24,7 @@ func TestEnqueueReserveRoundTrip(t *testing.T) {
 	}
 	defer pool.Close()
 
-	client := queue.NewClient(pool, "jobs", "idx_jobs_wakeup_test", 90*time.Second)
+	client := queue.NewClient(pool, "jobs", "idx_jobs_wakeup_test", 90*time.Second, time.Hour)
 
 	_, _ = pool.Exec(ctx, `DELETE FROM jobs WHERE queue = 'test-roundtrip'`)
 

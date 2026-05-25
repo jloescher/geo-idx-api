@@ -94,7 +94,7 @@ func (s *InitialSyncService) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := s.coordinator.boundaries.RunGapFill(ctx); err != nil {
+	if err := s.coordinator.boundaries.RunBootstrapBoundaries(ctx); err != nil {
 		return err
 	}
 	if err := s.coordinator.parcels.RunInitialSync(ctx); err != nil {

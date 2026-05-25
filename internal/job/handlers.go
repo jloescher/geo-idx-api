@@ -62,6 +62,7 @@ func (r *Registry) handleGISAnnualBoundariesRefresh(ctx context.Context, job *qu
 }
 
 func (r *Registry) handleGISInitialSync(ctx context.Context, job *queue.ReservedJob) error {
+	r.logger.Info("gis initial sync starting", "job_id", job.ID)
 	return r.gisPersistent.RunInitialSync(ctx)
 }
 

@@ -30,14 +30,23 @@ func NewBoundarySyncService(cfg config.Config, repo *gisrepo.Repository, logger 
 	}
 }
 
+// BoundariesAllEmpty reports whether all FDOT boundary tables are empty.
+func BoundariesAllEmpty(cities, counties, zips int64) bool {
+	return cities == 0 && counties == 0 && zips == 0
+}
+
 // RunAnnualRefresh syncs all FDOT boundary layers.
 func (s *BoundarySyncService) RunAnnualRefresh(ctx context.Context) error {
+	return s.runFullBoundarySync(ctx, "fdot_annual_sync")
+}
+
+func (s *BoundarySyncService) runFullBoundarySync(ctx context.Context, fingerprint string) error {
 	gen64, err := s.db.BumpSourceGeneration(ctx, FDOTAdminBoundariesKey)
 	if err != nil {
 		return fmt.Errorf("bump fdot generation: %w", err)
 	}
 	gen := int(gen64)
-	fp := "fdot_annual_sync"
+	fp := fingerprint
 
 	if err := s.syncLayer(ctx, FDOTCountiesURL, gen, &fp, s.syncCounties, 0); err != nil {
 		return err
@@ -49,8 +58,8 @@ func (s *BoundarySyncService) RunAnnualRefresh(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("backfill city counties: %w", err)
 	}
-	s.logger.Info("gis city county backfill", "generation", gen, "updated", updated)
-	if err := s.syncLayer(ctx, FDOTZipsURL, gen, &fp, s.syncZips, 0); err != nil {
+	s.logger.Info("gis city county backfill", "fingerprint", fp, "generation", gen, "updated", updated)
+	if err := s.syncLayer(ctx, FDOTZipsURL, gen, &fp, s.syncZips, zipSyncPageSize(s.cfg.GIS)); err != nil {
 		return err
 	}
 
@@ -63,13 +72,25 @@ func (s *BoundarySyncService) RunAnnualRefresh(ctx context.Context) error {
 	if _, err := s.db.DeleteStaleZips(ctx, FDOTAdminBoundariesKey, gen); err != nil {
 		return err
 	}
-	s.logger.Info("gis boundary sync complete", "generation", gen)
+	s.logger.Info("gis boundary sync complete", "fingerprint", fp, "generation", gen)
 	return nil
 }
 
-// RunInitialSync syncs any boundary layers that are still empty (per-layer gap-fill).
-func (s *BoundarySyncService) RunInitialSync(ctx context.Context) error {
+// RunBootstrapBoundaries runs a full sync on a fresh DB or gap-fill on a partial DB.
+func (s *BoundarySyncService) RunBootstrapBoundaries(ctx context.Context) error {
+	cities, counties, zips, err := s.db.CountBoundaries(ctx)
+	if err != nil {
+		return err
+	}
+	if BoundariesAllEmpty(cities, counties, zips) {
+		return s.runFullBoundarySync(ctx, "fdot_initial_sync")
+	}
 	return s.RunGapFill(ctx)
+}
+
+// RunInitialSync syncs boundary layers for fresh bootstrap or per-layer gap-fill.
+func (s *BoundarySyncService) RunInitialSync(ctx context.Context) error {
+	return s.RunBootstrapBoundaries(ctx)
 }
 
 // RunGapFill syncs only boundary layers with zero rows.
@@ -81,7 +102,7 @@ func (s *BoundarySyncService) RunGapFill(ctx context.Context) error {
 	if cities > 0 && counties > 0 && zips > 0 {
 		s.logger.Info("gis boundary gap-fill skipped, all layers present",
 			"cities", cities, "counties", counties, "zips", zips)
-		return nil
+		return s.ensureCityCountiesBackfilled(ctx)
 	}
 	gen64, err := s.db.BumpSourceGeneration(ctx, FDOTAdminBoundariesKey)
 	if err != nil {
@@ -121,6 +142,22 @@ func (s *BoundarySyncService) RunGapFill(ctx context.Context) error {
 	}
 	s.logger.Info("gis boundary gap-fill complete", "generation", gen,
 		"cities_before", cities, "counties_before", counties, "zips_before", zips)
+	return s.ensureCityCountiesBackfilled(ctx)
+}
+
+func (s *BoundarySyncService) ensureCityCountiesBackfilled(ctx context.Context) error {
+	missing, err := s.db.CountCitiesMissingCounty(ctx)
+	if err != nil {
+		return fmt.Errorf("count cities missing county: %w", err)
+	}
+	if missing == 0 {
+		return nil
+	}
+	updated, err := s.db.BackfillMissingCityCounties(ctx)
+	if err != nil {
+		return fmt.Errorf("backfill missing city counties: %w", err)
+	}
+	s.logger.Info("gis city county backfill", "missing_before", missing, "updated", updated)
 	return nil
 }
 
