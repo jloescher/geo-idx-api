@@ -78,7 +78,11 @@ func (c *ArcGISClient) FetchParcelPage(spec ParcelSourceSpec, bbox BBox, offset,
 	q.Set("resultOffset", fmt.Sprintf("%d", offset))
 	q.Set("resultRecordCount", fmt.Sprintf("%d", pageSize))
 	u.RawQuery = q.Encode()
-	return c.get(u.String())
+	timeout := time.Duration(spec.HTTPTimeoutSec) * time.Second
+	if timeout <= 0 {
+		timeout = c.http.Timeout
+	}
+	return c.get(u.String(), timeout)
 }
 
 // FetchBBoxPage queries a parcel source by bounding box with pagination (legacy proxy helper).
@@ -114,7 +118,7 @@ func (c *ArcGISClient) FetchLayerPage(endpoint, where string, offset, pageSize i
 	q.Set("resultOffset", fmt.Sprintf("%d", offset))
 	q.Set("resultRecordCount", fmt.Sprintf("%d", pageSize))
 	u.RawQuery = q.Encode()
-	return c.get(u.String())
+	return c.get(u.String(), c.http.Timeout)
 }
 
 func baseQueryParams(format string) url.Values {
@@ -129,8 +133,12 @@ func baseQueryParams(format string) url.Values {
 	return q
 }
 
-func (c *ArcGISClient) get(rawURL string) ([]byte, error) {
-	resp, err := c.http.Get(rawURL)
+func (c *ArcGISClient) get(rawURL string, timeout time.Duration) ([]byte, error) {
+	client := c.http
+	if timeout > 0 && timeout != c.http.Timeout {
+		client = &http.Client{Timeout: timeout}
+	}
+	resp, err := client.Get(rawURL)
 	if err != nil {
 		return nil, err
 	}

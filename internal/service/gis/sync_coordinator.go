@@ -106,6 +106,7 @@ func (s *InitialSyncService) Run(ctx context.Context) error {
 	}
 	s.logger.Info("gis bootstrap complete",
 		"parcels_before", before.Parcels, "parcels_after", after.Parcels,
+		"parcels_kickoff_async", after.Parcels == 0,
 		"cities_before", before.Cities, "cities_after", after.Cities,
 		"counties_before", before.Counties, "counties_after", after.Counties,
 		"zips_before", before.Zips, "zips_after", after.Zips)

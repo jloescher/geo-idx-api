@@ -73,14 +73,19 @@ func ParcelSourceCatalog() []ParcelSourceSpec {
 	}
 }
 
-// EnabledParcelSourcesForConfig returns enabled sync catalog entries.
+// EnabledParcelSourcesForConfig returns catalog entries enabled for background sync.
+// Pinellas enterprise is opt-in (GIS_SYNC_PINELLAS_ENTERPRISE) because the county host often
+// times out from datacenter networks; live API fallback still uses FailoverSourcesForBBox.
 func EnabledParcelSourcesForConfig(cfg config.GISConfig) []ParcelSourceSpec {
-	_ = cfg
 	var out []ParcelSourceSpec
 	for _, s := range ParcelSourceCatalog() {
-		if s.Enabled {
-			out = append(out, s)
+		if !s.Enabled {
+			continue
 		}
+		if s.SourceKey == "pinellas_enterprise_parcels" && !cfg.SyncPinellasEnterprise {
+			continue
+		}
+		out = append(out, s)
 	}
 	sortParcelSourcesByPriority(out)
 	return out
@@ -101,11 +106,11 @@ func EnabledParcelSources() []ParcelSourceSpec {
 	return EnabledParcelSourcesForConfig(config.GISConfig{})
 }
 
-// FailoverSourcesForBBox returns Pinellas/Hillsborough failover sources intersecting the bbox.
+// FailoverSourcesForBBox returns Pinellas/Hillsborough sources intersecting the bbox (live proxy).
 func FailoverSourcesForBBox(b BBox) []ParcelSourceSpec {
 	var out []ParcelSourceSpec
-	for _, s := range EnabledParcelSources() {
-		if s.CountySlug == "" || s.CountySlug == "statewide" {
+	for _, s := range ParcelSourceCatalog() {
+		if s.CountySlug == "" || s.CountySlug == "statewide" || !s.Enabled {
 			continue
 		}
 		if intersects(b, s.SyncBBox) {
@@ -114,6 +119,16 @@ func FailoverSourcesForBBox(b BBox) []ParcelSourceSpec {
 	}
 	sortParcelSourcesByPriority(out)
 	return out
+}
+
+// ParcelSourceSpecByKey returns a catalog entry by source_key.
+func ParcelSourceSpecByKey(sourceKey string) (ParcelSourceSpec, bool) {
+	for _, s := range ParcelSourceCatalog() {
+		if s.SourceKey == sourceKey {
+			return s, true
+		}
+	}
+	return ParcelSourceSpec{}, false
 }
 
 // SourcesForBBox is an alias for FailoverSourcesForBBox (live proxy + county hints).

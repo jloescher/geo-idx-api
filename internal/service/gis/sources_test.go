@@ -20,8 +20,8 @@ func TestCountyBBox(t *testing.T) {
 func TestParcelSyncTargetsDefault(t *testing.T) {
 	svc := NewParcelSyncService(config.Config{}, nil, nil, nil)
 	targets := svc.parcelSyncTargets("")
-	if len(targets) != 3 {
-		t.Fatalf("expected 3 sync targets (statewide + pinellas + hillsborough), got %d", len(targets))
+	if len(targets) != 2 {
+		t.Fatalf("expected 2 sync targets (statewide + hillsborough), got %d", len(targets))
 	}
 	keys := map[string]bool{}
 	for _, tgt := range targets {
@@ -30,8 +30,18 @@ func TestParcelSyncTargetsDefault(t *testing.T) {
 		}
 		keys[tgt.SourceKey] = true
 	}
-	if !keys[FloridaStatewideCadastralKey] || !keys["pinellas_enterprise_parcels"] || !keys["hillsborough_hc_parcels"] {
+	if !keys[FloridaStatewideCadastralKey] || !keys["hillsborough_hc_parcels"] {
 		t.Fatalf("missing expected sources: %+v", keys)
+	}
+	if keys["pinellas_enterprise_parcels"] {
+		t.Fatal("pinellas sync should require GIS_SYNC_PINELLAS_ENTERPRISE=true")
+	}
+
+	cfg := config.Config{GIS: config.GISConfig{SyncPinellasEnterprise: true}}
+	svc2 := NewParcelSyncService(cfg, nil, nil, nil)
+	targets2 := svc2.parcelSyncTargets("")
+	if len(targets2) != 3 {
+		t.Fatalf("with pinellas opt-in expected 3 targets, got %d", len(targets2))
 	}
 }
 

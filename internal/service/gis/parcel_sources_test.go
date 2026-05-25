@@ -8,6 +8,25 @@ import (
 	"github.com/quantyralabs/idx-api/internal/config"
 )
 
+func TestEnabledParcelSourcesForConfig_PinellasOptIn(t *testing.T) {
+	off := EnabledParcelSourcesForConfig(config.GISConfig{SyncPinellasEnterprise: false})
+	for _, s := range off {
+		if s.SourceKey == "pinellas_enterprise_parcels" {
+			t.Fatal("pinellas sync should be off when GIS_SYNC_PINELLAS_ENTERPRISE=false")
+		}
+	}
+	on := EnabledParcelSourcesForConfig(config.GISConfig{SyncPinellasEnterprise: true})
+	found := false
+	for _, s := range on {
+		if s.SourceKey == "pinellas_enterprise_parcels" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("pinellas sync missing when GIS_SYNC_PINELLAS_ENTERPRISE=true")
+	}
+}
+
 func TestParcelSourceCatalogCoverage(t *testing.T) {
 	catalog := ParcelSourceCatalog()
 	if len(catalog) != 3 {

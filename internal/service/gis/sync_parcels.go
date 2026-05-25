@@ -98,11 +98,23 @@ func (s *ParcelSyncService) kickoff(ctx context.Context, countyFilter string) er
 	if len(targets) == 0 {
 		return fmt.Errorf("no parcel sync targets for county=%q", countyFilter)
 	}
+	queueName := s.cfg.GIS.SyncQueue
+	if queueName == "" {
+		queueName = "default"
+	}
 	if err := s.db.EnsureParcelSourceCatalog(ctx, parcelSourceRowsFromSpecs(ParcelSourceCatalog())); err != nil {
 		return fmt.Errorf("ensure parcel source catalog: %w", err)
 	}
 	seen := map[string]int{}
 	for _, spec := range targets {
+		active, err := s.db.HasActiveParcelSyncJob(ctx, queueName, spec.SourceKey)
+		if err != nil {
+			return fmt.Errorf("check active parcel jobs %s: %w", spec.SourceKey, err)
+		}
+		if active {
+			s.logger.Info("gis parcel kickoff skipped, sync already active", "source", spec.SourceKey)
+			continue
+		}
 		if err := s.db.EnsureSourceState(ctx, spec.SourceKey); err != nil {
 			return fmt.Errorf("ensure source state %s: %w", spec.SourceKey, err)
 		}
@@ -171,6 +183,9 @@ func (s *ParcelSyncService) SyncPage(ctx context.Context, args ParcelSyncPageArg
 	}
 	if spec.ResponseFormat == "" {
 		spec.ResponseFormat = FormatGeoJSON
+	}
+	if catalog, ok := ParcelSourceSpecByKey(args.SourceKey); ok && catalog.HTTPTimeoutSec > 0 {
+		spec.HTTPTimeoutSec = catalog.HTTPTimeoutSec
 	}
 	bbox := spec.SyncBBox
 	if bbox.West == 0 && bbox.South == 0 && bbox.East == 0 && bbox.North == 0 {
