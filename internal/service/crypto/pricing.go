@@ -31,8 +31,7 @@ func NewPricingService(cfg config.Config, db *repository.DB, logger *slog.Logger
 }
 
 func (p *PricingService) Refresh(ctx context.Context) error {
-	assets := []string{"bitcoin", "ethereum", "solana"}
-	url := strings.TrimRight(p.cfg.Coingecko.BaseURL, "/") + "/simple/price?ids=" + strings.Join(assets, ",") + "&vs_currencies=usd"
+	url := strings.TrimRight(p.cfg.Coingecko.BaseURL, "/") + "/simple/price?ids=" + strings.Join(coingeckoIDs(), ",") + "&vs_currencies=usd"
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if p.cfg.Coingecko.APIKey != "" {
 		req.Header.Set("x-cg-demo-api-key", p.cfg.Coingecko.APIKey)
@@ -49,15 +48,11 @@ func (p *PricingService) Refresh(ctx context.Context) error {
 	}
 	now := time.Now()
 	for asset, vs := range prices {
+		key, ok := assetKeyForCoingeckoID(asset)
+		if !ok {
+			continue
+		}
 		for cur, price := range vs {
-			key := strings.TrimPrefix(asset, "bitcoin")
-			if asset == "bitcoin" {
-				key = "btc"
-			} else if asset == "ethereum" {
-				key = "eth"
-			} else if asset == "solana" {
-				key = "sol"
-			}
 			_, _ = p.db.Pool.Exec(ctx, `
 				INSERT INTO crypto_price_snapshots (asset_key, vs_currency, price, captured_at, created_at, updated_at)
 				VALUES ($1, $2, $3, $4, NOW(), NOW())

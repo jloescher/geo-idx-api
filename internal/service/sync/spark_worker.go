@@ -10,19 +10,26 @@ import (
 	"github.com/quantyralabs/idx-api/internal/config"
 	"github.com/quantyralabs/idx-api/internal/queue"
 	"github.com/quantyralabs/idx-api/internal/repository"
+	"github.com/quantyralabs/idx-api/internal/service/fema"
 	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
 
 // SparkWorker handles Spark replication queue jobs (BeachesMLS).
 type SparkWorker struct {
-	cfg     config.Config
-	db      *repository.DB
-	queue   *queue.Client
-	store   *ReplicaPageStore
-	mirror  *ListingMirrorWriter
-	sync    *SparkSync
-	cursors *CursorStore
-	logger  *slog.Logger
+	cfg        config.Config
+	db         *repository.DB
+	queue      *queue.Client
+	store      *ReplicaPageStore
+	mirror     *ListingMirrorWriter
+	sync       *SparkSync
+	cursors    *CursorStore
+	femaEnrich *fema.EnrichmentService
+	logger     *slog.Logger
+}
+
+// SetFEMAEnrichment attaches the FEMA flood enrichment service (optional).
+func (w *SparkWorker) SetFEMAEnrichment(s *fema.EnrichmentService) {
+	w.femaEnrich = s
 }
 
 func NewSparkWorker(cfg config.Config, db *repository.DB, q *queue.Client, logger *slog.Logger) *SparkWorker {
@@ -341,6 +348,11 @@ func (w *SparkWorker) PersistFinalize(ctx context.Context, job *queue.ReservedJo
 			ChainDepth:      args.NextChainDepth,
 		}, 0)
 		return err
+	}
+	if args.MarkSyncFinished && w.femaEnrich != nil {
+		if err := w.femaEnrich.EnqueueKickoffIfAbsent(ctx, ""); err != nil {
+			w.logger.Warn("fema flood enrich kickoff", "error", err)
+		}
 	}
 	return nil
 }

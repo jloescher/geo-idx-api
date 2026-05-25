@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/quantyralabs/idx-api/internal/queue"
+	"github.com/quantyralabs/idx-api/internal/service/fema"
 	"github.com/quantyralabs/idx-api/internal/service/gis"
 )
 
@@ -78,4 +79,20 @@ func (r *Registry) handleGISParcelSyncPage(ctx context.Context, job *queue.Reser
 
 func (r *Registry) handleCryptoRefresh(ctx context.Context, job *queue.ReservedJob) error {
 	return r.crypto.Refresh(ctx)
+}
+
+func (r *Registry) handleFEMAFloodEnrichKickoff(ctx context.Context, job *queue.ReservedJob) error {
+	args, err := fema.UnmarshalKickoffArgs(job.Payload.Args)
+	if err != nil {
+		return err
+	}
+	return r.femaEnrich.Kickoff(ctx, args)
+}
+
+func (r *Registry) handleFEMAFloodEnrichBatch(ctx context.Context, job *queue.ReservedJob) error {
+	args, err := fema.UnmarshalBatchArgs(job.Payload.Args)
+	if err != nil {
+		return err
+	}
+	return r.femaEnrich.RunBatch(ctx, args)
 }

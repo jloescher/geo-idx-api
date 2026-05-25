@@ -49,7 +49,7 @@ func (p *PricingReader) LatestPrices(ctx context.Context) ([]PricePoint, error) 
 	return out, rows.Err()
 }
 
-// LatestSnapshot returns asset prices keyed by asset_key (btc, eth, sol).
+// LatestSnapshot returns asset prices keyed by asset_key (btc, eth, sol, xrp).
 func (p *PricingReader) LatestSnapshot(ctx context.Context) (map[string]float64, error) {
 	pool, err := p.db.ReadPool(ctx)
 	if err != nil {

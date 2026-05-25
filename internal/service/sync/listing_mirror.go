@@ -212,7 +212,6 @@ func upsertListing(ctx context.Context, tx pgx.Tx, rec mls.ListingRecord) error 
 			previous_list_price = EXCLUDED.previous_list_price,
 			flood_zone_code = EXCLUDED.flood_zone_code,
 			estimated_total_monthly_fees = EXCLUDED.estimated_total_monthly_fees,
-			low_risk_flood_zone_yn = EXCLUDED.low_risk_flood_zone_yn,
 			latitude = EXCLUDED.latitude,
 			longitude = EXCLUDED.longitude,
 			waterfront_yn = EXCLUDED.waterfront_yn,

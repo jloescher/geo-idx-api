@@ -8,7 +8,7 @@ Schema is managed with **[goose](https://github.com/pressly/goose)** SQL migrati
 
 | File | Tables / purpose |
 |------|------------------|
-| `00001_initial.sql` | **Single consolidated schema** for fresh databases (staging cutover and greenfield installs). Includes `users`, `sessions`, `dashboard_sessions`, `cache`, `jobs`, `job_batches`, `failed_jobs`, `personal_access_tokens`, `user_invitations`, `domains`, `listings_cache` (legacy table; not used for Active/Pending pre-warm), `mls_search_cache` (on-demand live proxy cache), `mls_proxy_audit_logs` (**`cache_hit`** `VARCHAR(8)` for `HIT`/`MISS`), `gis_cache`, `gis_source_states`, **`gis_parcels`**, **`gis_counties`** (`county_slug`, `mls_stellar`, `mls_beaches`), **`gis_cities`**, **`gis_zips`**, **`gis_parcel_sources`** (22-county MLS catalog mirror), `crypto_price_snapshots`, PostGIS `listings` (`raw_data` + `media`/`unit`/`room`/`open_house` JSONB + `custom_fields`; single `modification_timestamp`), `listing_sync_cursors` (`last_modification_timestamp`), `replica_pages` (`fetch_url`, `upstream_url`, `odata_query`, `batch_id`) |
+| `00001_initial.sql` | **Single consolidated schema** for fresh databases (staging cutover and greenfield installs). Includes `users`, `dashboard_sessions`, `jobs`, `job_batches`, `failed_jobs`, `personal_access_tokens`, `user_invitations`, `domains`, **`listings_cache`** (30-day per-listing Closed comps cache for `POST /api/v1/comps/run`), `mls_search_cache` (on-demand live proxy cache), `mls_proxy_audit_logs` (**`cache_hit`** `VARCHAR(8)` for `HIT`/`MISS`), `gis_cache`, `gis_source_states`, **`gis_parcels`**, **`gis_counties`** (`county_slug`, `mls_stellar`, `mls_beaches`), **`gis_cities`**, **`gis_zips`**, **`gis_parcel_sources`** (22-county MLS catalog mirror), `crypto_price_snapshots`, PostGIS `listings` (`raw_data` + `media`/`unit`/`room`/`open_house` JSONB + `custom_fields`; single `modification_timestamp`), `listing_sync_cursors` (`last_modification_timestamp`), `replica_pages` (`fetch_url`, `upstream_url`, `odata_query`, `batch_id`). **Removed (Go-only):** Laravel `sessions`, `password_reset_tokens`, `cache`, `cache_locks`. |
 
 There is **no** `00002_*.sql` or `00003_*.sql` — `cache_hit` on `mls_proxy_audit_logs` and `dashboard_sessions` are part of `00001_initial.sql`.
 
@@ -102,7 +102,7 @@ ALTER TABLE mls_proxy_audit_logs ADD COLUMN IF NOT EXISTS cache_hit VARCHAR(8) N
 
 **Mirror scope:** replication stores **Active + Pending** in `listings`; **Closed** is fetched on-demand via live Bridge/Spark RESO.
 
-**Extension columns:** `flood_zone_code`, `low_risk_flood_zone_yn`, `estimated_total_monthly_fees` on `listings` (set at mirror persist from RESO; `low_risk_flood_zone_yn` derived from `flood_zone_code`).
+**Extension columns:** `flood_zone_code` (MLS at persist), `fema_flood_zone_code` / `flood_zone_*` (FEMA NFHL jobs — [fema-flood-enrichment.md](fema-flood-enrichment.md)), `low_risk_flood_zone_yn` (FEMA-derived only), `estimated_total_monthly_fees` on `listings`.
 
 **Go services:** `internal/service/sync` (mirror persist), `internal/service/search/postgis.go` (hybrid search).
 
@@ -126,6 +126,19 @@ DELETE FROM jobs WHERE payload LIKE '%mls.listings_cache_refresh%';
 ```
 
 See [go-cutover.md](go-cutover.md).
+
+### Existing DB cleanup (pre–fresh migrate)
+
+Drop unused Laravel tables once (Go does not reference them):
+
+```sql
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS password_reset_tokens;
+DROP TABLE IF EXISTS cache_locks;
+DROP TABLE IF EXISTS cache;
+```
+
+If `listings_cache` exists with the old shape, prefer **`dropdb` + `make migrate`** per cutover runbook, or `ALTER TABLE listings_cache` to add `close_date`, `latitude`, `longitude`, `close_price`, and convert timestamp columns to `TIMESTAMPTZ`.
 
 **Multi-DC schedulers:** use the same primary DSN; leadership via `pg_try_advisory_lock` (`SCHEDULER_LEADER_LOCK_ID`) — not a migration concern, but both scheduler containers must reach the primary.
 

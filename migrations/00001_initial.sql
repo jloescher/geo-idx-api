@@ -30,40 +30,12 @@ CREATE TABLE users (
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE password_reset_tokens (
-    email VARCHAR(255) PRIMARY KEY,
-    token VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP NULL
-);
-
-CREATE TABLE sessions (
-    id VARCHAR(255) PRIMARY KEY,
-    user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
-    ip_address VARCHAR(45) NULL,
-    user_agent TEXT NULL,
-    payload TEXT NOT NULL,
-    last_activity INT NOT NULL
-);
-CREATE INDEX sessions_user_id_index ON sessions(user_id);
-CREATE INDEX sessions_last_activity_index ON sessions(last_activity);
-
 CREATE TABLE dashboard_sessions (
     id VARCHAR(128) PRIMARY KEY,
     payload BYTEA NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX dashboard_sessions_expires_at_idx ON dashboard_sessions(expires_at);
-
-CREATE TABLE cache (
-    key VARCHAR(255) PRIMARY KEY,
-    value TEXT NOT NULL,
-    expiration INT NOT NULL
-);
-CREATE TABLE cache_locks (
-    key VARCHAR(255) PRIMARY KEY,
-    owner VARCHAR(255) NOT NULL,
-    expiration INT NOT NULL
-);
 
 CREATE TABLE jobs (
     id BIGSERIAL PRIMARY KEY,
@@ -157,12 +129,19 @@ CREATE TABLE listings_cache (
     feed_code VARCHAR(64) NOT NULL,
     listing_key VARCHAR(191) NOT NULL,
     standard_status VARCHAR(64) NOT NULL,
+    close_date DATE NULL,
+    latitude DOUBLE PRECISION NULL,
+    longitude DOUBLE PRECISION NULL,
+    close_price NUMERIC(14, 2) NULL,
     compressed_payload BYTEA NOT NULL,
-    first_cached_at TIMESTAMP NOT NULL,
-    last_refreshed_at TIMESTAMP NOT NULL,
+    first_cached_at TIMESTAMPTZ NOT NULL,
+    last_refreshed_at TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (domain_slug, feed_code, listing_key)
 );
 CREATE INDEX listings_cache_domain_feed_refreshed_idx ON listings_cache(domain_slug, feed_code, last_refreshed_at);
+CREATE INDEX listings_cache_closed_scope_idx ON listings_cache(domain_slug, feed_code, close_date DESC)
+    WHERE LOWER(TRIM(standard_status)) = 'closed'
+      AND latitude IS NOT NULL AND longitude IS NOT NULL;
 
 CREATE TABLE mls_proxy_audit_logs (
     id BIGSERIAL PRIMARY KEY,
@@ -354,6 +333,10 @@ CREATE TABLE listings (
     price_change_timestamp TIMESTAMPTZ NULL,
     previous_list_price NUMERIC(14, 2) NULL,
     flood_zone_code VARCHAR(80) NULL,
+    fema_flood_zone_code VARCHAR(80) NULL,
+    flood_zone_sfha_tf VARCHAR(32) NULL,
+    flood_zone_updated_at TIMESTAMPTZ NULL,
+    flood_zone_raw JSONB NULL,
     estimated_total_monthly_fees NUMERIC(14, 2) NULL,
     low_risk_flood_zone_yn BOOLEAN NOT NULL DEFAULT FALSE,
     latitude DOUBLE PRECISION NULL,
@@ -406,6 +389,11 @@ CREATE INDEX listings_ap_flood_zone_idx ON listings (dataset_slug, flood_zone_co
 CREATE INDEX listings_ap_low_risk_flood_idx ON listings (dataset_slug, low_risk_flood_zone_yn)
     WHERE LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
       AND low_risk_flood_zone_yn = TRUE;
+CREATE INDEX listings_flood_zone_updated_at_idx ON listings (flood_zone_updated_at)
+    WHERE latitude IS NOT NULL AND longitude IS NOT NULL;
+CREATE INDEX listings_ap_fema_flood_zone_idx ON listings (dataset_slug, fema_flood_zone_code)
+    WHERE LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
+      AND fema_flood_zone_code IS NOT NULL;
 
 CREATE TABLE listing_sync_cursors (
     dataset_slug VARCHAR(64) PRIMARY KEY,
@@ -460,9 +448,5 @@ DROP TABLE IF EXISTS personal_access_tokens;
 DROP TABLE IF EXISTS failed_jobs;
 DROP TABLE IF EXISTS job_batches;
 DROP TABLE IF EXISTS jobs;
-DROP TABLE IF EXISTS cache_locks;
-DROP TABLE IF EXISTS cache;
 DROP TABLE IF EXISTS dashboard_sessions;
-DROP TABLE IF EXISTS sessions;
-DROP TABLE IF EXISTS password_reset_tokens;
 DROP TABLE IF EXISTS users;

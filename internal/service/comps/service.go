@@ -33,7 +33,8 @@ func (s *Service) Run(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid comps request")
 	}
 	feed, _ := c.Locals(ctxkeys.MLSFeedCode).(string)
-	resp, err := s.engine.Run(c.Context(), feed, req)
+	domainSlug, _ := c.Locals(ctxkeys.MLSDomainSlug).(string)
+	resp, err := s.engine.Run(c.Context(), domainSlug, feed, req)
 	if err != nil {
 		if isValidationErr(err) {
 			return fiber.NewError(fiber.StatusUnprocessableEntity, err.Error())

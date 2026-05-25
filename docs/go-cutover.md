@@ -28,4 +28,4 @@
 
 ## Rollback
 
-Rollback requires a prior Laravel/Octane deployment artifact; the current repository builds **Go-only** images (`Dockerfile` targets `api`, `worker`, `scheduler`). Database schema remains compatible with either runtime after goose migrations.
+Rollback requires a prior Laravel/Octane deployment artifact; the current repository builds **Go-only** images (`Dockerfile` targets `api`, `worker`, `scheduler`). Fresh `00001_initial.sql` is **Go-only** (Laravel `sessions`, `cache`, `password_reset_tokens` removed).

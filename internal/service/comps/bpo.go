@@ -6,7 +6,7 @@ import (
 	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
 
-func (e *Engine) runBPOMode(ctx context.Context, feed mls.FeedDefinition, req RunRequest, subject SubjectProfile, resp RunResponse) (RunResponse, error) {
+func (e *Engine) runBPOMode(ctx context.Context, domainSlug string, feed mls.FeedDefinition, req RunRequest, subject SubjectProfile, resp RunResponse) (RunResponse, error) {
 	f := req.Filters
 	bp := req.BPOParams
 	max := 8
@@ -21,7 +21,7 @@ func (e *Engine) runBPOMode(ctx context.Context, feed mls.FeedDefinition, req Ru
 		minReg = *bp.MinCompsForRegression
 	}
 
-	sold, err := e.fetchSoldComps(ctx, feed, subject, req.Scope, f, max)
+	sold, err := e.fetchSoldComps(ctx, domainSlug, feed, subject, req.Scope, f, max)
 	if err != nil {
 		return RunResponse{}, err
 	}

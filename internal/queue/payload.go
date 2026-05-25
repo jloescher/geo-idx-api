@@ -28,6 +28,8 @@ const (
 	TypeGISZipSync                 = "gis.zip_sync"
 	TypeGISParcelSyncPage          = "gis.parcel_sync_page"
 	TypeCryptoRefreshPricing       = "crypto.refresh_pricing"
+	TypeFEMAFloodEnrichKickoff     = "fema.flood_enrich_kickoff"
+	TypeFEMAFloodEnrichBatch       = "fema.flood_enrich_batch"
 	TypeBatchComplete              = "queue.batch_complete"
 )
 

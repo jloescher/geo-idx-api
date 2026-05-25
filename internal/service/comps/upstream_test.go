@@ -36,7 +36,7 @@ func TestFetchSoldCompsUsesSparkUpstream(t *testing.T) {
 	feed := mls.FeedDefinition{Code: "spark_beaches", Provider: "spark", Dataset: "beaches"}
 	subject := SubjectProfile{Lat: 27.95, Lng: -82.46}
 	radius := 5.0
-	sold, err := e.fetchSoldComps(context.Background(), feed, subject, ScopeInput{Type: "radius", RadiusMiles: &radius}, FiltersInput{}, 10)
+	sold, _, err := e.fetchSoldCompsLive(context.Background(), feed, subject, ScopeInput{Type: "radius", RadiusMiles: &radius}, FiltersInput{}, 10)
 	if err != nil {
 		t.Fatal(err)
 	}

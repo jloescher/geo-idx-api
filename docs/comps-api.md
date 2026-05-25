@@ -4,7 +4,7 @@ MLS comparables and investor analysis for the active feed resolved by `domain.to
 
 **Data sources:**
 
-- **Closed / sold comps** — live RESO upstream per feed provider (`bridge_*` / `spark_*` catalog codes; Closed rows are not bulk-replicated into the mirror).
+- **Closed / sold comps** — **`listings_cache`** per domain + feed (30-day write-through after live fetch; radius scope) when enough rows are cached, else live RESO upstream (`bridge_*` / `spark_*`). Closed rows are not bulk-replicated into the `listings` mirror.
 - **Active / Pending competition** — PostGIS `listings` mirror for **all** enabled MLS feeds (Stellar, Beaches, etc.).
 - **Rental (`rent_hold_cashflow`, `flip_vs_hold`)** — Closed leases from live Bridge/Spark; Active/Pending leases from the mirror.
 

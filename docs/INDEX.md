@@ -20,6 +20,7 @@ Central index for **idx-api** (Go 1.25+). Implementation lives in `cmd/` and `in
 | [GIS sources](gis-sources.md) | County parcel REST catalog, FDOR/FDOT findings, MLS coverage, probes |
 | [Database migrations](database-migrations.md) | Goose SQL, PostGIS, schema inventory |
 | [Listings mirror](listings-mirror.md) | Payload split, `$expand`, replication kickoff gating, hybrid search merge |
+| [FEMA flood enrichment](fema-flood-enrichment.md) | NFHL Layer 28 jobs, `fema_flood_zone_code`, FEMA-backed `low_risk_flood_zone_yn` |
 | [Deployment & operations](deployment-operations.md) | Docker, queues, scheduler leader lock, migrations |
 | [Coolify deployment](coolify-deployment.md) | Single-host and **multi-DC (NYC + ATL)** runbooks |
 | [README](../README.md) | Local dev, `make` targets, build & test |

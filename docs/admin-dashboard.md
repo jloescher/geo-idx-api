@@ -39,6 +39,7 @@ Catalog codes come from `mls.Resolver.Catalog()` (e.g. `bridge_stellar`, `spark_
 | `GET /dashboard/monitoring` | Dashboard session (HTML) |
 | `GET /dashboard/monitoring/data` | Dashboard session (JSON snapshot) |
 | `GET /api/v1/admin/monitoring` | Same session middleware (JSON) |
+| `POST /api/v1/admin/flood-enrich` | Enqueue FEMA NFHL flood enrichment ([fema-flood-enrichment.md](fema-flood-enrichment.md)) |
 
 Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sessions persist in PostgreSQL (`dashboard_sessions`); re-login after migration or cookie invalidation.
 

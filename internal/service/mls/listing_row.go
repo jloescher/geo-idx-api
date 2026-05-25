@@ -152,7 +152,7 @@ func BuildListingRecord(
 		PriceChangeTimestamp:        timestampPtr(row["PriceChangeTimestamp"]),
 		PreviousListPrice:           ClampNumeric14_2Ptr(row["PreviousListPrice"]),
 		FloodZoneCode:               floodZoneCode,
-		LowRiskFloodZoneYN:          ComputeLowRiskFloodZoneYN(floodZoneCode),
+		LowRiskFloodZoneYN:          false, // set by FEMA enrichment (fema_flood_zone_code), not MLS
 		EstimatedTotalMonthlyFees:   resolver.ResolveEstimatedTotalMonthlyFees(row, provider, datasetUpper),
 		Latitude:                    latPtr,
 		Longitude:                   lngPtr,

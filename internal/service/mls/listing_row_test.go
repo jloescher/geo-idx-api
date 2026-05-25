@@ -83,8 +83,8 @@ func TestBuildListingRecordBeachesFloodZone(t *testing.T) {
 		if rec.FloodZoneCode == nil || *rec.FloodZoneCode != "X" {
 			t.Fatalf("index %d flood_zone_code %v", i, rec.FloodZoneCode)
 		}
-		if !rec.LowRiskFloodZoneYN {
-			t.Fatalf("index %d low_risk_flood_zone_yn want true", i)
+		if rec.LowRiskFloodZoneYN {
+			t.Fatalf("index %d low_risk_flood_zone_yn want false until FEMA enrichment", i)
 		}
 		return
 	}

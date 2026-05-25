@@ -23,7 +23,28 @@ type Config struct {
 	Auth      AuthConfig
 	Geocode   GeocodeConfig
 	Coingecko CoingeckoConfig
+	FEMA      FEMAConfig
+	Comps     CompsConfig
 	Scheduler SchedulerConfig
+}
+
+// CompsConfig controls comparables engine behavior.
+type CompsConfig struct {
+	ClosedCacheDays    int
+	ClosedCacheMinHits int
+}
+
+// FEMAConfig controls NFHL Layer 28 flood zone enrichment for the listings mirror.
+type FEMAConfig struct {
+	NFHLBaseURL          string
+	NFHLLayerID          int
+	EnrichBatchSize      int
+	FloodStaleDays       int
+	MaxRequestsPerSecond int
+	HTTPTimeout          time.Duration
+	UserAgent            string
+	EnrichQueue          string
+	CircuitFailThreshold int
 }
 
 // SchedulerConfig controls cluster-wide cron leadership (PostgreSQL advisory lock).
@@ -329,6 +350,21 @@ func Load() (Config, error) {
 			CacheTTL:    envDuration("COINGECKO_CACHE_TTL_SECONDS", 1200*time.Second),
 			Queue:       env("COINGECKO_QUEUE", "default"),
 			HTTPTimeout: envDuration("COINGECKO_HTTP_TIMEOUT", 12*time.Second),
+		},
+		FEMA: FEMAConfig{
+			NFHLBaseURL:          env("FEMA_NFHL_BASE_URL", "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer"),
+			NFHLLayerID:          envInt("FEMA_NFHL_LAYER_ID", 28),
+			EnrichBatchSize:      envInt("FEMA_FLOOD_ENRICH_BATCH_SIZE", 2000),
+			FloodStaleDays:       envInt("FEMA_FLOOD_STALE_DAYS", 30),
+			MaxRequestsPerSecond: envInt("FEMA_MAX_REQUESTS_PER_SECOND", 8),
+			HTTPTimeout:          envDuration("FEMA_HTTP_TIMEOUT", 15*time.Second),
+			UserAgent:            firstNonEmpty(env("FEMA_USER_AGENT", ""), "Quantyra-IDX-API/1.0 (+https://quantyralabs.com)"),
+			EnrichQueue:          env("FEMA_ENRICH_QUEUE", "default"),
+			CircuitFailThreshold: envInt("FEMA_CIRCUIT_FAIL_THRESHOLD", 5),
+		},
+		Comps: CompsConfig{
+			ClosedCacheDays:    envInt("COMPS_CLOSED_CACHE_DAYS", 30),
+			ClosedCacheMinHits: envInt("COMPS_CLOSED_CACHE_MIN_HITS", 3),
 		},
 		Scheduler: SchedulerConfig{
 			LeaderLockKey:       envSchedulerLeaderLockKey(),

@@ -80,6 +80,7 @@ func (s *Scheduler) runAsLeader(ctx context.Context) error {
 	s.addJob(ctx, "mls-kickoff", "0 * * * * *", s.cfg.MLS.SyncKickoffQueue, queue.TypeMLSReplicationKickoff)
 	s.addJob(ctx, "purge-replica", "0 15 4 * * *", "default", queue.TypeMLSPurgeReplicaPages)
 	s.addJob(ctx, "purge-closed", "0 5 3 * * *", "default", queue.TypeMLSPurgeClosed)
+	s.addJob(ctx, "fema-flood-enrich", "0 30 4 * * *", s.cfg.FEMA.EnrichQueue, queue.TypeFEMAFloodEnrichKickoff)
 	s.addJob(ctx, "gis-probe", "0 30 6 * * 1", s.cfg.GIS.Queue, queue.TypeGISProbeSources)
 	s.addJob(ctx, "gis-monthly-parcel-refresh", "0 0 2 1 * *", s.cfg.GIS.SyncQueue, queue.TypeGISMonthlyParcelRefresh)
 	s.addJob(ctx, "gis-annual-boundaries-refresh", "0 0 3 1 1 *", s.cfg.GIS.SyncQueue, queue.TypeGISAnnualBoundariesRefresh)

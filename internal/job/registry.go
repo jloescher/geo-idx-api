@@ -9,6 +9,7 @@ import (
 	"github.com/quantyralabs/idx-api/internal/repository"
 	"github.com/quantyralabs/idx-api/internal/service/cache"
 	"github.com/quantyralabs/idx-api/internal/service/crypto"
+	"github.com/quantyralabs/idx-api/internal/service/fema"
 	"github.com/quantyralabs/idx-api/internal/service/gis"
 	"github.com/quantyralabs/idx-api/internal/service/sync"
 )
@@ -28,6 +29,7 @@ type Registry struct {
 	gisMeta            *gis.MetadataService
 	gisPersistent      *gis.PersistentGISService
 	crypto             *crypto.PricingService
+	femaEnrich         *fema.EnrichmentService
 }
 
 func NewRegistry(cfg config.Config, db *repository.DB, logger *slog.Logger) *Registry {
@@ -54,6 +56,8 @@ func (r *Registry) RegisterAll(w *queue.Worker) {
 	w.Register(queue.TypeGISZipSync, r.handleGISZipSync)
 	w.Register(queue.TypeGISParcelSyncPage, r.handleGISParcelSyncPage)
 	w.Register(queue.TypeCryptoRefreshPricing, r.handleCryptoRefresh)
+	w.Register(queue.TypeFEMAFloodEnrichKickoff, r.handleFEMAFloodEnrichKickoff)
+	w.Register(queue.TypeFEMAFloodEnrichBatch, r.handleFEMAFloodEnrichBatch)
 }
 
 func (r *Registry) handleNoop(ctx context.Context, job *queue.ReservedJob) error {

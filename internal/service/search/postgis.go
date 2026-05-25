@@ -120,6 +120,7 @@ func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchR
 		args = append(args, *req.PriceReducedWithinDays)
 		n++
 	}
+	// low_risk_flood_zone_yn is set by FEMA NFHL enrichment (fema_flood_zone_code), not MLS persist.
 	if req.LowRiskFloodzone != nil && *req.LowRiskFloodzone {
 		q += " AND low_risk_flood_zone_yn = TRUE"
 	}

@@ -14,20 +14,20 @@ import (
 	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
 
-func (e *Engine) fetchSoldComps(
+func (e *Engine) fetchSoldCompsLive(
 	ctx context.Context,
 	feed mls.FeedDefinition,
 	subject SubjectProfile,
 	scope ScopeInput,
 	filters FiltersInput,
 	limit int,
-) ([]CompRecord, error) {
+) ([]CompRecord, []json.RawMessage, error) {
 	if limit <= 0 {
 		limit = 25
 	}
 	endpoint, err := mlspoxy.LiveResoPropertyEndpoint(e.cfg, feed)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	months := 12
@@ -38,7 +38,7 @@ func (e *Engine) fetchSoldComps(
 
 	u, err := url.Parse(endpoint.PropertyURL)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	q := u.Query()
 	var parts []string
@@ -53,12 +53,19 @@ func (e *Engine) fetchSoldComps(
 
 	body, status, err := e.getReso(ctx, u.String(), endpoint.Bearer)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if status >= 400 {
-		return nil, fmt.Errorf("live MLS sold comps status %d for feed %q", status, feed.Code)
+		return nil, nil, fmt.Errorf("live MLS sold comps status %d for feed %q", status, feed.Code)
 	}
-	return parseSoldCompRecords(body, subject, scope)
+	var envelope struct {
+		Value []json.RawMessage `json:"value"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, nil, err
+	}
+	sold, err := parseSoldCompRecords(body, subject, scope)
+	return sold, envelope.Value, err
 }
 
 func (e *Engine) fetchRentalComps(

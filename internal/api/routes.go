@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/quantyralabs/idx-api/internal/api/middleware"
 	"github.com/quantyralabs/idx-api/internal/config"
+	"github.com/quantyralabs/idx-api/internal/handler/admin"
 	"github.com/quantyralabs/idx-api/internal/handler/auth"
 	"github.com/quantyralabs/idx-api/internal/handler/bridge"
 	"github.com/quantyralabs/idx-api/internal/handler/comps"
@@ -101,8 +102,10 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 	app.Get("/", mktH.Home)
 	dashH.Register(app)
 
+	floodH := admin.NewFloodHandler(cfg, db, logger)
 	admin := api.Group("/v1/admin", dashH.SessionAuthMiddleware)
 	admin.Get("/monitoring", dashH.MonitoringJSON)
+	admin.Post("/flood-enrich", floodH.Enrich)
 }
 
 func healthz(c *fiber.Ctx) error {

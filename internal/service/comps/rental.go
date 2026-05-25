@@ -7,7 +7,7 @@ import (
 	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
 
-func (e *Engine) runRentHold(ctx context.Context, feed mls.FeedDefinition, req RunRequest, subject SubjectProfile, resp RunResponse) (RunResponse, error) {
+func (e *Engine) runRentHold(ctx context.Context, domainSlug string, feed mls.FeedDefinition, req RunRequest, subject SubjectProfile, resp RunResponse) (RunResponse, error) {
 	rentals, err := e.fetchRentalComps(ctx, feed, subject, req.Scope, 25)
 	if err != nil {
 		resp.Warnings = append(resp.Warnings, err.Error())
@@ -56,13 +56,13 @@ func (e *Engine) runRentHold(ctx context.Context, feed mls.FeedDefinition, req R
 	return resp, nil
 }
 
-func (e *Engine) runFlipVsHold(ctx context.Context, feed mls.FeedDefinition, req RunRequest, subject SubjectProfile, resp RunResponse) (RunResponse, error) {
-	rentResp, err := e.runRentHold(ctx, feed, req, subject, resp)
+func (e *Engine) runFlipVsHold(ctx context.Context, domainSlug string, feed mls.FeedDefinition, req RunRequest, subject SubjectProfile, resp RunResponse) (RunResponse, error) {
+	rentResp, err := e.runRentHold(ctx, domainSlug, feed, req, subject, resp)
 	if err != nil {
 		return rentResp, err
 	}
 	f := req.Filters
-	sold, _ := e.fetchSoldComps(ctx, feed, subject, req.Scope, f, 12)
+	sold, _ := e.fetchSoldComps(ctx, domainSlug, feed, subject, req.Scope, f, 12)
 	sold = applyAdjustments(subject, sold, f)
 	arV := medianPrice(sold)
 	flip := ParseRentalParams(req.FlipParams)

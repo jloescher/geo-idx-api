@@ -10,19 +10,26 @@ import (
 	"github.com/quantyralabs/idx-api/internal/config"
 	"github.com/quantyralabs/idx-api/internal/queue"
 	"github.com/quantyralabs/idx-api/internal/repository"
+	"github.com/quantyralabs/idx-api/internal/service/fema"
 	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
 
 // BridgeWorker handles Bridge replication queue jobs.
 type BridgeWorker struct {
-	cfg     config.Config
-	db      *repository.DB
-	queue   *queue.Client
-	store   *ReplicaPageStore
-	mirror  *ListingMirrorWriter
-	sync    *BridgeSync
-	cursors *CursorStore
-	logger  *slog.Logger
+	cfg        config.Config
+	db         *repository.DB
+	queue      *queue.Client
+	store      *ReplicaPageStore
+	mirror     *ListingMirrorWriter
+	sync       *BridgeSync
+	cursors    *CursorStore
+	femaEnrich *fema.EnrichmentService
+	logger     *slog.Logger
+}
+
+// SetFEMAEnrichment attaches the FEMA flood enrichment service (optional).
+func (w *BridgeWorker) SetFEMAEnrichment(s *fema.EnrichmentService) {
+	w.femaEnrich = s
 }
 
 func NewBridgeWorker(cfg config.Config, db *repository.DB, q *queue.Client, logger *slog.Logger) *BridgeWorker {
@@ -394,6 +401,11 @@ func (w *BridgeWorker) PersistFinalize(ctx context.Context, job *queue.ReservedJ
 			ChainDepth:      args.NextChainDepth,
 		}, 0)
 		return err
+	}
+	if args.MarkSyncFinished && w.femaEnrich != nil {
+		if err := w.femaEnrich.EnqueueKickoffIfAbsent(ctx, ""); err != nil {
+			w.logger.Warn("fema flood enrich kickoff", "error", err)
+		}
 	}
 	return nil
 }

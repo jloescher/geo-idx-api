@@ -7,7 +7,7 @@ import (
 	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
 
-func (e *Engine) runHomeValueMode(ctx context.Context, feed mls.FeedDefinition, req RunRequest, subject SubjectProfile, resp RunResponse) (RunResponse, error) {
+func (e *Engine) runHomeValueMode(ctx context.Context, domainSlug string, feed mls.FeedDefinition, req RunRequest, subject SubjectProfile, resp RunResponse) (RunResponse, error) {
 	hv := req.HomeValueParams
 	max := 25
 	if hv.MaxComps != nil {
@@ -18,7 +18,7 @@ func (e *Engine) runHomeValueMode(ctx context.Context, feed mls.FeedDefinition, 
 		m := *hv.SoldMonthsBack
 		f.SoldMonthsBack = &m
 	}
-	sold, err := e.fetchSoldComps(ctx, feed, subject, req.Scope, f, max)
+	sold, err := e.fetchSoldComps(ctx, domainSlug, feed, subject, req.Scope, f, max)
 	if err != nil {
 		return RunResponse{}, err
 	}
@@ -53,9 +53,9 @@ func (e *Engine) runHomeValueMode(ctx context.Context, feed mls.FeedDefinition, 
 	return resp, nil
 }
 
-func (e *Engine) runAppraiserSim(ctx context.Context, feed mls.FeedDefinition, req RunRequest, subject SubjectProfile, resp RunResponse) (RunResponse, error) {
+func (e *Engine) runAppraiserSim(ctx context.Context, domainSlug string, feed mls.FeedDefinition, req RunRequest, subject SubjectProfile, resp RunResponse) (RunResponse, error) {
 	f := req.Filters
-	sold, err := e.fetchSoldComps(ctx, feed, subject, req.Scope, f, 12)
+	sold, err := e.fetchSoldComps(ctx, domainSlug, feed, subject, req.Scope, f, 12)
 	if err != nil {
 		return RunResponse{}, err
 	}

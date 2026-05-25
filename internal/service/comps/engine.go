@@ -36,7 +36,7 @@ func NewEngine(cfg config.Config, db *repository.DB) *Engine {
 	}
 }
 
-func (e *Engine) Run(ctx context.Context, feedCode string, req RunRequest) (RunResponse, error) {
+func (e *Engine) Run(ctx context.Context, domainSlug, feedCode string, req RunRequest) (RunResponse, error) {
 	if err := validateRequest(req); err != nil {
 		return RunResponse{}, err
 	}
@@ -68,29 +68,29 @@ func (e *Engine) Run(ctx context.Context, feedCode string, req RunRequest) (RunR
 	switch mode {
 	case "a", "b", "c", "d", "e",
 		"A", "B", "C", "D", "E":
-		return e.runSalesModes(ctx, feed, req, subject, resp)
+		return e.runSalesModes(ctx, domainSlug, feed, req, subject, resp)
 	case "rent_hold_cashflow":
-		return e.runRentHold(ctx, feed, req, subject, resp)
+		return e.runRentHold(ctx, domainSlug, feed, req, subject, resp)
 	case "flip_vs_hold":
-		return e.runFlipVsHold(ctx, feed, req, subject, resp)
+		return e.runFlipVsHold(ctx, domainSlug, feed, req, subject, resp)
 	case "appraiser_simulation":
-		return e.runAppraiserSim(ctx, feed, req, subject, resp)
+		return e.runAppraiserSim(ctx, domainSlug, feed, req, subject, resp)
 	case "bpo":
-		return e.runBPOMode(ctx, feed, req, subject, resp)
+		return e.runBPOMode(ctx, domainSlug, feed, req, subject, resp)
 	case "home_value":
-		return e.runHomeValueMode(ctx, feed, req, subject, resp)
+		return e.runHomeValueMode(ctx, domainSlug, feed, req, subject, resp)
 	default:
 		return RunResponse{}, fmt.Errorf("unsupported mode %q", req.Mode)
 	}
 }
 
-func (e *Engine) runSalesModes(ctx context.Context, feed mls.FeedDefinition, req RunRequest, subject SubjectProfile, resp RunResponse) (RunResponse, error) {
+func (e *Engine) runSalesModes(ctx context.Context, domainSlug string, feed mls.FeedDefinition, req RunRequest, subject SubjectProfile, resp RunResponse) (RunResponse, error) {
 	f := req.Filters
 	maxSold := 12
 	if f.MaxSoldComps != nil {
 		maxSold = *f.MaxSoldComps
 	}
-	sold, err := e.fetchSoldComps(ctx, feed, subject, req.Scope, f, maxSold)
+	sold, err := e.fetchSoldComps(ctx, domainSlug, feed, subject, req.Scope, f, maxSold)
 	if err != nil {
 		resp.Warnings = append(resp.Warnings, "sold comps partial: "+err.Error())
 	}

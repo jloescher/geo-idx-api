@@ -19,7 +19,7 @@ This document describes the **Quantyra idx-api** integration that proxies [Bridg
 |------|----------------|
 | Single MLS egress | Bridge and Spark credentials stay server-side (`BRIDGE_API_KEY`, `SPARK_ACCESS_TOKEN`). |
 | Multi-feed MLS control | Requests identify an **active** row in `domains` (via header, **`?domain=`** query, or `Referer` host) **or** present a valid **personal access token (PAT)** with IDX abilities. Feed access is validated against `domains.allowed_mls_datasets` (catalog keys like `bridge_stellar`, `spark_beaches`). |
-| Cost & latency control | **On-demand** live proxy cache in **`mls_search_cache`**: first identical upstream request (method + path + sorted query + POST body fingerprint) is stored gzip-compressed for **`LISTINGS_CACHE_TTL`** (default 15 min); repeats return **`X-IDX-Cache: HIT`**. Lookup routes use **`MLS_LOOKUP_CACHE_TTL`** (~30 days). **Active/Pending** inventory is served from the **PostGIS mirror** (`listings` table + sync jobs), not a pre-warmed `listings_cache` collection. Scheduler job **`mls.proxy_cache_purge`** only **purges** expired cache rows. |
+| Cost & latency control | **On-demand** live proxy cache in **`mls_search_cache`**: first identical upstream request (method + path + sorted query + POST body fingerprint) is stored gzip-compressed for **`LISTINGS_CACHE_TTL`** (default 15 min); repeats return **`X-IDX-Cache: HIT`**. Lookup routes use **`MLS_LOOKUP_CACHE_TTL`** (~30 days). **Active/Pending** inventory is served from the **PostGIS mirror** (`listings` table + sync jobs). **`listings_cache`** holds per-listing **Closed** RESO payloads for the comps engine (30-day TTL; see [Comps API](comps-api.md)). Scheduler job **`mls.proxy_cache_purge`** purges expired `mls_search_cache` and `listings_cache` rows. |
 | Hybrid map performance | `POST /api/v1/search`: Active/Pending from PostGIS replica; Closed from live upstream (Bridge or Spark per `?dataset=`); mixed status filters merge both (see **Hybrid search** under Caching & jobs). |
 | Pricing enrichment | Listing responses include top-level `pricing` quotes and per-listing `pricing_converted` data sourced from local cache/DB snapshots refreshed asynchronously by queue job. |
 | Access model | **Domains** and **PATs** (`idx:access` or `idx:full`, plus domain binding for tokens) receive full Bridge/comps/search JSON. **GIS** applies teaser limits for **`idx:access`-only** PATs (`GIS_TEASER_*`). Domains and `idx:full` set full GIS access. No Stripe/plan-based shrinking on MLS proxy routes. |
@@ -127,7 +127,7 @@ After generation, the dashboard shows the raw token **once**; store it securely.
 
 ### Response shaping (authenticated)
 
-- **`mls_search_cache`** stores gzip-compressed upstream JSON keyed by request fingerprint (on-demand; not a full Active/Pending pre-warm). The legacy **`listings_cache`** table is unused by the Go service; mirror data lives in **`listings`**.
+- **`mls_search_cache`** stores gzip-compressed upstream JSON keyed by request fingerprint (on-demand proxy/search). **`listings_cache`** stores per-listing Closed properties for comps (`COMPS_CLOSED_CACHE_DAYS`, default 30). Mirror Active/Pending data lives in **`listings`**.
 - **`mlspoxy/images.Rewriter`** runs on successful JSON so photo URLs resolve through **`idx-images`** for CDN and MLS compliance.
 
 ---
@@ -236,7 +236,7 @@ Registered in **`internal/api/routes.go`** with **`DomainToken`** (same auth as 
 |-------|---------|
 | `domains` | `domain_slug` (unique), `is_active`, `mls_dataset` (default), `allowed_mls_datasets` (JSON array of permitted datasets). Seeds include approved hostnames (e.g. `searchtampabayhouses.com`). |
 | `listings` | PostGIS mirror: **PK** `(dataset_slug, listing_key)`; typed columns + JSONB. Active/Pending replication; hybrid search mirror leg. |
-| `listings_cache` | Legacy per-listing rows; **not populated** by Go (mirror uses `listings`). |
+| `listings_cache` | Per-listing Closed comps cache (`domain_slug`, `feed_code`, `listing_key`); populated by comps write-through; purged with `mls.proxy_cache_purge`. |
 | `mls_search_cache` | **PK** (`partition_key`, `fingerprint`); on-demand live proxy cache. TTL: `LISTINGS_CACHE_TTL` / `MLS_LOOKUP_CACHE_TTL`. |
 | `crypto_price_snapshots` | **Unique** (`asset_id`, `vs_currency`); stores latest CoinGecko price per pair with `as_of` for listing enrichment. |
 | `mls_proxy_audit_logs` | `logged_at`, `domain_slug`, `token_name`, `request_type`, `listing_count`, `cache_hit` (`HIT`/`MISS` for live proxy cache), `ip_address`, `user_id` (nullable FK to `users`). |
@@ -308,7 +308,7 @@ The structured search endpoint accepts JSON payloads with filter criteria and re
 | `min_lot_size_acres` / `max_lot_size_acres` | `lot_size_acres` |
 | `min_year_built` / `max_year_built` | `year_built` |
 | `min_monthly_fees` / `max_monthly_fees` | `estimated_total_monthly_fees` |
-| `low_risk_floodzone` | `low_risk_flood_zone_yn = true` (derived at persist from `flood_zone_code`) |
+| `low_risk_floodzone` | `low_risk_flood_zone_yn = true` (from `fema_flood_zone_code` via FEMA enrichment — [fema-flood-enrichment.md](fema-flood-enrichment.md)) |
 | `waterfront`, `pool_private`, `dock`, etc. | matching `*_yn` boolean columns |
 | `city`, `state`, `county`, `postal_code` | address columns |
 | `property_types`, `property_sub_types`, `statuses` | `property_type`, `property_sub_type`, `standard_status` |
@@ -384,7 +384,8 @@ curl -H "X-Domain-Slug: example.com" \
 | Mechanism | Detail |
 |-----------|--------|
 | **Live proxy cache (`mls_search_cache`)** | On-demand gzip cache for repeat **identical** live proxy requests (web, RESO, lookup, hybrid search live leg). Fingerprint = method + path + sorted query + POST body hash. Response header **`X-IDX-Cache`**: `HIT` or `MISS`. TTL **`LISTINGS_CACHE_TTL`** (default **900** s); lookup partition uses **`MLS_LOOKUP_CACHE_TTL`** (default 30 days). Scheduled job **`mls.proxy_cache_purge`** purges stale rows only — **no** Active/Pending pre-warm. |
-| **Mirror (Active/Pending)** | `listings` PostGIS table via replication jobs — authoritative for hybrid search mirror leg. Not duplicated into `listings_cache`. |
+| **Mirror (Active/Pending)** | `listings` PostGIS table via replication jobs — authoritative for hybrid search mirror leg. |
+| **Comps Closed cache** | `listings_cache` — 30-day per-listing cache; not a full mirror. |
 | **Replica sync** | **`mls.replication_kickoff`** (every minute) enqueues **`bridge.fetch_page`** / **`spark.fetch_page`** on fetch queues. Staging: **`replica_pages`** (gzip JSON) → persist queues → **`listings`**. **Spark** replication uses **`MLS_SYNC_EXPAND`** (`Media,Unit,Room,OpenHouse`). **Bridge** uses **`BRIDGE_SYNC_EXPAND`** (`Media,OpenHouses,Rooms,UnitTypes`) only when **`BRIDGE_SYNC_FULL_PROPERTY=false`**; with full property (default), Media is inline and **`$expand` is omitted**. Bridge replication seed uses **Active/Pending status only** (Stellar rejects timestamp `$filter` on `/replication`). Spark may add **`ModificationTimestamp`** when rolling months are set. Rolling trim: daily **`mls.purge_closed_listings`**. Incremental cursor: **`listing_sync_cursors.last_modification_timestamp`**. **Closed** is not bulk-replicated. Details: [Listings mirror](listings-mirror.md). |
 | **Hybrid search** | `POST /api/v1/search`: **Active/Pending** → PostGIS mirror; **Closed** → live Bridge/Spark OData; **mixed** statuses → merge both sources (merge-then-page). |
 | **Replica purge** | **`mls.purge_closed_listings`** (daily) deletes Closed rows and rows outside **`MLS_LOCAL_MIRROR_ROLLING_MONTHS`** (default **12**; staging often **3**). **`mls.purge_replica_pages`** trims stale staging pages. |

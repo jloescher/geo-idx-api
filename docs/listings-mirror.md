@@ -21,7 +21,7 @@ Replication flow: scheduler kickoff → `bridge.fetch_page` / `spark.fetch_page`
 
 | Column | Contents |
 |--------|----------|
-| Typed columns | `list_price` (required on Active/Pending upsert), `bedrooms_total`, `living_area` (sq ft, `NUMERIC(12,2)`), geo (`coordinates`), `flood_zone_code`, `estimated_total_monthly_fees`, `standard_status`, etc. — populated at persist for search indexes |
+| Typed columns | `list_price` (required on Active/Pending upsert), `bedrooms_total`, `living_area` (sq ft, `NUMERIC(12,2)`), geo (`coordinates`), `flood_zone_code` (MLS), `fema_flood_zone_code` (FEMA NFHL — see [FEMA flood enrichment](fema-flood-enrichment.md)), `estimated_total_monthly_fees`, `standard_status`, etc. — populated at persist for search indexes |
 | `mirror_persisted_at` | When idx-api last wrote the row to the mirror (`NOW()` on each upsert); used for rolling-window purge — not the MLS modification clock |
 | `raw_data` | Slim RESO Property JSON: scalars and fields that map to typed columns; **no** expanded collections; **no** `@odata.*` keys |
 | `media` | RESO `Media[]` when present |
