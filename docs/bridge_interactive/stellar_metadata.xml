@@ -3021,9 +3021,6 @@
     <Schema
       xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="MemberComplexTypes">
       <ComplexType Name="Media">
-        <Property Name="id" Type="Edm.String" MaxLength="255">
-          <Annotation Term="Core.Description" String="The unique media ID"/>
-        </Property>
         <Property Name="Group" Type="Edm.String" MaxLength="50">
           <Annotation Term="Core.Description" String="A placeholder for media classification such as elevation, exterior, interior, community, view, plan, plat.  The purpose is to allow media items to be grouped."/>
           <Annotation Term="RESO.OData.Metadata.LookupName" String="Group"/>
@@ -3165,9 +3162,6 @@
     <Schema
       xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="OfficeComplexTypes">
       <ComplexType Name="Media">
-        <Property Name="id" Type="Edm.String" MaxLength="255">
-          <Annotation Term="Core.Description" String="The unique media ID"/>
-        </Property>
         <Property Name="Group" Type="Edm.String" MaxLength="50">
           <Annotation Term="Core.Description" String="A placeholder for media classification such as elevation, exterior, interior, community, view, plan, plat.  The purpose is to allow media items to be grouped."/>
           <Annotation Term="RESO.OData.Metadata.LookupName" String="Group"/>
@@ -3309,9 +3303,6 @@
     <Schema
       xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="PropertyComplexTypes">
       <ComplexType Name="Documents">
-        <Property Name="id" Type="Edm.String" MaxLength="255">
-          <Annotation Term="Core.Description" String="The unique media ID"/>
-        </Property>
         <Property Name="Group" Type="Edm.String" MaxLength="50">
           <Annotation Term="Core.Description" String="A placeholder for media classification such as elevation, exterior, interior, community, view, plan, plat.  The purpose is to allow media items to be grouped."/>
           <Annotation Term="RESO.OData.Metadata.LookupName" String="Group"/>
@@ -3450,9 +3441,6 @@
         </Property>
       </ComplexType>
       <ComplexType Name="Media">
-        <Property Name="id" Type="Edm.String" MaxLength="255">
-          <Annotation Term="Core.Description" String="The unique media ID"/>
-        </Property>
         <Property Name="Group" Type="Edm.String" MaxLength="50">
           <Annotation Term="Core.Description" String="A placeholder for media classification such as elevation, exterior, interior, community, view, plan, plat.  The purpose is to allow media items to be grouped."/>
           <Annotation Term="RESO.OData.Metadata.LookupName" String="Group"/>
@@ -3591,9 +3579,6 @@
         </Property>
       </ComplexType>
       <ComplexType Name="PrivateMedia">
-        <Property Name="id" Type="Edm.String" MaxLength="255">
-          <Annotation Term="Core.Description" String="The unique media ID"/>
-        </Property>
         <Property Name="Group" Type="Edm.String" MaxLength="50">
           <Annotation Term="Core.Description" String="A placeholder for media classification such as elevation, exterior, interior, community, view, plan, plat.  The purpose is to allow media items to be grouped."/>
           <Annotation Term="RESO.OData.Metadata.LookupName" String="Group"/>

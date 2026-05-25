@@ -48907,5 +48907,5 @@
     ],
     "@odata.nextLink": "https://api.bridgedataoutput.com/api/v2/OData/stellar/Property?access_token=5fce816780beb7b4824d04cb76c457a5&%24top=50&%24filter=contains%28tolower%28StandardStatus%29%2C%27active%27%29%20or%20contains%28tolower%28StandardStatus%29%2C%27pending%27%29&$next=NTBfWzE2ODUxMTk3MTcwNDUsIjg4NDY5ZTc3NzZkOTliOGI1Y2E4N2Y5OTBmNjc3Y2RiIl0",
     "@odata.context": "https://api.bridgedataoutput.com/api/v2/OData/stellar/$metadata#Property",
-    "@odata.count": 143479
+    "@odata.count": 143759
 }

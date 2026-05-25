@@ -13,7 +13,6 @@
         <Property Name="TaxAnnualAmount" Type="Edm.Decimal"/>
         <Property Name="BathroomsFull" Type="Edm.Int64"/>
         <Property Name="PoolPrivateYN" Type="Edm.Boolean"/>
-        <Property Name="ShowingContactPhone" Type="Edm.String"/>
         <Property Name="InternetConsumerCommentYN" Type="Edm.Boolean"/>
         <Property Name="CoListOfficeKey" Type="Edm.String"/>
         <Property Name="InternetAutomatedValuationDisplayYN" Type="Edm.Boolean"/>
@@ -276,7 +275,6 @@
         <Property Name="FoundationDetails" Type="Collection(Edm.String)">
           <Annotation Term="RESO.OData.Metadata.LookupName" String="FoundationDetails"/>
         </Property>
-        <Property Name="ShowingInstructions" Type="Edm.String"/>
         <Property Name="CarportYN" Type="Edm.Boolean"/>
         <Property Name="AssociationPhone" Type="Edm.String"/>
         <Property Name="CoListAgentMlsId" Type="Edm.String"/>
@@ -533,9 +531,6 @@
         <Property Name="ApprovalStatus" Type="Edm.Boolean"/>
         <Property Name="PropertySubType" Type="Edm.String">
           <Annotation Term="RESO.OData.Metadata.LookupName" String="PropertySubType"/>
-        </Property>
-        <Property Name="ShowingRequirements" Type="Collection(Edm.String)">
-          <Annotation Term="RESO.OData.Metadata.LookupName" String="ShowingRequirements"/>
         </Property>
         <Property Name="AvailableLeaseType" Type="Collection(Edm.String)">
           <Annotation Term="RESO.OData.Metadata.LookupName" String="AvailableLeaseType"/>
@@ -2487,14 +2482,6 @@
         <Property Name="Member_sp_Equity_co_Membership_sp_Equity_sp_Amount" Type="Edm.Decimal" Precision="14" Scale="variable">
           <Annotation Term="MLS.OData.Metadata.LocalName" String="Member Equity: Membership Equity Amount"/>
         </Property>
-        <Property Name="Showing_sp_Details_co_Pet_lparen_s_rparen__sp_on_sp_Premises" Type="Edm.String">
-          <Annotation Term="MLS.OData.Metadata.LocalName" String="Showing Details: Pet(s) on Premises"/>
-          <Annotation Term="RESO.OData.Metadata.LookupName" String="Showing_sp_Details_co_Pet_lparen_s_rparen__sp_on_sp_Premises"/>
-        </Property>
-        <Property Name="Showing_sp_Details_co_Pet_lparen_s_rparen__sp_on_sp_Premises3" Type="Edm.String">
-          <Annotation Term="MLS.OData.Metadata.LocalName" String="Showing Details: Pet(s) on Premises"/>
-          <Annotation Term="RESO.OData.Metadata.LookupName" String="Showing_sp_Details_co_Pet_lparen_s_rparen__sp_on_sp_Premises"/>
-        </Property>
         <Property Name="Parking_sp_Information_co_Parking_sp_Space_sp_Number" Type="Edm.String">
           <Annotation Term="MLS.OData.Metadata.LocalName" String="Parking Information: Parking Space Number"/>
         </Property>
@@ -2586,12 +2573,12 @@
         <Property Name="MemberPostalCode" Type="Edm.String"/>
         <Property Name="AttributionContact" Type="Edm.String"/>
         <Property Name="Visible" Type="Edm.Boolean"/>
-        <NavigationProperty Name="Association" Type="Collection(ODataService.Association)" ContainsTarget="true"/>
-        <NavigationProperty Name="DelegatedAccess" Type="Collection(ODataService.DelegatedAccess)" ContainsTarget="true"/>
-        <NavigationProperty Name="ExternalProducts" Type="Collection(ODataService.ExternalProducts)" ContainsTarget="true"/>
         <NavigationProperty Name="Media" Type="Collection(ODataService.Media)" ContainsTarget="true"/>
         <NavigationProperty Name="SocialMedia" Type="Collection(ODataService.SocialMedia)" ContainsTarget="true"/>
         <NavigationProperty Name="TeamMembers" Type="Collection(ODataService.TeamMembers)" ContainsTarget="true"/>
+        <NavigationProperty Name="Association" Type="Collection(ODataService.Association)" ContainsTarget="true"/>
+        <NavigationProperty Name="DelegatedAccess" Type="Collection(ODataService.DelegatedAccess)" ContainsTarget="true"/>
+        <NavigationProperty Name="ExternalProducts" Type="Collection(ODataService.ExternalProducts)" ContainsTarget="true"/>
       </EntityType>
       <EntityType Name="Office">
         <Key>
@@ -2646,11 +2633,11 @@
         <Property Name="OfficePostalCode" Type="Edm.String"/>
         <Property Name="AttributionContact" Type="Edm.String"/>
         <Property Name="Visible" Type="Edm.Boolean"/>
+        <NavigationProperty Name="Media" Type="Collection(ODataService.Media)" ContainsTarget="true"/>
+        <NavigationProperty Name="SocialMedia" Type="Collection(ODataService.SocialMedia)" ContainsTarget="true"/>
         <NavigationProperty Name="Association" Type="Collection(ODataService.Association)" ContainsTarget="true"/>
         <NavigationProperty Name="DelegatedAccess" Type="Collection(ODataService.DelegatedAccess)" ContainsTarget="true"/>
         <NavigationProperty Name="ExternalProducts" Type="Collection(ODataService.ExternalProducts)" ContainsTarget="true"/>
-        <NavigationProperty Name="Media" Type="Collection(ODataService.Media)" ContainsTarget="true"/>
-        <NavigationProperty Name="SocialMedia" Type="Collection(ODataService.SocialMedia)" ContainsTarget="true"/>
       </EntityType>
       <EntityType Name="Teams">
         <Key>
@@ -2697,11 +2684,11 @@
         <Property Name="NrdsId" Type="Edm.String"/>
         <Property Name="TeamLeadNationalAssociationId" Type="Edm.String"/>
         <Property Name="TeamLeadStateLicense" Type="Edm.String"/>
+        <NavigationProperty Name="Media" Type="Collection(ODataService.Media)" ContainsTarget="true"/>
+        <NavigationProperty Name="SocialMedia" Type="Collection(ODataService.SocialMedia)" ContainsTarget="true"/>
         <NavigationProperty Name="Association" Type="Collection(ODataService.Association)" ContainsTarget="true"/>
         <NavigationProperty Name="DelegatedAccess" Type="Collection(ODataService.DelegatedAccess)" ContainsTarget="true"/>
         <NavigationProperty Name="ExternalProducts" Type="Collection(ODataService.ExternalProducts)" ContainsTarget="true"/>
-        <NavigationProperty Name="Media" Type="Collection(ODataService.Media)" ContainsTarget="true"/>
-        <NavigationProperty Name="SocialMedia" Type="Collection(ODataService.SocialMedia)" ContainsTarget="true"/>
       </EntityType>
       <EntityType Name="Association">
         <Key>
