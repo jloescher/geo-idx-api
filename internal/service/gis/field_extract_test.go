@@ -15,7 +15,7 @@ func TestExtractParcelRowStatewide(t *testing.T) {
 			"JV":        250000.0,
 		},
 	}
-	row, err := ExtractParcelRow(feat, "florida_statewide_cadastral", "pinellas", 1, nil)
+	row, err := ExtractParcelRow(feat, "pinellas_swfwmd_parcels", "pinellas", 1, nil, []string{"PARCELID"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,11 +62,34 @@ func TestExtractCountyRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.CountyName != "Pinellas" {
-		t.Fatalf("county_name=%q", row.CountyName)
+	if row.CountySlug != "pinellas" {
+		t.Fatalf("county_slug=%q", row.CountySlug)
+	}
+	if !row.MLSStellar {
+		t.Fatal("expected mls_stellar")
 	}
 	if row.FIPSCode == nil || *row.FIPSCode != "12103" {
 		t.Fatalf("fips=%v", row.FIPSCode)
+	}
+}
+
+func TestExtractCountyRowStLucie(t *testing.T) {
+	feat := ArcGISFeature{
+		Geometry: json.RawMessage(`{"type":"Polygon","coordinates":[[[-80.5,27.2],[-80.49,27.2],[-80.49,27.21],[-80.5,27.21],[-80.5,27.2]]]}`),
+		Properties: map[string]any{
+			"NAME": "St. Lucie",
+			"FIPS": "12111",
+		},
+	}
+	row, err := ExtractCountyRow(feat, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.CountySlug != "st-lucie" {
+		t.Fatalf("county_slug=%q", row.CountySlug)
+	}
+	if !row.MLSBeaches {
+		t.Fatal("expected mls_beaches")
 	}
 }
 
@@ -87,7 +110,7 @@ func TestExtractZipRow(t *testing.T) {
 }
 
 func TestExtractParcelRowMissingGeometry(t *testing.T) {
-	_, err := ExtractParcelRow(ArcGISFeature{Properties: map[string]any{"PARCELID": "x"}}, "k", "pinellas", 1, nil)
+	_, err := ExtractParcelRow(ArcGISFeature{Properties: map[string]any{"PARCELID": "x"}}, "k", "pinellas", 1, nil, nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}

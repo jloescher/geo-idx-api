@@ -47,7 +47,10 @@ type CityRow struct {
 // CountyRow is a row in gis_counties.
 type CountyRow struct {
 	CountyName        string
+	CountySlug        string
 	FIPSCode          *string
+	MLSStellar        bool
+	MLSBeaches        bool
 	SourceKey         string
 	GeometryJSON      string
 	Properties        json.RawMessage

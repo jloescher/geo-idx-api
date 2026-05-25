@@ -14,12 +14,14 @@ import (
 
 	"github.com/quantyralabs/idx-api/internal/config"
 	"github.com/quantyralabs/idx-api/internal/repository"
+	gisrepo "github.com/quantyralabs/idx-api/internal/repository/gis"
 )
 
 // MetadataService probes ArcGIS layer metadata for cache invalidation.
 type MetadataService struct {
 	cfg    config.Config
 	db     *repository.DB
+	gis    *gisrepo.Repository
 	logger *slog.Logger
 	http   *http.Client
 }
@@ -29,20 +31,20 @@ func NewMetadataService(cfg config.Config, db *repository.DB, logger *slog.Logge
 	return &MetadataService{
 		cfg:    cfg,
 		db:     db,
+		gis:    gisrepo.New(db),
 		logger: logger,
 		http:   &http.Client{Timeout: timeout},
 	}
 }
 
-var probeEndpoints = map[string]string{
-	"florida_statewide_cadastral": FloridaStatewideCadastralMetaURL,
-	"pinellas_enterprise_parcels": PinellasParcelsMetaURL,
-	"hillsborough_hc_parcels":     HillsboroughParcelsMetaURL,
-	"fdot_admin_boundaries":       "https://gis.fdot.gov/arcgis/rest/services/Admin_Boundaries/FeatureServer/6?f=json",
-}
-
 func (m *MetadataService) ProbeAll(ctx context.Context) error {
-	for key, endpoint := range probeEndpoints {
+	endpoints := map[string]string{
+		FDOTAdminBoundariesKey: "https://gis.fdot.gov/arcgis/rest/services/Admin_Boundaries/FeatureServer/6?f=json",
+	}
+	for _, spec := range EnabledParcelSourcesForConfig(m.cfg.GIS) {
+		endpoints[spec.SourceKey] = queryMetaURL(spec.QueryURL)
+	}
+	for key, endpoint := range endpoints {
 		if err := m.probeOne(ctx, key, endpoint); err != nil {
 			m.logger.Warn("gis probe failed", "source", key, "error", err)
 		}
@@ -50,7 +52,15 @@ func (m *MetadataService) ProbeAll(ctx context.Context) error {
 	return nil
 }
 
+func queryMetaURL(queryURL string) string {
+	base := strings.TrimSuffix(strings.TrimSpace(queryURL), "/query")
+	return base + "?f=json"
+}
+
 func (m *MetadataService) probeOne(ctx context.Context, sourceKey, endpoint string) error {
+	if err := m.gis.EnsureSourceState(ctx, sourceKey); err != nil {
+		return err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return err

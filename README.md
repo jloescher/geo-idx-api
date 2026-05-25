@@ -110,6 +110,7 @@ Environment variables match [`.env.example`](.env.example).
 - [docs/INDEX.md](docs/INDEX.md) — full doc index
 - [docs/idx-api-bridge-proxy.md](docs/idx-api-bridge-proxy.md)
 - [docs/gis-api.md](docs/gis-api.md)
+- [docs/gis-sources.md](docs/gis-sources.md) — county parcel REST catalog, upstream findings
 - [docs/comps-api.md](docs/comps-api.md)
 - [docs/database-migrations.md](docs/database-migrations.md)
 

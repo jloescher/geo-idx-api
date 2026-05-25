@@ -32,7 +32,7 @@ func TestQueryParcelsByBBoxIntegration(t *testing.T) {
 		SourceGeneration: 1,
 	}}
 
-	if err := repo.BulkUpsertParcels(ctx, rows); err != nil {
+	if err := repo.BulkUpsertParcels(ctx, rows, 500); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {

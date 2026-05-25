@@ -17,6 +17,7 @@ Central index for **idx-api** (Go 1.25+). Implementation lives in `cmd/` and `in
 | [IDX-API Bridge proxy](idx-api-bridge-proxy.md) | Proxy auth, cache, mirror, search, images, env |
 | [Comps API](comps-api.md) | `POST /api/v1/comps/run` (BPO, home value, investor modes) |
 | [GIS API](gis-api.md) | Parcel/geometry proxy, teaser for `idx:access`-only PATs |
+| [GIS sources](gis-sources.md) | County parcel REST catalog, FDOR/FDOT findings, MLS coverage, probes |
 | [Database migrations](database-migrations.md) | Goose SQL, PostGIS, schema inventory |
 | [Listings mirror](listings-mirror.md) | Payload split, `$expand`, replication kickoff gating, hybrid search merge |
 | [Deployment & operations](deployment-operations.md) | Docker, queues, scheduler leader lock, migrations |

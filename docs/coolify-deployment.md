@@ -34,6 +34,17 @@ WORKER_QUEUES=default,sync-kickoff,bridge-sync-fetch,bridge-sync-persist,spark-s
 
 **First environment bootstrap:** deploy the **worker before or with the scheduler** so `gis.parcel_sync_page` jobs drain as soon as the scheduler enqueues parcel kickoff. The `default` queue (or `GIS_SYNC_QUEUE`) must appear in `WORKER_QUEUES` for GIS sync jobs.
 
+**GIS multi-county fresh DB cutover (staging):** On Patroni primary, drop/recreate the staging database (or provision a new DB name), run `make migrate` against it **before** starting worker/scheduler, then `make seed-admin`. Do not `goose up` incrementally from an old schema with `00002` — see [database-migrations.md](database-migrations.md). Expect 24–48h for initial 22-county parcel load; boundaries and city `county` backfill complete within ~15 minutes.
+
+```env
+GIS_SYNC_PAGE_SIZE=500
+GIS_SYNC_UPSERT_CHUNK=500
+GIS_HTTP_TIMEOUT=120s
+GIS_SYNC_PINELLAS_ENTERPRISE=false
+```
+
+Single-county re-sync on a running stack: `go run ./cmd/gis-enqueue -job parcels -county hillsborough` (from a machine with `DB_*` / job enqueue access).
+
 Workers with **multiple queues** use **fair reservation** (`ReserveFair`): each poll rotates across queue names so Bridge backlog cannot starve `spark-sync-fetch` on lowest `jobs.id`. When both fetch and persist queues are listed, workers **alternate pools** (fetch vs persist) before falling back to per-queue rotation.
 
 **Replication pipeline (kickoff + fetch):**

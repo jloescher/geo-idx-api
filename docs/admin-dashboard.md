@@ -57,6 +57,8 @@ Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sess
 
 Parcels and ZIP tiles show a subtitle from `parcels_last_synced_at` / `zips_last_synced_at` (e.g. “Synced 2d ago” or “Never synced”) and an amber **stale** badge when the timestamp is older than 35 days. Parcel source rows also mark stale when stored generation does not match `gis_source_states.generation`.
 
+County parcel sources, FDOR/FDOT upstream issues, and MLS coverage: [GIS sources](gis-sources.md).
+
 ## UI state matrix
 
 | State | Monitoring | Setup (domains + verify) | API keys |

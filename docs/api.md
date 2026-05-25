@@ -73,7 +73,7 @@ All tokens require **`X-Domain-Slug`** or **`?domain=`** with a verified domain 
 **New:** Florida **public government** parcel GeoJSON proxy for Leaflet overlays—**not MLS data**.
 
 - **Routes:** `GET /api/v1/gis`, `GET /api/v1/mls/{mlsCode}/gis`
-- **Docs:** [`docs/gis-api.md`](gis-api.md) (OpenAPI-style parameters, examples for Pinellas / Tampa bbox, failover, caching, compliance notes).
+- **Docs:** [`docs/gis-api.md`](gis-api.md) (HTTP surface), [`docs/gis-sources.md`](gis-sources.md) (county REST catalog, FDOR/FDOT findings, MLS coverage)
 - **Caching:** In-process edge read of `gis_cache` (Postgres origin, TTL `GIS_EDGE_CACHE_TTL`, default 900s) plus per-source max age in days; invalidated when weekly `gis.probe_sources` jobs bump `gis_source_states.generation`. See [`docs/gis-api.md`](gis-api.md).
 
 Use this alongside `/api/v1/listings` with the same viewport parameters for a single map flow.

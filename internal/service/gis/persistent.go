@@ -59,7 +59,7 @@ func (s *PersistentQueryService) HasData(ctx context.Context, qtype QueryType, b
 	case QueryTypeZip:
 		return s.repo.HasZipsInBBox(ctx, w, so, e, n)
 	default:
-		counties := countiesForBBox(bbox)
+		counties := s.countiesForBBox(ctx, bbox)
 		return s.repo.HasParcelsInBBox(ctx, w, so, e, n, counties)
 	}
 }
@@ -83,7 +83,7 @@ func (s *PersistentQueryService) Query(ctx context.Context, qtype QueryType, bbo
 	case QueryTypeZip:
 		feats, err = s.repo.QueryZipsByBBox(ctx, w, so, e, n, limit)
 	default:
-		counties := countiesForBBox(bbox)
+		counties := s.countiesForBBox(ctx, bbox)
 		feats, err = s.repo.QueryParcelsByBBox(ctx, w, so, e, n, counties, limit)
 	}
 	if err != nil {
@@ -93,13 +93,17 @@ func (s *PersistentQueryService) Query(ctx context.Context, qtype QueryType, bbo
 	return body, len(feats), err
 }
 
-func countiesForBBox(b BBox) []string {
-	lat, lng := b.Centroid()
-	hint := countyHint(lat, lng)
-	if hint == "" {
-		return nil
+func (s *PersistentQueryService) countiesForBBox(ctx context.Context, b BBox) []string {
+	w, so, e, n := b.West, b.South, b.East, b.North
+	slugs, err := s.repo.QueryCountySlugsByBBox(ctx, w, so, e, n)
+	if err == nil && len(slugs) > 0 {
+		return slugs
 	}
-	return []string{hint, "statewide"}
+	var out []string
+	for _, src := range SourcesForBBox(b) {
+		out = append(out, src.CountySlug)
+	}
+	return out
 }
 
 func featuresToGeoJSON(feats []gisrepo.FeatureResult) ([]byte, error) {

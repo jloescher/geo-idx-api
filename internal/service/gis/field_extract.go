@@ -11,14 +11,17 @@ import (
 
 // ExtractParcelRow maps an ArcGIS feature to a gis_parcels row.
 // Revenue impact: structured parcel fields power richer map popups that drive lead capture.
-func ExtractParcelRow(feat ArcGISFeature, sourceKey, county string, gen int, fingerprint *string) (gisrepo.ParcelRow, error) {
+func ExtractParcelRow(feat ArcGISFeature, sourceKey, county string, gen int, fingerprint *string, idFields []string) (gisrepo.ParcelRow, error) {
 	geom := string(feat.Geometry)
 	if len(geom) == 0 || string(geom) == "null" {
 		return gisrepo.ParcelRow{}, errNoGeometry
 	}
 	propsJSON, _ := json.Marshal(feat.Properties)
-	parcelID := firstString(feat.Properties,
-		"PARCEL_ID", "PARCELID", "PARCELNO", "PARCEL_NO", "PC_PID", "PIN", "FOLIO", "OBJECTID")
+	keys := idFields
+	if len(keys) == 0 {
+		keys = []string{"PARCEL_ID", "PARCELID", "PARCELNO", "PARCEL_NO", "PC_PID", "PIN", "FOLIO", "OBJECTID"}
+	}
+	parcelID := firstString(feat.Properties, keys...)
 	if parcelID == "" {
 		parcelID = firstString(feat.Properties, "GlobalID", "FID")
 	}
@@ -94,7 +97,10 @@ func ExtractCountyRow(feat ArcGISFeature, gen int, fingerprint *string) (gisrepo
 	propsJSON, _ := json.Marshal(feat.Properties)
 	return gisrepo.CountyRow{
 		CountyName:        name,
+		CountySlug:        CountyNameToSlug(name),
 		FIPSCode:          strPtr(fips),
+		MLSStellar:        MLSStellarSlugs[CountyNameToSlug(name)],
+		MLSBeaches:        MLSBeachesSlugs[CountyNameToSlug(name)],
 		SourceKey:         FDOTAdminBoundariesKey,
 		GeometryJSON:      geom,
 		Properties:        propsJSON,

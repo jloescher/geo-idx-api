@@ -171,8 +171,8 @@ func (s *ProxyService) buildMeta(c *fiber.Ctx, bbox BBox, src Source, fetchErr e
 		Cached:          false,
 	}
 	if m.SourceUsed == "" {
-		m.SourceUsed = "florida_statewide_cadastral"
-		m.SourceTier = "statewide"
+		m.SourceUsed = "unknown"
+		m.SourceTier = "none"
 	}
 	return m
 }

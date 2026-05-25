@@ -194,10 +194,122 @@ CREATE TABLE gis_source_states (
 );
 
 INSERT INTO gis_source_states (source_key) VALUES
-    ('florida_statewide_cadastral'),
-    ('pinellas_enterprise_parcels'),
-    ('hillsborough_hc_parcels')
+    ('fdot_admin_boundaries')
 ON CONFLICT DO NOTHING;
+
+CREATE TABLE gis_parcels (
+    id                  BIGSERIAL PRIMARY KEY,
+    parcel_id           TEXT NOT NULL,
+    source_key          TEXT NOT NULL,
+    county              TEXT NOT NULL,
+    geometry            GEOMETRY(MultiPolygon, 4326) NOT NULL,
+    properties          JSONB NOT NULL DEFAULT '{}',
+    site_address        TEXT,
+    owner_name          TEXT,
+    city                TEXT,
+    zip_code            TEXT,
+    just_value          NUMERIC(15,2),
+    assessed_value      NUMERIC(15,2),
+    land_value          NUMERIC(15,2),
+    living_area_sqft    NUMERIC(12,2),
+    year_built          INTEGER,
+    acres               NUMERIC(12,4),
+    land_use_code       TEXT,
+    last_sale_price     NUMERIC(15,2),
+    last_sale_date      TIMESTAMPTZ,
+    last_synced_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    source_generation   INTEGER NOT NULL,
+    source_fingerprint  TEXT,
+    UNIQUE (parcel_id, source_key),
+    CONSTRAINT gis_parcels_county_slug CHECK (county ~ '^[a-z0-9-]+$')
+);
+
+CREATE TABLE gis_counties (
+    id                  BIGSERIAL PRIMARY KEY,
+    county_name         TEXT NOT NULL,
+    county_slug         TEXT NOT NULL,
+    fips_code           TEXT,
+    mls_stellar         BOOLEAN NOT NULL DEFAULT FALSE,
+    mls_beaches         BOOLEAN NOT NULL DEFAULT FALSE,
+    source_key          TEXT NOT NULL DEFAULT 'fdot_admin_boundaries',
+    geometry            GEOMETRY(MultiPolygon, 4326) NOT NULL,
+    properties          JSONB NOT NULL DEFAULT '{}',
+    last_synced_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    source_generation   INTEGER NOT NULL,
+    source_fingerprint  TEXT,
+    UNIQUE (county_slug),
+    UNIQUE (fips_code)
+);
+
+CREATE TABLE gis_cities (
+    id                  BIGSERIAL PRIMARY KEY,
+    city_name           TEXT NOT NULL,
+    county              TEXT,
+    source_key          TEXT NOT NULL DEFAULT 'fdot_admin_boundaries',
+    geometry            GEOMETRY(MultiPolygon, 4326) NOT NULL,
+    properties          JSONB NOT NULL DEFAULT '{}',
+    last_synced_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    source_generation   INTEGER NOT NULL,
+    source_fingerprint  TEXT,
+    UNIQUE (city_name, county)
+);
+
+CREATE TABLE gis_zips (
+    id                  BIGSERIAL PRIMARY KEY,
+    zip_code            TEXT NOT NULL,
+    source_key          TEXT NOT NULL DEFAULT 'fdot_admin_boundaries',
+    geometry            GEOMETRY(MultiPolygon, 4326) NOT NULL,
+    properties          JSONB NOT NULL DEFAULT '{}',
+    last_synced_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    source_generation   INTEGER NOT NULL,
+    source_fingerprint  TEXT,
+    UNIQUE (zip_code)
+);
+
+CREATE TABLE gis_parcel_sources (
+    source_key       TEXT PRIMARY KEY,
+    county_slug      TEXT NOT NULL,
+    query_url        TEXT NOT NULL,
+    sync_mode        TEXT NOT NULL DEFAULT 'bbox',
+    arcgis_where     TEXT,
+    bbox_west        DOUBLE PRECISION,
+    bbox_south       DOUBLE PRECISION,
+    bbox_east        DOUBLE PRECISION,
+    bbox_north       DOUBLE PRECISION,
+    http_timeout_sec INTEGER,
+    page_size        INTEGER,
+    mls_feed         TEXT NOT NULL,
+    enabled          BOOLEAN NOT NULL DEFAULT TRUE,
+    priority         SMALLINT NOT NULL DEFAULT 100,
+    notes            TEXT,
+    last_synced_at   TIMESTAMPTZ,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT gis_parcel_sources_county_slug CHECK (county_slug ~ '^[a-z0-9-]+$'),
+    CONSTRAINT gis_parcel_sources_sync_mode CHECK (sync_mode IN ('bbox', 'paginate', 'where_filter', 'shapefile'))
+);
+
+CREATE INDEX idx_gis_parcels_geometry ON gis_parcels USING GIST (geometry);
+CREATE INDEX idx_gis_cities_geometry ON gis_cities USING GIST (geometry);
+CREATE INDEX idx_gis_counties_geometry ON gis_counties USING GIST (geometry);
+CREATE INDEX idx_gis_zips_geometry ON gis_zips USING GIST (geometry);
+
+CREATE INDEX idx_gis_parcels_county ON gis_parcels (county);
+CREATE INDEX idx_gis_parcels_source_generation ON gis_parcels (source_key, source_generation);
+CREATE INDEX idx_gis_parcels_county_source_gen ON gis_parcels (county, source_key, source_generation);
+CREATE INDEX idx_gis_parcels_last_synced_at ON gis_parcels (last_synced_at);
+
+CREATE INDEX idx_gis_cities_county ON gis_cities (county);
+CREATE INDEX idx_gis_cities_source_generation ON gis_cities (source_key, source_generation);
+
+CREATE INDEX idx_gis_counties_source_generation ON gis_counties (source_key, source_generation);
+CREATE INDEX idx_gis_counties_mls_stellar ON gis_counties (mls_stellar) WHERE mls_stellar = TRUE;
+CREATE INDEX idx_gis_counties_mls_beaches ON gis_counties (mls_beaches) WHERE mls_beaches = TRUE;
+
+CREATE INDEX idx_gis_zips_source_generation ON gis_zips (source_key, source_generation);
+
+CREATE INDEX idx_gis_parcel_sources_county ON gis_parcel_sources (county_slug);
+CREATE INDEX idx_gis_parcel_sources_enabled ON gis_parcel_sources (enabled) WHERE enabled = TRUE;
 
 CREATE TABLE crypto_price_snapshots (
     id BIGSERIAL PRIMARY KEY,
@@ -322,6 +434,11 @@ DROP TABLE IF EXISTS replica_pages;
 DROP TABLE IF EXISTS listing_sync_cursors;
 DROP TABLE IF EXISTS listings;
 DROP TABLE IF EXISTS crypto_price_snapshots;
+DROP TABLE IF EXISTS gis_parcel_sources;
+DROP TABLE IF EXISTS gis_zips;
+DROP TABLE IF EXISTS gis_cities;
+DROP TABLE IF EXISTS gis_counties;
+DROP TABLE IF EXISTS gis_parcels;
 DROP TABLE IF EXISTS gis_source_states;
 DROP TABLE IF EXISTS gis_cache;
 DROP TABLE IF EXISTS mls_proxy_audit_logs;

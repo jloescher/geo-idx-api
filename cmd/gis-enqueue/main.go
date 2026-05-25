@@ -10,16 +10,19 @@ import (
 	"github.com/quantyralabs/idx-api/internal/config"
 	"github.com/quantyralabs/idx-api/internal/queue"
 	"github.com/quantyralabs/idx-api/internal/repository"
+	gisrepo "github.com/quantyralabs/idx-api/internal/repository/gis"
+	"github.com/quantyralabs/idx-api/internal/service/gis"
 )
 
 func main() {
 	job := flag.String("job", "", "Job to enqueue: parcels or zips")
+	county := flag.String("county", "", "Optional county slug for single-county parcel sync (e.g. hillsborough)")
 	flag.Parse()
 
 	switch *job {
 	case "parcels", "zips":
 	default:
-		slog.Error("usage: gis-enqueue -job parcels|zips")
+		slog.Error("usage: gis-enqueue -job parcels|zips [-county slug]")
 		os.Exit(1)
 	}
 
@@ -43,6 +46,17 @@ func main() {
 	queueName := cfg.GIS.SyncQueue
 	if queueName == "" {
 		queueName = "default"
+	}
+
+	if *job == "parcels" && *county != "" {
+		gisRepo := gisrepo.New(db)
+		svc := gis.NewParcelSyncService(cfg, gisRepo, q, slog.Default())
+		if err := svc.KickoffCounty(ctx, *county); err != nil {
+			slog.Error("county parcel kickoff failed", "county", *county, "error", err)
+			os.Exit(1)
+		}
+		slog.Info("gis county parcel kickoff enqueued", "county", *county, "queue", queueName)
+		return
 	}
 
 	var jobType string

@@ -85,10 +85,10 @@ func (r *Repository) BulkUpsertCounties(ctx context.Context, rows []CountyRow) e
 func (r *Repository) upsertCountyBatch(ctx context.Context, rows []CountyRow) error {
 	var b strings.Builder
 	b.WriteString(`INSERT INTO gis_counties (
-		county_name, fips_code, source_key, geometry, properties,
+		county_name, county_slug, fips_code, mls_stellar, mls_beaches, source_key, geometry, properties,
 		last_synced_at, source_generation, source_fingerprint
 	) VALUES `)
-	args := make([]any, 0, len(rows)*8)
+	args := make([]any, 0, len(rows)*11)
 	n := 1
 	for i, row := range rows {
 		if i > 0 {
@@ -98,20 +98,27 @@ func (r *Repository) upsertCountyBatch(ctx context.Context, rows []CountyRow) er
 		if sk == "" {
 			sk = fdotSourceKey
 		}
+		slug := row.CountySlug
+		if slug == "" {
+			slug = row.CountyName
+		}
 		b.WriteString(fmt.Sprintf(`(
-			$%d, $%d, $%d,
+			$%d, $%d, $%d, $%d, $%d, $%d,
 			ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($%d), 4326)),
 			$%d::jsonb, NOW(), $%d, $%d
-		)`, n, n+1, n+2, n+3, n+4, n+5, n+6))
+		)`, n, n+1, n+2, n+3, n+4, n+5, n+6, n+7, n+8, n+9))
 		props := row.Properties
 		if len(props) == 0 {
 			props = json.RawMessage(`{}`)
 		}
-		args = append(args, row.CountyName, row.FIPSCode, sk, row.GeometryJSON, string(props), row.SourceGeneration, row.SourceFingerprint)
-		n += 7
+		args = append(args, row.CountyName, slug, row.FIPSCode, row.MLSStellar, row.MLSBeaches, sk, row.GeometryJSON, string(props), row.SourceGeneration, row.SourceFingerprint)
+		n += 10
 	}
-	b.WriteString(` ON CONFLICT (fips_code) DO UPDATE SET
+	b.WriteString(` ON CONFLICT (county_slug) DO UPDATE SET
 		county_name = EXCLUDED.county_name,
+		fips_code = EXCLUDED.fips_code,
+		mls_stellar = EXCLUDED.mls_stellar,
+		mls_beaches = EXCLUDED.mls_beaches,
 		source_key = EXCLUDED.source_key,
 		geometry = EXCLUDED.geometry,
 		properties = EXCLUDED.properties,
@@ -286,6 +293,57 @@ func (r *Repository) CountBoundaries(ctx context.Context) (cities, counties, zip
 	}
 	err = r.db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM gis_zips`).Scan(&zips)
 	return
+}
+
+// BackfillCityCounties assigns county slugs to cities via largest-area intersection with county boundaries.
+func (r *Repository) BackfillCityCounties(ctx context.Context, generation int) (int64, error) {
+	tag, err := r.db.Pool.Exec(ctx, `
+		WITH ranked AS (
+			SELECT c.id,
+			       co.county_slug,
+			       ROW_NUMBER() OVER (
+			           PARTITION BY c.id
+			           ORDER BY ST_Area(ST_Intersection(c.geometry, co.geometry)) DESC
+			       ) AS rn
+			FROM gis_cities c
+			JOIN gis_counties co ON ST_Intersects(c.geometry, co.geometry)
+			WHERE c.source_generation = $1 AND co.source_generation = $1
+		)
+		UPDATE gis_cities c
+		SET county = ranked.county_slug
+		FROM ranked
+		WHERE c.id = ranked.id AND ranked.rn = 1
+	`, generation)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// QueryCountySlugsByBBox returns county slugs intersecting the envelope.
+func (r *Repository) QueryCountySlugsByBBox(ctx context.Context, west, south, east, north float64) ([]string, error) {
+	pool, err := r.db.ReadPool(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := pool.Query(ctx, `
+		SELECT county_slug FROM gis_counties
+		WHERE geometry && `+bboxEnvelopeSQL+` AND ST_Intersects(geometry, `+bboxEnvelopeSQL+`)
+		ORDER BY county_slug
+	`, west, south, east, north, west, south, east, north)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var slug string
+		if err := rows.Scan(&slug); err != nil {
+			return nil, err
+		}
+		out = append(out, slug)
+	}
+	return out, rows.Err()
 }
 
 // IsPersistentEmpty returns true when all persistent GIS tables are empty.

@@ -10,13 +10,15 @@ import (
 const bboxEnvelopeSQL = `ST_MakeEnvelope($1, $2, $3, $4, 4326)`
 
 // BulkUpsertParcels inserts or updates parcel rows in batches.
-// Revenue impact: pre-loaded parcels eliminate per-request ArcGIS latency on map pan/zoom.
-func (r *Repository) BulkUpsertParcels(ctx context.Context, rows []ParcelRow) error {
+func (r *Repository) BulkUpsertParcels(ctx context.Context, rows []ParcelRow, chunkSize int) error {
 	if len(rows) == 0 {
 		return nil
 	}
-	for i := 0; i < len(rows); i += 100 {
-		end := i + 100
+	if chunkSize <= 0 {
+		chunkSize = 500
+	}
+	for i := 0; i < len(rows); i += chunkSize {
+		end := i + chunkSize
 		if end > len(rows) {
 			end = len(rows)
 		}
@@ -90,11 +92,13 @@ func (r *Repository) upsertParcelBatch(ctx context.Context, rows []ParcelRow) er
 }
 
 // DeleteStaleParcels removes rows superseded by a successful generation swap.
-func (r *Repository) DeleteStaleParcels(ctx context.Context, sourceKey string, currentGen int) (int64, error) {
+// When county is non-empty, only rows for that county are deleted.
+func (r *Repository) DeleteStaleParcels(ctx context.Context, sourceKey, county string, currentGen int) (int64, error) {
 	tag, err := r.db.Pool.Exec(ctx, `
 		DELETE FROM gis_parcels
 		WHERE source_key = $1 AND source_generation < $2
-	`, sourceKey, currentGen)
+		  AND ($3 = '' OR county = $3)
+	`, sourceKey, currentGen, county)
 	if err != nil {
 		return 0, err
 	}
@@ -176,6 +180,15 @@ func (r *Repository) SourceGeneration(ctx context.Context, sourceKey string) (in
 	var gen int64
 	err := r.db.Pool.QueryRow(ctx, `SELECT generation FROM gis_source_states WHERE source_key = $1`, sourceKey).Scan(&gen)
 	return gen, err
+}
+
+// EnsureSourceState inserts a gis_source_states row when missing.
+func (r *Repository) EnsureSourceState(ctx context.Context, sourceKey string) error {
+	_, err := r.db.Pool.Exec(ctx, `
+		INSERT INTO gis_source_states (source_key) VALUES ($1)
+		ON CONFLICT DO NOTHING
+	`, sourceKey)
+	return err
 }
 
 // BumpSourceGeneration increments generation for a source key.

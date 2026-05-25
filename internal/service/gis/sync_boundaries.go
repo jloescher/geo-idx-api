@@ -45,6 +45,11 @@ func (s *BoundarySyncService) RunAnnualRefresh(ctx context.Context) error {
 	if err := s.syncLayer(ctx, FDOTCitiesURL, gen, &fp, s.syncCities); err != nil {
 		return err
 	}
+	updated, err := s.db.BackfillCityCounties(ctx, gen)
+	if err != nil {
+		return fmt.Errorf("backfill city counties: %w", err)
+	}
+	s.logger.Info("gis city county backfill", "generation", gen, "updated", updated)
 	if err := s.syncLayer(ctx, FDOTZipsURL, gen, &fp, s.syncZips); err != nil {
 		return err
 	}
@@ -96,6 +101,11 @@ func (s *BoundarySyncService) RunGapFill(ctx context.Context) error {
 	if cities == 0 {
 		if err := s.syncLayer(ctx, FDOTCitiesURL, gen, &fp, s.syncCities); err != nil {
 			return err
+		}
+		if updated, err := s.db.BackfillCityCounties(ctx, gen); err != nil {
+			return fmt.Errorf("backfill city counties: %w", err)
+		} else {
+			s.logger.Info("gis city county backfill", "generation", gen, "updated", updated)
 		}
 		if _, err := s.db.DeleteStaleCities(ctx, FDOTAdminBoundariesKey, gen); err != nil {
 			return err
