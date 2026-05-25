@@ -14,3 +14,9 @@ func TestMirrorRollingMonthsDescription(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestPurgeActivePendingUsesMirrorPersistedAt(t *testing.T) {
+	if activePendingMirrorAgeExpr != "COALESCE(mirror_persisted_at, modification_timestamp)" {
+		t.Fatalf("expr %q", activePendingMirrorAgeExpr)
+	}
+}

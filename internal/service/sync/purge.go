@@ -8,8 +8,11 @@ import (
 	"github.com/quantyralabs/idx-api/internal/repository"
 )
 
+// activePendingMirrorAgeExpr is the effective timestamp for rolling-window purge of Active/Pending rows.
+const activePendingMirrorAgeExpr = "COALESCE(mirror_persisted_at, modification_timestamp)"
+
 // PurgeClosed removes Closed listings from the mirror and, when a rolling window is configured,
-// Active/Pending rows older than the window.
+// Active/Pending rows older than the window (by mirror persist time, not MLS modification alone).
 type PurgeClosed struct {
 	cfg config.Config
 	db  *repository.DB
@@ -35,8 +38,7 @@ func (p *PurgeClosed) Run(ctx context.Context) error {
 		WHERE LOWER(TRIM(COALESCE(standard_status, ''))) = 'closed'
 		   OR (
 		     LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
-		     AND modification_timestamp IS NOT NULL
-		     AND modification_timestamp < $1
+		     AND `+activePendingMirrorAgeExpr+` < $1
 		   )
 		   OR (close_date IS NOT NULL AND close_date < $1::date)
 	`, cutoff)

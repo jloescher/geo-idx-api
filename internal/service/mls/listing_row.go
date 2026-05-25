@@ -24,7 +24,7 @@ type ListingRecord struct {
 	ListPrice                 *float64
 	BedroomsTotal             *int16
 	BathroomsTotalDecimal     *float64
-	LivingArea                *int32
+	LivingArea                *float64
 	LotSizeAcres              *float64
 	YearBuilt                 *int16
 	StoriesTotal              *int16
@@ -123,18 +123,23 @@ func BuildListingRecord(
 
 	floodZoneCode := resolver.ResolveFloodZoneCode(row, provider, datasetUpper)
 
+	listPrice, hasPrice := ResolveListPrice(row)
+	if !hasPrice {
+		return ListingRecord{}, RowActionSkip
+	}
+
 	rec := ListingRecord{
 		DatasetSlug:               datasetSlug,
 		ListingKey:                  listingKey,
 		MlsListingID:                mlsID,
 		StandardStatus:              stdPtr,
-		ListPrice:                   float64Ptr(row["ListPrice"]),
-		BedroomsTotal:               int16Ptr(row["BedroomsTotal"]),
-		BathroomsTotalDecimal:       bathroomsTotal(row),
-		LivingArea:                  livingArea(row),
-		LotSizeAcres:                float64Ptr(row["LotSizeAcres"]),
-		YearBuilt:                   int16Ptr(row["YearBuilt"]),
-		StoriesTotal:                int16Ptr(row["StoriesTotal"]),
+		ListPrice:                   &listPrice,
+		BedroomsTotal:               BoundedInt16Ptr(row["BedroomsTotal"]),
+		BathroomsTotalDecimal:       BathroomsTotal(row),
+		LivingArea:                  ResolveLivingAreaSqft(row),
+		LotSizeAcres:                ClampNumeric12_4Ptr(row["LotSizeAcres"]),
+		YearBuilt:                   BoundedInt16Ptr(row["YearBuilt"]),
+		StoriesTotal:                BoundedInt16Ptr(row["StoriesTotal"]),
 		City:                        optionalString(row["City"]),
 		CountyOrParish:              optionalString(row["CountyOrParish"]),
 		PostalCode:                  optionalString(row["PostalCode"]),
@@ -145,7 +150,7 @@ func BuildListingRecord(
 		CloseDate:                   datePtr(row["CloseDate"]),
 		ModificationTimestamp:       ResolveModificationTimestamp(datasetSlug, row),
 		PriceChangeTimestamp:        timestampPtr(row["PriceChangeTimestamp"]),
-		PreviousListPrice:           float64Ptr(row["PreviousListPrice"]),
+		PreviousListPrice:           ClampNumeric14_2Ptr(row["PreviousListPrice"]),
 		FloodZoneCode:               floodZoneCode,
 		LowRiskFloodZoneYN:          ComputeLowRiskFloodZoneYN(floodZoneCode),
 		EstimatedTotalMonthlyFees:   resolver.ResolveEstimatedTotalMonthlyFees(row, provider, datasetUpper),

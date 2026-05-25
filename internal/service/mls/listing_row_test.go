@@ -134,6 +134,97 @@ func TestBuildListingRecordClosedDeletes(t *testing.T) {
 	}
 }
 
+func TestFixtureUpsertsAllHaveListPrice(t *testing.T) {
+	resolver := mls.NewResoFieldResolver()
+	for _, spec := range []struct {
+		path, dataset string
+		provider      mls.MirrorProvider
+	}{
+		{"bridge_interactive/stellar_50_listings.json", "stellar", mls.MirrorProviderBridge},
+		{"spark/beaches_50_listings.json", "beaches", mls.MirrorProviderSpark},
+	} {
+		b, err := os.ReadFile(fixturePath(spec.path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc struct {
+			Value []json.RawMessage `json:"value"`
+		}
+		if err := json.Unmarshal(b, &doc); err != nil {
+			t.Fatal(err)
+		}
+		for i, raw := range doc.Value {
+			var row map[string]any
+			if err := json.Unmarshal(raw, &row); err != nil {
+				t.Fatal(err)
+			}
+			rec, action := mls.BuildListingRecord(spec.dataset, spec.provider, row, raw, resolver, nil)
+			if action != mls.RowActionUpsert {
+				continue
+			}
+			if rec.ListPrice == nil {
+				t.Fatalf("%s row %d: missing list_price", spec.path, i)
+			}
+			apiPrice, ok := mls.ResolveListPrice(row)
+			if !ok {
+				t.Fatalf("%s row %d: API has no price fields", spec.path, i)
+			}
+			if *rec.ListPrice != apiPrice {
+				t.Fatalf("%s row %d: list_price %v want %v", spec.path, i, *rec.ListPrice, apiPrice)
+			}
+		}
+	}
+}
+
+func TestBuildListingRecordBathrooms6602(t *testing.T) {
+	row := map[string]any{
+		"ListingKey":              "stellar:bad-baths",
+		"StandardStatus":          "Active",
+		"ListPrice":               250000,
+		"BathroomsTotalInteger":   6602,
+	}
+	raw, _ := json.Marshal(row)
+	rec, action := mls.BuildListingRecord("stellar", mls.MirrorProviderBridge, row, raw, mls.NewResoFieldResolver(), nil)
+	if action != mls.RowActionUpsert {
+		t.Fatalf("action %s", action)
+	}
+	if rec.BathroomsTotalDecimal != nil {
+		t.Fatalf("bathrooms %v", rec.BathroomsTotalDecimal)
+	}
+	if rec.ListPrice == nil || *rec.ListPrice != 250000 {
+		t.Fatalf("list_price %v", rec.ListPrice)
+	}
+}
+
+func TestBuildListingRecordLivingAreaSqft(t *testing.T) {
+	row := map[string]any{
+		"ListingKey":     "beaches:gla",
+		"StandardStatus": "Active",
+		"ListPrice":      500000,
+		"LivingArea":     8891,
+	}
+	raw, _ := json.Marshal(row)
+	rec, action := mls.BuildListingRecord("beaches", mls.MirrorProviderSpark, row, raw, mls.NewResoFieldResolver(), nil)
+	if action != mls.RowActionUpsert {
+		t.Fatalf("action %s", action)
+	}
+	if rec.LivingArea == nil || *rec.LivingArea != 8891 {
+		t.Fatalf("living_area %v", rec.LivingArea)
+	}
+}
+
+func TestBuildListingRecordSkipsActiveWithoutPrice(t *testing.T) {
+	row := map[string]any{
+		"ListingKey":     "stellar:no-price",
+		"StandardStatus": "Active",
+	}
+	raw, _ := json.Marshal(row)
+	_, action := mls.BuildListingRecord("stellar", mls.MirrorProviderBridge, row, raw, mls.NewResoFieldResolver(), nil)
+	if action != mls.RowActionSkip {
+		t.Fatalf("action %s", action)
+	}
+}
+
 func TestBuildListingRecordCoordinatesGeoJSON(t *testing.T) {
 	row := map[string]any{
 		"ListingKey":     "92db0afbb51861ea702ccfe33390e6f3",

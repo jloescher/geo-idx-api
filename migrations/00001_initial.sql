@@ -335,10 +335,10 @@ CREATE TABLE listings (
     listing_key VARCHAR(255) NOT NULL,
     mls_listing_id VARCHAR(128) NULL,
     standard_status VARCHAR(50) NULL,
-    list_price NUMERIC(14, 2) NULL,
+    list_price NUMERIC(14, 2) NOT NULL,
     bedrooms_total SMALLINT NULL,
     bathrooms_total_decimal NUMERIC(5, 2) NULL,
-    living_area INT NULL,
+    living_area NUMERIC(12, 2) NULL,
     lot_size_acres NUMERIC(12, 4) NULL,
     year_built SMALLINT NULL,
     stories_total SMALLINT NULL,
@@ -383,6 +383,7 @@ CREATE TABLE listings (
     street_name VARCHAR(160) NULL,
     list_agent_mls_id VARCHAR(64) NULL,
     list_office_mls_id VARCHAR(64) NULL,
+    mirror_persisted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     UNIQUE (dataset_slug, listing_key)
@@ -391,6 +392,8 @@ CREATE TABLE listings (
 CREATE INDEX listings_ap_geom_gix ON listings USING GIST (coordinates)
     WHERE coordinates IS NOT NULL AND LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending');
 CREATE INDEX listings_ap_mod_brin ON listings USING BRIN (modification_timestamp)
+    WHERE LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending');
+CREATE INDEX listings_ap_mirror_persisted_brin ON listings USING BRIN (mirror_persisted_at)
     WHERE LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending');
 CREATE INDEX listings_ap_ds_price_idx ON listings (dataset_slug, list_price)
     WHERE LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending');

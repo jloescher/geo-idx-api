@@ -37,13 +37,15 @@ func (r *ResoFieldResolver) ResolveFloodZoneCode(row map[string]any, provider Mi
 func (r *ResoFieldResolver) ResolveEstimatedTotalMonthlyFees(row map[string]any, provider MirrorProvider, datasetUpper string) *float64 {
 	if provider == MirrorProviderBridge {
 		extField := strings.ToUpper(datasetUpper) + "_TotalMonthlyFees"
-		if v, ok := numericValue(row[extField]); ok && v > 0 {
-			f := round2(v)
-			return &f
+		if v := ClampNumeric14_2Ptr(row[extField]); v != nil && *v > 0 {
+			return v
 		}
 	}
 	allowFallback := provider == MirrorProviderSpark
-	return r.fees.FromResoRow(row, allowFallback)
+	if v := r.fees.FromResoRow(row, allowFallback); v != nil {
+		return ClampNumeric14_2Ptr(*v)
+	}
+	return nil
 }
 
 func firstNonEmpty(vals ...string) string {

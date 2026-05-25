@@ -3,10 +3,12 @@ package sync
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/quantyralabs/idx-api/internal/repository"
 	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
@@ -171,7 +173,7 @@ func upsertListing(ctx context.Context, tx pgx.Tx, rec mls.ListingRecord) error 
 			subdivision_name, elementary_school, middle_or_junior_school, high_school,
 			special_listing_conditions, raw_data, media, unit, room, open_house, custom_fields,
 			street_number, street_name, list_agent_mls_id, list_office_mls_id,
-			created_at, updated_at
+			mirror_persisted_at, created_at, updated_at
 		) VALUES (
 			$1, $2, $3, $4,
 			$5, $6, $7, $8, $9,
@@ -185,7 +187,7 @@ func upsertListing(ctx context.Context, tx pgx.Tx, rec mls.ListingRecord) error 
 			$37, $38, $39, $40,
 			$41, $42, $43, $44, $45, $46, $47,
 			$48, $49, $50, $51,
-			NOW(), NOW()
+			NOW(), NOW(), NOW()
 		)
 		ON CONFLICT (dataset_slug, listing_key) DO UPDATE SET
 			mls_listing_id = EXCLUDED.mls_listing_id,
@@ -237,6 +239,7 @@ func upsertListing(ctx context.Context, tx pgx.Tx, rec mls.ListingRecord) error 
 			street_name = EXCLUDED.street_name,
 			list_agent_mls_id = EXCLUDED.list_agent_mls_id,
 			list_office_mls_id = EXCLUDED.list_office_mls_id,
+			mirror_persisted_at = NOW(),
 			updated_at = NOW()
 	`,
 		rec.DatasetSlug, rec.ListingKey, rec.MlsListingID, rec.StandardStatus,
@@ -257,6 +260,18 @@ func upsertListing(ctx context.Context, tx pgx.Tx, rec mls.ListingRecord) error 
 		rec.CustomFields,
 		rec.StreetNumber, rec.StreetName, rec.ListAgentMlsID, rec.ListOfficeMlsID,
 	)
+	if err != nil {
+		return wrapListingPersistErr(rec, err)
+	}
+	return nil
+}
+
+func wrapListingPersistErr(rec mls.ListingRecord, err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "22003" {
+		return fmt.Errorf("listing persist numeric overflow dataset=%s listing_key=%s: %w",
+			rec.DatasetSlug, rec.ListingKey, err)
+	}
 	return err
 }
 

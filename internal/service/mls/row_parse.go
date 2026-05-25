@@ -120,20 +120,6 @@ func timestampPtr(v any) *time.Time {
 	return nil
 }
 
-func bathroomsTotal(row map[string]any) *float64 {
-	if v := float64Ptr(row["BathroomsTotalDecimal"]); v != nil {
-		return v
-	}
-	return float64Ptr(row["BathroomsTotalInteger"])
-}
-
-func livingArea(row map[string]any) *int32 {
-	if v := int32Ptr(row["LivingArea"]); v != nil {
-		return v
-	}
-	return int32Ptr(row["BuildingAreaTotal"])
-}
-
 func resolveLatLng(row map[string]any) (lat, lng float64, ok bool) {
 	if coords, okMap := row["Coordinates"].(map[string]any); okMap {
 		if pair, okArr := coords["coordinates"].([]any); okArr && len(pair) >= 2 {

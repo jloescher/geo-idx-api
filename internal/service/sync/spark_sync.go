@@ -86,7 +86,7 @@ func (s *SparkSync) FetchIncrementalPage(ctx context.Context, cursor SyncCursor,
 	lower := cursor.LastModificationTimestamp.UTC().Format("2006-01-02T15:04:05Z")
 	upper := windowEnd.UTC().Format("2006-01-02T15:04:05Z")
 	filter := fmt.Sprintf("(%s) and ModificationTimestamp gt %s and ModificationTimestamp lt %s",
-		activePendingReplicationBaseFilter(s.cfg), lower, upper)
+		activePendingStatusFilter, lower, upper)
 
 	fetchURL := s.propertyCollectionURL()
 	query := url.Values{}

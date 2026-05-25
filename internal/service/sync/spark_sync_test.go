@@ -123,3 +123,39 @@ func TestSparkSync_FetchIncrementalPageBuildsWindowFilter(t *testing.T) {
 		t.Fatalf("filter missing status: %q", filter)
 	}
 }
+
+func TestSparkSync_FetchIncrementalPageRollingMonthsSingleModificationGt(t *testing.T) {
+	var filter string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		filter = r.URL.Query().Get("$filter")
+		_, _ = w.Write([]byte(`{"value":[]}`))
+	}))
+	defer srv.Close()
+
+	lower := time.Date(2024, 7, 1, 0, 0, 0, 0, time.UTC)
+	upper := time.Date(2024, 7, 2, 0, 0, 0, 0, time.UTC)
+
+	cfg := config.Config{
+		Spark: config.SparkConfig{
+			AccessToken:        "tok",
+			ReplicationHost:    srv.URL,
+			ReplicationReso:    "Reso/OData",
+			SyncIncrementalTop: 100,
+		},
+		MLS: config.MLSConfig{LocalMirrorRollingMonths: 3},
+	}
+	syncer := NewSparkSync(cfg, nil)
+	_, err := syncer.FetchIncrementalPage(t.Context(), SyncCursor{
+		LastModificationTimestamp: &lower,
+		IncrementalWindowEnd:      &upper,
+	}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(filter, "ModificationTimestamp gt") != 1 {
+		t.Fatalf("expected one ModificationTimestamp gt (cursor only), filter=%q", filter)
+	}
+	if strings.Contains(filter, activePendingReplicationBaseFilter(cfg)) {
+		t.Fatalf("incremental must not embed replication rolling base filter: %q", filter)
+	}
+}

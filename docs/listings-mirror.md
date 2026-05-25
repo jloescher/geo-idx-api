@@ -21,7 +21,8 @@ Replication flow: scheduler kickoff → `bridge.fetch_page` / `spark.fetch_page`
 
 | Column | Contents |
 |--------|----------|
-| Typed columns | `list_price`, `bedrooms_total`, geo (`coordinates`), `flood_zone_code`, `estimated_total_monthly_fees`, `standard_status`, etc. — populated at persist for search indexes |
+| Typed columns | `list_price` (required on Active/Pending upsert), `bedrooms_total`, `living_area` (sq ft, `NUMERIC(12,2)`), geo (`coordinates`), `flood_zone_code`, `estimated_total_monthly_fees`, `standard_status`, etc. — populated at persist for search indexes |
+| `mirror_persisted_at` | When idx-api last wrote the row to the mirror (`NOW()` on each upsert); used for rolling-window purge — not the MLS modification clock |
 | `raw_data` | Slim RESO Property JSON: scalars and fields that map to typed columns; **no** expanded collections; **no** `@odata.*` keys |
 | `media` | RESO `Media[]` when present |
 | `unit` | RESO `Unit[]` (Spark) or `UnitTypes[]` (Bridge), normalized at persist |
@@ -113,9 +114,45 @@ Example response fragment after merge:
 Queue job **`mls.purge_closed_listings`** (scheduler daily cron):
 
 - Always deletes **Closed** rows from `listings`
-- When `MLS_LOCAL_MIRROR_ROLLING_MONTHS` > 0, also deletes Active/Pending rows with `modification_timestamp` older than the window (and stale `close_date`)
+- When `MLS_LOCAL_MIRROR_ROLLING_MONTHS` > 0, also deletes Active/Pending rows whose effective age is older than the window: **`COALESCE(mirror_persisted_at, modification_timestamp) < cutoff`** (and stale `close_date`). Bulk Stellar replication can carry old `BridgeModificationTimestamp` on the row while `mirror_persisted_at` reflects when we persisted it — purge retention follows **mirror persist time**, not upstream modification alone.
 
 Default rolling months: **12** (local/dev), **3** (staging `APP_ENV`), **0** = all-time (production default).
+
+### RESO numeric normalization (persist)
+
+Indexed numerics are clamped to PostgreSQL column bounds in `internal/service/mls/normalize.go` (full payloads remain in `raw_data` / `custom_fields`):
+
+| Mirror column | Rule |
+|---------------|------|
+| `list_price` | `ListPrice` → `PreviousListPrice` → `OriginalListPrice`; clamp `NUMERIC(14,2)`; skip upsert if Active/Pending and all absent |
+| `bathrooms_total_decimal` | Prefer `BathroomsTotalDecimal`; integer fallback only if **0–30**; clamp ≤ **99.99**; NULL for implausible values (e.g. `BathroomsTotalInteger=6602`) |
+| `living_area` | `LivingArea` → `BuildingAreaTotal`; decimal sq ft, clamp `NUMERIC(12,2)` |
+| Optional prices / lot | Clamp to column width; NULL when API omits field |
+
+**Spark incremental OData:** `FetchIncrementalPage` uses **status-only** `(Active|Pending)` plus cursor `ModificationTimestamp gt/lt`. It does **not** wrap `activePendingReplicationBaseFilter` (which adds a second rolling `ModificationTimestamp gt` and caused HTTP 400). Rolling `ModificationTimestamp gt` applies on **replication seed** via `SparkReplicationFilter` only.
+
+---
+
+## Fresh database verification
+
+After changing `migrations/00001_initial.sql`, reset to an **empty** database and apply schema once:
+
+```bash
+export GOOSE_DBSTRING="postgres://postgres:postgres@127.0.0.1:5432/idx_api?sslmode=disable"
+make migrate
+```
+
+Start worker queues: `sync-kickoff,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist` (scheduler enqueues kickoff). Then confirm both feeds populated and replication cleared:
+
+```sql
+SELECT dataset_slug, COUNT(*), MIN(mirror_persisted_at), MAX(mirror_persisted_at)
+FROM listings GROUP BY 1;
+
+SELECT dataset_slug, replication_in_progress, last_sync_finished_at
+FROM listing_sync_cursors;
+```
+
+Expect row counts to grow for `stellar` and `beaches`, `replication_in_progress` false after initial replication, and no new `failed_jobs` with numeric overflow (`22003`) or Spark incremental HTTP 400.
 
 ---
 
@@ -126,6 +163,7 @@ Default rolling months: **12** (local/dev), **3** (staging `APP_ENV`), **0** = a
 | Payload split, merge, custom_fields | `internal/service/mls/listing_payload.go` |
 | Modification timestamp resolve | `internal/service/mls/modification_timestamp.go` |
 | Build row for upsert | `internal/service/mls/listing_row.go` → `BuildListingRecord` |
+| RESO numeric clamp / list price | `internal/service/mls/normalize.go` |
 | Mirror upsert | `internal/service/sync/listing_mirror.go` |
 | Bridge fetch | `internal/service/sync/bridge_sync.go` |
 | Spark fetch | `internal/service/sync/spark_sync.go` |
