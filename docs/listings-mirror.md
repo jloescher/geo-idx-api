@@ -129,9 +129,16 @@ Incremental and replication fetches only return **Active/Pending** rows. When a 
 | `stellar` | `bridge.reconcile_keys` | `bridge-sync-fetch` | `GET …/Property/replication` with AP `$filter`, `$select=ListingKey`, `$top=2000`, `next` link (fallback: `/Property` + `$skip`) |
 | `beaches` | `spark.reconcile_keys` | `spark-sync-fetch` | `GET …/Property` on replication host with **`SparkReplicationFilter`** (AP [+ rolling months]), `$select=ListingKey`, `$top=1000`, `@odata.nextLink` |
 
-Each page upserts keys into **`reconcile_listing_keys`** (`run_id`, `dataset_slug`, `listing_key`). After the last page, one anti-join deletes mirror rows not in that set, then staging rows for the run are removed.
+Each page upserts keys into **`reconcile_listing_keys`** (`run_id`, `dataset_slug`, `listing_key`). After the last page, one anti-join deletes mirror rows not in that set, then staging rows for the run are removed. Completed runs are recorded in **`reconcile_runs`** (`keys_seen`, `rows_deleted`, `mirror_count_before`, status).
 
-**Defer:** kickoff skips a dataset when `replication_in_progress`, `replication_next_url` is set, or a `replica_pages` row is active — same gating as incremental kickoff.
+**Safety (delete phase):**
+
+- HTTP **403** fails the job (never treated as an empty catalog).
+- Refuses delete when **0 upstream keys** but the mirror has rows, or when `keys_seen` is below **50%** of mirror row count (for mirrors larger than 50 rows).
+- Refuses delete while **`bridge.fetch_page` / `spark.fetch_page`** is pending/in-flight for the dataset, or replication chain / active `replica_pages` are active.
+- One reconcile page chain per `run_id` at a time (`pg_try_advisory_xact_lock`).
+
+**Defer / retry:** kickoff skips a dataset when replication is active, a `replica_pages` row is active, or sync fetch is in flight. If any dataset defers, a delayed **`mls.mirror_key_reconcile`** is enqueued on `MLS_SYNC_KICKOFF_QUEUE` after **`MLS_MIRROR_KEY_RECONCILE_RETRY_MINUTES`** (default **30**).
 
 **Distinct from:**
 
@@ -139,6 +146,29 @@ Each page upserts keys into **`reconcile_listing_keys`** (`run_id`, `dataset_slu
 - **Incremental delete path** — only when a non-AP row appears in a fetch batch (rare for IDX tokens when status moves off AP).
 
 Uses the same cluster rate limiter as sync fetch (`sync_rate_budget`).
+
+#### First production reconcile run
+
+Apply migration **`00005_reconcile_runs.sql`** (audit table) in addition to **`00004_reconcile_listing_keys.sql`**. Confirm replication is idle (`replication_in_progress = false`, no `replica_pages`, cursors aligned with mirror).
+
+**Optional manual kickoff** (instead of waiting for 04:00 UTC cron): enqueue `mls.mirror_key_reconcile` on `sync-kickoff`.
+
+**Monitor during the run:**
+
+```sql
+-- Mid-run staging keys
+SELECT run_id, dataset_slug, COUNT(*), MIN(created_at), MAX(created_at)
+FROM reconcile_listing_keys GROUP BY 1, 2;
+
+-- Durable run summary
+SELECT run_id, dataset_slug, provider, status, keys_seen, rows_deleted, mirror_count_before, started_at, finished_at
+FROM reconcile_runs ORDER BY started_at DESC LIMIT 10;
+
+-- Queue depth
+SELECT payload::json->>'type' AS job_type, COUNT(*) FROM jobs GROUP BY 1;
+```
+
+After completion, staging should be empty (`reconcile_listing_keys` purged per run). Compare stale AP counts (e.g. `modification_timestamp` older than 90 days) before and after; a large drop indicates orphaned tombstones were removed.
 
 ### RESO numeric normalization (persist)
 

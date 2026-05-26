@@ -295,6 +295,23 @@ func (c *Client) ReleaseAt(ctx context.Context, job *ReservedJob, delay time.Dur
 	return err
 }
 
+// HasPendingJobType reports whether any job of the given type is queued or in-flight on the queue.
+func (c *Client) HasPendingJobType(ctx context.Context, queueName, jobType string) (bool, error) {
+	var exists bool
+	err := c.pool.QueryRow(ctx, fmt.Sprintf(`
+		SELECT EXISTS (
+			SELECT 1 FROM %s
+			WHERE queue = $1
+			  AND (
+			    (reserved_at IS NULL AND available_at <= extract(epoch from now())::bigint)
+			    OR reserved_at IS NOT NULL
+			  )
+			  AND payload::jsonb->>'type' = $2
+		)
+	`, c.table), queueName, jobType).Scan(&exists)
+	return exists, err
+}
+
 // HasPendingFetch reports whether a fetch_page job for the dataset is queued or in-flight.
 func (c *Client) HasPendingFetch(ctx context.Context, queueName, jobType, dataset string) (bool, error) {
 	var exists bool

@@ -175,6 +175,18 @@ func (k *Kickoff) tryIncrementalKickoff(ctx context.Context, provider, dataset, 
 	if !k.cursors.ShouldRunIncremental(cursor) {
 		return nil
 	}
+
+	fresh := NewFreshness(k.cfg, k.db)
+	current, err := fresh.IsCurrent(ctx, dataset, provider)
+	if err != nil {
+		return err
+	}
+	if !current {
+		k.logger.Debug("kickoff skipped: mirror not current (catch-up)",
+			"provider", provider, "dataset", dataset)
+		return nil
+	}
+
 	if !k.shouldPollIncremental(cursor) {
 		return nil
 	}

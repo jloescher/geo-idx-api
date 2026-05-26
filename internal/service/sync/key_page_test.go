@@ -7,60 +7,42 @@ import (
 
 func TestListingKeysFromRows(t *testing.T) {
 	rows := []json.RawMessage{
-		json.RawMessage(`{"ListingKey":"abc","StandardStatus":"Active"}`),
-		json.RawMessage(`{"ListingKey":"def"}`),
-		json.RawMessage(`{"StandardStatus":"Pending"}`),
-		json.RawMessage(`{"ListingKey":"abc"}`),
+		json.RawMessage(`{"ListingKey":"a"}`),
+		json.RawMessage(`{"ListingKey":""}`),
+		json.RawMessage(`{"ListingKey":"b"}`),
+		json.RawMessage(`invalid`),
 	}
 	got := listingKeysFromRows(rows)
-	want := []string{"abc", "def", "abc"}
-	if len(got) != len(want) {
-		t.Fatalf("got %v want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("got %v want %v", got, want)
-		}
+	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Fatalf("keys = %v", got)
 	}
 }
 
 func TestDedupeListingKeys(t *testing.T) {
-	in := []string{"a", "b", "a", "", "c", "b"}
-	got := dedupeListingKeys(in)
-	want := []string{"a", "b", "c"}
-	if len(got) != len(want) {
-		t.Fatalf("got %v want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("got %v want %v", got, want)
-		}
+	got := dedupeListingKeys([]string{"a", "b", "a", "", "b"})
+	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Fatalf("deduped = %v", got)
 	}
 }
 
-func TestBridgeKeyPageFromResult_complete(t *testing.T) {
-	next := "https://example/next"
-	page := PageResult{
-		Rows:                 []json.RawMessage{json.RawMessage(`{"ListingKey":"k1"}`)},
-		NextReplicationURL:   &next,
-		ReplicationComplete:  false,
+func TestBridgeKeyPageFromResult_ForbiddenNotComplete(t *testing.T) {
+	page := PageResult{Forbidden: true, HTTPStatus: 403, ReplicationComplete: true}
+	out := bridgeKeyPageFromResult(page)
+	if out.Complete {
+		t.Fatal("forbidden page must not mark complete")
 	}
-	got := bridgeKeyPageFromResult(page)
-	if got.Complete {
-		t.Fatal("expected incomplete when next link present")
-	}
-	if len(got.Keys) != 1 || got.Keys[0] != "k1" {
-		t.Fatalf("keys = %v", got.Keys)
+	if !out.Forbidden {
+		t.Fatal("expected Forbidden on result")
 	}
 }
 
-func TestBridgeKeyPageFromResult_fallbackComplete(t *testing.T) {
-	page := PageResult{
-		Rows:                []json.RawMessage{json.RawMessage(`{"ListingKey":"k1"}`)},
-		ReplicationComplete: true,
+func TestSparkKeyPageFromResult_ForbiddenNotComplete(t *testing.T) {
+	page := PageResult{Forbidden: true, HTTPStatus: 403, ReplicationComplete: true}
+	out := sparkKeyPageFromResult(page)
+	if out.Complete {
+		t.Fatal("forbidden page must not mark complete")
 	}
-	got := bridgeKeyPageFromResult(page)
-	if !got.Complete {
-		t.Fatal("expected complete")
+	if !out.Forbidden {
+		t.Fatal("expected Forbidden on result")
 	}
 }

@@ -317,11 +317,12 @@ func bridgeKeyPageFromResult(page PageResult) KeyPageResult {
 		Keys:       dedupeListingKeys(listingKeysFromRows(page.Rows)),
 		NextURL:    page.NextReplicationURL,
 		HTTPError:  page.HTTPError,
+		Forbidden:  page.Forbidden,
 		HTTPStatus: page.HTTPStatus,
 		ODataError: page.ODataError,
 		FetchURL:   page.FetchURL,
 	}
-	if page.HTTPError {
+	if page.HTTPError || page.Forbidden {
 		return out
 	}
 	out.Complete = page.ReplicationComplete

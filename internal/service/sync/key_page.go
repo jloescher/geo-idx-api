@@ -12,6 +12,7 @@ type KeyPageResult struct {
 	CollectionSkip int
 	UseFallback    bool
 	HTTPError      bool
+	Forbidden      bool
 	HTTPStatus     int
 	ODataError     string
 	FetchURL       string

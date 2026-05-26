@@ -211,6 +211,9 @@ func (w *Worker) wait(ctx context.Context, ticker *time.Ticker, notify <-chan st
 }
 
 func (w *Worker) releaseFailed(ctx context.Context, job *ReservedJob, jobErr error) error {
+	if IsReconcileBusy(jobErr) {
+		return w.client.ReleaseAt(ctx, job, 2*time.Minute, true)
+	}
 	if IsRateLimited(jobErr) {
 		if job.Attempts() >= w.rateLimitMax {
 			return w.client.Fail(ctx, job, jobErr)

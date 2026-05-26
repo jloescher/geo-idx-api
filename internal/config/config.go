@@ -170,6 +170,7 @@ type MLSConfig struct {
 	RateLimitMaxAttempts           int
 	ReplicationResumeStallMinutes  int
 	ReplicationResumeCron          string
+	MirrorKeyReconcileRetryMinutes int
 }
 
 type GISConfig struct {
@@ -328,6 +329,7 @@ func Load() (Config, error) {
 			RateLimitMaxAttempts:          envInt("MLS_SYNC_RATE_LIMIT_MAX_ATTEMPTS", 50),
 			ReplicationResumeStallMinutes: envInt("MLS_REPLICATION_RESUME_STALL_MINUTES", 3),
 			ReplicationResumeCron:         env("MLS_REPLICATION_RESUME_CRON", "0 */2 * * * *"),
+			MirrorKeyReconcileRetryMinutes: envInt("MLS_MIRROR_KEY_RECONCILE_RETRY_MINUTES", 30),
 		},
 		GIS: GISConfig{
 			EdgeCacheTTL:         envDuration("GIS_EDGE_CACHE_TTL", 900*time.Second),

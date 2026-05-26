@@ -1,10 +1,26 @@
 package queue
 
 import (
+	"errors"
 	"time"
 
 	"github.com/quantyralabs/idx-api/internal/mlsupstream"
 )
+
+// ErrReconcileBusy indicates another worker holds the reconcile run advisory lock.
+type ErrReconcileBusy struct {
+	RunID string
+}
+
+func (e ErrReconcileBusy) Error() string {
+	return "mirror key reconcile run busy: " + e.RunID
+}
+
+// IsReconcileBusy reports whether err is a reconcile single-flight lock failure.
+func IsReconcileBusy(err error) bool {
+	var busy ErrReconcileBusy
+	return errors.As(err, &busy)
+}
 
 type (
 	// ErrRateLimited is returned when MLS upstream responds 429 after in-request retries.
