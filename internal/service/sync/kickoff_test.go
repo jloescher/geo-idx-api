@@ -49,3 +49,18 @@ func TestTryIncrementalKickoffSkipsWhenReplicationChainActive(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestTryIncrementalKickoffPollsWhenStaleAfterReplication(t *testing.T) {
+	k := &Kickoff{cfg: config.Config{MLS: config.MLSConfig{ReplicationFreshnessMinutes: 15}}}
+	finished := time.Now().Add(-9 * time.Hour)
+	cursor := SyncCursor{
+		LastModificationTimestamp: &finished,
+		LastSyncFinishedAt:        &finished,
+	}
+	if !k.shouldPollIncremental(cursor) {
+		t.Fatal("stale seeded mirror should poll incremental")
+	}
+	if ReplicationChainActive(cursor) {
+		t.Fatal("replication chain should be inactive after bulk load")
+	}
+}

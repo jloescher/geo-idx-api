@@ -16,20 +16,18 @@ type Kickoff struct {
 	db        *repository.DB
 	queue     *queue.Client
 	store     *ReplicaPageStore
-	cursors   *CursorStore
-	freshness *Freshness
-	logger    *slog.Logger
+	cursors *CursorStore
+	logger  *slog.Logger
 }
 
 func NewKickoff(cfg config.Config, db *repository.DB, q *queue.Client, logger *slog.Logger) *Kickoff {
 	return &Kickoff{
-		cfg:       cfg,
-		db:        db,
-		queue:     q,
-		store:     NewReplicaPageStore(db, cfg),
-		cursors:   NewCursorStore(db),
-		freshness: NewFreshness(cfg, db),
-		logger:    logger,
+		cfg:     cfg,
+		db:      db,
+		queue:   q,
+		store:   NewReplicaPageStore(db, cfg),
+		cursors: NewCursorStore(db),
+		logger:  logger,
 	}
 }
 
@@ -174,19 +172,20 @@ func (k *Kickoff) tryIncrementalKickoff(ctx context.Context, provider, dataset, 
 		return nil
 	}
 
-	mode, err := k.freshness.Mode(ctx, dataset, provider)
-	if err != nil {
-		return err
-	}
-	if mode == ModeCatchUp {
-		// Catch-up: replication pages are chained from finalize; skip minute kickoff incremental noise.
-		return nil
-	}
-
 	if !k.cursors.ShouldRunIncremental(cursor) {
 		return nil
 	}
 	if !k.shouldPollIncremental(cursor) {
+		return nil
+	}
+
+	pending, err := k.queue.HasPendingFetch(ctx, fetchQueue, jobType, dataset)
+	if err != nil {
+		return err
+	}
+	if pending {
+		k.logger.Debug("kickoff skipped: fetch already queued",
+			"provider", provider, "dataset", dataset)
 		return nil
 	}
 
