@@ -1,18 +1,40 @@
-# Content & Copy
+# Reducing Form Falloff Content Copy Reference
 
-## When to use
-Crafting form labels, CTA buttons, error messages, and widget instructional text. Use when localizing the lead capture experience or testing messaging variants.
+## When To Use
 
-## Patterns
+Use this reference when the task touches content copy while working on Reducing Form Falloff code in this repository.
 
-### Action-Oriented CTAs
-Replace generic "Submit" with outcome-driven language in the widget Blade templates. Use "See Full Listing Details", "Get Property Alert", or "Schedule My Tour" to align the button text with the value exchange.
+## What To Inspect
 
-### Error Message Context
-Return helpful copy from the lead form endpoint when validation fails. Instead of "Email required", use "Please enter your email to unlock full property details"—reinforcing the value exchange even in error states.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-### Progressive Disclosure Labels
-When gating is active, show contextual messaging like "View 3 more listings after completing your profile" rather than a blocking modal. This maintains engagement while driving completion.
+## Recommended Workflow
 
-## Warning
-Avoid promising specific MLS data in copy that the teaser mode cannot deliver. Do not say "See all 47 photos" when `idx:access` tokens only receive 3 teaser listings—this creates trust erosion and refund risk.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

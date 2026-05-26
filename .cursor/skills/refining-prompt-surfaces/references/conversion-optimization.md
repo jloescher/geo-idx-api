@@ -1,18 +1,40 @@
-# Conversion Optimization
+# Refining Prompt Surfaces Conversion Optimization Reference
 
-## When to use
-Optimizing subscription funnels, widget lead capture, GHL OAuth onboarding completion, or checkout flows in the Quantyra IDX platform.
+## When To Use
 
-## Patterns
+Use this reference when the task touches conversion optimization while working on Refining Prompt Surfaces code in this repository.
 
-**Teaser-to-full progression in listings**
-The Bridge proxy uses `idx:access` vs `idx:full` token abilities to gate listing data. In the frontend, use progressive disclosure: show 3 listings with a "View more" CTA that triggers the login/subscription modal. The `SalesLandingPage` Livewire component already implements billing interval toggling—extend this pattern for feature comparisons.
+## What To Inspect
 
-**Widget embed conversion gates**
-Widget surfaces at `/widget/*` routes use API keys (`qh_*` prefix) with origin validation. Add lead capture modals after 3 listing views using `gate_after_views` from `ghl_widget_configs`. Keep widget prompts under 40KB total payload to avoid slowing host sites.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**GHL OAuth flow completion**
-The `/leadconnector/register-urls` step requires MLS domain registration. Add inline validation with `wire:loading` states on the URL submission form. Use `wire:poll` to show "OAuth pending" states when waiting for GHL token exchange—reduces abandonment at the install step.
+## Recommended Workflow
 
-## Warning
-Avoid gating Bridge API calls with frontend-only checks. Always enforce teaser limits server-side via `BridgeTeaser` service—domain-authenticated requests bypass client-side gates. The `DomainOrTokenAuth` middleware returns `idx:full` only for valid Sanctum tokens with that ability.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

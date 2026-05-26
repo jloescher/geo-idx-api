@@ -1,50 +1,40 @@
-# Programmatic SEO Patterns
+# Building Compare Hubs Programmatic Reference
 
-When to use: Generating comparison pages at scale, creating alternative suggestion flows, or building dynamic discovery hubs based on subscription catalog data.
+## When To Use
 
-## Patterns
+Use this reference when the task touches programmatic while working on Building Compare Hubs code in this repository.
 
-### Dynamic Comparison Routes
+## What To Inspect
 
-Generate comparison pairs programmatically:
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-```php
-// routes/web.php - dynamic plan comparisons
-Route::get('compare/{planA}-vs-{planB}', function ($planA, $planB) {
-    $catalog = app(SubscriptionCatalog::class);
-    
-    return view('marketing.compare.show', [
-        'left' => $catalog->getPlan($planA),
-        'right' => $catalog->getPlan($planB),
-        'alternatives' => $catalog->getAdjacentPlans($planA),
-    ]);
-})->whereIn(['planA', 'planB'], ['pro', 'smart', 'ultra', 'mega']);
-```
+## Recommended Workflow
 
-### Canonical URL Generation
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-Prevent duplicate content when multiple paths compare the same plans:
+## Quality Bar
 
-```php
-// In controller
-$canonical = route('marketing.compare.show', [
-    'planA' => min($planA, $planB), // Alphabetical ordering
-    'planB' => max($planA, $planB),
-]);
-```
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
 
-### Widget-Embed Comparison Snippets
 
-Reuse comparison tables for external sites via widget routes:
-
-```php
-// routes/ghl-widget.php
-Route::get('widget/compare-snippet/{apiKey}', [WidgetController::class, 'compareSnippet'])
-    ->middleware(['widget.key', 'widget.origin']);
-```
 
 ## Pitfalls
 
-Avoid creating comparison pages for every possible feature combination—this generates thin content. Focus on high-intent pairs (Pro vs Smart, Ultra vs Mega) and ensure each page has unique copy beyond the feature matrix.
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
 
------
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

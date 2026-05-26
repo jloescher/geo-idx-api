@@ -1,38 +1,125 @@
-# Structuring Offer Ladders Conversion Optimization Reference
+# Conversion Optimization Reference
 
-## When To Use
+## Contents
+- Existing Conversion Surfaces
+- Upgrade Funnel Architecture
+- Teaser-to-Full Conversion Pattern
+- Anti-Patterns
 
-Use this reference when the task touches conversion optimization while working on Structuring Offer Ladders code in this repository.
+## Existing Conversion Surfaces
 
-## What To Inspect
+The platform has two touchpoints where conversion happens today:
 
-- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
-- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
-- Prefer tactical edits with clear verification steps over broad strategy essays.
-- Search for nearby implementations before creating a new structure or helper.
+1. **Landing page** (`internal/handler/marketing/handler.go`) — hero with "Open dashboard" and "Sign in" CTAs. No pricing, no social proof, no benefit stacking.
+2. **Dashboard** (`internal/handler/dashboard/handler.go`) — invite-only domain/token management. No usage metrics, no upgrade prompts.
 
-## Recommended Workflow
+### WARNING: Missing Conversion Infrastructure
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+**Detected:** No pricing page, no usage metering, no upgrade CTA, no plan comparison
+**Impact:** Users on `idx:access` have no in-app path to discover or purchase `idx:full`. The teaser GIS response silently degrades data without explaining what "full access" unlocks.
 
-## Quality Bar
+### Recommended Fix
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+Add a conversion layer using existing patterns:
 
-## Pitfalls
+```go
+// new code to add — in GIS handler, after applyTeaser returns truncated=true
+if truncated {
+    c.Set("X-GIS-Teaser", "true")
+    c.Set("X-GIS-Max-Features", strconv.Itoa(cfg.TeaserMaxFeatures))
+    c.Set("X-GIS-Upgrade-URL", "/dashboard/api-tokens")
+}
+```
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+## Upgrade Funnel Architecture
 
-## Done Checklist
+The existing auth flow already resolves tiers. The missing piece is a **conversion bridge** between teaser experience and upgrade action.
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+```
+idx:access user → GIS request → teaser applied → response headers hint at upgrade
+     → user checks /dashboard → sees token management → creates idx:full token
+```
+
+### Current Flow (Manual)
+
+```go
+// internal/api/middleware/domain_token.go:52 — tier is resolved here
+fullAccess := tokens.HasAbility(tok, "idx:full")
+```
+
+The tier is binary. To optimize conversion, the system needs to:
+
+1. **Surface the gap** — show `idx:access` users what they're missing (response headers, dashboard usage panel)
+2. **Reduce friction** — one-click upgrade path instead of manual token recreation
+3. **Create urgency** — usage meters showing proximity to limits
+
+## Teaser-to-Full Conversion Pattern
+
+The GIS teaser (`internal/service/gis/teaser.go`) is the only active conversion lever. Two dials control the experience:
+
+| Config | Default | Effect |
+|--------|---------|--------|
+| `GIS_TEASER_MAX_FEATURES` | 40 | Caps parcel features in response |
+| `GIS_TEASER_COORD_DECIMALS` | 4 | Reduces coordinate precision (~11m vs ~1cm) |
+
+**Optimization:** Make the teaser informative enough to demonstrate value but degraded enough to create upgrade motivation. The current 4-decimal precision (~11 meter accuracy) is a reasonable teaser — it shows parcel shape without cadastral precision.
+
+### DO: Tease with Context
+
+```go
+// new code to add — response that shows value gap
+if truncated {
+    // Include metadata showing what full access unlocks
+    c.JSON(fiber.Map{
+        "type":     "FeatureCollection",
+        "features": teasedFeatures,
+        "teaser": fiber.Map{
+            "shown":    maxFeatures,
+            "total":    totalFeatures,
+            "upgrade":  "Full access returns all features with centimeter precision.",
+        },
+    })
+}
+```
+
+### DON'T: Silent Degradation
+
+```go
+// BAD — user doesn't know data is incomplete
+fc["features"] = feats[:max]  // just silently truncates, no hint
+```
+
+**Why This Breaks:** Users who don't know they're on a limited tier assume the API is unreliable. Silent degradation kills trust and produces support tickets instead of upgrades.
+
+## Anti-Patterns
+
+### WARNING: Client-Side Gating
+
+```go
+// BAD — plan check only in the response, not the request
+func (h *Handler) Search(c *fiber.Ctx) error {
+    results := h.service.Search(c.Context(), params)
+    if !fullAccess {
+        results = results[:5] // truncate in handler
+    }
+    return c.JSON(results)
+}
+```
+
+**Why This Breaks:** Expensive work (full search query, upstream MLS call) runs regardless. Plan gating belongs in middleware or early in the handler — before database queries or upstream API calls.
+
+**The Fix:**
+
+```go
+// new code to add — gate before expensive work
+func (h *Handler) Search(c *fiber.Ctx) error {
+    if !requestFullAccess(c) {
+        params.Limit = min(params.Limit, starterMaxResults)
+    }
+    results := h.service.Search(c.Context(), params) // already bounded
+    return c.JSON(results)
+}
+```
+
+See the **auth-api-token** skill for middleware-based access control patterns.
+See the **geospatial** skill for GIS teaser implementation details.

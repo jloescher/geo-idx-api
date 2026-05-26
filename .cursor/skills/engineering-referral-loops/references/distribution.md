@@ -1,18 +1,40 @@
-# Distribution Mechanics for Embeddable Widgets
+# Engineering Referral Loops Distribution Reference
 
-## When to use
-When designing how partners consume your service through JavaScript embeds, API keys, or cross-origin integrations where origin validation and CORS matter.
+## When To Use
 
-## Project-relevant patterns
+Use this reference when the task touches distribution while working on Engineering Referral Loops code in this repository.
 
-**Three-phase widget middleware**
-Validate API key → check Origin/Referer against `registered_urls` → append CORS headers. This pattern prevents unauthorized domains from loading widgets while allowing legitimate embeds to POST leads cross-origin.
+## What To Inspect
 
-**API-key scoped configuration**
-Distribute unique widget API keys (`qh_{hash}`) per installation stored in `ghl_registered_urls`. Each key maps to a location's theme config and allowed origins, enabling multi-tenant embeds without session cookies.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Graceful degradation with fallbacks**
-When ArcGIS parcel data fails, return `meta.degraded=true` with a Leaflet-compatible OSM tile URL in `meta.leaflet_fallback`. Widgets can switch to raster tiles without breaking the user experience.
+## Recommended Workflow
 
-## Warning
-Never trust the Origin header alone for write operations. The widget lead POST validates the API key *and* Origin, but the key is the authoritative credential—Origin checking alone can be spoofed in some client configurations.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

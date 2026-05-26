@@ -1,38 +1,87 @@
-# Designing Lifecycle Messages Distribution Reference
+# Distribution Reference
 
-## When To Use
+## Contents
+- Current delivery channels
+- Email delivery architecture
+- In-dashboard messaging
+- Anti-patterns
 
-Use this reference when the task touches distribution while working on Designing Lifecycle Messages code in this repository.
+## Current Delivery Channels
 
-## What To Inspect
+The platform has **two** active message channels today:
 
-- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
-- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
-- Prefer tactical edits with clear verification steps over broad strategy essays.
-- Search for nearby implementations before creating a new structure or helper.
+| Channel | Implementation | Reach |
+|---|---|---|
+| Dashboard HTML | Inline string literals in handlers | Users who are logged in |
+| API responses | JSON/plain text error messages | API consumers (developers) |
 
-## Recommended Workflow
+**No email delivery is implemented.** `MAIL_*` environment variables exist in `.env.example` but no code sends email. The invitation system generates a link that admins must share manually.
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+## Email Delivery Architecture
 
-## Quality Bar
+When email is added, it must go through the existing PostgreSQL job queue — not inline in handlers. See the **queue-postgresql** skill for queue patterns.
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+### Queue job types for lifecycle email
 
-## Pitfalls
+```go
+// new code to add — proposed job types
+// "email.send"           — single email delivery
+// "email.sequence.start" — begin a drip sequence for a user
+// "email.sequence.next"  — advance to the next email in a sequence
+```
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+### Why queue-based delivery
 
-## Done Checklist
+1. SMTP is slow (1-30s per message). Blocking HTTP handlers on SMTP causes timeouts.
+2. Workers provide automatic retry on transient failures.
+3. The scheduler can enqueue drip sequence emails on a cron, keeping sequences decoupled from user actions.
+4. The existing `audit_logs` table can track email delivery status alongside API calls.
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+### Sequence timing for B2B developer onboarding
+
+| Delay after trigger | Email | Purpose |
+|---|---|---|
+| Immediate | Welcome + invitation link | Drive registration |
+| +1 hour (if domain not verified) | Domain setup reminder | Reduce verification drop-off |
+| +24 hours (if no API call) | First API call guide | Drive activation |
+| +7 days (if inactive) | Tips and docs links | Re-engagement |
+
+Store sequence state in a `user_lifecycle` table (new) or extend the existing `users` table with lifecycle tracking columns. The scheduler checks state on each cron tick and enqueues the next email if conditions are met.
+
+## In-Dashboard Messaging
+
+Dashboard messages are the primary channel today. They render synchronously as HTML — no queue needed.
+
+### Existing message touchpoints
+
+```go
+// internal/handler/dashboard/handler.go:225 — post-verification confirmation
+// Shows one-time token in a styled card
+
+// internal/handler/dashboard/handler.go:269 — post-invitation confirmation
+// Shows one-time invite link in a styled card
+
+// internal/web/layout.go:43 — login page subtitle
+// "Access your MLS domains and API keys."
+```
+
+### Adding new in-dashboard messages
+
+Place new messages within the existing card structure. Use `web.Esc()` for any dynamic content. Use existing CSS classes (`card`, `badge-*`, `btn-*`, `token-box`) for consistent styling. See the **frontend-design** skill.
+
+## Anti-patterns
+
+### WARNING: Email delivery in API request path
+
+Never send email directly in a Fiber handler. The Go runtime will block the HTTP response on SMTP I/O. Even with goroutines, unbounded email sends can exhaust connections or leak on server shutdown. Always enqueue through the PostgreSQL job queue and let workers handle delivery.
+
+### WARNING: Storing plaintext email content in the jobs table
+
+The `jobs` table stores `payload` as JSONB. If email payloads contain tokens, invitation links, or API keys, these values are readable by anyone with database access. Hash or omit sensitive values from the job payload; regenerate them in the worker if needed.
+
+## Related Skills
+
+- **queue-postgresql** — enqueue and process email delivery jobs
+- **scheduler** — cron-based drip sequence triggers
+- **cache-postgres** — cache email templates
+- **go** — Go service patterns for email sender module

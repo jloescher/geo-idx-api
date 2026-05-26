@@ -1,38 +1,126 @@
-# Improving Activation Flow Product Analytics Reference
+# Product Analytics Reference
 
-## When To Use
+## Contents
+- Analytics architecture
+- Audit log as event source
+- Funnel queries
+- Replication metrics
+- Anti-patterns
 
-Use this reference when the task touches product analytics while working on Improving Activation Flow code in this repository.
+## Analytics Architecture
 
-## What To Inspect
+This project uses PostgreSQL-native analytics. No external analytics services (Mixpanel, Amplitude, PostHog). The `audit_logs` table is the event source of truth.
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+### DO: Extend `audit_logs` for new event types
 
-## Recommended Workflow
+```sql
+-- Existing audit_logs pattern (from migration)
+INSERT INTO audit_logs (action, subject_type, subject_id, metadata, created_at)
+VALUES ('api.request', 'domain', $1, '{"endpoint": "/api/v1/search", "status": 200}', NOW());
+```
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+Add new actions as needed: `token.created`, `domain.activated`, `search.first_use`, `gis.first_use`, `comps.first_use`.
 
-## Quality Bar
+### DON'T: Create a separate events table
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+A second table duplicates the audit infrastructure. Add new `action` values to the existing table. The `metadata` JSONB column handles arbitrary event properties.
 
-## Pitfalls
+## Audit Log as Event Source
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+### Activation funnel query
 
-## Done Checklist
+```sql
+-- Time from domain creation to first successful API call
+WITH first_token AS (
+    SELECT domain_id, MIN(created_at) AS token_at
+    FROM tokens
+    GROUP BY domain_id
+),
+first_call AS (
+    SELECT subject_id AS domain_id, MIN(created_at) AS call_at
+    FROM audit_logs
+    WHERE action = 'api.request'
+    GROUP BY subject_id
+)
+SELECT d.hostname,
+       d.created_at AS domain_created,
+       ft.token_at,
+       fc.call_at,
+       EXTRACT(EPOCH FROM (fc.call_at - d.created_at))/60 AS minutes_to_first_call
+FROM domains d
+LEFT JOIN first_token ft ON ft.domain_id = d.id
+LEFT JOIN first_call fc ON fc.domain_id = d.id
+ORDER BY d.created_at DESC
+LIMIT 20;
+```
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+### DO: Use the funnel to identify drop-off
+
+If most domains have a token but `call_at` is NULL, the problem is between token creation and first API use — improve the post-token-creation guidance.
+
+## Funnel Queries
+
+### Weekly activation rate
+
+```sql
+SELECT
+    DATE_TRUNC('week', d.created_at) AS week,
+    COUNT(DISTINCT d.id) AS domains_created,
+    COUNT(DISTINCT ft.domain_id) AS tokens_created,
+    COUNT(DISTINCT fc.domain_id) AS first_call_made
+FROM domains d
+LEFT JOIN (SELECT domain_id, MIN(created_at) AS at FROM tokens GROUP BY domain_id) ft ON ft.domain_id = d.id
+LEFT JOIN (SELECT subject_id AS domain_id, MIN(created_at) AS at FROM audit_logs WHERE action = 'api.request' GROUP BY subject_id) fc ON fc.domain_id = d.id
+GROUP BY 1
+ORDER BY 1 DESC;
+```
+
+### Feature adoption by domain
+
+```sql
+SELECT d.hostname,
+       BOOL_OR(a.action = 'search.request') AS uses_search,
+       BOOL_OR(a.action = 'gis.request') AS uses_gis,
+       BOOL_OR(a.action = 'comps.request') AS uses_comps
+FROM domains d
+LEFT JOIN audit_logs a ON a.subject_id = d.id AND a.subject_type = 'domain'
+GROUP BY d.hostname;
+```
+
+## Replication Metrics
+
+Replication health directly affects product experience. Track via `listing_sync_cursors`:
+
+```sql
+SELECT dataset_slug,
+       replication_in_progress,
+       last_sync_finished_at,
+       EXTRACT(EPOCH FROM (NOW() - last_sync_finished_at))/60 AS minutes_since_sync
+FROM listing_sync_cursors;
+```
+
+See the **queue-postgresql** skill for worker/scheduler health.
+
+## Anti-patterns
+
+### WARNING: Adding analytics in the API hot path
+
+```go
+// BAD — synchronous external call blocks the response
+func SearchHandler(c *fiber.Ctx) error {
+    results, _ := searchService.Search(ctx, params)
+    http.Post("https://analytics.example.com/track", ...) // DO NOT DO THIS
+    return c.JSON(results)
+}
+
+// GOOD — audit log write is co-located in same DB transaction
+func SearchHandler(c *fiber.Ctx) error {
+    results, _ := searchService.Search(ctx, params)
+    auditRepo.Record(ctx, "search.request", domainID, metadata) // same DB, fast
+    return c.JSON(results)
+}
+```
+
+### WARNING: Using `SELECT COUNT(*)` on audit_logs for real-time counters
+
+`audit_logs` grows unbounded. For real-time counters (e.g., "requests today"), use a summary table or materialized view — not a full table scan.

@@ -1,32 +1,114 @@
 ---
 name: tightening-brand-voice
-description: Refines copy across documentation, marketing, and UI for clarity, tone, and consistency with Quantyra's professional real estate tech voice.
-allowed-tools: [Read, Edit, Write, Glob, Grep, Bash]
+description: |
+  Refines copy for clarity, tone, and consistency.
+  Use when: implementing or refactoring Tightening Brand Voice work, troubleshooting conversion optimization, content copy, distribution, or aligning new changes with the repository's existing conventions
+allowed-tools: Read, Edit, Write, Glob, Grep, Bash
 ---
 
 # Tightening Brand Voice Skill
 
-This skill tightens prose across the Quantyra GeoIDX codebase—documentation, marketing pages, API references, and UI strings—to ensure a consistent, professional voice that balances technical precision with approachable clarity for real estate technology audiences.
+This fallback skill keeps Tightening Brand Voice work aligned with the conventions already present in this repository. Prefer extending the closest existing implementation over inventing a new abstraction, and verify neighboring states before finishing.
+
+## Before You Code (REQUIRED)
+
+This skill's content was captured at generation time and MAY be stale. For ANY non-trivial change involving tightening-brand-voice, verify against current docs FIRST:
+
+
+
+Then:
+
+1. **Match the installed version.** Cross-reference against the version installed in this repo. APIs change across minor versions; do not assume.
+2. **Discover provider best practices.** If the task touches a production-sensitive capability, inspect the provider service catalog, official docs, and project docs before choosing an implementation.
+3. **Respect explicit direction.** If the user explicitly asks for a specific mechanism, follow it. If project docs clearly mandate a mechanism, follow the project. In both cases, mention the provider-recommended alternative and make the chosen path safe.
+4. **Prefer provider-native primitives by default.** If no explicit user/project override exists and the change involves caching, rate limiting, background work, scheduled jobs, shared state, queues, or secrets, use the provider-recommended binding/API. Do not hand-roll an in-memory or polyfill solution that "works" locally but breaks under the provider's execution model — derive the need→native-primitive mapping yourself from this provider's docs.
+
+## Capability Contract
+
+Use this section when the user prompt touches production risk, even if the prompt does not name this technology explicitly.
+
+
+
+
+Required wiring surfaces:
+- runtime/infrastructure config: Dockerfile
+- nearest typed request/context boundary
+- handler/procedure boundary before external side effects
+
+Side-effect barrier:
+- Place guards before external APIs, auth mutations, email sends, analytics events, storage writes, and database mutations.
+
+
+Fallback policy:
+- Prefer provider-native/platform-managed primitives by default when no explicit override exists.
+- Follow clear user/project overrides, but mention the native alternative and tradeoff.
+- Fallbacks must be durable, multi-instance safe, and atomic under concurrency.
+
+Verification rules:
+- [error] native-or-explicit-override: Use the provider-native primitive first unless the user/project explicitly overrides it.
+- [error] atomic-fallback: Fallback counters must be atomic under concurrency.
 
 ## Quick Start
 
-1. **Identify copy targets**: Marketing pages (`resources/views/**/*.blade.php`), documentation (`docs/*.md`), and UI components (`app/Livewire/**/*.php`)
-2. **Check for inconsistencies**: Look for mixed terminology (e.g., "leadconnector" vs "LeadConnector", "MLS" vs "mls"), verbose phrasing, or unclear CTAs
-3. **Apply constraints**: Keep technical terms exact (OAuth scopes, API endpoints, subscription tier names), remove fluff, ensure active voice in CTAs
-4. **Verify in context**: Read surrounding code to ensure tightened copy still fits variable interpolation and conditional logic
+### Inspect the current implementation
+
+```sh
+rg -n "tightening-brand-voice|conversion-optimization|content-copy|distribution" .
+rg --files | rg "tightening-brand-voice|conversion-optimization|content-copy"
+```
+
+### Make the smallest compatible change
+
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+
+### Verify before finishing
+
+- Verify the changed path and the most likely adjacent edge cases.
+- Check that naming, layering, and file placement still match nearby code.
+- Confirm there is a clear reason for any new abstraction, dependency, or workflow.
 
 ## Key Concepts
 
-- **Precision over puffery**: Real estate tech buyers distrust marketing speak. Prefer "Subscribe to unlock full MLS access" over "Supercharge your real estate journey"
-- **Terminology lock**: Standard terms—Bridge (not "the Bridge API"), GHL/GoHighLevel (not "HighLevel"), leadconnector (lowercase in URLs, code), Stellar MLS (not "Stellar")
-- **Action clarity**: CTAs should state the outcome—"Connect GoHighLevel account" beats "Get started"
-- **Teaser vs full**: Copy distinguishes between gated (teaser) and unlocked (full) features; respect this revenue mechanic in UI text
-- **Code-adjacent copy**: Blade templates and Livewire components often interpolate variables—ensure tightened strings still work with `{{ }}` and conditional wrappers
+| Concept | Why it matters | What to check |
+|---------|----------------|---------------|
+| Existing patterns | Keeps the repo coherent | Start from the nearest matching implementation before editing |
+| Scope control | Prevents abstraction creep | Keep the change in the same layer as surrounding code |
+| Verification | Catches regressions early | Recheck adjacent states, edge cases, and integration points |
+| References | Speeds up repeat work | Use the linked topic files when the task needs deeper guidance |
 
 ## Common Patterns
 
-- **Docs headings**: Sentence case, no trailing periods, front-loaded keywords ("OAuth token refresh" not "How to refresh your OAuth token")
-- **Error messages**: Start with what happened, then remediation: "Domain not registered. Add this domain in your dashboard."
-- **Marketing tiers**: Preserve exact plan names (Pro, Smart, Ultra, Mega) and price formatting ($39/mo, $374/yr)
-- **API descriptions**: Lead with the resource, note the method: "Returns paginated leads for the authenticated location"
-- **Comments**: Keep `Revenue impact:` annotations intact; tighten explanatory text around them without removing the marker itself
+### Conversion Optimization
+
+**When:** The task touches conversion optimization in Tightening Brand Voice work.
+
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
+
+### Content Copy
+
+**When:** The task touches content copy in Tightening Brand Voice work.
+
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
+
+### Distribution
+
+**When:** The task touches distribution in Tightening Brand Voice work.
+
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
+
+## See Also
+
+- [Conversion Optimization](references/conversion-optimization.md)
+- [Content Copy](references/content-copy.md)
+- [Distribution](references/distribution.md)
+- [Measurement Testing](references/measurement-testing.md)
+- [Growth Engineering](references/growth-engineering.md)
+- [Strategy Monetization](references/strategy-monetization.md)

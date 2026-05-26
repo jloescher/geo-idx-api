@@ -1,47 +1,77 @@
-# Strategy & Monetization
+# Strategy and Monetization Reference
 
-## When to use
-Reference when designing pricing tiers, feature gates, or revenue optimization strategies for the IDX platform.
+## Contents
+- Monetization Surfaces
+- Scope-Based Access Tiers
+- Content Strategy for Tier Upsell
+- Anti-Patterns
 
-## Patterns
+## Monetization Surfaces
 
-### Feature Matrix by Tier
-Clear capability ladders drive upgrade decisions:
+This project monetizes through scope-based API access:
 
-| Feature | Pro ($39) | Smart ($79) | Ultra ($179) | Mega ($449) |
-|---------|-----------|-------------|--------------|-------------|
-| Domains | 3 | 5 | Unlimited | Unlimited |
-| GHL Integration | Basic | Full | Full | White-label |
-| API Calls/mo | 10K | 100K | 2M | Unlimited |
-| OTP Methods | Email | Email + Phone | Email + Phone | Custom |
-| Teaser Limit | 3 listings | 3 listings | Full access | Full access |
+| Surface | Access control | Revenue lever |
+|---------|---------------|---------------|
+| `/api/v1/*` proxy | Domain + API token | Token scope limits |
+| `/api/v1/gis` parcels | `idx:access` scope | Teaser → full geometry |
+| `/api/v1/comps/run` | Token scope | BPO, home value, investor modes |
+| `/images/*` | Domain auth | Volume-based |
+| Dashboard | Invite-only | Customer lifetime value |
 
-### Teaser as Freemium Hook
-The 3-listing teaser in Bridge proxy creates product-qualified leads:
+## Scope-Based Access Tiers
 
-```php
-// BridgeProxyController - teaser applied post-cache
-if (!$hasFullAccess && isset($data['value'])) {
-    $originalCount = count($data['value']);
-    $data['value'] = array_slice($data['value'], 0, 3);
-    $data['meta']['teaser'] = true;
-    $data['meta']['total_available'] = $originalCount;
-    $data['meta']['upgrade_url'] = config('idx.platform_url') . '/checkout';
-}
+Token scopes control feature access (see `internal/handler/auth`). Content strategy should align with tier boundaries:
+
+```markdown
+Tier 1 (Default scope):
+  - Bridge/Spark property proxy
+  - Basic search
+  - Image proxy
+
+Tier 2 (idx:access scope):
+  - Full GIS parcel geometry
+  - Comps API (BPO mode)
+  - Advanced search filters
+
+Tier 3 (Admin):
+  - Dashboard access
+  - Token management
+  - Audit log visibility
 ```
 
-### Annual Prepay Incentives
-20% discount for annual billing reduces churn and improves cash flow:
+## Content Strategy for Tier Upsell
 
-```php
-// SubscriptionCheckoutController - annual pricing
-$annualPriceId = match($plan) {
-    'pro' => env('STRIPE_PRICE_IDX_PRO_YEARLY'),
-    'smart' => env('STRIPE_PRICE_IDX_SMART_YEARLY'),
-    'ultra' => env('STRIPE_PRICE_IDX_ULTRA_YEARLY'),
-    'mega' => env('STRIPE_PRICE_IDX_MEGA_YEARLY'),
-};
-```
+Social content beats should create demand for higher tiers:
 
-## Pitfall
-Never remove teaser gating from lower tiers without compensating pricing changes. The teaser is a core conversion mechanism—removing it without price increases cannibalizes upgrade revenue.
+1. **Tier 1 content**: "Search 50k+ Active listings by bounding box" — drives signups
+2. **Tier 2 teaser**: Show GIS parcel boundary in docs, note "full geometry requires `idx:access` scope"
+3. **Tier 2 conversion**: Case study content showing comps API generating BPO reports
+4. **Tier 3 prestige**: Dashboard screenshots showing audit logs and multi-domain management
+
+## Anti-Patterns
+
+### WARNING: Free-Tier Content That Cannibalizes Paid Features
+
+**The Problem:** Publishing detailed GIS parcel data in docs that the teaser tier intentionally withholds.
+
+**Why This Breaks:** Removes the upgrade incentive. If developers can see the full schema in docs, they don't need the paid scope.
+
+**The Fix:** Docs for gated features show the request/response shape with placeholder data. Full data examples require an authenticated token with the appropriate scope.
+
+### WARNING: Pricing Content Without Scope Mapping
+
+**The Problem:** Marketing "GIS access" without explaining the `idx:access` scope requirement.
+
+**The Fix:** Every monetization-related content beat must include:
+1. Which scope is required
+2. How to request scope upgrade (dashboard or admin)
+3. What the response looks like at each tier
+
+## Checklist
+
+Copy this checklist and track progress:
+- [ ] Tier boundaries documented in content beats
+- [ ] Teaser content shows partial data with upgrade CTA
+- [ ] No gated data published in full in public docs
+- [ ] Scope names (`idx:access`) used consistently in all copy
+- [ ] Dashboard reflects current tier messaging

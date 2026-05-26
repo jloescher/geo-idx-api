@@ -1,66 +1,114 @@
 ---
 name: streamlining-signup-steps
-description: Reduces friction in signup and trial activation
+description: |
+  Reduces friction in signup and trial activation.
+  Use when: implementing or refactoring Streamlining Signup Steps work, troubleshooting conversion optimization, content copy, distribution, or aligning new changes with the repository's existing conventions
 allowed-tools: Read, Edit, Write, Glob, Grep, Bash
 ---
 
 # Streamlining Signup Steps Skill
 
-Skill for reducing friction in the signup and trial activation flow for the Quantyra GeoIDX platform, covering GHL Marketplace OAuth, user registration, billing checkout, and post-install URL registration.
+This fallback skill keeps Streamlining Signup Steps work aligned with the conventions already present in this repository. Prefer extending the closest existing implementation over inventing a new abstraction, and verify neighboring states before finishing.
+
+## Before You Code (REQUIRED)
+
+This skill's content was captured at generation time and MAY be stale. For ANY non-trivial change involving streamlining-signup-steps, verify against current docs FIRST:
+
+
+
+Then:
+
+1. **Match the installed version.** Cross-reference against the version installed in this repo. APIs change across minor versions; do not assume.
+2. **Discover provider best practices.** If the task touches a production-sensitive capability, inspect the provider service catalog, official docs, and project docs before choosing an implementation.
+3. **Respect explicit direction.** If the user explicitly asks for a specific mechanism, follow it. If project docs clearly mandate a mechanism, follow the project. In both cases, mention the provider-recommended alternative and make the chosen path safe.
+4. **Prefer provider-native primitives by default.** If no explicit user/project override exists and the change involves caching, rate limiting, background work, scheduled jobs, shared state, queues, or secrets, use the provider-recommended binding/API. Do not hand-roll an in-memory or polyfill solution that "works" locally but breaks under the provider's execution model — derive the need→native-primitive mapping yourself from this provider's docs.
+
+## Capability Contract
+
+Use this section when the user prompt touches production risk, even if the prompt does not name this technology explicitly.
+
+
+
+
+Required wiring surfaces:
+- runtime/infrastructure config: Dockerfile
+- nearest typed request/context boundary
+- handler/procedure boundary before external side effects
+
+Side-effect barrier:
+- Place guards before external APIs, auth mutations, email sends, analytics events, storage writes, and database mutations.
+
+
+Fallback policy:
+- Prefer provider-native/platform-managed primitives by default when no explicit override exists.
+- Follow clear user/project overrides, but mention the native alternative and tradeoff.
+- Fallbacks must be durable, multi-instance safe, and atomic under concurrency.
+
+Verification rules:
+- [error] native-or-explicit-override: Use the provider-native primitive first unless the user/project explicitly overrides it.
+- [error] atomic-fallback: Fallback counters must be atomic under concurrency.
 
 ## Quick Start
 
-Key files for signup flow modifications:
+### Inspect the current implementation
 
-| Path | Purpose |
-|------|---------|
-| `app/Ghl/OAuth/Controllers/` | OAuth authorization, callback, and URL registration controllers |
-| `app/Http/Controllers/Billing/SubscriptionCheckoutController.php` | Stripe Checkout session creation |
-| `app/Livewire/Marketing/SalesLandingPage.php` | Marketing page with pricing and trial CTA |
-| `app/Http/Responses/Auth/RegisterResponse.php` | Post-registration redirect behavior |
-| `routes/ghl-web.php` | OAuth and install routes |
-| `resources/views/leadconnector/` | Install, URL registration, and completion Blade templates |
+```sh
+rg -n "streamlining-signup-steps|conversion-optimization|content-copy|distribution" .
+rg --files | rg "streamlining-signup-steps|conversion-optimization|content-copy"
+```
+
+### Make the smallest compatible change
+
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+
+### Verify before finishing
+
+- Verify the changed path and the most likely adjacent edge cases.
+- Check that naming, layering, and file placement still match nearby code.
+- Confirm there is a clear reason for any new abstraction, dependency, or workflow.
 
 ## Key Concepts
 
-### GHL Marketplace OAuth Flow
-The three-phase install: `GET /leadconnector/install` → OAuth authorize → callback → `GET /leadconnector/register-urls` (MLS compliance step) → `GET /leadconnector/installation-complete`. Session carries `ghl_pending_oauth_token_id` between steps.
-
-### Trial Activation via Stripe
-`SubscriptionCheckoutController::checkout()` creates Stripe Checkout with trial days. Cashier webhook `customer.subscription.created` activates the subscription. Plans defined in `app/Billing/SubscriptionCatalog.php` and `config/billing.php`.
-
-### Post-Auth Redirects
-- `RegisterResponse` redirects new users to `route('dashboard')` after registration
-- `LoginResponse` redirects authenticated users to dashboard
-- GHL embed route `/leadconnector/embed/{locationId}` 302-redirects to `IDX_PLATFORM_URL/embed/{locationId}`
-
-### URL Registration Gate
-After OAuth, users must register HTTPS origins (`primary_url`, `additional_urls`) before widget installation completes. This enforces Stellar MLS compliance—stored in `ghl_registered_urls` table with generated widget API key (`qh_...` prefix).
+| Concept | Why it matters | What to check |
+|---------|----------------|---------------|
+| Existing patterns | Keeps the repo coherent | Start from the nearest matching implementation before editing |
+| Scope control | Prevents abstraction creep | Keep the change in the same layer as surrounding code |
+| Verification | Catches regressions early | Recheck adjacent states, edge cases, and integration points |
+| References | Speeds up repeat work | Use the linked topic files when the task needs deeper guidance |
 
 ## Common Patterns
 
-### Skip URL registration for specific user types
-In `app/Ghl/OAuth/Controllers/CallbackController.php`, after token persistence, check `$token->user_type === 'Company'` and redirect directly to `installation-complete` for agency-only installs:
+### Conversion Optimization
 
-```php
-if ($token->user_type === 'Company') {
-    return redirect()->route('leadconnector.installation-complete');
-}
-return redirect()->route('leadconnector.register-urls');
-```
+**When:** The task touches conversion optimization in Streamlining Signup Steps work.
 
-### Auto-redirect to billing after OAuth completion
-In `app/Ghl/OAuth/Controllers/UrlRegistrationController.php` `store()` method, append checkout session creation:
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
 
-```php
-return redirect()->route('billing.checkout', ['plan' => 'pro']);
-```
+### Content Copy
 
-### Pre-populate URLs from Referer
-In `app/Ghl/OAuth/Controllers/UrlRegistrationController.php` `create()` method, extract domain from `url()->previous()` to pre-fill the primary URL field in the Blade template.
+**When:** The task touches content copy in Streamlining Signup Steps work.
 
-### Streamline: combine OAuth + registration
-For direct signups (non-GHL), the `SalesLandingPage` Livewire component handles plan selection and redirects to `/register` with plan stored in session, then to checkout post-registration.
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
 
-### Conditionally require OAuth based on subscription
-Modify `app/Http/Middleware/EnsureUserHasPlan.php` to allow trial users to skip GHL OAuth and use dashboard tokens directly—gate on `auth()->user()->subscriptions()->active()->exists()` rather than GHL token presence.
+### Distribution
+
+**When:** The task touches distribution in Streamlining Signup Steps work.
+
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
+
+## See Also
+
+- [Conversion Optimization](references/conversion-optimization.md)
+- [Content Copy](references/content-copy.md)
+- [Distribution](references/distribution.md)
+- [Measurement Testing](references/measurement-testing.md)
+- [Growth Engineering](references/growth-engineering.md)
+- [Strategy Monetization](references/strategy-monetization.md)

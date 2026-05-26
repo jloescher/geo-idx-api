@@ -1,38 +1,91 @@
-# Running Product Experiments In App Guidance Reference
+# In-App Guidance Reference
 
-## When To Use
+## Contents
+- Guidance Surfaces in idx-api
+- Dashboard Guidance Patterns
+- API Response Guidance
+- Anti-Patterns
 
-Use this reference when the task touches in app guidance while working on Running Product Experiments code in this repository.
+---
 
-## What To Inspect
+## Guidance Surfaces in idx-api
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+idx-api has no SPA frontend — guidance must work through:
 
-## Recommended Workflow
+| Surface | Mechanism | File |
+|---------|-----------|------|
+| Dashboard HTML | Server-rendered templates | `internal/web/layout.go` |
+| API responses | JSON error/info messages | Handler return values |
+| Marketing page | Static HTML | `internal/handler/marketing/handler.go` |
+| Health/status | `/healthz`, `/readyz`, `/api/v1/bridge/stats` | Various handlers |
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+## Dashboard Guidance Patterns
 
-## Quality Bar
+### DO: Show contextual next steps in dashboard
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+```go
+// new code to add — in Dashboard handler, compute onboarding progress
+func (h *Handler) Dashboard(c *fiber.Ctx) error {
+    // Existing: load domains, tokens
+    // Add: compute next step
+    nextStep := ""
+    if len(domains) == 0 {
+        nextStep = "add_domain"
+    } else if !hasVerifiedDomain(domains) {
+        nextStep = "verify_domain"
+    } else if len(tokens) == 0 {
+        nextStep = "create_token"
+    }
+    // Pass nextStep to template
+}
+```
 
-## Pitfalls
+### DO: Use HTTP status codes and structured error messages for API guidance
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+```go
+// Existing pattern from handler returns
+return c.Status(401).JSON(fiber.Map{
+    "error": "invalid or missing API token",
+})
+```
 
-## Done Checklist
+Extend with actionable guidance:
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+```go
+// new code to add
+return c.Status(403).JSON(fiber.Map{
+    "error":   "domain not verified",
+    "action":  "Complete DNS TXT verification at /dashboard",
+    "doc_url": "https://idx-api.quantyralabs.cc/docs/auth",
+})
+```
+
+## API Response Guidance
+
+### DO: Include feature availability in metadata
+
+```go
+// new code to add — OpenAPI/endpoint discovery
+// GET /api/v1 returns available endpoints and their requirements
+{
+  "endpoints": {
+    "/api/v1/search":  {"auth": "token", "datasets": ["stellar", "beaches"]},
+    "/api/v1/gis":     {"auth": "token", "scopes": ["idx:access"]},
+    "/api/v1/comps/run": {"auth": "token", "modes": ["bpo", "home_value"]}
+  }
+}
+```
+
+### DON'T: Put guidance only in docs that users never read
+
+API consumers learn from response shapes. If a new feature requires a scope, the 403 response must say which scope — not link to a doc page nobody opens.
+
+## Anti-Patterns
+
+### WARNING: Adding UI guidance via JavaScript in a Go template
+
+The dashboard uses `internal/web/layout.go` string-builder HTML. Adding complex JS interactivity fights the architecture.
+
+**Fix:** Keep guidance as server-rendered HTML fragments. For complex flows (wizards, tooltips), consider a lightweight template engine or static JS widget — but evaluate whether a simpler multi-page flow works first.
+
+See the **fiber** skill for HTTP handler patterns and the **go** skill for template conventions.

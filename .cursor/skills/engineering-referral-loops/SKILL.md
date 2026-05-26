@@ -1,51 +1,114 @@
 ---
 name: engineering-referral-loops
-description: Designs referral or partner loop mechanics for marketplace integrations, OAuth flows, lead exchange, and embeddable widgets. Focuses on secure token exchange, webhook event handling, and audit logging patterns for third-party partnerships.
+description: |
+  Designs referral or partner loop mechanics.
+  Use when: implementing or refactoring Engineering Referral Loops work, troubleshooting conversion optimization, content copy, distribution, or aligning new changes with the repository's existing conventions
 allowed-tools: Read, Edit, Write, Glob, Grep, Bash
 ---
 
-```
-
 # Engineering Referral Loops Skill
 
-Designs secure referral and partner integration mechanics for marketplace apps and third-party ecosystems. Centers on token-based authentication, event-driven synchronization, and embeddable distribution surfaces with full audit trails.
+This fallback skill keeps Engineering Referral Loops work aligned with the conventions already present in this repository. Prefer extending the closest existing implementation over inventing a new abstraction, and verify neighboring states before finishing.
+
+## Before You Code (REQUIRED)
+
+This skill's content was captured at generation time and MAY be stale. For ANY non-trivial change involving engineering-referral-loops, verify against current docs FIRST:
+
+
+
+Then:
+
+1. **Match the installed version.** Cross-reference against the version installed in this repo. APIs change across minor versions; do not assume.
+2. **Discover provider best practices.** If the task touches a production-sensitive capability, inspect the provider service catalog, official docs, and project docs before choosing an implementation.
+3. **Respect explicit direction.** If the user explicitly asks for a specific mechanism, follow it. If project docs clearly mandate a mechanism, follow the project. In both cases, mention the provider-recommended alternative and make the chosen path safe.
+4. **Prefer provider-native primitives by default.** If no explicit user/project override exists and the change involves caching, rate limiting, background work, scheduled jobs, shared state, queues, or secrets, use the provider-recommended binding/API. Do not hand-roll an in-memory or polyfill solution that "works" locally but breaks under the provider's execution model — derive the need→native-primitive mapping yourself from this provider's docs.
+
+## Capability Contract
+
+Use this section when the user prompt touches production risk, even if the prompt does not name this technology explicitly.
+
+
+
+
+Required wiring surfaces:
+- runtime/infrastructure config: Dockerfile
+- nearest typed request/context boundary
+- handler/procedure boundary before external side effects
+
+Side-effect barrier:
+- Place guards before external APIs, auth mutations, email sends, analytics events, storage writes, and database mutations.
+
+
+Fallback policy:
+- Prefer provider-native/platform-managed primitives by default when no explicit override exists.
+- Follow clear user/project overrides, but mention the native alternative and tradeoff.
+- Fallbacks must be durable, multi-instance safe, and atomic under concurrency.
+
+Verification rules:
+- [error] native-or-explicit-override: Use the provider-native primitive first unless the user/project explicitly overrides it.
+- [error] atomic-fallback: Fallback counters must be atomic under concurrency.
 
 ## Quick Start
 
-1. **Map the OAuth handshake**: Identify authorization code flow endpoints (`/oauth/{partner}/authorize`, `/oauth/{partner}/callback`) and token storage (encrypted at rest, hash-based lookup).
-2. **Define partner identity**: Create database rows for partner tokens with `access_token_hash`, `expires_at`, `scopes`, and `user_type` (agency vs location).
-3. **Register callback URLs**: Store allowed origins for embeds and webhooks; validate Origin/Referer headers against registered URLs.
-4. **Implement webhook ingestion**: Create inbox table (`{partner}_webhook_events`), signature verification middleware, and async job dispatch.
-5. **Add embed surfaces**: Build widget loader pattern with API-key validation, CORS handling, and cross-origin lead ingestion.
-6. **Enable audit logging**: Dual-channel logging (database + file) capturing endpoint, latency, and compliance flags for every partner interaction.
+### Inspect the current implementation
+
+```sh
+rg -n "engineering-referral-loops|conversion-optimization|content-copy|distribution" .
+rg --files | rg "engineering-referral-loops|conversion-optimization|content-copy"
+```
+
+### Make the smallest compatible change
+
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+
+### Verify before finishing
+
+- Verify the changed path and the most likely adjacent edge cases.
+- Check that naming, layering, and file placement still match nearby code.
+- Confirm there is a clear reason for any new abstraction, dependency, or workflow.
 
 ## Key Concepts
 
-| Concept | Implementation |
-|---------|----------------|
-| **Token Exchange** | OAuth 2.0 Authorization Code Grant with PKCE; refresh tokens stored encrypted; hash-based Bearer lookup without plaintext exposure. |
-| **Partner Scopes** | Space-delimited permissions stored on token; middleware checks abilities like `partner:access` vs `partner:full`. |
-| **Webhook Inbox** | Idempotent event storage with `webhook_id` deduplication; async processing via queued jobs; signature verification with configurable secrets. |
-| **Embed Widgets** | API-key gated (`{prefix}_{hash}`), origin-validated, CORS-enabled surfaces; throttle-protected lead ingestion endpoints. |
-| **Lead Sync** | Inbound leads captured to local table with `lead_type` mapping; dispatch sync jobs to push to partner CRM with retry logic. |
-| **Generation-based Cache** | For shared resources, fingerprint upstream source metadata; increment generation on change to invalidate edge caches. |
+| Concept | Why it matters | What to check |
+|---------|----------------|---------------|
+| Existing patterns | Keeps the repo coherent | Start from the nearest matching implementation before editing |
+| Scope control | Prevents abstraction creep | Keep the change in the same layer as surrounding code |
+| Verification | Catches regressions early | Recheck adjacent states, edge cases, and integration points |
+| References | Speeds up repeat work | Use the linked topic files when the task needs deeper guidance |
 
 ## Common Patterns
 
-**OAuth Install Flow**  
-`install` landing → `authorize` redirect → `callback` exchange → `register-urls` origin collection → `installation-complete` embed instructions.
+### Conversion Optimization
 
-**Agency-to-Location Token Exchange**  
-Company-level token calls partner's `/oauth/locationToken` endpoint to obtain location-scoped tokens; store both with parent-child relationship.
+**When:** The task touches conversion optimization in Engineering Referral Loops work.
 
-**Widget Middleware Chain**  
-API key validation → Origin/Referer check against `registered_urls` → CORS header append → rate limit → lead creation → async sync job dispatch.
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
 
-**Webhook Signature Verification**  
-Raw body HMAC-SHA256 with configured secret; header name configurable (`X-{Partner}-Signature`); toggle for local development.
+### Content Copy
 
-**Subscription Status Sync**  
-Webhook handlers update local `subscription_status`; tag-based reconciliation with partner CRM; status values: `none`, `trial`, `active`, `past_due`, `cancelled`.
+**When:** The task touches content copy in Engineering Referral Loops work.
 
-**Audit Trail**  
-Every API call and webhook logged with `logged_at`, `endpoint`, `latency_ms`, `response_status`, `partner_id`, `is_data_access`, and `compliance_verified` flags.
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
+
+### Distribution
+
+**When:** The task touches distribution in Engineering Referral Loops work.
+
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
+
+## See Also
+
+- [Conversion Optimization](references/conversion-optimization.md)
+- [Content Copy](references/content-copy.md)
+- [Distribution](references/distribution.md)
+- [Measurement Testing](references/measurement-testing.md)
+- [Growth Engineering](references/growth-engineering.md)
+- [Strategy Monetization](references/strategy-monetization.md)

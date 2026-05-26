@@ -1,126 +1,83 @@
+# Go stack local development (use alongside or instead of Laravel docker-compose.dev.yml)
 services:
-  idx-api-dev:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-      target: dev
-      args:
-        BASE_IMAGE: ${DEV_BASE_IMAGE:-dunglas/frankenphp:php8.5-alpine}
-    image: ${DEV_IMAGE_NAME_API:-quantyra/idx-api-dev-api:local}
-    platform: ${DOCKER_PLATFORM:-linux/arm64}
-    env_file:
-      - .env
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
     environment:
-      OCTANE_HOST: 0.0.0.0
-      OCTANE_PORT: ${OCTANE_PORT:-8000}
-      OCTANE_WATCH: ${OCTANE_WATCH:-false}
-      XDG_CONFIG_HOME: /var/www/html/config
-      XDG_DATA_HOME: /var/www/html/data
-      XDEBUG_MODE: ${XDEBUG_MODE:-off}
-      XDEBUG_CONFIG: ${XDEBUG_CONFIG:-client_host=host.docker.internal client_port=9003 idekey=VSCODE start_with_request=trigger}
-      PHP_IDE_CONFIG: ${PHP_IDE_CONFIG:-serverName=idx-api-dev}
+      POSTGRES_DB: idx_api
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     ports:
-      - "${OCTANE_PORT:-8000}:8000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      default:
-        aliases:
-          - idx-api
+      - "5432:5432"
     healthcheck:
-      # Cloudflared returns 502 when the origin refuses TCP; wait until Octane binds before other services rely on the API.
-      test: ["CMD-SHELL", "curl -sf --connect-timeout 3 http://127.0.0.1:8000/up >/dev/null || exit 1"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
       timeout: 5s
-      retries: 12
-      start_period: 120s
-    restart: unless-stopped
-    init: true
-    develop:
-      watch:
-        - action: sync+restart
-          path: .
-          target: /var/www/html
-          ignore:
-            - .git/
-            - vendor/
-            - node_modules/
-            - storage/
-            - bootstrap/cache/
-            - .cursor/
-            - .idea/
-            - .vscode/
-            - "*.log"
-        - action: rebuild
-          path: composer.json
-        - action: rebuild
-          path: composer.lock
-        - action: rebuild
-          path: Dockerfile.dev
-        - action: rebuild
-          path: docker-compose.dev.yml
+      retries: 5
 
-  idx-queue-dev:
+  migrate:
+    image: golang:1.25-alpine
+    working_dir: /src
+    volumes:
+      - .:/src
+    environment:
+      GOOSE_DRIVER: postgres
+      GOOSE_DBSTRING: postgres://postgres:postgres@postgres:5432/idx_api?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["sh", "-c", "go run github.com/pressly/goose/v3/cmd/goose@v3.24.3 -dir migrations up"]
+
+  api:
     build:
       context: .
-      dockerfile: Dockerfile.dev
-      target: dev-worker
-      args:
-        BASE_IMAGE: ${DEV_BASE_IMAGE:-dunglas/frankenphp:php8.5-alpine}
-    image: ${DEV_IMAGE_NAME_QUEUE:-quantyra/idx-api-dev-queue:local}
-    platform: ${DOCKER_PLATFORM:-linux/arm64}
+      target: api
+    ports:
+      - "8000:8000"
     env_file:
       - .env
     environment:
-      XDG_CONFIG_HOME: /var/www/html/config
-      XDG_DATA_HOME: /var/www/html/data
-      XDEBUG_MODE: ${XDEBUG_MODE:-off}
-      WORKER_QUEUES: ${WORKER_QUEUES:-default}
+      APP_PORT: "8000"
+      DB_HOST: postgres
+      DB_PASSWORD: postgres
     depends_on:
-      - idx-api-dev
-    restart: unless-stopped
-    init: true
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - geoidx-cache:/var/cache/geoidx/images
 
-  idx-scheduler-dev:
+  worker:
     build:
       context: .
-      dockerfile: Dockerfile.dev
-      target: dev-scheduler
-      args:
-        BASE_IMAGE: ${DEV_BASE_IMAGE:-dunglas/frankenphp:php8.5-alpine}
-    image: ${DEV_IMAGE_NAME_SCHEDULER:-quantyra/idx-api-dev-scheduler:local}
-    platform: ${DOCKER_PLATFORM:-linux/arm64}
+      target: worker
     env_file:
       - .env
     environment:
-      XDG_CONFIG_HOME: /var/www/html/config
-      XDG_DATA_HOME: /var/www/html/data
-      XDEBUG_MODE: ${XDEBUG_MODE:-off}
+      DB_HOST: postgres
+      DB_PASSWORD: postgres
+      WORKER_QUEUES: default,sync-kickoff,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist
     depends_on:
-      - idx-api-dev
-    restart: unless-stopped
-    init: true
+      - api
 
-  idx-images-dev:
+  scheduler:
+    build:
+      context: .
+      target: scheduler
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_PASSWORD: postgres
+    depends_on:
+      - api
+
+  idx-images:
     build:
       context: .
       dockerfile: Dockerfile.idx-images
-    image: ${DEV_IMAGES_NAME:-quantyra/idx-images-dev:local}
-    platform: ${DOCKER_PLATFORM:-linux/arm64}
     ports:
-      - "${IMAGES_PORT:-8080}:8080"
-    restart: unless-stopped
-    init: true
-
-  cloudflared-dev:
-    image: cloudflare/cloudflared:2026.3.0
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN}
+      - "8080:8080"
     depends_on:
-      idx-api-dev:
-        condition: service_healthy
-      idx-images-dev:
-        condition: service_started
-    environment:
-      TUNNEL_METRICS: 0.0.0.0:20241
-    restart: unless-stopped
-    init: true
+      - api
+
+volumes:
+  geoidx-cache:

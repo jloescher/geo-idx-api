@@ -1,15 +1,19 @@
 # Comps API (`POST /api/v1/comps/run`)
 
-Bridge-backed comparables and investor analysis endpoint for the active MLS dataset resolved by `domain.token` + `MlsDatasetResolver`.
+MLS comparables and investor analysis for the active feed resolved by `domain.token` + MLS access middleware (`bridge_stellar`, `spark_beaches`, …).
+
+**Data sources:**
+
+- **Closed / sold comps** — **`listings_cache`** per domain + feed (30-day write-through after live fetch; radius scope) when enough rows are cached, else live RESO upstream (`bridge_*` / `spark_*`). Closed rows are not bulk-replicated into the `listings` mirror.
+- **Active / Pending competition** — PostGIS `listings` mirror for **all** enabled MLS feeds (Stellar, Beaches, etc.).
+- **Rental (`rent_hold_cashflow`, `flip_vs_hold`)** — Closed leases from live Bridge/Spark; Active/Pending leases from the mirror.
 
 ## Auth and access
 
 - Route: `POST /api/v1/comps/run`
 - Middleware: `domain.token`
-- Token/domain behavior:
-  - domain auth or `idx:access` token: A–E comps only (sold comps teaser cap applies)
-  - `idx:full` token: full comps payload + investor modes
-- Investor modes (`rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`, `bpo`) require `idx:full`.
+- Authenticated **domain** or **PAT** traffic (with `idx:access` or `idx:full` and a verified domain binding for tokens) receives **full** comps payloads, including investor modes, BPO, and home value.
+- **No teaser gating:** `internal/service/comps` does not read `MLSFullAccess`; premium modes are not restricted by ability name in this deployment.
 
 ## Request shape
 
@@ -28,6 +32,8 @@ Top-level keys:
 - Optional subject enrichments now supported:
   - `garage_spaces`, `carport_spaces`, `covered_spaces`, `open_parking_spaces`, `parking_stalls_total`
   - `subdivision_name`, `mls_area_major`, `view_yn`, `monthly_fees`, `flood_zone_code`
+- **Deprecated** (still accepted; merged before validation): `subject.stellar_flood_zone_code` → `flood_zone_code`, `subject.stellar_total_monthly_fees` → `monthly_fees`
+- **`subject.type: mls`:** flood zone and monthly fees are resolved from the upstream Property row via `ListingResoFieldResolver` (same rules as the Postgres mirror: Stellar `STELLAR_FloodZoneCode` / `STELLAR_TotalMonthlyFees`; Beaches association-fee frequency math)
 
 ### Modes
 
@@ -35,7 +41,7 @@ Top-level keys:
   - sold comps + optional active/pending competition comps
   - adjustment grid + market conditions + optional overpriced signals (full access)
 - `rent_hold_cashflow`:
-  - Bridge rental comps (`PropertyType eq 'Residential Lease'`) for closed + active/pending inventories
+  - Rental comps: Closed leases from live Bridge/Spark (`PropertyType eq 'Residential Lease'`); Active/Pending from the `listings` mirror
   - returns `rental_comps` and `rental_result`
 - `flip_vs_hold`:
   - combines sold comps + rental comps
@@ -47,17 +53,14 @@ Top-level keys:
   - URAR-style Broker Price Opinion using market-derived adjustments
   - OLS regression extracts $/unit rates from the comp dataset (no static values)
   - returns `bpo_result` with full 14-line adjustment grid, reconciliation, and confidence scoring
-  - requires `idx:full`
 - `home_value`:
   - Home value estimation from owner-provided details or an active MLS listing
   - Two paths: `address` + geocoding via Google Maps, or `listing_id` + Bridge lookup
-  - When `listing_id` is provided, all property details auto-populate from the MLS record
-  - Condition rating auto-derived from `PropertyCondition` field or `PublicRemarks` keyword analysis
-  - Condition is optional: if not provided and cannot be derived, the condition adjustment is skipped
+  - When `listing_id` is provided, property details auto-populate from the MLS/upstream Property row
+  - **Condition:** pass `subject.condition` explicitly (`poor`, `fair`, `good`, `excellent`), or omit it to auto-derive from the listing (`PropertyCondition` then `PublicRemarks`; see below). When no match is found, the condition adjustment is skipped (`condition_applied: false`).
   - Renovation credits (kitchen, bathrooms, HVAC) derived from market data (scales with local price levels)
   - Expanded `property_type` enum: `sfr`, `townhouse`, `condo`, `manufactured`, `duplex`, `triplex`, `quadplex`, `modular`
-  - returns `home_value_result` with estimate, range, confidence, comparable count, and market rates summary
-  - requires `idx:full`
+  - returns `home_value_result` with estimate, range, confidence, comparable count, market rates summary, and `condition_rating` (resolved or derived condition used for adjustments)
 
 ## Key filter extensions
 
@@ -93,6 +96,7 @@ Mode-specific additions:
 
 ## Implementation notes
 
+- Comp and subject payloads expose `monthly_fees`, `flood_zone`, and `flood_zone_codes` derived from the same `ListingResoFieldResolver` logic as mirror persist (not only `{DATASET}_TotalMonthlyFees` / `{DATASET}_FloodZoneCode` OData fields).
 - Coordinates normalization supports all Bridge shapes used in Stellar:
   - GeoJSON-like: `Coordinates.coordinates`
   - tuple array: `Coordinates: [lng, lat]`
@@ -181,7 +185,9 @@ When `listing_id` is provided, the following fields are auto-populated from the 
    - **Excellent**: "mint condition", "turnkey", "completely renovated", "like new", "no expense spared", etc.
    - **Good**: "well maintained", "move-in ready", "updated", "immaculate", etc.
    - **Fair**: "needs some tlc", "as-is", "needs updating", "handyman special", etc.
-3. Returns `null` if no confident match -- condition adjustment is skipped entirely
+3. Returns no rating if no confident match — condition adjustment is skipped (`condition_applied: false` in `home_value_result`)
+
+Implementation: `internal/service/comps/condition.go` (`DeriveConditionFromProperty`), applied in `resolveHomeValueSubject` when `listing_id` is used.
 
 **PropertySubType mapping:**
 

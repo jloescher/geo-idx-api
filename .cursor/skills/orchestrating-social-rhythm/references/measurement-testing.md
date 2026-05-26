@@ -1,68 +1,66 @@
-# Measurement & Testing
+# Measurement and Testing Reference
 
-## When to use
-Apply when implementing observability, compliance audit trails, or load testing for the IDX API and GHL integrations.
+## Contents
+- Existing Observability
+- Tracking Content Effectiveness
+- A/B Testing Constraints
+- Anti-Patterns
 
-## Patterns
+## Existing Observability
 
-### Dual-Channel Audit Logging
-GHL subsystem writes to both database and file for compliance durability:
+The project uses `slog` for structured logging. All API requests go through audit logging (`audit_logs` table). This is the measurement foundation.
 
-```php
-// GhlAuditService - Stellar MLS audit requirements
-public function log(array $data): void
-{
-    GhlAuditLog::create([
-        'logged_at' => now(),
-        'api_endpoint' => $data['endpoint'],
-        'latency_ms' => $data['latency'],
-        'is_mls_data_access' => $data['is_mls'],
-        'compliance_verified' => true,
-    ]);
-
-    // Secondary file channel for log aggregation
-    if (config('ghl.audit_log_enabled')) {
-        Log::channel('ghl_audit')->info('API call', $data);
-    }
-}
+```go
+// Audit logging exists in internal/handler/ — every authenticated request is logged
+// Key fields: domain, token scope, endpoint, response status, timestamp
+// This data answers: "Which docs drive the most API calls?"
 ```
 
-### Feature Test Isolation
-All tests use in-memory SQLite with faked HTTP clients:
+Key tables for content measurement:
 
-```php
-// TestCase.php - Ephemeral database guard
-protected function setUp(): void
-{
-    parent::setUp();
+| Table | What it measures |
+|-------|-----------------|
+| `audit_logs` | API usage by endpoint, domain, and token scope |
+| `tokens` | Token creation rate (proxy for signup conversion) |
+| `domains` | Domain registration (proxy for new customer acquisition) |
 
-    if (config('database.default') !== 'sqlite' 
-        && !env('ALLOW_DESTRUCTIVE_TEST_DB')) {
-        $this->fail('Tests require SQLite in-memory database');
-    }
+## Tracking Content Effectiveness
 
-    Http::fake([
-        'api.bridgedataoutput.com/*' => Http::response(['value' => []]),
-        'api.stripe.com/*' => Http::response(['id' => 'pi_test']),
-    ]);
-}
+Without a dedicated analytics integration, infer content performance from API behavior:
+
+1. **Docs effectiveness**: Track spike in `audit_logs` for an endpoint after publishing its doc
+2. **Dashboard CTA effectiveness**: Compare token creation rate before/after dashboard copy change
+3. **Release note reach**: Correlate merge timestamp with API usage changes in `audit_logs`
+
+```sql
+-- Token creation rate (weekly) — proxy for content conversion
+SELECT date_trunc('week', created_at) AS week,
+       COUNT(*) AS tokens_created
+FROM tokens
+GROUP BY week
+ORDER BY week DESC;
 ```
 
-### Health Check Probes
-GIS metadata probing tracks source freshness:
+## A/B Testing Constraints
 
-```php
-// RefreshGisSourceMetadataJob - fingerprint-based invalidation
-$response = Http::timeout(config('gis.metadata_timeout', 12))
-    ->get($sourceUrl . '?f=json');
+This is a backend API — no client-side A/B framework. Testing approaches:
 
-$fingerprint = md5($response->json('currentVersion') . 
-                   json_encode($response->json('editingInfo')));
+1. **Docs A/B**: Publish two versions of a doc, route via URL parameter, measure referral API usage
+2. **Dashboard copy A/B**: Use feature flags or deploy-time toggle for dashboard text variants
+3. **Error message A/B**: Swap error copy between deploys, measure support ticket volume
 
-if ($fingerprint !== $sourceState->last_fingerprint) {
-    $sourceState->increment('generation'); // Invalidates cache
-}
-```
+## Anti-Patterns
 
-## Pitfall
-Never enable Telescope or Pulse in production without HTTP Basic Auth. The `ProtectMonitoringDashboard` middleware gates these, but exposing them exposes OAuth tokens and Stripe keys.
+### WARNING: Measuring Vanity Metrics
+
+**The Problem:** Tracking page views on docs without connecting to API activation.
+
+**Why This Breaks:** 10k doc views that produce 0 API calls means the content is attracting the wrong audience or failing to convert.
+
+**The Fix:** Always pair traffic metrics with downstream API behavior from `audit_logs`. A doc is effective when readers make their first API call within 24 hours.
+
+### WARNING: No Baseline Before Content Change
+
+**The Problem:** Publishing new dashboard copy without knowing the current token creation rate.
+
+**The Fix:** Before any content change, capture a 2-week baseline from `audit_logs` and `tokens`. Compare post-change against this baseline.

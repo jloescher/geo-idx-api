@@ -1,17 +1,40 @@
-# Strategy & Monetization
+# Crafting Page Messaging Strategy Monetization Reference
 
-## When to use
+## When To Use
 
-Making pricing decisions, designing tier boundaries, or planning revenue expansion—understanding how GeoIDX captures value and where to grow it.
+Use this reference when the task touches strategy monetization while working on Crafting Page Messaging code in this repository.
 
-## Project-relevant patterns
+## What To Inspect
 
-**Land with GHL, expand with usage** — The GHL Marketplace is the distribution channel with lowest CAC. Price Pro and Smart aggressively to win installs. Monetize expansion through Ultra/Mega metered overage and domain add-ons once teams are embedded.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Teaser as conversion mechanic** — The 3-listing teaser cap is not just a technical limit—it's a sales tool. Frame it as "See the quality of our Stellar MLS feed," not "You've hit your limit." The former builds desire; the latter builds frustration.
+## Recommended Workflow
 
-**API overage as upgrade nudge** — Ultra includes 2M calls/month. Rather than hard-cutting overage, offer a grace window with dashboard warnings at 80%, 95%, and 100%. At 100%, present an immediate upgrade to Mega or a metered overage purchase—never a service interruption.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
 
 ## Pitfalls
 
-Avoid competing on "unlimited API calls" for Mega tier. Bridge Data Output and ArcGIS both have rate limits and costs at scale. Position Mega as "unlimited domains, SLA-backed, with custom overage terms" rather than infinite volume. Setting unmeetable expectations creates churn when limits inevitably surface.
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

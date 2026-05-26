@@ -1,55 +1,57 @@
-# Growth Engineering
+# Growth Engineering Reference
 
-## When to use
-Use when implementing viral loops, usage-based pricing, or self-service expansion features in the IDX platform.
+## Contents
+- Growth Loops in This Codebase
+- API Key Re-Issuance as Growth Event
+- Multi-MLS as Expansion Lever
+- Anti-Patterns
 
-## Patterns
+## Growth Loops in This Codebase
 
-### Widget Viral Distribution
-JS widgets spread through embed codes with attribution tracking:
+Growth in a developer API follows a specific loop:
 
-```html
-<!-- loader.js pattern - distributed via GHL Marketplace -->
-<script src="https://idx-api.quantyralabs.cc/widget/loader.js"
-        data-api-key="qh_..."
-        data-location-id="..."
-        data-widget="search">
-</script>
+```
+Developer reads docs → Creates API key → Makes first call → Builds on platform → Needs more datasets/expenses → Upgrades
 ```
 
-Each widget load validates Origin against registered URLs, creating a viral loop where each install drives new domain registrations.
+Each step maps to a code artifact:
 
-### Usage-Based Expansion
-Metered billing for API overages encourages organic growth:
+| Loop step | Code surface | Content lever |
+|-----------|-------------|---------------|
+| Reads docs | `docs/*.md` | Working examples, clear auth flow |
+| Creates key | `/dashboard`, `internal/handler/auth` | Copy-paste token generation |
+| First call | `POST /api/v1/search` | Low-friction dataset routing (`?dataset=`) |
+| Builds on platform | GIS teaser, comps API | Scope-based access expansion |
+| Upgrades | Token scopes (`idx:access`) | Teaser-to-full conversion copy |
 
-```php
-// SubscriptionCatalog - metered overage on Ultra/Mega
-'ultra' => [
-    'monthly_price_id' => env('STRIPE_PRICE_IDX_ULTRA_MONTHLY'),
-    'features' => ['2M_API_CALLS', 'UNLIMITED_DOMAINS'],
-    'metered' => [
-        'price_id' => env('STRIPE_PRICE_IDX_API_OVERAGE_METERED'),
-        'unit' => 'per_1000_calls',
-    ],
-],
-```
+## API Key Re-Issuance as Growth Event
 
-### Self-Service Token Management
-Dashboard API token rotation reduces support burden:
+From `docs/go-cutover.md`: the Go migration requires customers to re-issue API keys. This is a forced touchpoint — use it for growth:
 
-```php
-// DashboardApiTokenController - idx:full token self-management
-public function store(Request $request)
-{
-    $token = $request->user()->createToken('geo-web-custom', ['idx:full']);
-    
-    return response()->json([
-        'token' => $token->plainTextToken, // Shown once
-        'abilities' => ['idx:full'],
-        'last_used_at' => null,
-    ]);
-}
-```
+1. **Re-issuance email/dashboard prompt**: Include "What's new in Go" content
+2. **New token experience**: Show available datasets and scopes at creation time
+3. **Post-re-issuance**: Audit which endpoints each domain uses, suggest unexplored features
 
-## Pitfall
-Avoid auto-scaling subscription tiers without explicit user consent. A surprise $449 Mega bill creates churn. Always gate upgrades behind explicit checkout confirmation.
+## Multi-MLS as Expansion Lever
+
+The system supports `bridge_stellar` and `spark_beaches` (see `README.md`). Growth content beats:
+
+1. **Cross-sell**: "Using Stellar? Beaches MLS is available on the same API key with `?dataset=beaches`"
+2. **New MLS onboarding**: When a new dataset is added, create a content arc (see SKILL.md editorial arc pattern)
+3. **Dataset comparison**: Content showing side-by-side RESO field coverage
+
+## Anti-Patterns
+
+### WARNING: Growth Tactics Without API Reliability
+
+**The Problem:** Driving developers to an API that has replication lag, stale cache, or queue backlog.
+
+**Why This Breaks:** First impressions are final for developers. A 500 error on the first API call after reading your content means permanent churn.
+
+**The Fix:** Verify `/healthz` and `/readyz` pass. Check `GET /api/v1/bridge/stats` for replication status. Content beats must not run during known instability windows (migration periods, queue backlogs).
+
+### WARNING: Ignoring the Scheduler as a Growth Signal
+
+**The Problem:** The scheduler (`cmd/scheduler`) runs `mls.replication_kickoff` every minute. When replication lags, the API serves stale data — but content may still be driving traffic.
+
+**The Fix:** Correlate content beats with scheduler health. If `replication_in_progress` is true for extended periods, pause acquisition content and focus on retention messaging.

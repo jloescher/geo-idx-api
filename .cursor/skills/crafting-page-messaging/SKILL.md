@@ -1,52 +1,114 @@
 ---
 name: crafting-page-messaging
-description: Writes conversion-focused messaging for pages and key CTAs
+description: |
+  Writes conversion-focused messaging for pages and key CTAs.
+  Use when: implementing or refactoring Crafting Page Messaging work, troubleshooting conversion optimization, content copy, distribution, or aligning new changes with the repository's existing conventions
 allowed-tools: Read, Edit, Write, Glob, Grep, Bash
 ---
 
 # Crafting Page Messaging Skill
 
-Crafts conversion-focused messaging for Quantyra GeoIDX marketing pages, subscription tiers, and key CTAs. Aligns copy with the IDX/MLS data business—emphasizing MLS access, GHL Marketplace integration, lead capture, and revenue gating value props.
+This fallback skill keeps Crafting Page Messaging work aligned with the conventions already present in this repository. Prefer extending the closest existing implementation over inventing a new abstraction, and verify neighboring states before finishing.
+
+## Before You Code (REQUIRED)
+
+This skill's content was captured at generation time and MAY be stale. For ANY non-trivial change involving crafting-page-messaging, verify against current docs FIRST:
+
+
+
+Then:
+
+1. **Match the installed version.** Cross-reference against the version installed in this repo. APIs change across minor versions; do not assume.
+2. **Discover provider best practices.** If the task touches a production-sensitive capability, inspect the provider service catalog, official docs, and project docs before choosing an implementation.
+3. **Respect explicit direction.** If the user explicitly asks for a specific mechanism, follow it. If project docs clearly mandate a mechanism, follow the project. In both cases, mention the provider-recommended alternative and make the chosen path safe.
+4. **Prefer provider-native primitives by default.** If no explicit user/project override exists and the change involves caching, rate limiting, background work, scheduled jobs, shared state, queues, or secrets, use the provider-recommended binding/API. Do not hand-roll an in-memory or polyfill solution that "works" locally but breaks under the provider's execution model — derive the need→native-primitive mapping yourself from this provider's docs.
+
+## Capability Contract
+
+Use this section when the user prompt touches production risk, even if the prompt does not name this technology explicitly.
+
+
+
+
+Required wiring surfaces:
+- runtime/infrastructure config: Dockerfile
+- nearest typed request/context boundary
+- handler/procedure boundary before external side effects
+
+Side-effect barrier:
+- Place guards before external APIs, auth mutations, email sends, analytics events, storage writes, and database mutations.
+
+
+Fallback policy:
+- Prefer provider-native/platform-managed primitives by default when no explicit override exists.
+- Follow clear user/project overrides, but mention the native alternative and tradeoff.
+- Fallbacks must be durable, multi-instance safe, and atomic under concurrency.
+
+Verification rules:
+- [error] native-or-explicit-override: Use the provider-native primitive first unless the user/project explicitly overrides it.
+- [error] atomic-fallback: Fallback counters must be atomic under concurrency.
 
 ## Quick Start
 
-1. **Identify the context** – Read the Blade/Livewire component in `resources/views/` or `app/Livewire/Marketing/` to understand the page's goal (sales, onboarding, dashboard upgrade nudge).
-2. **Anchor to value props** – Lead with outcomes: MLS data access, lead capture, GHL workflow integration, or billing tier benefits.
-3. **Match the tier** – Reference `SubscriptionCatalog` plans (Pro $39, Smart $79, Ultra $179, Mega $449) when writing upgrade CTAs.
-4. **Keep it scannable** – Headlines ≤8 words, CTAs start with verbs, bullets show concrete limits ("3 domains", "2M calls/mo").
+### Inspect the current implementation
+
+```sh
+rg -n "crafting-page-messaging|conversion-optimization|content-copy|distribution" .
+rg --files | rg "crafting-page-messaging|conversion-optimization|content-copy"
+```
+
+### Make the smallest compatible change
+
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+
+### Verify before finishing
+
+- Verify the changed path and the most likely adjacent edge cases.
+- Check that naming, layering, and file placement still match nearby code.
+- Confirm there is a clear reason for any new abstraction, dependency, or workflow.
 
 ## Key Concepts
 
-| Concept | Application |
-|---------|-------------|
-| **Teaser gating** | Frame limited access as a preview; full data unlocks with subscription. "Showing 3 of 1,200+ listings. Upgrade for full MLS access." |
-| **Lead velocity** | Emphasize speed to contact. "Capture leads directly into GHL. No CSV exports." |
-| **Domain trust** | Reference Stellar MLS compliance and audit trails for authority. "Stellar MLS–compliant. Every request logged." |
-| **Integration depth** | Highlight GHL Marketplace fit. "Works where your agents work—inside GoHighLevel." |
-| **Overage transparency** | For Ultra/Mega tiers, mention metered overage as flexibility, not penalty. "Scale past 2M calls with automatic metered billing." |
+| Concept | Why it matters | What to check |
+|---------|----------------|---------------|
+| Existing patterns | Keeps the repo coherent | Start from the nearest matching implementation before editing |
+| Scope control | Prevents abstraction creep | Keep the change in the same layer as surrounding code |
+| Verification | Catches regressions early | Recheck adjacent states, edge cases, and integration points |
+| References | Speeds up repeat work | Use the linked topic files when the task needs deeper guidance |
 
 ## Common Patterns
 
-### Headline formulas
-- "[Outcome] for [Audience]" → "Capture more leads. Close faster."
-- "The [adjective] way to [action]" → "The compliant way to embed Stellar MLS listings."
-- "[Number]-minute [result]" → "15-minute cached listings. Sub-second API responses."
+### Conversion Optimization
 
-### CTA patterns
-- Primary: "Start [Plan] Trial" / "Upgrade to [Plan]" / "Connect GHL Location"
-- Secondary: "View full comparison" / "See widget demo"
-- Micro (dashboard): "Upgrade to unlock 5 more domains"
+**When:** The task touches conversion optimization in Crafting Page Messaging work.
 
-### Tier positioning
-| Tier | Angle |
-|------|-------|
-| Pro | "Individual agents—3 domains, basic GHL sync." |
-| Smart | "Growing teams—5 domains, OTP gating, phone+email capture." |
-| Ultra | "Power users—unlimited domains, 2M calls, dev keys." |
-| Mega | "Enterprise—SLA, custom branding, dedicated support." |
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
 
-### Trust signals to weave in
-- "Bridge Data Output partner"
-- "Stellar MLS–approved"
-- "Cloudflare-cached images"
-- "Encrypted tokens at rest"
+### Content Copy
+
+**When:** The task touches content copy in Crafting Page Messaging work.
+
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
+
+### Distribution
+
+**When:** The task touches distribution in Crafting Page Messaging work.
+
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
+
+## See Also
+
+- [Conversion Optimization](references/conversion-optimization.md)
+- [Content Copy](references/content-copy.md)
+- [Distribution](references/distribution.md)
+- [Measurement Testing](references/measurement-testing.md)
+- [Growth Engineering](references/growth-engineering.md)
+- [Strategy Monetization](references/strategy-monetization.md)

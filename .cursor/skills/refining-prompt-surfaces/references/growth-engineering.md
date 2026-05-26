@@ -1,18 +1,40 @@
-# Growth Engineering
+# Refining Prompt Surfaces Growth Engineering Reference
 
-## When to use
-Building viral loops, referral systems, or expansion features in the IDX platform—especially around GHL agency workflows and widget sharing.
+## When To Use
 
-## Patterns
+Use this reference when the task touches growth engineering while working on Refining Prompt Surfaces code in this repository.
 
-**Agency-to-location token exchange**
-GHL Company (agency) tokens can spawn Location tokens via `LocationTokenService`. When an agency installs, prompt: "Install GeoIDX for all your locations?" Use the `/oauth/locationToken` endpoint to exchange tokens, then auto-create `ghl_registered_urls` entries for each location's default domain. One agency install → many active widgets.
+## What To Inspect
 
-**Widget lead viral hints**
-Widget configs include `gate_after_views` and `require_otp`. After lead submission, show a "Powered by GeoIDX" badge with a referral link to `IDX_PLATFORM_URL`. Track clicks via `referrer` query params. The widget surfaces at `/widget/showcase/{apiKey}` can include sample listings with "Get this on your site" CTAs for organic growth.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**GIS parcel teaser for dwell time**
-The `/api/v1/gis` endpoint returns parcel overlays even for `idx:access` (teaser) tokens. Use this in marketing: "See property boundaries for every listing" increases map interaction time before OTP gates trigger. The `GisProxyService` handles 3-tier caching—GIS features don't count against Bridge API quotas.
+## Recommended Workflow
 
-## Warning
-The `RefreshDomainListingsCacheJob` runs every 15 minutes per active domain. Growth features that trigger many domain registrations can spike queue depth. Monitor `LISTINGS_CACHE_TTL` (default 900s) and queue worker capacity—backlogged token refresh jobs cause stale listing data, hurting conversion.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

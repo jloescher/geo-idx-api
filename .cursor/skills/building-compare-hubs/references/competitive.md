@@ -1,42 +1,40 @@
-# Competitive Analysis Patterns
+# Building Compare Hubs Competitive Reference
 
-When to use: Creating "vs competitor" pages, positioning against alternative IDX providers, or building alternative suggestion flows for users comparing options.
+## When To Use
 
-## Patterns
+Use this reference when the task touches competitive while working on Building Compare Hubs code in this repository.
 
-### Competitor Alternative Pages
+## What To Inspect
 
-Create pages targeting "alternative to {competitor}" search queries:
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-```php
-// routes/web.php
-Route::get('alternatives-to-{competitor}', [AlternativeController::class, 'show'])
-    ->whereIn('competitor', ['idxbroker', 'diverse-solutions', 'showcase-idx'])
-    ->name('marketing.alternatives.show');
-```
+## Recommended Workflow
 
-Structure the content:
-1. "Why agents switch from {competitor}" (pain points)
-2. Side-by-side comparison table
-3. Migration guide/CTA
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-### Differentiation Matrix
+## Quality Bar
 
-| Feature | GeoIDX Pro | IDX Broker | Advantage |
-|---------|------------|------------|-----------|
-| GHL Integration | Native | Zapier only | ✅ Built-in |
-| GIS Parcels | Included | +$49/mo | ✅ Bundled |
-| Setup Time | 5 minutes | 2-3 days | ✅ Faster |
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
 
-### Switching Cost Calculator
 
-```blade
-<div x-data="{ currentPrice: 99, geoPrice: 79 }">
-    <p>Save $<span x-text="(currentPrice - geoPrice) * 12"></span>/year</p>
-    <input type="range" x-model="currentPrice" min="50" max="500">
-</div>
-```
 
 ## Pitfalls
 
-Never make false claims about competitor pricing or features—verify publicly listed rates before publishing. Avoid naming competitors in URL slugs without legal review; use generic terms like "alternatives-to-legacy-idx" instead of trademarked names when uncertain.
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

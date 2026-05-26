@@ -1,17 +1,40 @@
-# Roadmap Experiments
+# Prioritizing Roadmap Bets Roadmap Experiments Reference
 
-## When to use
+## When To Use
 
-Evaluating bets that test new features with limited rollouts, A/B variants, or time-boxed pilots. Use when scoring initiatives for feature flags, gradual widget migrations, or tier-gated beta access that limits blast radius on the Bridge proxy or GHL Marketplace surfaces.
+Use this reference when the task touches roadmap experiments while working on Prioritizing Roadmap Bets code in this repository.
 
-## Project-relevant patterns
+## What To Inspect
 
-**Domain-scoped feature flags**: The `domains` table (`domain_slug`, `is_active`) supports lightweight gating. Low-effort experiments add boolean columns (e.g., `gis_beta_enabled`) to enable parcel overlays for select subscribers without code deploys — risk is migration rollback if the experiment fails.
+- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
+- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
+- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Widget variant testing**: The `/widget/loader.js` route accepts `data-widget` parameters. Medium-impact bets serve different loader scripts or HTML shells (`/widget/search/{apiKey}` variants) based on `ghl_widget_configs.widget_theme`, though cache invalidation in `GisCache` adds effort.
+## Recommended Workflow
 
-**Token ability expansion**: Sanctum tokens support abilities (`idx:access`, `idx:full`). Low-risk experiments grant new abilities to limited token sets (e.g., `idx:gis-beta`) before full rollout — but require `DomainOrTokenAuth` middleware updates and careful handling of `teaser` vs `full` access implications.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-## Warning
+## Quality Bar
 
-Avoid experiments that modify `ghl_oauth_tokens` encryption or `bridge_proxy_audit_logs` schema. These are compliance-critical tables with Stellar MLS obligations — failed experiments here risk audit trail gaps or token exposure that cannot be rolled back cleanly.
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

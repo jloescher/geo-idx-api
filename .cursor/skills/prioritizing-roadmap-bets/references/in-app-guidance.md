@@ -1,17 +1,40 @@
-# In-App Guidance
+# Prioritizing Roadmap Bets In App Guidance Reference
 
-## When to use
+## When To Use
 
-Evaluating bets for contextual help, setup wizards, or proactive nudges within the IDX platform or GHL install flow. Use when scoring initiatives that surface documentation, validate configuration, or guide users through MLS compliance requirements.
+Use this reference when the task touches in app guidance while working on Prioritizing Roadmap Bets code in this repository.
 
-## Project-relevant patterns
+## What To Inspect
 
-**Install-time validation**: The `/leadconnector/register-urls` form enforces HTTPS and MLS agreement acknowledgment. High-impact guidance bets add real-time URL validation or GHL location ID lookups via `LocationTokenService` — but risk OAuth session expiry if the flow extends too long.
+- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
+- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
+- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Dashboard configuration hints**: The subscriber dashboard (`DashboardController`) surfaces subscription status and API tokens. Medium-effort guidance adds missing-configuration banners (e.g., "Add your first domain" when `domains` table is empty) without requiring new migrations.
+## Recommended Workflow
 
-**Widget embed instructions**: The `/leadconnector/installation-complete` view shows embed snippets. Low-effort, high-impact bets include copy-to-clipboard helpers or domain-specific snippet generators that reference `IDX_PLATFORM_URL/embed/{locationId}` redirects.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-## Warning
+## Quality Bar
 
-Resist building heavy in-app documentation systems. The project already maintains 13+ docs in `docs/` — betting on embedded guidance should leverage these existing files (e.g., linking to `docs/ghl-environment-variables.md`) rather than duplicating content in Blade templates that drifts out of sync.
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

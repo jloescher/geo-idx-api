@@ -1,38 +1,70 @@
-# Writing Release Notes Engagement Adoption Reference
+# Engagement & Adoption Reference
 
-## When To Use
+How release notes drive adoption of features across the Quantyra IDX API surface.
 
-Use this reference when the task touches engagement adoption while working on Writing Release Notes code in this repository.
+## Feature Adoption Through Release Notes
 
-## What To Inspect
+Quantyra ships features across MLS proxy, search, GIS, comps, and dashboard. Release notes are the primary channel for driving adoption of new capabilities.
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+### Feature-to-Audience Mapping
 
-## Recommended Workflow
+| Feature | Route | Primary Audience | Adoption Signal |
+|---------|-------|-----------------|-----------------|
+| Hybrid search | `POST /api/v1/search` | API consumers | Requests hitting PostGIS mirror vs live Bridge |
+| Comps / BPO | `POST /api/v1/comps/run` | API consumers | Mode distribution across A-E, investor, bpo, home_value |
+| GIS parcels | `GET /api/v1/gis` | API consumers | GeoJSON requests per source |
+| Pricing enrichment | `GET /api/v1/listings` | API consumers | Listings responses with `pricing` object |
+| Dashboard tokens | `/dashboard` | Dashboard users | Token creation events |
+| Multi-DC deploy | `Dockerfile` targets | operators | Scheduler leader lock acquisition logs |
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+### DO: Highlight capability expansion with concrete API changes
 
-## Quality Bar
+```markdown
+## v2.3.0
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+### Features
+- **Comps**: Investor mode `rent_hold_cashflow` now includes renovation credit derivation from market data (no longer static presets)
+- **Search**: `low_risk_floodzone` and `min_monthly_fees`/`max_monthly_fees` filters now query indexed columns on the PostGIS mirror for faster response
+```
 
-## Pitfalls
+### DON'T: Vaguely describe improvements without API impact
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+```markdown
+<!-- BAD — no actionable information -->
+### Features
+- Improved comps analysis
+- Better search performance
+```
 
-## Done Checklist
+### Adoption-Driving Patterns
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+When writing notes for features that need adoption push:
+
+1. **Show the endpoint** — always include the HTTP method and path
+2. **Show the new field or param** — what changed in request/response
+3. **Show the benefit** — faster, more accurate, new capability
+4. **Link to docs** — `docs/comps-api.md`, `docs/gis-api.md`, etc.
+
+### Release Notes for Operator Adoption
+
+Operator-facing changes (queue config, env vars, deployment) should specify:
+
+- Exact env var name and default (e.g., `SCHEDULER_LEADER_LOCK_ID=913374211`)
+- Dockerfile target (e.g., `scheduler` target)
+- Migration requirement (`goose -dir migrations up`)
+- See the **deploy-coolify** skill for deployment note templates
+
+### Engagement Note Checklist
+
+Copy this checklist when writing adoption-focused release notes:
+- [ ] Every feature entry includes the HTTP method + path
+- [ ] New params or response fields are named explicitly
+- [ ] Breaking changes are in their own section at the top
+- [ ] Operator changes specify env vars, migrations, or queue changes
+- [ ] Links to relevant `docs/*.md` files
+
+## Related References
+
+- See the **geospatial** skill for GIS feature language
+- See the **queue-postgresql** skill for operator-facing queue changes
+- See `docs/api.md` for the full API surface

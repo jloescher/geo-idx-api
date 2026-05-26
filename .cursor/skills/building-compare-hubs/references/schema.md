@@ -1,82 +1,40 @@
-# Structured Data Patterns
+# Building Compare Hubs Schema Reference
 
-When to use: Adding JSON-LD schema to comparison pages, alternative suggestion pages, or plan detail pages for rich search results.
+## When To Use
 
-## Patterns
+Use this reference when the task touches schema while working on Building Compare Hubs code in this repository.
 
-### Software Application Schema for Plans
+## What To Inspect
 
-```php
-// In Blade template
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  "name": "GeoIDX {{ $plan['name'] }}",
-  "offers": {
-    "@type": "Offer",
-    "price": "{{ $plan[$interval] }}",
-    "priceCurrency": "USD",
-    "priceValidUntil": "{{ now()->addYear()->format('Y-m-d') }}"
-  },
-  "aggregateRating": {
-    "@type": "AggregateRating",
-    "ratingValue": "4.8",
-    "ratingCount": "{{ $reviewCount }}"
-  }
-}
-</script>
-```
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-### Comparison Table Schema
+## Recommended Workflow
 
-```php
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "Table",
-  "about": "GeoIDX Plan Comparison",
-  "mainEntity": {
-    "@type": "ItemList",
-    "itemListElement": [
-      @foreach($plans as $plan)
-      {
-        "@type": "ListItem",
-        "position": {{ $loop->iteration }},
-        "name": "{{ $plan['name'] }}",
-        "item": {
-          "@type": "Product",
-          "name": "GeoIDX {{ $plan['name'] }}"
-        }
-      }@if(!$loop->last),@endif
-      @endforeach
-    ]
-  }
-}
-</script>
-```
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-### FAQ Schema for Alternatives Pages
+## Quality Bar
 
-Use when addressing "What is the difference between X and Y?" queries:
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
 
-```php
-"mainEntity": [
-  @foreach($faqs as $faq)
-  {
-    "@type": "Question",
-    "name": "{{ $faq['question'] }}",
-    "acceptedAnswer": {
-      "@type": "Answer",
-      "text": "{{ $faq['answer'] }}"
-    }
-  }@if(!$loop->last),@endif
-  @endforeach
-]
-```
+
 
 ## Pitfalls
 
-Do not include dynamic pricing in schema without updating `priceValidUntil`—stale structured data triggers Google Shopping policy violations. Use `AggregateOffer` only when displaying multiple billing intervals simultaneously.
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
 
------
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

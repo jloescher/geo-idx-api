@@ -1,17 +1,40 @@
-# Distribution
+# Crafting Page Messaging Distribution Reference
 
-## When to use
+## When To Use
 
-Planning how new pages, features, or pricing changes reach the target audience—whether through organic search, GHL Marketplace discovery, email, or widget embeds.
+Use this reference when the task touches distribution while working on Crafting Page Messaging code in this repository.
 
-## Project-relevant patterns
+## What To Inspect
 
-**GHL Marketplace as primary channel** — The install URL (`/leadconnector/install`) is the top-of-funnel entry point. Optimize this page for GHL users who found the app in the marketplace. Lead with "Works inside your existing GHL account" to reduce perceived switching cost.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Widget embeds as viral loop** — Each installed location generates a widget API key (`qh_...`). The widget itself is a distribution mechanism—agents embedding it on their sites become advocates. Include subtle "Powered by GeoIDX" attribution in widget footers for awareness.
+## Recommended Workflow
 
-**Domain-specific SEO** — The public IDX platform (`idx.quantyralabs.cc`) supports custom domains for higher tiers. When customers point their own domains, their SEO benefits compound. Document this clearly in Mega tier sales materials.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
 
 ## Pitfalls
 
-Do not rely on IDX API endpoints (`/api/v1/listings`) being discoverable by search engines. They require authentication and return JSON. Ensure the public IDX platform (`idx.*`) has proper meta tags, sitemap, and canonical URLs for listing pages if SEO is a goal.
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

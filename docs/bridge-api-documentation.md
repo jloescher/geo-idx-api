@@ -286,7 +286,18 @@ The Bridge API requires authentication. Please refer to the Bridge Data Output d
 
 ## Rate Limits
 
-Please refer to the Bridge Data Output terms of service and API documentation for current rate limiting policies.
+Bridge Data Output enforces per-token quotas on RESO Web API traffic. idx-api replica sync and proxy code assume the following (see also [idx-api-bridge-proxy.md](idx-api-bridge-proxy.md)):
+
+| Rule | Limit | idx-api behavior |
+|------|--------|------------------|
+| Standard `Property` OData | `$top` max **200**; paginate with `$skip` | Incremental sync only; **>10,000** rows via `$skip` requires replication catch-up |
+| `Property/replication` | `$top` max **2,000**; **no** `$skip` / `$orderby` | Follow `Link: rel="next"` or `@odata.nextLink` only |
+| Replication mirror (idx-api) | Same endpoint; OData **`$filter`** | idx-api seeds **Active/Pending** only on `/replication` (Stellar returns **400** if `$filter` includes **`BridgeModificationTimestamp`**). Rolling months trimmed by purge, not replication `$filter`. With **`BRIDGE_SYNC_FULL_PROPERTY=true`** (default), no `$expand`. See [listings-mirror.md](listings-mirror.md). |
+| Hourly quota | **5,000 requests/hour** per token | Default proactive cap **4800 req/hour** (`BRIDGE_SYNC_MAX_REQUESTS_PER_HOUR`) plus **280 req/min** (`BRIDGE_SYNC_MAX_REQUESTS_PER_MINUTE`) under the **334/min** burst ceiling |
+| Burst | **334 requests/minute** (1/15 of hourly) | `BridgeRateLimitGuard` on every server Bridge GET (sync, MLS cache, proxy); **no** throttle on Postgres persist jobs (`bridge-sync-persist` queue) |
+| Response headers | `Application-RateLimit-*`, `Burst-RateLimit-*` | Parsed after each GET; HTTP **429** retried via `BRIDGE_SYNC_MAX_HTTP_RETRIES` |
+
+Official policy details: [Bridge RESO Web API explorer](https://bridgedataoutput.com/docs/explorer/reso-web-api).
 
 ## Additional Resources
 
@@ -305,6 +316,6 @@ Please refer to the Bridge Data Output terms of service and API documentation fo
 
 | Document | Topic |
 |----------|--------|
-| [idx-api-bridge-proxy.md](idx-api-bridge-proxy.md) | Secured proxy implementation, caching, auth, image rewriting, search endpoint, dataset gates. |
+| [idx-api-bridge-proxy.md](idx-api-bridge-proxy.md) | Secured proxy implementation, caching, auth, image rewriting, **hybrid search** (PostGIS + Bridge), replica sync queues, dataset gates. |
 | [api.md](api.md) | idx-api HTTP API overview, obtaining Bearer tokens. |
 | [gis-api.md](gis-api.md) | GIS parcel/geometry proxy (public data, not MLS). |

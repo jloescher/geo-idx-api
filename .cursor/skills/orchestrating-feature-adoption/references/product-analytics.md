@@ -1,38 +1,134 @@
-# Orchestrating Feature Adoption Product Analytics Reference
+# Product Analytics Reference
 
-## When To Use
+## Contents
+- Audit Log Architecture
+- Adoption Metrics
+- Usage Tracking Patterns
+- Data Availability
+- Anti-Patterns
 
-Use this reference when the task touches product analytics while working on Orchestrating Feature Adoption code in this repository.
+## Audit Log Architecture
 
-## What To Inspect
+The platform uses `mls_proxy_audit_logs` as the primary analytics store. The audit logger (`internal/service/audit/logger.go`) records every MLS API request.
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+### Existing Audit Schema
 
-## Recommended Workflow
+The `Log()` function captures:
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+| Field | Source | Purpose |
+|-------|--------|---------|
+| `domain_slug` | `ctxkeys.MLSDomainSlug` | Per-domain usage |
+| `token_name` | `ctxkeys.MLSTokenName` | Per-token attribution |
+| `user_id` | `ctxkeys.MLSUserID` | User-level tracking |
+| `ip_address` | `c.IP()` | Client location |
+| `request_type` | Handler argument | API endpoint used |
+| `listing_count` | Handler argument | Volume metric |
+| `cache_hit` | Handler argument | Performance signal |
+| `created_at` | `now()` | Timestamp |
 
-## Quality Bar
+### Context Key Flow
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+Middleware sets context keys before the audit logger reads them:
 
-## Pitfalls
+```go
+// existing pattern — domain_token.go sets context
+c.Locals(ctxkeys.MLSDomainSlug, domain.Slug)
+c.Locals(ctxkeys.MLSTokenName, token.Name)
+c.Locals(ctxkeys.MLSUserID, domain.UserID)
+```
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+```go
+// existing pattern — audit/logger.go reads context
+func (l *Logger) Log(c *fiber.Ctx, requestType string, listingCount *int, cacheHit *string) {
+    domainSlug, _ := c.Locals(ctxkeys.MLSDomainSlug).(string)
+    tokenName, _ := c.Locals(ctxkeys.MLSTokenName).(string)
+    userID, _ := c.Locals(ctxkeys.MLSUserID).(string)
+    // INSERT INTO mls_proxy_audit_logs
+}
+```
 
-## Done Checklist
+## Adoption Metrics
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+### Key Metrics Derivable from Audit Logs
+
+| Metric | Query Pattern | Business Meaning |
+|--------|--------------|------------------|
+| First API call | `MIN(created_at) WHERE domain_slug = ?` | Activation timestamp |
+| DAU/MAU | `COUNT(DISTINCT domain_slug) WHERE created_at BETWEEN` | Engagement frequency |
+| Feature penetration | `COUNT(DISTINCT request_type) WHERE domain_slug = ?` | Feature adoption breadth |
+| Search volume | `SUM(listing_count) WHERE request_type = 'search'` | Core usage intensity |
+| Cache hit rate | `COUNT(*) WHERE cache_hit = 'hit'` / total | Performance + freshness |
+| GIS teaser exposure | `COUNT(*) WHERE request_type LIKE '%gis%'` | Upsell opportunity |
+
+### Activation Funnel
+
+```
+Invitation accepted → Account created → First login → Domain added →
+Domain verified → Token created → First API call (activated)
+```
+
+Each step is queryable from existing tables: `users`, `domains`, `tokens`, `mls_proxy_audit_logs`.
+
+## Usage Tracking Patterns
+
+### Adding a New Trackable Event
+
+```go
+// new code to add — extend audit logger
+func (l *Logger) LogFeatureUse(c *fiber.Ctx, feature string, meta map[string]any) {
+    domainSlug, _ := c.Locals(ctxkeys.MLSDomainSlug).(string)
+    userID, _ := c.Locals(ctxkeys.MLSUserID).(string)
+    // INSERT INTO feature_usage (domain_slug, user_id, feature, meta, created_at)
+    // Fire-and-forget: use background INSERT, do not block response
+}
+```
+
+### Bridge Stats as Usage Dashboard
+
+`GET /api/v1/bridge/stats` provides replication and mirror statistics — a built-in health/usage endpoint for MLS data freshness.
+
+## Data Availability
+
+| Data Source | Granularity | Retention |
+|------------|-------------|-----------|
+| `mls_proxy_audit_logs` | Per request | Indefinite (purge policy TBD) |
+| `domains` | Per domain | Indefinite |
+| `tokens` | Per token | Until revoked |
+| `listings` | Per listing | Rolling window (configurable) |
+| `jobs` | Per job | Deleted after completion |
+
+### WARNING: No Product Analytics Service
+
+**Detected:** No dedicated analytics service (Amplitude, Mixpanel, PostHog) in dependencies.
+
+**Impact:** Adoption metrics require SQL queries against audit logs. No real-time dashboards, no funnel visualization, no cohort analysis out of the box.
+
+**Current state:** Acceptable for B2B API platform. The audit log table provides raw data for ad-hoc analysis.
+
+**If analytics needs grow:** Consider adding PostHog (self-hosted option available) or building a materialized view on `mls_proxy_audit_logs` with `pg_cron` aggregation.
+
+## Anti-Patterns
+
+### WARNING: Logging to Stdout for Analytics
+
+**The Problem:**
+
+```go
+// BAD — structured log as analytics
+slog.Info("feature used", "feature", "gis", "domain", slug)
+```
+
+**Why This Breaks:** Structured logs are for operational debugging. They lack queryability, are rotated away, and cannot be aggregated for product metrics.
+
+**The Fix:** Use the audit log pattern — INSERT to a dedicated table. Structured logging with `slog` is for operational concerns (see `internal/` logging patterns).
+
+### WARNING: Counting API Tokens as Adoption
+
+**The Problem:** Treating token creation as the activation metric.
+
+**Why This Breaks:** Tokens can be created and never used. Activation requires a successful API call.
+
+**The Fix:** Define activation as `MIN(mls_proxy_audit_logs.created_at) WHERE domain_slug = ?` — the first actual API usage.
+
+See the **queue-postgresql** skill for background job patterns that could support analytics aggregation.
+See the **postgres** skill for query patterns on audit data.

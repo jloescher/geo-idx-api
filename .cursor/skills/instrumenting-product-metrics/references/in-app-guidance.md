@@ -1,61 +1,104 @@
-# In-App Guidance
+# In-App Guidance Reference
 
-Use when implementing contextual help, progressive disclosure, and feature announcements within the IDX dashboard and GHL widget flows.
+## Contents
+- Dashboard as the Guidance Surface
+- API Response Headers as Guidance
+- Error Message Design as Guidance
+- Anti-Patterns
 
-## Patterns
+## Dashboard as the Guidance Surface
 
-**Contextual Onboarding Checklist**
+idx-api's in-app surface is the **invite-only dashboard** at `/dashboard` — server-rendered HTML via `internal/handler/dashboard/handler.go`. This is the only place where contextual guidance can appear.
 
-```php
-// Dashboard controller: determine next setup step
-public function getOnboardingStep($location)
-{
-    if (!$location->registeredUrls()->exists()) {
-        return ['step' => 'register_urls', 'priority' => 'high'];
+### Dashboard Routes and Guidance Opportunities
+
+| Route | Current State | Guidance Opportunity |
+|-------|---------------|---------------------|
+| `GET /dashboard` | Lists domains + tokens | Show activation checklist, next steps |
+| `POST /dashboard/domains` | Creates pending domain | Explain DNS TXT verification |
+| `POST /dashboard/domains/:id/verify-txt` | DNS check | Show next step after verification |
+| `POST /dashboard/api-tokens` | Creates token | Show API usage examples with new token |
+| `DELETE /dashboard/api-tokens/:id` | Deletes token | Warn about active integrations |
+
+### No Frontend Framework
+
+The dashboard uses embedded static HTML from `internal/web/static/`. There is no React, Vue, or SPA framework. Guidance must be:
+
+1. Server-rendered in Go templates or inline HTML
+2. Embedded via `embed.FS` (see `internal/web/`)
+3. Simple — no client-side JS frameworks available
+
+### Pattern: Guidance in Handler Response
+
+```go
+// new code to add — flash message after domain verification
+func (h *Handler) VerifyTXT(c *fiber.Ctx) error {
+    // ... verification logic ...
+    if verified {
+        session.Set("flash", "Domain verified! Your production API token has been created. Try your first request:")
+        session.Set("flash_type", "success")
     }
-    if ($location->subscription_status === 'none') {
-        return ['step' => 'start_trial', 'priority' => 'high'];
-    }
-    if ($location->mls_request_count < 5) {
-        return ['step' => 'preview_listings', 'priority' => 'medium'];
-    }
-    if ($location->lead_count === 0) {
-        return ['step' => 'embed_widget', 'priority' => 'medium'];
-    }
-    return ['step' => 'complete', 'priority' => 'low'];
+    return c.Redirect("/dashboard")
 }
 ```
 
-**Widget Configuration Hints**
+## API Response Headers as Guidance
 
-```php
-// Inline guidance based on current config
-$hints = [];
-if (empty($config->widget_theme)) {
-    $hints[] = ['type' => 'tip', 'message' => 'Customize your widget theme to match your brand colors.'];
-}
-if ($config->gate_after_views === null) {
-    $hints[] = ['type' => 'recommendation', 'message' => 'Enable lead gating after 3 listing views to increase conversion.'];
-}
-if ($location->subscription_status === 'trial' && $daysRemaining <= 3) {
-    $hints[] = ['type' => 'urgent', 'message' => 'Trial expires soon—upgrade to keep full access.'];
-}
+The API communicates operational state through HTTP headers — machine-readable guidance for integrators:
+
+| Header | Values | Set In | Purpose |
+|--------|--------|--------|---------|
+| `X-IDX-Cache` | `HIT`, `MISS` | `internal/handler/bridge/handler.go` | Guide caching strategy |
+| `X-Dataset` | `stellar`, `beaches` | MLS middleware | Confirm which MLS feed responded |
+
+### Pattern: Add Guidance Headers for New Features
+
+```go
+// new code to add — usage tier header
+c.Set("X-IDX-Usage-Tier", "standard")
+c.Set("X-IDX-RateLimit-Remaining", "995")
 ```
 
-**Progressive Feature Disclosure**
+## Error Message Design as Guidance
 
-```sql
--- Show advanced features only after basic adoption
-SELECT 
-    ghl_location_id,
-    CASE 
-        WHEN mls_request_count > 20 AND lead_count > 0 THEN 'advanced_analytics'
-        WHEN mls_request_count > 5 THEN 'custom_filters'
-        ELSE 'basic_search'
-    END as appropriate_feature_tier
-FROM ghl_installed_locations;
+API errors in `internal/handler/bridge/handler.go` and `internal/api/middleware/` are the primary guidance integrators receive. Errors should be actionable.
+
+### DO: Actionable Error Responses
+
+```go
+// GOOD — tells the user exactly what to do
+c.Status(403).JSON(fiber.Map{
+    "error": "Domain not verified. Complete DNS TXT verification at /dashboard.",
+    "domain": slug,
+})
 ```
 
-## Warning
+### DON'T: Vague Errors
 
-Avoid showing guidance modals during active widget lead capture flows—detect `widget/api/leads` endpoint usage in the last 5 minutes before displaying non-urgent messages to prevent conversion disruption.
+```go
+// BAD — no actionable information
+c.Status(403).JSON(fiber.Map{"error": "Forbidden"})
+```
+
+The domain token middleware (`internal/api/middleware/domain_token.go`) returns specific errors: `"domain not found"`, `"domain is not verified"`, `"invalid token"`, `"token expired"`. New endpoints should follow this pattern.
+
+## Anti-Patterns
+
+### WARNING: Client-Side Guidance for an API Product
+
+idx-api is an API proxy. Integrators don't use a browser to call `/api/v1/search`. Guidance belongs in:
+1. **API error messages** — actionable JSON errors
+2. **HTTP headers** — `X-IDX-*` custom headers
+3. **Dashboard** — the only HTML surface for account setup
+
+Do NOT add tooltip/popover patterns meant for browser-based SPAs.
+
+### WARNING: Overloading Dashboard HTML
+
+The dashboard is server-rendered with basic HTML. Do not add complex JS-driven guidance (tours, modals, hotspots). Keep guidance to:
+- Flash messages after mutations
+- Status indicators (verified/pending, token count)
+- Plain text next-step hints
+
+See the **fiber** skill for response rendering and session management.
+See the **auth-api-token** skill for domain verification and token creation flows.

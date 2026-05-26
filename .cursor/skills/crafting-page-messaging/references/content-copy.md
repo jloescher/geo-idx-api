@@ -1,17 +1,40 @@
-# Content Copy
+# Crafting Page Messaging Content Copy Reference
 
-## When to use
+## When To Use
 
-Writing body copy, feature descriptions, or educational content that explains how GeoIDX works—whether for marketing pages, dashboard tooltips, or GHL Marketplace app descriptions.
+Use this reference when the task touches content copy while working on Crafting Page Messaging code in this repository.
 
-## Project-relevant patterns
+## What To Inspect
 
-**MLS compliance as a feature** — Frame audit logging and domain registration as competitive advantages, not bureaucratic overhead. "Every listing request is logged to Stellar MLS standards. Your compliance team will thank you." This addresses a real fear for brokerages.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Integration-native positioning** — Describe the GHL Marketplace relationship as native workflow, not an add-on. "Leads land directly in your GHL pipelines. No Zapier. No CSV." Specificity about the absence of friction builds trust.
+## Recommended Workflow
 
-**Tier-differentiated capability lists** — Match feature detail density to the plan. Pro ($39) gets "3 domains, basic GHL sync"—short and concrete. Ultra ($179) gets "2M API calls/mo with automatic metered billing"—showing scale mechanics. Mega ($449) gets "Custom SLA, dedicated support"—enterprise signals.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
 
 ## Pitfalls
 
-Avoid listing every Bridge API endpoint or GIS layer in marketing copy. "RESO Web API, Bridge Web API, Public Data, Zestimates" overwhelms rather than clarifies. Lead with the use case ("Property search widgets") and link to technical docs for the curious.
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

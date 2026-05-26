@@ -1,18 +1,40 @@
-# Content Search Coverage
+# Inspecting Search Coverage Content Reference
 
-When to use: Auditing content quality, keyword relevance, and semantic coverage for property listings, MLS descriptions, and IDX marketing copy.
+## When To Use
 
-## Patterns
+Use this reference when the task touches content while working on Inspecting Search Coverage code in this repository.
 
-**MLS Listing Content Enrichment**
-Bridge API responses include `Media`, `PropertyDescription`, and `PublicRemarks` fields. The `BridgeTeaser` service truncates this content for non-`idx:full` requests. Full access tokens should receive complete, unmodified MLS content to support rich snippet eligibility and semantic search relevance.
+## What To Inspect
 
-**GIS Parcel Context Layer**
-The GIS proxy in `app/Services/GisProxyService.php` returns GeoJSON with a `meta` foreign member containing `source_used`, `county_hint`, and `context_layers`. This metadata can be used to enrich listing pages with neighborhood context, school districts, and parcel boundaries—improving topical authority without duplicating MLS data.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**GHL Lead Form Content Gaps**
-Widget lead forms (`/widget/lead-form/{apiKey}`) collect user intent through `lead_type` parameters. Analyze `app/Ghl/Sync/Models/QuantyraLead` and `GhlLeadMapping` to identify high-value keywords from lead submissions that indicate content gaps in the main IDX interface.
+## Recommended Workflow
 
-## Warning
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-The teaser gating logic (3 listings for domain auth, 40 features for GIS teaser) can create thin content scenarios if teaser pages are inadvertently indexed. Ensure that partial content views either carry `noindex` directives or are canonicalized to their full-content equivalents when accessible via subscription.
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

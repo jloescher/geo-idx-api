@@ -1,62 +1,138 @@
 ---
 name: framing-release-stories
-description: Builds launch narratives, assets, and rollout checklists
-allowed-tools: [Read, Edit, Write, Glob, Grep, Bash]
+description: |
+  Builds launch narratives, rollout checklists, and release marketing assets for Quantyra IDX API.
+  Use when: planning a feature launch, drafting customer-facing release announcements, preparing rollout communications, building launch checklists for MLS/GIS/search/dashboard features, framing technical changes as customer value stories, or responding to "launch plan", "rollout", "release announcement", "go-to-market", "ship comms".
+allowed-tools: Read, Edit, Write, Glob, Grep, Bash, mcp__4_5v_mcp__analyze_image, mcp__web_reader__webReader
 ---
 
 # Framing Release Stories Skill
 
-A structured approach to preparing software releases for the Quantyra IDX API. This skill helps craft clear narratives, identify affected subsystems, generate deployment checklists, and coordinate cross-surface rollouts across Bridge MLS proxy, GHL Marketplace, GIS services, and billing components.
+Turn shipped commits into customer-facing narratives for Quantyra IDX API. This API-first B2B product serves real estate developers integrating MLS data — launch stories must translate infrastructure wins (multi-DC replication, scheduler locks) into developer value (faster listings, fewer outages).
+
+## Before You Code (REQUIRED)
+
+This skill's content was captured at generation time and MAY be stale. For ANY non-trivial change involving framing-release-stories, verify against current docs FIRST:
+
+
+
+Then:
+
+1. **Match the installed version.** Cross-reference against the version installed in this repo. APIs change across minor versions; do not assume.
+2. **Discover provider best practices.** If the task touches a production-sensitive capability, inspect the provider service catalog, official docs, and project docs before choosing an implementation.
+3. **Respect explicit direction.** If the user explicitly asks for a specific mechanism, follow it. If project docs clearly mandate a mechanism, follow the project. In both cases, mention the provider-recommended alternative and make the chosen path safe.
+4. **Prefer provider-native primitives by default.** If no explicit user/project override exists and the change involves caching, rate limiting, background work, scheduled jobs, shared state, queues, or secrets, use the provider-recommended binding/API. Do not hand-roll an in-memory or polyfill solution that "works" locally but breaks under the provider's execution model — derive the need→native-primitive mapping yourself from this provider's docs.
+
+## Capability Contract
+
+Use this section when the user prompt touches production risk, even if the prompt does not name this technology explicitly.
+
+
+
+
+Required wiring surfaces:
+- runtime/infrastructure config: Dockerfile
+- nearest typed request/context boundary
+- handler/procedure boundary before external side effects
+
+Side-effect barrier:
+- Place guards before external APIs, auth mutations, email sends, analytics events, storage writes, and database mutations.
+
+
+Fallback policy:
+- Prefer provider-native/platform-managed primitives by default when no explicit override exists.
+- Follow clear user/project overrides, but mention the native alternative and tradeoff.
+- Fallbacks must be durable, multi-instance safe, and atomic under concurrency.
+
+Verification rules:
+- [error] native-or-explicit-override: Use the provider-native primitive first unless the user/project explicitly overrides it.
+- [error] atomic-fallback: Fallback counters must be atomic under concurrency.
 
 ## Quick Start
 
-1. **Identify scope** — Read recent commits (`git log --oneline -20`) and open PRs to understand what's shipping
-2. **Map to subsystems** — Check which of the four primary systems are touched:
-   - Bridge MLS Proxy (`/api/v1/*`, image proxy)
-   - GHL Marketplace (OAuth, webhooks, widgets, lead sync)
-   - GIS Parcel Proxy (`/api/v1/gis`, ArcGIS failover chain)
-   - Billing (Stripe/Cashier, subscription tiers, checkout)
-3. **Draft narrative** — Write release summary in three layers: user-facing (what changed), operator-facing (what to monitor), and compliance-facing (MLS/Stellar implications if any)
-4. **Generate checklist** — Create environment-specific rollout steps for staging → production
-5. **Tag assets** — Note which Docker images (`Dockerfile.idx-api`, `Dockerfile.idx-images`), migrations, and scheduled jobs require attention
+### Extract shippable features from git history
+
+```bash
+# new code to add — get conventional commits since last release
+git log --oneline --no-merges v1.2.0..HEAD
+```
+
+### Map commit scopes to customer value
+
+| Commit scope | Customer story angle | Audience |
+|-------------|---------------------|----------|
+| `sync`, `bridge`, `spark` | "Faster listing updates, fewer gaps" | API consumers |
+| `search`, `comps` | "New property analysis capabilities" | API consumers |
+| `gis` | "Parcel data now in your search results" | API consumers |
+| `dashboard`, `auth` | "Easier setup and key management" | Dashboard users |
+| `scheduler`, `queue` | "More reliable background processing" | operators |
+| `docker`, `ci`, `go` | "Faster deploys, smaller images" | operators |
 
 ## Key Concepts
 
-**Subsystem boundaries** — The service has four independent subsystems (Bridge proxy, GHL Marketplace, GIS proxy, Billing). Releases should explicitly note which subsystems are modified to assess blast radius.
-
-**Multi-surface deployment** — Production runs three public surfaces (idx.quantyralabs.cc, idx-api.quantyralabs.cc, idx-images.quantyralabs.cc). Releases may require coordinated deploys or sequential rollouts depending on contract changes between surfaces.
-
-**Teaser vs full gating** — Any change to access control (DomainOrTokenAuth middleware, Sanctum abilities) must account for teaser-mode behavior affecting non-full-access clients.
-
-**Cache invalidation strategy** — GIS uses generation-based invalidation; Bridge listings use 15-minute TTL cache. Releases modifying data shapes must include cache clearing steps or TTL coordination.
-
-**Webhook compatibility** — GHL and Stripe webhooks have signature verification. Releases must note if webhook handlers changed in ways that could fail in-flight requests during deploy.
-
-**Scheduled job alignment** — `routes/console.php` schedules hourly GHL token refresh, 15-minute Bridge cache refresh, and weekly GIS metadata probes. Releases should flag if job behavior changes and whether queues need draining.
+| Concept | Usage | Example |
+|---------|-------|---------|
+| Value translation | Turn `feat(sync): fair replication` into "Listings update faster with no provider starvation" | MLS Proxy narrative |
+| Audience split | API consumers see feature benefits; operators see infra wins | Two-section release |
+| Breaking change framing | Lead with migration path, not the break | "Re-issue API keys from /dashboard" |
+| Rollout gate | Deploy order: workers → schedulers → APIs → idx-images | Multi-DC checklist |
 
 ## Common Patterns
 
-**Migrations + Seeds** — When adding GHL tables or billing features, releases typically require:
-```bash
-php artisan migrate
-php artisan db:seed --class=GhlConfigSeeder  # if lead mappings changed
+### Pattern: Release story template
+
+**When:** Preparing a customer-facing release announcement.
+
+```markdown
+## What's new in [version]
+
+### For developers integrating MLS data
+- **[Feature]** — [Value statement]. [Endpoint or config reference].
+  Before: [old behavior]. After: [new behavior].
+
+### For operators running idx-api
+- **[Infra change]** — [Operational benefit]. [Env var or deploy step].
+
+### Action required
+- [Breaking change with migration steps and deadline]
+
+### Upgrade path
+[Deployment steps or link to docs/coolify-deployment.md]
 ```
 
-**Docker image promotion** — Standard pattern: build from project root with build context `.`, tag with commit SHA and `latest`, deploy `idx-api` before `idx-images` if URL rewriting logic changed.
+### Pattern: Rollout checklist
 
-**Feature flag via subscription tier** — New capabilities are often gated by `SubscriptionCatalog` plan definitions. Rollout checklist includes verifying Stripe price IDs match config and tier capabilities are documented.
+**When:** Planning the deployment sequence for a release.
 
-**Environment variable synchronization** — Cross-subsystem releases often need env vars synced across:
-- `.env.example` (developer template)
-- Root `.env` (Docker Compose)
-- Production secrets management
+```markdown
+Copy this checklist and track progress:
+- [ ] Pre-flight: `go test ./...` passes
+- [ ] Migration: `goose -dir migrations up` on primary
+- [ ] Deploy workers (all DCs)
+- [ ] Deploy schedulers (confirm one leader in logs)
+- [ ] Deploy APIs
+- [ ] Deploy idx-images
+- [ ] Verify: `GET /healthz` and `GET /readyz` on each DC
+- [ ] Smoke: `POST /api/v1/search` returns listings
+- [ ] Monitor: replication kickoff in scheduler logs
+- [ ] Post-deploy: update release notes in docs/
+- [ ] Customer comms: send announcement to dashboard users
+```
 
-**Rollback indicators** — Monitor these for rollback decisions:
-- `bridge_proxy_audit_logs` error rate (Bridge proxy health)
-- `ghl_sync_logs` failed status (lead sync health)
-- GIS `degraded=true` responses (ArcGIS failover frequency)
+## See Also
 
-**Documentation drift check** — Releases touching public APIs should verify `docs/` consistency:
-- `docs/idx-api-bridge-proxy.md` for Bridge changes
-- `docs/ghl-api-routes-reference.md` for GHL route changes
-- `docs/gis-api.md` for GIS parameter/response changes
+- [conversion-optimization](references/conversion-optimization.md)
+- [content-copy](references/content-copy.md)
+- [distribution](references/distribution.md)
+- [measurement-testing](references/measurement-testing.md)
+- [growth-engineering](references/growth-engineering.md)
+- [strategy-monetization](references/strategy-monetization.md)
+
+## Related Skills
+
+- See the **writing-release-notes** skill for commit-to-changelog generation
+- See the **deploy-coolify** skill for deployment-specific rollout steps
+- See the **queue-postgresql** skill for queue/job change communication
+- See the **geospatial** skill for GIS feature narrative framing
+- See the **auth-api-token** skill for auth change messaging
+- See the **frontend-design** skill for dashboard update narratives

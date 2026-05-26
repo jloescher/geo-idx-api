@@ -1,17 +1,40 @@
-# Conversion Optimization
+# Crafting Page Messaging Conversion Optimization Reference
 
-## When to use
+## When To Use
 
-Writing headlines, CTAs, or page flows where the goal is moving a visitor to the next step—trial start, plan upgrade, or GHL OAuth connection.
+Use this reference when the task touches conversion optimization while working on Crafting Page Messaging code in this repository.
 
-## Project-relevant patterns
+## What To Inspect
 
-**Teaser-to-full progression** — When showing limited listings, pair the constraint with the unlock mechanism. "Showing 3 of 1,200+ active listings in Pinellas County. Upgrade to Smart for full MLS access." The specific geography and number establish credibility; the CTA names the exact tier needed.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Trial framing with time pressure** — Lead with the trial length and immediate value. "Start your 14-day Smart trial. GHL sync activates in 30 seconds." Avoid "Learn more" or "See plans" when the visitor has already seen the feature set.
+## Recommended Workflow
 
-**Form-field reduction** — The GHL OAuth flow removes registration friction by using the GHL identity. Emphasize this in install copy: "No new password. Use your GHL login."
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
 
 ## Pitfalls
 
-Do not lead with technical implementation details ("Laravel Octane," "PostgreSQL cache") in conversion paths. These belong in API docs, not headline tests. Lead with the business outcome (lead capture, faster contact, MLS compliance).
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

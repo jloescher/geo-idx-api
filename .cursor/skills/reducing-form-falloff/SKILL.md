@@ -1,42 +1,114 @@
 ---
 name: reducing-form-falloff
-description: Improves lead capture forms to reduce drop-off
+description: |
+  Improves lead capture forms to reduce drop-off.
+  Use when: implementing or refactoring Reducing Form Falloff work, troubleshooting conversion optimization, content copy, distribution, or aligning new changes with the repository's existing conventions
 allowed-tools: Read, Edit, Write, Glob, Grep, Bash
 ---
 
 # Reducing Form Falloff Skill
 
-This skill improves lead capture form completion rates by implementing progressive gating, streamlined widget embeds, and optimized cross-origin form handling within the Quantyra GHL widget system.
+This fallback skill keeps Reducing Form Falloff work aligned with the conventions already present in this repository. Prefer extending the closest existing implementation over inventing a new abstraction, and verify neighboring states before finishing.
+
+## Before You Code (REQUIRED)
+
+This skill's content was captured at generation time and MAY be stale. For ANY non-trivial change involving reducing-form-falloff, verify against current docs FIRST:
+
+
+
+Then:
+
+1. **Match the installed version.** Cross-reference against the version installed in this repo. APIs change across minor versions; do not assume.
+2. **Discover provider best practices.** If the task touches a production-sensitive capability, inspect the provider service catalog, official docs, and project docs before choosing an implementation.
+3. **Respect explicit direction.** If the user explicitly asks for a specific mechanism, follow it. If project docs clearly mandate a mechanism, follow the project. In both cases, mention the provider-recommended alternative and make the chosen path safe.
+4. **Prefer provider-native primitives by default.** If no explicit user/project override exists and the change involves caching, rate limiting, background work, scheduled jobs, shared state, queues, or secrets, use the provider-recommended binding/API. Do not hand-roll an in-memory or polyfill solution that "works" locally but breaks under the provider's execution model — derive the need→native-primitive mapping yourself from this provider's docs.
+
+## Capability Contract
+
+Use this section when the user prompt touches production risk, even if the prompt does not name this technology explicitly.
+
+
+
+
+Required wiring surfaces:
+- runtime/infrastructure config: Dockerfile
+- nearest typed request/context boundary
+- handler/procedure boundary before external side effects
+
+Side-effect barrier:
+- Place guards before external APIs, auth mutations, email sends, analytics events, storage writes, and database mutations.
+
+
+Fallback policy:
+- Prefer provider-native/platform-managed primitives by default when no explicit override exists.
+- Follow clear user/project overrides, but mention the native alternative and tradeoff.
+- Fallbacks must be durable, multi-instance safe, and atomic under concurrency.
+
+Verification rules:
+- [error] native-or-explicit-override: Use the provider-native primitive first unless the user/project explicitly overrides it.
+- [error] atomic-fallback: Fallback counters must be atomic under concurrency.
 
 ## Quick Start
 
-1. Review widget routes: `routes/ghl-widget.php`
-2. Check gating config: `app/Ghl/Widgets/` and `ghl_widget_configs` table
-3. Inspect lead form views: `resources/views/ghl/widgets/`
-4. Examine middleware chain: `app/Ghl/Widgets/Middleware/`
-5. Test lead capture: POST `/widget/api/leads` with valid `api_key` and matching Origin
+### Inspect the current implementation
+
+```sh
+rg -n "reducing-form-falloff|conversion-optimization|content-copy|distribution" .
+rg --files | rg "reducing-form-falloff|conversion-optimization|content-copy"
+```
+
+### Make the smallest compatible change
+
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+
+### Verify before finishing
+
+- Verify the changed path and the most likely adjacent edge cases.
+- Check that naming, layering, and file placement still match nearby code.
+- Confirm there is a clear reason for any new abstraction, dependency, or workflow.
 
 ## Key Concepts
 
-- **Progressive Gating**: Configure `gate_after_views` in `ghl_widget_configs` to delay lead capture requirements until users have engaged with listings
-- **3-Phase Middleware**: Widget requests flow through API key validation → Origin/Referer validation against `ghl_registered_urls` → CORS header append
-- **CORS Preflight**: `OPTIONS /widget/api/leads` validates registered origins before allowing POST
-- **Widget API Keys**: Public `qh_*` keys (stored in `ghl_registered_urls.widget_api_key`) scope requests to locations without exposing OAuth tokens
-- **Lead Type Mapping**: `GhlLeadMapping` config routes `quantyra_leads` to GHL contacts/opportunities/tags based on `lead_type`
+| Concept | Why it matters | What to check |
+|---------|----------------|---------------|
+| Existing patterns | Keeps the repo coherent | Start from the nearest matching implementation before editing |
+| Scope control | Prevents abstraction creep | Keep the change in the same layer as surrounding code |
+| Verification | Catches regressions early | Recheck adjacent states, edge cases, and integration points |
+| References | Speeds up repeat work | Use the linked topic files when the task needs deeper guidance |
 
 ## Common Patterns
 
-### Implement Progressive Gating
-Edit `ghl_widget_configs.gate_after_views` to show ungated MLS content before requiring lead form completion; pair with `require_otp` for phone verification gating.
+### Conversion Optimization
 
-### Reduce Form Fields
-Minimize required fields in `QuantyraLead` payload; use GHL enrichment to backfill contact details after initial email capture.
+**When:** The task touches conversion optimization in Reducing Form Falloff work.
 
-### Fix Origin Mismatch Errors
-Ensure `ghl_registered_urls.primary_url` and `additional_urls` include all variants (www/non-www, http/https) to prevent CORS preflight failures that block submissions.
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
 
-### Add Form Auto-Save
-Implement partial lead persistence in widget JS to recover abandoned forms when users return to the registered origin.
+### Content Copy
 
-### Track Drop-off Points
-Log form step completions to `ghl_audit_logs` with `is_mls_data_access=false` to identify where users abandon the funnel.
+**When:** The task touches content copy in Reducing Form Falloff work.
+
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
+
+### Distribution
+
+**When:** The task touches distribution in Reducing Form Falloff work.
+
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
+
+## See Also
+
+- [Conversion Optimization](references/conversion-optimization.md)
+- [Content Copy](references/content-copy.md)
+- [Distribution](references/distribution.md)
+- [Measurement Testing](references/measurement-testing.md)
+- [Growth Engineering](references/growth-engineering.md)
+- [Strategy Monetization](references/strategy-monetization.md)

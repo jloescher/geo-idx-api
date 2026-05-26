@@ -1,18 +1,40 @@
-# Conversion Optimization
+# Building Acquisition Tools Conversion Optimization Reference
 
-## When to use
-Optimize the path from free tool usage to paid subscription by strategically gating MLS data, implementing progressive disclosure, and removing friction at upgrade boundaries.
+## When To Use
 
-## Patterns
+Use this reference when the task touches conversion optimization while working on Building Acquisition Tools code in this repository.
 
-**Teaser-to-Full Upgrade Flow**
-Non-`idx:full` requests receive capped listings (3 items via `BridgeTeaser`) while cached full data stays canonical. Apply teaser logic after cache retrieval so upgrades reveal full data instantly without cache invalidation. The `gate_after_views` column in `ghl_widget_configs` controls when to prompt for registration.
+## What To Inspect
 
-**Geography Dwell Strategy**
-Use the GIS proxy (`/api/v1/gis`) to display public Florida parcel overlays without MLS compliance burden. Public cadastral data keeps users engaged on the map (increasing time-on-site) before OTP or registration gates appear. Chain GIS calls with `/api/v1/listings` only after conversion.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Widget Gating Configuration**
-Configure `ghl_widget_configs.require_otp` per location. The three-phase middleware chain (key validate → origin validate → CORS) allows embedding anywhere while enforcing gates at the data layer. Lead forms bypass the OTP gate but require valid `api_key` and matching Origin header.
+## Recommended Workflow
 
-## Warning
-Never cache teaser-truncated data to PostgreSQL—the `listings_cache` table stores full Bridge responses. Teaser logic runs after decompression so upgrading from `idx:access` to `idx:full` requires no cache purge.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

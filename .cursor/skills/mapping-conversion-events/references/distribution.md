@@ -1,28 +1,40 @@
-# Distribution
+# Mapping Conversion Events Distribution Reference
 
-## When to use
+## When To Use
 
-Expanding reach through the GHL Marketplace, widget embed adoption, and API access patterns. Reference when onboarding new locations or troubleshooting domain registration issues.
+Use this reference when the task touches distribution while working on Mapping Conversion Events code in this repository.
 
-## Patterns
+## What To Inspect
 
-**GHL Marketplace Distribution** (`routes/ghl-web.php`)
-- Canonical URLs: `https://idx-api.quantyralabs.cc/leadconnector/install`
-- OAuth redirect: `/oauth/leadconnector/callback` exchanges code for token
-- Scopes: Space-separated in `GHL_SCOPES` env var; must match GHL app dashboard
-- Webhook delivery: `POST /webhooks/leadconnector` with optional signature verification
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Widget Embed Distribution** (`routes/ghl-widget.php`)
-- Loader script: `/widget/loader.js` with `data-api-key`, `data-location-id`, `data-widget`
-- Origin validation: Middleware checks `Origin`/`Referer` against `ghl_registered_urls.primary_url`/`additional_urls`
-- CORS: Preflight `OPTIONS /widget/api/leads` responds with allowed origins
-- Embed surfaces: `search`, `lead-form`, `showcase` with consistent API key auth
+## Recommended Workflow
 
-**API Access Patterns** (`routes/api.php`)
-- Bridge proxy: `/api/v1/*` with `domain.token` middleware (domain slug or Bearer token)
-- GHL proxy: `/api/leadconnector/*` with `AuthenticateGhlLocation` middleware
-- GIS proxy: `/api/v1/gis` with identical auth to Bridge routes
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-## Warning
+## Quality Bar
 
-Agency tokens (Company user type) without a stored `ghl_location_id` require explicit `?location_id=` parameter on all API calls. The `LocationTokenService` can exchange agency tokens for location-specific tokens via `/oauth/locationToken`.
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

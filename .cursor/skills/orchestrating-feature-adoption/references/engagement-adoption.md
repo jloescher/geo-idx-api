@@ -1,38 +1,141 @@
-# Orchestrating Feature Adoption Engagement Adoption Reference
+# Engagement & Adoption Reference
 
-## When To Use
+## Contents
+- Feature Discovery Mechanisms
+- Tiered Access Model
+- Cross-Sell Patterns
+- Anti-Patterns
 
-Use this reference when the task touches engagement adoption while working on Orchestrating Feature Adoption code in this repository.
+## Feature Discovery Mechanisms
 
-## What To Inspect
+The platform has limited explicit discovery mechanisms. Features are revealed through:
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+1. **Config flags** — `StellarEnabled`, `BeachesEnabled` control MLS feed availability
+2. **Token abilities** — `idx:full` vs `idx:access` gate GIS and advanced features
+3. **Dashboard cards** — domain/token management surfaces capabilities
 
-## Recommended Workflow
+### Existing Discovery Points
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+| Surface | Mechanism | Code Location |
+|---------|-----------|---------------|
+| MLS dataset selection | Domain setup dropdown | `dashboard/handler.go` |
+| GIS teaser | Limited features in response | `teaser.go` |
+| Search endpoint | `POST /api/v1/search` | `bridge/handler.go` |
+| Comps/BPO | `POST /api/v1/comps/run` | `comps/handler.go` |
+| Bridge stats | `GET /api/v1/bridge/stats` | `bridge/handler.go` |
 
-## Quality Bar
+## Tiered Access Model
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+The platform uses a two-tier model enforced through middleware and service logic:
 
-## Pitfalls
+### Tier Implementation
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+```go
+// existing pattern — internal/api/middleware/domain_token.go
+// Token abilities: "idx:full" or "idx:access"
+// Domain identification always grants full access
+// setMLSLocals() sets MLSFullAccess boolean in context
+```
 
-## Done Checklist
+```go
+// existing pattern — internal/service/gis/teaser.go
+func requestFullAccess(c *fiber.Ctx) bool {
+    // Domain auth → full
+    // PAT with idx:full → full
+    // PAT with idx:access → teaser (if enabled)
+}
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+func applyTeaser(geojson []byte, cfg config.GISConfig, fullAccess bool) ([]byte, bool) {
+    // Truncate to TeaserMaxFeatures (default 40)
+    // Round to TeaserCoordDecimals (default 4)
+}
+```
+
+### Tier Matrix
+
+| Feature | `idx:access` | `idx:full` | Domain Auth |
+|---------|-------------|-----------|-------------|
+| MLS listings proxy | Yes | Yes | Yes |
+| GIS parcels | Teaser (40 features, 4 decimals) | Full | Full |
+| Search (PostGIS) | Yes | Yes | Yes |
+| Comps/BPO | Yes | Yes | Yes |
+| Bridge stats | Yes | Yes | Yes |
+
+## Cross-Sell Patterns
+
+### GIS Teaser as Discovery
+
+The teaser tier is the primary cross-sell mechanism. When `idx:access` tokens receive truncated GIS data, the response signals that more is available:
+
+```go
+// existing pattern — teaser.go returns (modifiedGeoJSON, wasTruncated)
+// wasTruncated signals the handler to add a response header or adjust cache TTL
+```
+
+**Design principle:** The teaser returns useful but incomplete data — enough for a developer to validate the endpoint, not enough for production use.
+
+### WARNING: Do Not Add Paywall UI to API Responses
+
+**The Problem:**
+
+```go
+// BAD — injecting upgrade messages into API JSON
+response["upgrade_message"] = "Upgrade to idx:full for full GIS access"
+```
+
+**Why This Breaks:** API consumers parse JSON programmatically. Injecting marketing content breaks their schemas and trust.
+
+**The Fix:** Use HTTP response headers (`X-Teaser-Applied: true`) or the existing `wasTruncated` boolean from `applyTeaser()`. Let documentation explain the tier difference.
+
+## Feature Flag Pattern
+
+New capabilities should follow the existing config-driven flag pattern:
+
+```go
+// existing pattern — internal/config/config.go
+type MLSConfig struct {
+    StellarEnabled  bool  `env:"MLS_STELLAR_ENABLED" envDefault:"true"`
+    BeachesEnabled  bool  `env:"MLS_BEACHES_ENABLED" envDefault:"true"`
+}
+```
+
+### Adding a New Flag Checklist
+
+- [ ] Add field to appropriate config struct with `env` tag
+- [ ] Default to enabled (`envDefault:"true"`) for zero-disruption deploys
+- [ ] Check flag early in handler — return 404 or empty response when disabled
+- [ ] Document in `docs/` and `.env.example`
+- [ ] No database migration needed for boolean flags
+
+## Anti-Patterns
+
+### WARNING: Feature Gates in Business Logic
+
+**The Problem:**
+
+```go
+// BAD — scattering feature checks in service layer
+func (s *Service) Search(params) {
+    if s.cfg.SomeFlag {
+        // different code path
+    }
+    // ... rest of logic
+}
+```
+
+**Why This Breaks:** Feature checks belong at the handler/middleware boundary, not scattered through business logic. Mixing access control with business rules makes both hard to test.
+
+**The Fix:** Check at the route or handler level. Return early. Service layer remains flag-agnostic.
+
+```go
+// GOOD — gate at handler
+func (h *Handler) NewFeature(c *fiber.Ctx) error {
+    if !h.cfg.MLS.NewFeatureEnabled {
+        return c.Status(http.StatusNotFound).SendString("not found")
+    }
+    return h.svc.NewFeature(c)
+}
+```
+
+See the **geospatial** skill for GIS teaser tier implementation details.
+See the **auth-api-token** skill for token ability middleware.

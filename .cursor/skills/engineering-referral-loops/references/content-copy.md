@@ -1,18 +1,40 @@
-# Content Copy for Partner Integrations
+# Engineering Referral Loops Content Copy Reference
 
-## When to use
-When writing user-facing text in OAuth screens, widget loaders, API error responses, or webhook documentation that partners will expose to their customers.
+## When To Use
 
-## Project-relevant patterns
+Use this reference when the task touches content copy while working on Engineering Referral Loops code in this repository.
 
-**Ability-scoped error messages**
-Return different 403 messages based on token abilities. For `idx:access` tokens hitting limits: "Upgrade for full MLS data." For missing tokens: "Register your domain to access listings." This aligns messaging with the authorization layer.
+## What To Inspect
 
-**Webhook event documentation**
-Document webhook payloads with real examples showing `webhookId`, `event_type`, and normalized types (`INSTALL` vs `APPINSTALL`). Partners implement handlers faster when they see exact field shapes and deduplication strategies.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Feature-gated feature descriptions**
-In the subscription catalog (Pro/Smart/Ultra/Mega tiers), describe features by their gating mechanism: "3 domains with teaser gating" vs "Unlimited domains, 2M API calls/mo, developer keys." Make the restriction the feature description.
+## Recommended Workflow
 
-## Warning
-Avoid exposing internal token hashes or raw database IDs in user-facing copy. The `access_token_hash` is for lookup only—never include it in widget config JSON or error responses, even in debug mode.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

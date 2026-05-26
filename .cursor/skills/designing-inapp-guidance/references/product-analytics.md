@@ -1,137 +1,40 @@
-# Product Analytics Patterns
+# Designing Inapp Guidance Product Analytics Reference
 
-## When to use
+## When To Use
 
-When tracking user behavior across the GHL OAuth flow, widget embed performance, Bridge API proxy usage, and subscription tier conversions. Essential for understanding which dashboard features drive retention and where users abandon the installation flow.
+Use this reference when the task touches product analytics while working on Designing Inapp Guidance code in this repository.
 
-## Patterns
+## What To Inspect
 
-### Backend Event Tracking
+- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
+- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
+- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
+- Search for nearby implementations before creating a new structure or helper.
 
-```php
-// app/Traits/TracksProductEvents.php
-trait TracksProductEvents
-{
-    public function track(string $event, array $properties = []): void
-    {
-        ProductEvent::create([
-            'user_id' => auth()->id(),
-            'event' => $event,
-            'properties' => $properties,
-            'context' => [
-                'url' => request()->url(),
-                'referrer' => request()->header('referer'),
-                'user_agent' => request()->userAgent(),
-            ],
-            'created_at' => now(),
-        ]);
-    }
-}
+## Recommended Workflow
 
-// Usage in Livewire components
-class WidgetConfig extends Component
-{
-    use TracksProductEvents;
-    
-    public function saveConfig(): void
-    {
-        $this->track('widget.config.saved', [
-            'theme' => $this->theme,
-            'gate_enabled' => $this->requireOtp,
-            'domain_count' => count($this->domains),
-        ]);
-    }
-}
-```
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-### Frontend Interaction Tracking
+## Quality Bar
 
-```blade
-{{-- Alpine-based interaction tracking --}}
-<div x-data="{ 
-    track(action) {
-        fetch('/api/analytics/event', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-            body: JSON.stringify({ 
-                action, 
-                page: 'dashboard',
-                metadata: { component: 'subscription-card' }
-            })
-        })
-    }
-}">
-    <button @click="track('subscription.upgrade.clicked')" 
-            wire:click="initiateCheckout"
-            class="px-4 py-2 bg-blue-600 text-white rounded-lg">
-        Upgrade Plan
-    </button>
-</div>
-```
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
 
-### Funnel Stage Tracking
 
-```php
-// app/Services/OnboardingFunnel.php
-class OnboardingFunnel
-{
-    public function recordStage(string $stage, ?User $user = null): void
-    {
-        $user ??= auth()->user();
-        
-        // Only track progression, not regression
-        $stages = ['oauth_started', 'oauth_completed', 'urls_registered', 'widget_embedded', 'first_lead'];
-        $currentIndex = array_search($user->onboarding_stage, $stages);
-        $newIndex = array_search($stage, $stages);
-        
-        if ($newIndex > $currentIndex) {
-            $user->update(['onboarding_stage' => $stage]);
-            
-            // Time between stages
-            ProductEvent::create([
-                'user_id' => $user->id,
-                'event' => 'funnel.progression',
-                'properties' => [
-                    'from_stage' => $stages[$currentIndex] ?? null,
-                    'to_stage' => $stage,
-                    'hours_elapsed' => $user->created_at->diffInHours(now()),
-                ],
-            ]);
-        }
-    }
-}
-```
-
-### Dashboard Metrics Aggregation
-
-```php
-// app/Livewire/Dashboard/Metrics.php
-class Metrics extends Component
-{
-    public function render()
-    {
-        $user = auth()->user();
-        $location = $user->ghlLocation;
-        
-        return view('livewire.dashboard.metrics', [
-            'activationScore' => $this->calculateActivationScore($user),
-            'usageTrend' => $this->get7DayTrend($location),
-            'conversionLikelihood' => $this->predictConversion($user),
-        ]);
-    }
-    
-    private function calculateActivationScore(User $user): int
-    {
-        $score = 0;
-        if ($user->ghl_oauth_token) $score += 25;
-        if ($user->registered_urls()->exists()) $score += 25;
-        if ($user->widget_embeds_count > 0) $score += 25;
-        if ($user->leads()->exists()) $score += 25;
-        return $score;
-    }
-}
-```
 
 ## Pitfalls
 
-Never track PII in analytics events—hash GHL location IDs and user emails before logging. The Bridge proxy audit logs (`bridge_proxy_audit_logs`) already capture MLS compliance data; don't duplicate this in product analytics. Respect the `GHL_AUDIT_LOG_ENABLED` flag and user privacy settings. Avoid synchronous analytics writes that could slow down the OAuth callback or widget lead ingestion; queue event persistence or use a fire-and-forget approach.
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

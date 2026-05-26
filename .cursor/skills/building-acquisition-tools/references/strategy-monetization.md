@@ -1,18 +1,40 @@
-# Strategy Monetization
+# Building Acquisition Tools Strategy Monetization Reference
 
-## When to use
-Design revenue models that align access levels with subscription tiers while managing API costs through caching, metering, and feature gating.
+## When To Use
 
-## Patterns
+Use this reference when the task touches strategy monetization while working on Building Acquisition Tools code in this repository.
 
-**Metered API Overage**
-Ultra and Mega tiers include 2M API calls/month base. Configure `STRIPE_PRICE_IDX_API_OVERAGE_METERED` for per-call billing beyond tier limits. The `BridgeProxyAuditLogger` records per-domain usage for usage-based billing reconciliation.
+## What To Inspect
 
-**Progressive Feature Disclosure**
-Map capabilities to `idx:access` vs `idx:full` Sanctum abilities. Domain-authenticated traffic (widget embeds) always receives `idx:access` with teaser limits. Only dashboard-generated tokens with `idx:full` bypass `BridgeTeaser` truncation, creating clear upgrade incentive from widget-only to full platform.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Data Access Tiering**
-GIS parcels (public government data) flow freely with only teaser coordinate precision reduction. Bridge MLS data requires domain registration or token auth. This two-class system provides value in free/public tiers while reserving premium MLS aggregation for paid subscriptions.
+## Recommended Workflow
 
-## Warning
-The `ghl_installed_locations.lead_count` column tracks usage but is not automatically reset on subscription cancellation. Implement purge logic for reactivated accounts to avoid offering "unlimited leads" to accounts with inflated historical counts from previous billing periods.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

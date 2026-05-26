@@ -1,17 +1,40 @@
-# Activation & Onboarding
+# Prioritizing Roadmap Bets Activation Onboarding Reference
 
-## When to use
+## When To Use
 
-Evaluating initiatives that affect the GHL Marketplace install flow (`/leadconnector/install`), OAuth callback completion, or subscriber dashboard first-run experience. Use this when scoring bets related to reducing drop-off between install and first MLS data access.
+Use this reference when the task touches activation onboarding while working on Prioritizing Roadmap Bets code in this repository.
 
-## Project-relevant patterns
+## What To Inspect
 
-**OAuth completion funnel**: The GHL Marketplace flow spans `routes/ghl-web.php` — from `/leadconnector/install` through `/oauth/leadconnector/callback` to `/leadconnector/register-urls`. Impact scoring should measure completion rate at each step, especially the MLS domain registration form that gates widget API key issuance.
+- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
+- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
+- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Dashboard activation**: The Livewire `DashboardController` loads subscription status from Cashier and API tokens from Sanctum. Effort estimates for onboarding bets should account for the `ghl_installed_locations` + `ghl_registered_urls` data model when adding progress checklists or guided tours.
+## Recommended Workflow
 
-**Widget first-render**: The `/widget/loader.js` route (`routes/ghl-widget.php`) is the first impression for embedded users. Risk assessment should consider that widget failures block lead capture — a high-revenue surface — even when the main dashboard is functional.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-## Warning
+## Quality Bar
 
-Don't conflate GHL OAuth completion with actual MLS data usage. A location may complete OAuth (token in `ghl_oauth_tokens`) but never register URLs or embed widgets. Measure activation by `ghl_registered_urls.widget_api_key` issuance, not just token persistence.
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

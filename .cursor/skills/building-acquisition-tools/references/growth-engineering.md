@@ -1,18 +1,40 @@
-# Growth Engineering
+# Building Acquisition Tools Growth Engineering Reference
 
-## When to use
-Implement infrastructure patterns that reduce marginal costs, enable rapid experimentation, and create viral distribution loops through the widget embed system.
+## When To Use
 
-## Patterns
+Use this reference when the task touches growth engineering while working on Building Acquisition Tools code in this repository.
 
-**Multi-Tier GIS Caching**
-The GIS proxy uses three cache layers: (1) Laravel Cache edge (`GIS_EDGE_CACHE_TTL` default 900s), (2) PostgreSQL `gis_cache` origin (30-90 day max age), (3) Filesystem backup. Generation-based invalidation via `gis_source_states` ensures cache hits without stale data, reducing ArcGIS egress costs as volume scales.
+## What To Inspect
 
-**Widget Viral Loop**
-Each installed location receives a unique widget API key (`qh_*` prefix). Embed snippets in `/leadconnector/installation-complete` encourage agencies to place widgets on client sites. The Origin validation prevents unauthorized use while allowing unlimited legitimate embeds per registered domain.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Queue-Based Lead Processing**
-`POST /widget/api/leads` creates `QuantyraLead` records synchronously but dispatches `SyncLeadToGhlJob` asynchronously. This pattern absorbs traffic spikes during marketing campaigns without dropping leads or slowing response times. Monitor via `ghl_sync_logs.sync_status` for failed GHL CRM writes.
+## Recommended Workflow
 
-## Warning
-The `GIS_MAX_BBOX_SPAN_DEG` guard (default 0.35 degrees) rejects abusive queries with HTTP 422. Ensure map zoom constraints in widget JavaScript prevent users from triggering this limit during normal pan/zoom operations.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

@@ -2,21 +2,38 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Quantyra GeoIDX API",
-    "description": "API collection for testing Quantyra IDX API endpoints including MLS data proxy, GIS parcel data, and GoHighLevel Lead Connector.",
+    "description": "OpenAPI document for the **idx-api** Go service (Fiber): PAT auth, versioned Bridge/Spark MLS proxy (`/api/v1/*`), GIS parcel GeoJSON, hybrid search, comps engine, replication stats, and listing photos (`/api/images/*`). Routes are registered in `internal/api/routes.go`.",
     "version": "1.0.0"
   },
   "servers": [
     {
       "url": "https://dev-idx-api.quantyralabs.cc",
-      "description": "Development environment"
+      "description": "Development API host (replace with your `APP_URL` / `IDX_API_PUBLIC_URL`)"
+    },
+    {
+      "url": "http://localhost:8000",
+      "description": "Local Go API (`make run-api` or `go run ./cmd/api`, default port 8000)"
     }
+  ],
+  "tags": [
+    { "name": "Authentication", "description": "`POST /api/auth/token` and `GET /api/auth/user` (dashboard PAT / machine login)." },
+    { "name": "MLS Data - Listings", "description": "Bridge-backed Property and listing resources (`domain.token` + `mls.access`)." },
+    { "name": "MLS Data - Agents & Offices", "description": "Agents, offices, and RESO office resources." },
+    { "name": "MLS Data - Open Houses", "description": "Open house collections and RESO open house resources." },
+    { "name": "MLS Data - Members & Lookup", "description": "Members and lookup helpers." },
+    { "name": "MLS Data - Public Records", "description": "Public parcels, assessments, and transactions under `/api/v1/pub/*`." },
+    { "name": "MLS Data - Search", "description": "`POST /api/v1/search` structured RESO search with caching." },
+    { "name": "Comps Engine", "description": "`POST /api/v1/comps/run` comparables, investor modes, BPO, and home value." },
+    { "name": "GIS Parcel Proxy", "description": "`GET /api/v1/gis` and MLS-scoped GIS routes." },
+    { "name": "Operations", "description": "Replication / mirror statistics for operators." },
+    { "name": "Images", "description": "Streaming Bridge listing photos through the API (same auth as Bridge JSON)." }
   ],
   "components": {
     "securitySchemes": {
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Sanctum API token obtained via POST /api/auth/token. Ultra keys use idx:access (teaser payloads), Mega keys use idx:full (full payloads)."
+        "description": "Bearer PAT (SHA-256 stored in `personal_access_tokens`) on routes guarded by `domain.token` (`/api/v1/*`, `/api/images/*`). Abilities: **`idx:full`** (dashboard PATs, `POST /api/auth/token`) or **`idx:access`**. Pair with **`X-Domain-Slug`** or **`?domain=`** for a TXT-verified domain on the token owner's account. Docs may reference `idx:full` for premium comps modes; verify enforcement in `internal/service/comps`."
       }
     },
     "schemas": {
@@ -117,7 +134,7 @@
       "post": {
         "tags": ["Authentication"],
         "summary": "Login - Get API Token",
-        "description": "Authenticate and obtain a Sanctum bearer token. Use the returned token in the Authorization header for subsequent requests.\n\n**Test credentials:**\n- Email: test@example.com\n- Password: password\n\n**Stripe test accounts:** idx-seed-pro@, idx-seed-smart@, idx-seed-ultra@, idx-seed-mega@ (all @quantyralabs.test, password: password)",
+        "description": "Authenticate and obtain a bearer PAT (`idx:full`). Use the returned token in the Authorization header together with `X-Domain-Slug` or `?domain=` for `/api/v1/*` calls.\n\n**Test credentials (local / `make seed-admin`):**\n- Email: from `ADMIN_SEED_EMAIL` in `.env`\n- Password: from `ADMIN_SEED_PASSWORD` in `.env`",
         "requestBody": {
           "required": true,
           "content": {
@@ -176,7 +193,7 @@
       "get": {
         "tags": ["MLS Data - Listings"],
         "summary": "Get Listings",
-        "description": "Get MLS listings with pagination. Supports both Bearer token and domain-based authentication. Responses include a top-level `pricing` quote block and per-listing `pricing_converted` values derived from `ListPrice`.",
+        "description": "Get MLS listings for the resolved MLS feed (Bridge web collection when `filters` is set; merged Active/Pending Bridge RESO slice when `filters` is absent). Responses include top-level `pricing` and per-row `pricing_converted` when `ListPrice` is present. **Collection cache:** 15-minute TTL applies per domain when **`filters` is absent**; any `filters` query parameter bypasses the cache and forwards to Bridge. Standard Bridge query parameters are passed through.",
         "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
@@ -503,8 +520,8 @@
     "/api/v1/comps/run": {
       "post": {
         "tags": ["Comps Engine"],
-        "summary": "Run comparables and investor analysis",
-        "description": "Bridge-backed comps endpoint supporting sales comps (A–E) plus investor modes (`rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`). Investor modes require idx:full access.",
+        "summary": "Run comparables, investor analysis, BPO, or home value",
+        "description": "MLS comps engine (`internal/service/comps`). Modes **A–E**: sold + optional competition comps with adjustment grid. Premium modes: **`rent_hold_cashflow`**, **`flip_vs_hold`**, **`appraiser_simulation`**, **`bpo`** (14-line URAR grid + market-derived rates + renovation credits), **`home_value`** (BPO-style estimate + optional Google geocoding). Closed comps: live Bridge/Spark RESO; Active/Pending: PostGIS `listings` mirror. See [comps-api.md](comps-api.md). Optional `bpo_params`, `home_value_params`.",
         "security": [{ "bearerAuth": [] }],
         "requestBody": {
           "required": true,
@@ -526,12 +543,15 @@
                       "living_area_sqft": { "type": "integer", "example": 1850 },
                       "lot_size_sqft": { "type": "integer", "example": 8500 },
                       "garage_spaces": { "type": "integer", "example": 2 },
-                      "monthly_fees": { "type": "number", "example": 250 }
+                      "monthly_fees": { "type": "number", "example": 250 },
+                      "flood_zone_code": { "type": "string", "example": "X", "description": "Provider-neutral flood zone (CSV allowed). Deprecated alias: stellar_flood_zone_code." },
+                      "stellar_flood_zone_code": { "type": "string", "deprecated": true, "description": "Merged into flood_zone_code when flood_zone_code omitted." },
+                      "stellar_total_monthly_fees": { "type": "number", "deprecated": true, "description": "Merged into monthly_fees when monthly_fees omitted." }
                     }
                   },
                   "mode": {
                     "type": "string",
-                    "enum": ["A", "B", "C", "D", "E", "rent_hold_cashflow", "flip_vs_hold", "appraiser_simulation"]
+                    "enum": ["A", "B", "C", "D", "E", "rent_hold_cashflow", "flip_vs_hold", "appraiser_simulation", "bpo", "home_value"]
                   },
                   "scope": {
                     "type": "object",
@@ -544,7 +564,9 @@
                   "filters": { "type": "object" },
                   "rental_params": { "type": "object" },
                   "flip_params": { "type": "object" },
-                  "simulation_params": { "type": "object" }
+                  "simulation_params": { "type": "object" },
+                  "bpo_params": { "type": "object", "description": "max_comps, sold_months_back, min_comps_for_regression, exclude_outlier_zscore, confidence_threshold" },
+                  "home_value_params": { "type": "object", "description": "sold_months_back, max_comps" }
                 }
               },
               "examples": {
@@ -661,7 +683,7 @@
         "responses": {
           "200": { "description": "Comps run completed" },
           "401": { "description": "Unauthenticated" },
-          "403": { "description": "Forbidden or idx:full required for investor modes" },
+          "403": { "description": "Forbidden (invalid/missing token, domain not verified, or validation error). Premium comps modes are not ability-gated in Go." },
           "422": { "description": "Validation error" }
         }
       }
@@ -670,7 +692,7 @@
       "post": {
         "tags": ["MLS Data - Search"],
         "summary": "Structured MLS Search",
-        "description": "Searches Bridge RESO Property data through the proxy with request-level caching (15 minute TTL), teaser gating for non-full access keys, and domain dataset restrictions.\n\nUse `?dataset=` to select a dataset when enabled for the domain/site.",
+        "description": "Hybrid MLS search: Active/Pending from PostGIS `listings` mirror when possible; Closed and special filters from live Bridge/Spark OData. Mirror leg: `low_risk_floodzone` filters `listings.flood_zone_code`; `min_monthly_fees`/`max_monthly_fees` filter `listings.estimated_total_monthly_fees`. Request-level caching (15 minute TTL), teaser gating when not `idx:full`, domain dataset restrictions.\n\nUse `?dataset=` to select a dataset when enabled for the domain/site.",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           {
@@ -698,7 +720,9 @@
                     "items": { "type": "string" },
                     "example": ["Active"]
                   },
-                  "low_risk_floodzone": { "type": "boolean", "example": true },
+                  "low_risk_floodzone": { "type": "boolean", "example": true, "description": "PostGIS leg: flood_zone_code contains x (case-insensitive)." },
+                  "min_monthly_fees": { "type": "number", "example": 100, "description": "PostGIS leg: estimated_total_monthly_fees >= value." },
+                  "max_monthly_fees": { "type": "number", "example": 700, "description": "PostGIS leg: estimated_total_monthly_fees <= value." },
                   "sort": { "type": "string", "example": "list_price" },
                   "sort_dir": { "type": "string", "example": "desc" },
                   "page": {
@@ -997,137 +1021,51 @@
         }
       }
     },
-    "/api/leadconnector/leads": {
+    "/api/v1/bridge/stats": {
       "get": {
-        "tags": ["GoHighLevel Lead Connector"],
-        "summary": "Get Leads",
-        "description": "Get leads from GoHighLevel. Requires GHL location authentication middleware.",
+        "tags": ["Operations"],
+        "summary": "PostGIS replication / mirror statistics",
+        "description": "Per-dataset listing counts and `ListingSyncCursor` metadata for the local Bridge mirror. Same middleware as other `/api/v1/*` routes (`domain.token`, `mls.access`).",
+        "security": [{ "bearerAuth": [] }],
         "responses": {
-          "200": { "description": "Lead list" },
-          "401": { "description": "GHL auth required" }
+          "200": { "description": "JSON stats payload per configured MLS dataset slug" },
+          "401": { "description": "Unauthenticated" },
+          "403": { "description": "Forbidden" }
         }
       }
     },
-    "/api/leadconnector/leads/{id}": {
+    "/api/images/{listingKey}/{photoId}": {
       "get": {
-        "tags": ["GoHighLevel Lead Connector"],
-        "summary": "Get Lead by ID",
-        "responses": {
-          "200": { "description": "Lead details" },
-          "404": { "description": "Not found" }
-        }
-      }
-    },
-    "/api/leadconnector/subscriptions": {
-      "get": {
-        "tags": ["GoHighLevel Lead Connector"],
-        "summary": "Get Subscriptions",
-        "responses": { "200": { "description": "Subscription list" } }
-      }
-    },
-    "/api/leadconnector/stats": {
-      "get": {
-        "tags": ["GoHighLevel Lead Connector"],
-        "summary": "Get Stats",
-        "responses": { "200": { "description": "Statistics" } }
-      }
-    },
-    "/api/leadconnector/config": {
-      "get": {
-        "tags": ["GoHighLevel Lead Connector"],
-        "summary": "Get Config",
-        "responses": { "200": { "description": "Configuration" } }
-      }
-    },
-    "/api/widgets/validate": {
-      "post": {
-        "tags": ["Widgets"],
-        "summary": "Validate widget API key",
-        "responses": {
-          "200": { "description": "Key validated" },
-          "401": { "description": "Invalid key" }
-        }
-      }
-    },
-    "/widget/api/listings-search": {
-      "post": {
-        "tags": ["Widgets"],
-        "summary": "Widget listings search",
-        "responses": {
-          "200": { "description": "Widget listing results" },
-          "401": { "description": "Unauthorized" }
-        }
-      },
-      "options": {
-        "tags": ["Widgets"],
-        "summary": "Widget listings search CORS preflight",
-        "responses": { "204": { "description": "Preflight OK" } }
-      }
-    },
-    "/widget/api/leads": {
-      "post": {
-        "tags": ["Widgets"],
-        "summary": "Widget lead ingestion",
-        "responses": {
-          "200": { "description": "Lead accepted" },
-          "422": { "description": "Validation error" }
-        }
-      },
-      "options": {
-        "tags": ["Widgets"],
-        "summary": "Widget leads CORS preflight",
-        "responses": { "204": { "description": "Preflight OK" } }
-      }
-    },
-    "/widget/config/{apiKey}": {
-      "get": {
-        "tags": ["Widgets"],
-        "summary": "Widget config by API key",
+        "tags": ["Images"],
+        "summary": "Stream a listing photo (Bridge origin)",
+        "description": "Streams listing photos through idx-api (`internal/handler/images`, `domain.token`). Bridge and Spark (`MediaURL` / template paths). Clients usually use the **idx-images** edge host; this path documents the API shape.",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
-          { "name": "apiKey", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "listingKey",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" }
+          },
+          {
+            "name": "photoId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" }
+          }
         ],
         "responses": {
-          "200": { "description": "Widget config payload" },
-          "404": { "description": "Widget key not found" }
-        }
-      }
-    },
-    "/widget/search/{apiKey}": {
-      "get": {
-        "tags": ["Widgets"],
-        "summary": "Widget search surface",
-        "parameters": [
-          { "name": "apiKey", "in": "path", "required": true, "schema": { "type": "string" } }
-        ],
-        "responses": {
-          "200": { "description": "Widget search bootstrap response" },
-          "404": { "description": "Widget key not found" }
-        }
-      }
-    },
-    "/widget/showcase/{apiKey}": {
-      "get": {
-        "tags": ["Widgets"],
-        "summary": "Widget showcase surface",
-        "parameters": [
-          { "name": "apiKey", "in": "path", "required": true, "schema": { "type": "string" } }
-        ],
-        "responses": {
-          "200": { "description": "Widget showcase bootstrap response" },
-          "404": { "description": "Widget key not found" }
-        }
-      }
-    },
-    "/widget/lead-form/{apiKey}": {
-      "get": {
-        "tags": ["Widgets"],
-        "summary": "Widget lead form surface",
-        "parameters": [
-          { "name": "apiKey", "in": "path", "required": true, "schema": { "type": "string" } }
-        ],
-        "responses": {
-          "200": { "description": "Widget lead form bootstrap response" },
-          "404": { "description": "Widget key not found" }
+          "200": {
+            "description": "Image bytes (upstream `Content-Type`; long-cache headers in production).",
+            "content": {
+              "image/jpeg": { "schema": { "type": "string", "format": "binary" } },
+              "image/png": { "schema": { "type": "string", "format": "binary" } },
+              "application/octet-stream": { "schema": { "type": "string", "format": "binary" } }
+            }
+          },
+          "401": { "description": "Unauthenticated" },
+          "403": { "description": "Forbidden" },
+          "404": { "description": "Image not found at Bridge origin" }
         }
       }
     }

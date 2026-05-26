@@ -1,38 +1,153 @@
-# Tuning Landing Journeys Conversion Optimization Reference
+# Conversion Optimization Reference
 
-## When To Use
+## Contents
+- Conversion funnel stages
+- Landing page optimization
+- Dashboard setup completion
+- One-time secret display pattern
+- Anti-patterns
 
-Use this reference when the task touches conversion optimization while working on Tuning Landing Journeys code in this repository.
+## Conversion Funnel Stages
 
-## What To Inspect
+The platform has a linear funnel with four measurable stages:
 
-- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
-- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
-- Prefer tactical edits with clear verification steps over broad strategy essays.
-- Search for nearby implementations before creating a new structure or helper.
+1. **Landing** (`/`) — visitor sees hero, must click CTA
+2. **Auth** (`/login` or `/invite/:token`) — email/password or invite signup
+3. **Setup** (`/dashboard`) — add domain, verify DNS TXT
+4. **Activation** — domain verified, production token generated (one-time display)
 
-## Recommended Workflow
+Each stage has exactly one primary action. The funnel is narrow by design (invite-only).
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+## Landing Page Optimization
 
-## Quality Bar
+The hero in `marketing/handler.go` has two CTAs:
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+```go
+// existing — two CTAs competing for attention
+<div class="hero-actions">
+<a class="btn btn-primary" href="/dashboard">Open dashboard</a>
+<a class="btn btn-secondary" href="/login">Sign in</a>
+</div>
+```
 
-## Pitfalls
+### DO: Single primary CTA for unauthenticated visitors
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+Unauthenticated visitors hitting "Open dashboard" get redirected to `/login` by `requireAuth`. This adds a redirect hop. Instead, detect auth state and show the right CTA:
 
-## Done Checklist
+```go
+// new code to add — check session before rendering
+sess, _ := h.sessions.Get(c)
+uid := sess.Get("user_id")
+primaryAction := "/login"
+primaryLabel := "Get started"
+if uid != nil {
+    primaryAction = "/dashboard"
+    primaryLabel = "Open dashboard"
+}
+```
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+### DON'T: Add navigation links to the hero
+
+The header nav already has Dashboard and Login links. Duplicating them in the hero body dilutes the primary CTA. One clear action per section.
+
+## Dashboard Setup Completion
+
+The dashboard (`dashboard/handler.go:117`) shows four cards. The visual order determines what users do first:
+
+1. Setup (domain list)
+2. API keys
+3. Add domain
+4. Invite user (admin only)
+
+### WARNING: Add Domain is below the fold
+
+The "Add domain" form is the critical activation action but appears as the third card. New users with zero domains see two empty cards before the action they need.
+
+**Fix:** Conditionally reorder. When user has zero domains, show "Add domain" card first:
+
+```go
+// new code to add — reorder cards for new users
+hasDomains := rows.Next()
+if !hasDomains {
+    // render "Add domain" card first, then empty state for others
+}
+```
+
+### DO: Show empty states with clear next action
+
+When domain list and token list are empty, the current code shows an empty `<ul>` with no items. Replace with a call-to-action:
+
+```html
+<!-- new code to add — empty state -->
+<div class="card"><h2>Get started</h2>
+<p>Add your first domain to generate an API key.</p>
+<a class="btn btn-primary" href="#add-domain">Add domain</a>
+</div>
+```
+
+### DON'T: Show "API keys" section before domain exists
+
+Tokens without a verified domain are unusable. The API keys card should appear only after at least one domain exists, or should be collapsed/disabled.
+
+## One-Time Secret Display Pattern
+
+Both `VerifyTXT` and `CreateInvitation` follow the same pattern:
+
+```go
+// existing pattern — shown once, never stored plaintext
+body := `<div class="card"><h1>Domain verified</h1>
+<p>Save this production token now — it will not be shown again.</p>
+<div class="token-box" id="token">` + web.Esc(plain) + `</div>
+<p><a class="btn btn-primary" href="/dashboard">Back to dashboard</a></p></div>`
+```
+
+Key elements:
+- Urgent warning copy ("will not be shown again")
+- Monospace token box for easy selection
+- Single CTA back to dashboard (not to another secret page)
+- `data-copy` JS helper exists in `app.js` but is not wired to `.token-box` yet
+
+### DO: Add clipboard copy button to token boxes
+
+```html
+<!-- new code to add -->
+<div class="token-box" id="token">TOKEN_HERE</div>
+<button data-copy="#token" class="btn btn-sm btn-secondary">Copy</button>
+```
+
+The `data-copy` listener already exists in `app.js:3-9`.
+
+## Anti-Patterns
+
+### WARNING: Inline HTML without escaping
+
+```go
+// BAD — XSS if slug contains HTML
+b.WriteString("<li><strong>" + slug + "</strong></li>")
+
+// GOOD — always escape user content
+b.WriteString("<li><strong>" + web.Esc(slug) + "</strong></li>")
+```
+
+Existing code at `dashboard/handler.go:133` already uses `web.Esc()` for slugs and tokens. Maintain this pattern.
+
+### WARNING: Form without CSRF protection
+
+The login, domain, and token forms use POST without CSRF tokens. Session-based auth with no CSRF is a known risk. If adding new forms, match the existing pattern but flag for future hardening.
+
+## Audit Trail for Conversions
+
+Every API request through `domainAuth` middleware writes to `audit_logs` via `internal/service/audit/`. Use this to measure:
+
+- First API call after token creation (activation metric)
+- Domain verification latency (setup friction)
+- Token revocation frequency (churn signal)
+
+Query:
+
+```sql
+-- new code to add — activation metric
+SELECT u.email, MIN(a.created_at) AS first_api_call
+FROM audit_logs a JOIN users u ON u.id = a.user_id
+GROUP BY u.email ORDER BY first_api_call;
+```

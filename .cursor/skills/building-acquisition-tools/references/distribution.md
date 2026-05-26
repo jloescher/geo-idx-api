@@ -1,18 +1,40 @@
-# Distribution
+# Building Acquisition Tools Distribution Reference
 
-## When to use
-Deploy acquisition tools across multiple surfaces—GHL Marketplace widgets, standalone embeds, and direct API access—while maintaining security and origin validation.
+## When To Use
 
-## Patterns
+Use this reference when the task touches distribution while working on Building Acquisition Tools code in this repository.
 
-**GHL Marketplace Distribution**
-The OAuth flow (`/leadconnector/install`) → URL registration (`/leadconnector/register-urls`) → widget key issuance creates the distribution chain. Agency tokens exchange to location tokens via `LocationTokenService` so SaaS agencies can push widgets to sub-accounts without re-authentication.
+## What To Inspect
 
-**Three-Phase Widget Middleware**
-All widget routes use: (1) API key validation against `ghl_registered_urls.widget_api_key`, (2) Origin/Referer validation against registered URLs, (3) CORS header append. This allows cross-origin embedding while preventing unauthorized domains from consuming quota.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Standalone Public Tools**
-Build Livewire components in `app/Livewire/Marketing/` using `DomainOrTokenAuth` middleware. These bypass GHL OAuth entirely for direct traffic acquisition, funneling users into Stripe Checkout via `SubscriptionCheckoutController`.
+## Recommended Workflow
 
-## Warning
-The `GHL_WEBHOOK_REQUIRE_SIGNATURE` toggle must remain `true` in production. Disabling signature verification exposes the `/webhooks/leadconnector` endpoint to spoofed uninstall events that could orphan active subscriptions.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

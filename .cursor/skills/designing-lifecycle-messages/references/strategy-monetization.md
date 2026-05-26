@@ -1,38 +1,100 @@
-# Designing Lifecycle Messages Strategy Monetization Reference
+# Strategy and Monetization Reference
 
-## When To Use
+## Contents
+- Current business model
+- Monetization signals in the codebase
+- Tier design from existing data
+- Anti-patterns
 
-Use this reference when the task touches strategy monetization while working on Designing Lifecycle Messages code in this repository.
+## Current Business Model
 
-## What To Inspect
+Quantyra IDX is an **invite-only B2B MLS proxy**. The platform:
+- Proxies Bridge (Stellar) and Spark (Beaches) MLS data
+- Delivers listing images via NVMe-cached proxy
+- Provides PostGIS-backed search and GIS parcel data
+- Charges per domain with MLS dataset access
 
-- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
-- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
-- Prefer tactical edits with clear verification steps over broad strategy essays.
-- Search for nearby implementations before creating a new structure or helper.
+### Revenue surfaces in the codebase
 
-## Recommended Workflow
+| Surface | Table | Monetization signal |
+|---|---|---|
+| Domain registration | `domains` | One domain = one customer site |
+| API token scopes | `personal_access_tokens` | `idx:full`, `idx:access` tiers |
+| MLS dataset routing | `domains.allowed_mls_datasets` | JSONB array — per-dataset access control |
+| API usage | `audit_logs` | Per-domain, per-endpoint call volume |
+| GIS teaser tiers | `internal/handler/gis` | Free teaser vs authenticated full access |
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+The `allowed_mls_datasets` field is the existing access control for monetization:
 
-## Quality Bar
+```go
+// internal/handler/dashboard/handler.go:188 — domain creation with dataset access
+_, err := h.db.Pool.Exec(c.Context(), `
+    INSERT INTO domains (..., allowed_mls_datasets, ...)
+    VALUES ($1, $2, $3, $4::jsonb, ...)
+`, uid, slug, mls, `["`+mls+`"]`, ...)
+```
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+## Tier Design from Existing Data
 
-## Pitfalls
+The codebase already supports two scope levels:
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+| Scope | Access | Potential tier |
+|---|---|---|
+| `idx:full` | All endpoints, full listing data | Professional |
+| `idx:access` | Limited (GIS teaser only) | Starter |
 
-## Done Checklist
+### Usage-based pricing signals
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+```sql
+-- Per-domain API call volume (last 30 days)
+SELECT
+  d.domain_slug,
+  COUNT(*) AS total_calls,
+  COUNT(*) FILTER (WHERE a.path LIKE '/api/v1/search%') AS search_calls,
+  COUNT(*) FILTER (WHERE a.path LIKE '/images/%') AS image_calls,
+  COUNT(*) FILTER (WHERE a.path LIKE '/api/v1/gis%') AS gis_calls
+FROM domains d
+JOIN audit_logs a ON a.domain_id = d.id
+WHERE a.created_at > NOW() - INTERVAL '30 days'
+GROUP BY d.id
+ORDER BY total_calls DESC;
+```
+
+This query drives pricing tier decisions: if image proxy calls dominate, price on image volume. If search calls dominate, price on search queries.
+
+### Feature gating points
+
+Existing code that can support tiered access:
+
+1. **Search endpoint** (`POST /api/v1/search`) — gate by scope or usage quota
+2. **Image proxy** (`/images/*`) — gate by cache tier or monthly image limit
+3. **GIS teaser** — already has a free tier pattern in `internal/handler/gis`
+4. **Comps API** (`POST /api/v1/comps/run`) — gate BPO mode by scope
+5. **Dataset access** — `allowed_mls_datasets` already controls which MLS feeds a domain can use
+
+## Lifecycle messaging for monetization
+
+| Trigger | Message | Goal |
+|---|---|---|
+| Domain verified, first token created | "Welcome to Quantyra IDX — here's your first API call" | Activation |
+| 80% of monthly search quota reached | "You're approaching your plan limit — upgrade for uninterrupted access" | Upsell |
+| New MLS dataset available | "Stellar + Beaches data now available — add to your domain" | Cross-sell |
+| 30 days inactive | "Your domains haven't made API calls recently — need help?" | Retention |
+| Staging token used in production | "We noticed staging traffic on your production domain — switch to a production token" | Quality/upsell |
+
+## Anti-patterns
+
+### WARNING: Hardcoding pricing or limits in handler code
+
+Never embed plan limits, pricing, or quota values in handler string literals or service logic. These must come from configuration (env vars or database) so they can change without redeployment. Follow the existing pattern in `internal/config/config.go` where all tunable values are centralized.
+
+### WARNING: Breaking MLS access control for monetization
+
+The `allowed_mls_datasets` JSONB field controls which MLS feeds a domain can access. Any tier-based gating must respect this field — do not add a separate access control layer that could conflict with MLS data licensing requirements. See `docs/listings-mirror.md` for MLS data scope rules.
+
+## Related Skills
+
+- **auth-api-token** — token scopes and access tiers
+- **geospatial** — GIS teaser tier pattern
+- **queue-postgresql** — enqueue usage-based notification emails
+- **go** — config patterns for pricing variables

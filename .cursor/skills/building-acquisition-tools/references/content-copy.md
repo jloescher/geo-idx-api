@@ -1,18 +1,40 @@
-# Content Copy
+# Building Acquisition Tools Content Copy Reference
 
-## When to use
-Craft messaging for the sales landing page, widget embeds, and lead forms that communicates value while respecting MLS display restrictions and driving subscription upgrades.
+## When To Use
 
-## Patterns
+Use this reference when the task touches content copy while working on Building Acquisition Tools code in this repository.
 
-**Tiered Feature Positioning**
-The `SubscriptionCatalog` defines four tiers (Pro $39, Smart $79, Ultra $179, Mega $449) with escalating domain limits and API call allocations. Copy should emphasize the "teaser" vs "full" distinction without promising specific listing counts that violate Stellar MLS Exhibit A.
+## What To Inspect
 
-**Widget Loader Script Messaging**
-The `/widget/loader.js` endpoint returns configurable loader text. Use `ghl_widget_configs.widget_theme` and color fields to match agency branding while maintaining Quantyra value proposition in fallback copy when custom text isn't provided.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Lead Form Field Labels**
-`QuantyraLead` captures standard fields (name, email, phone) plus `lead_type` mapped via `ghl_lead_mappings`. Form copy should reference the location's registered domain (`ghl_registered_urls.primary_url`) for context-aware messaging like "Get alerts for [Domain] listings."
+## Recommended Workflow
 
-## Warning
-Avoid hardcoding specific listing quantities in marketing copy—the `BRIDGE_TEASER_LIMIT` (default 3) is configurable per environment and may change based on MLS agreement amendments.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

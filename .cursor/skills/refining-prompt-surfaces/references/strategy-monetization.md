@@ -1,18 +1,40 @@
-# Strategy & Monetization
+# Refining Prompt Surfaces Strategy Monetization Reference
 
-## When to use
-Adjusting pricing tiers, adding usage-based billing, or aligning GHL Marketplace positioning with IDX platform subscriptions.
+## When To Use
 
-## Patterns
+Use this reference when the task touches strategy monetization while working on Refining Prompt Surfaces code in this repository.
 
-**Metered API overage billing**
-The Ultra and Mega tiers include 2M API calls/month. Beyond that, Stripe metered billing kicks in via `STRIPE_PRICE_IDX_API_OVERAGE_METERED`. Expose usage counters in the subscriber dashboard using `BridgeProxyAuditLog` aggregations. Warn at 80%: "You've used 1.6M calls this month. Overage: $0.005 per 1K calls."
+## What To Inspect
 
-**GHL location vs independent billing**
-GHL Marketplace users may also subscribe directly via `idx.quantyralabs.cc`. The `ghl_installed_locations.subscription_status` field tracks GHL-side state; `users` table with Cashier tracks direct subscriptions. Avoid double-billing: check both sources before showing upgrade CTAs. Use `SubscriptionSyncService` to reconcile status.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Teaser as monetization lever**
-Domain-authenticated requests (no Sanctum token) always get teaser responses: 3 listings max, simplified GIS polygons. This is intentional—don't increase teaser limits. Instead, optimize the upgrade prompt timing: after 2 teaser views in one session, show the "Get full access" modal with the `SubscriptionCatalog` plan comparison.
+## Recommended Workflow
 
-## Warning
-Stripe webhook signing secrets differ between Dashboard endpoints and CLI forwarding (`stripe listen`). The `STRIPE_WEBHOOK_SECRET` env var must match the delivery method. Mismatched secrets cause webhook verification failures, which block subscription status updates and can leave users without access after payment.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

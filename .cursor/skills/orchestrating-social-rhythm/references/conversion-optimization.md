@@ -1,48 +1,69 @@
-# Conversion Optimization
+# Conversion Optimization Reference
 
-## When to use
-Apply these patterns when designing lead capture flows, gated content access, or trial-to-paid conversion paths in the IDX API ecosystem.
+## Contents
+- Dashboard-to-API-Key Funnel
+- Docs-as-Conversion-Surface
+- Teaser-to-Full-Access Upgrades
+- Anti-Patterns
 
-## Patterns
+## Dashboard-to-API-Key Funnel
 
-### Teaser Gating with Value Promise
-The Bridge proxy uses a 3-item teaser cap for non-full-access requests. The response includes just enough data to demonstrate value while compelling upgrade:
+The primary conversion path: visitor → dashboard signup → API key generation → first API call.
 
-```php
-// BridgeTeaser.php - Revenue impact: teaser cap drives subscription upgrades
-if (!$hasFullAccess && is_array($data)) {
-    return array_slice($data, 0, config('bridge.teaser_limit', 3));
-}
+```go
+// The auth flow in internal/handler/auth handles domain + token creation
+// Conversion friction points: ADMIN_SEED_EMAIL/PASSWORD for initial setup,
+// then /dashboard for customer self-service key issuance
 ```
 
-Combine with explicit upgrade CTAs in the dashboard showing "Unlock 50+ listings in this area" to maximize conversion intent.
+Conversion optimization targets:
+1. **Landing → Dashboard**: Reduce steps between reading docs and creating an API key
+2. **Dashboard → First call**: Provide copy-paste example with the new token
+3. **First call → Repeat use**: Dataset routing (`?dataset=stellar|beaches`) should work immediately
 
-### Progressive Profiling via Widget Leads
-Widget lead forms capture minimal fields initially (email + lead_type), then enrich via GHL contact sync:
+## Docs-as-Conversion-Surface
 
-```php
-// QuantyraLead → GHL contact pipeline
-$lead = QuantyraLead::create([
-    'ghl_location_id' => $locationId,
-    'lead_type' => 'showing_request', // Maps to GhlLeadMapping behavior
-    'payload' => ['email' => $email, 'first_name' => $firstName],
-]);
-SyncLeadToGhlJob::dispatch($lead)->onQueue('sync');
+`docs/` is the primary top-of-funnel surface for this developer platform. Each doc is a conversion opportunity.
+
+**DO:** Include working curl examples with placeholder tokens in every endpoint doc.
+```markdown
+GET /api/v1/search?dataset=stellar
+Authorization: Bearer YOUR_TOKEN
 ```
 
-### Trial Timeboxing with Usage Hooks
-14-day trials include soft warnings at 7 days and hard expiration. Surface usage metrics (API calls, widget loads) to create urgency:
+**DON'T:** Link to external auth docs without showing the request inline. Developers drop off at context switches.
 
-```php
-// SubscriptionCheckoutController - trial with metered overage
-$checkout = $user->newSubscription('default', $priceId)
-    ->trialDays(14)
-    ->allowPromotionCodes()
-    ->checkout([
-        'success_url' => route('dashboard') . '?subscription=active',
-        'cancel_url' => route('dashboard'),
-    ]);
-```
+## Teaser-to-Full-Access Upgrades
 
-## Pitfall
-Never gate critical MLS compliance features (audit logging, Origin validation) behind subscription tiers—regulators expect these at all tiers. Only gate data volume and advanced features.
+GIS parcels use a teaser tier system (see `docs/gis-api.md`). This is a built-in conversion mechanism:
+
+- Unauthenticated: limited parcel metadata
+- `idx:access` scope PAT: full geometry + parcel data
+- Conversion trigger: "Want full parcel data? Upgrade your token scope."
+
+Social content beats should align with teaser expansion — announce new data sources when the GIS probe (`gis.probe_sources`) discovers them.
+
+## Anti-Patterns
+
+### WARNING: Announcing Features Before Docs Exist
+
+**The Problem:** Social posts linking to 404s or incomplete docs erode trust immediately.
+
+**Why This Breaks:** Developer audience expects working references. A dead link on launch day means the developer moves on and rarely returns.
+
+**The Fix:** Content beats must list "docs published" as a prerequisite before the announcement beat fires. Use the editorial arc pattern from SKILL.md — docs ship in Week 1, social in Week 2.
+
+### WARNING: Generic CTAs on Developer Content
+
+**The Problem:** "Sign up today!" does not convert developers.
+
+**The Fix:** Use specific, value-driven CTAs: "Search 50k+ Active listings with one POST request — get your API key at /dashboard"
+
+## Checklist
+
+Copy this checklist and track progress:
+- [ ] Docs published and verified for new feature
+- [ ] curl examples tested with fresh token
+- [ ] Teaser tier updated if feature is gated
+- [ ] Dashboard banner reflects current beat
+- [ ] Analytics event fires on conversion action

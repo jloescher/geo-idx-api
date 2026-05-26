@@ -25,6 +25,8 @@ Use this reference when the task touches programmatic while working on Scaling T
 - Keep instructions concise, actionable, and tied to the repository's current structure.
 - Avoid new dependencies or patterns unless repetition clearly justifies them.
 
+
+
 ## Pitfalls
 
 - Mixing incompatible patterns in the same surface or module.

@@ -1,18 +1,40 @@
-# Measurement & Testing
+# Refining Prompt Surfaces Measurement Testing Reference
 
-## When to use
-Adding analytics to sales pages, tracking widget lead conversion, or monitoring GHL OAuth funnel completion.
+## When To Use
 
-## Patterns
+Use this reference when the task touches measurement testing while working on Refining Prompt Surfaces code in this repository.
 
-**Livewire dispatch for analytics**
-Use `$this->dispatch('analytics-event', ['event' => 'pricing_toggle', 'interval' => 'yearly'])` in `SalesLandingPage` when users switch billing intervals. Listen in `resources/js/app.js` with Alpine.js and forward to Plausible/Google Analytics. Keeps analytics logic out of PHP business logic.
+## What To Inspect
 
-**Bridge proxy audit logging**
-Every `/api/v1/*` call writes to `bridge_proxy_audit_logs` with `domain_slug`, `token_name`, `listing_count`. Query this table for usage-based conversion metrics: "Domains with >50 listing views in 7 days but no subscription" are upgrade candidates. Join with `ghl_installed_locations` for GHL-specific cohorts.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**GHL webhook event tracking**
-The `ghl_webhook_events` table persists all marketplace events with `webhook_id`. Use this to compute install-to-lead time: compare `INSTALL` webhook `created_at` to first `quantyra_leads` row for that `ghl_location_id`. The `GhlAuditService` logs latency metrics—query `latency_ms` for API health dashboards.
+## Recommended Workflow
 
-## Warning
-The `GHL_WEBHOOK_REQUIRE_SIGNATURE` env var controls signature verification. In local testing with tools like ngrok or Stripe CLI, you may need to disable this. Never disable in production—the webhook secret ensures events actually came from HighLevel, preventing fake install events from polluting conversion metrics.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

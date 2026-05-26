@@ -1,38 +1,147 @@
-# Mapping User Journeys Roadmap Experiments Reference
+# Roadmap & Experiments Reference
 
-## When To Use
+## Contents
+- Configuration-Driven Features
+- Search Route Experiments
+- Dataset Configuration
+- Replication Tuning
+- Feature Flags (Env-Based)
 
-Use this reference when the task touches roadmap experiments while working on Mapping User Journeys code in this repository.
+---
 
-## What To Inspect
+## Configuration-Driven Features
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+Most feature behavior is controlled by environment variables rather than feature flags. Changes require redeployment, not runtime toggles.
 
-## Recommended Workflow
+### Key Config Surfaces
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+| Config | Env Var | Default | Effect |
+|--------|---------|---------|--------|
+| `Bridge.SyncFullProperty` | `BRIDGE_SYNC_FULL_PROPERTY` | `true` | Full vs select-mode Bridge sync |
+| `Bridge.SyncIncludeMedia` | `BRIDGE_SYNC_INCLUDE_MEDIA` | `true` | Media inline vs separate |
+| `MLS.StellarEnabled` | `MLS_STELLAR_ENABLED` | `true` | Enable Bridge/Stellar replication |
+| `MLS.BeachesEnabled` | `MLS_BEACHES_ENABLED` | `true` | Enable Spark/Beaches replication |
+| `MLS.ReplicationFreshnessMinutes` | `MLS_REPLICATION_FRESHNESS_MINUTES` | `15` | Sync frequency |
+| `MLS.LocalMirrorRollingMonths` | `MLS_LOCAL_MIRROR_ROLLING_MONTHS` | varies | Data retention window |
 
-## Quality Bar
+---
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+## Search Route Experiments
 
-## Pitfalls
+The hybrid search router (`internal/service/search/service.go` → `DecideRoute()`) is the primary experiment surface:
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+### Route Decision Logic
 
-## Done Checklist
+```go
+// Current routing rules (simplified):
+func DecideRoute(req SearchRequest) Route {
+    if req.PriceReducedWithinDays > 0 { return RouteUpstreamOnly }
+    if hasMixedStatuses(req)           { return RouteSplit }
+    if onlyActivePending(req)          { return RoutePostgresOnly }
+    if onlyClosed(req)                 { return RouteUpstreamOnly }
+    return RoutePostgresOnly           // default
+}
+```
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+### Experimentation Vectors
+
+| Change | Config Surface | Impact |
+|--------|---------------|--------|
+| Shift more queries to PostGIS | Expand mirror columns | Reduced upstream cost |
+| Add new status to PostGIS route | `DecideRoute()` logic | Faster for those statuses |
+| Change default status filter | `SearchRequest` defaults | Changes most users' experience |
+| Adjust geo radius limits | PostGIS query bounds | Performance vs coverage |
+
+---
+
+## Dataset Configuration
+
+Each domain has `allowed_mls_datasets` controlling which MLS feeds it can access:
+
+```go
+// internal/repository/domain.go
+func (r *DomainRepo) AllowedDatasets(d *domain.Domain) []string
+```
+
+Dataset routing in requests:
+
+| Parameter | Purpose | Values |
+|-----------|---------|--------|
+| `?dataset=stellar` | Bridge/Stellar feed | Default for most domains |
+| `?dataset=beaches` | Spark/Beaches feed | Requires Spark enablement |
+
+---
+
+## Replication Tuning
+
+Replication behavior is controlled by chunk sizes and batch limits:
+
+| Variable | Bridge Default | Spark Default | Effect |
+|----------|---------------|---------------|--------|
+| `*_SYNC_REPLICATION_TOP` | 2000 | 1000 | Rows per replication page |
+| `*_SYNC_INCREMENTAL_TOP` | 200 | 1000 | Rows per incremental page |
+| `*_SYNC_PERSIST_JOB_CHUNK` | 50 | 50 | Rows per persist job |
+| `*_SYNC_UPSERT_CHUNK` | 250 | 250 | Rows per SQL upsert |
+
+### Replication Flow for Experiments
+
+```
+Scheduler (every minute)
+  → mls.replication_kickoff
+  → Check freshness: last_sync_finished_at + MLS_REPLICATION_FRESHNESS_MINUTES
+  → If stale: enqueue bridge.fetch_page / spark.fetch_page
+  → Worker: fetch MLS data → write replica_pages (gzip staging)
+  → Worker: bridge.persist_chunk / spark.persist_chunk
+  → Upsert to listings table
+  → Update listing_sync_cursors
+```
+
+---
+
+## Feature Flags (Env-Based)
+
+### WARNING: No Runtime Feature Flags
+
+**The Problem:** All feature toggles are env vars. Changing behavior requires redeploying the affected service (api, worker, or scheduler).
+
+**Why This Breaks:** Can't do gradual rollouts, A/B tests, or instant kill switches. Every config change is a full deploy cycle.
+
+**The Fix:** For critical experiments, consider a database-backed feature flag table that the API checks on each request. Simple approach:
+
+```sql
+-- new code to add
+CREATE TABLE feature_flags (
+    name TEXT PRIMARY KEY,
+    enabled BOOLEAN NOT NULL DEFAULT false,
+    allowed_domains TEXT[] -- NULL = all domains
+);
+```
+
+### Current Toggle Pattern
+
+```go
+// Existing pattern: static env-based check
+if !cfg.MLS.StellarEnabled {
+    // Skip Stellar replication entirely
+}
+```
+
+This is appropriate for infrastructure-level toggles but not for per-user experiments.
+
+---
+
+## Experiment Checklist
+
+Copy this checklist when planning a new experiment:
+
+- [ ] Identify the config surface (env var vs code change)
+- [ ] Determine blast radius (all users vs per-domain)
+- [ ] Plan rollback (env var revert vs redeploy)
+- [ ] Add audit logging for the new behavior
+- [ ] Define success metric (latency, cache hit rate, engagement)
+- [ ] Set measurement window (minimum data collection period)
+- [ ] Document the experiment in `docs/`
+
+See the **go** skill for Go environment configuration patterns.
+See the **deploy-coolify** skill for deployment and env var management.
+See the **queue-postgresql** skill for replication queue internals.

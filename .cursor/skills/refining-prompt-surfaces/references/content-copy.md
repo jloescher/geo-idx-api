@@ -1,18 +1,40 @@
-# Content Copy
+# Refining Prompt Surfaces Content Copy Reference
 
-## When to use
-Writing UI text for subscription tiers, error messages, widget loaders, or GHL onboarding flows in the IDX platform.
+## When To Use
 
-## Patterns
+Use this reference when the task touches content copy while working on Refining Prompt Surfaces code in this repository.
 
-**Subscription tier naming consistency**
-The `SubscriptionCatalog` defines four tiers: Pro, Smart, Ultra, Mega. Mirror these names exactly in all UI copy—Stripe price IDs (`STRIPE_PRICE_IDX_PRO_MONTHLY`, etc.) depend on this mapping. Use "Upgrade to [Tier]" not "Get [Tier]" to reinforce progression. Include metered overage warnings: "2M API calls/mo included, then $0.005 per 1K calls."
+## What To Inspect
 
-**MLS compliance disclaimers**
-Widget embeds and GHL flows must display Stellar MLS attribution. Use the exact copy: "Listing data provided by Stellar MLS. Information deemed reliable but not guaranteed." Store this in `config/billing.php` or a localization file for consistency across `resources/views/widget/` templates.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Error message granularity**
-Bridge proxy errors should distinguish between auth failures (401/403) and upstream MLS issues. Use "Domain not registered for MLS access" for `DomainOrTokenAuth` failures—don't expose `BRIDGE_API_KEY` issues. For GHL OAuth, "Connection to HighLevel expired" is clearer than "Token invalid."
+## Recommended Workflow
 
-## Warning
-Never include actual Stripe price amounts in Blade templates—always pull from `SubscriptionCatalog` or `config/billing.php`. Prices change between test/live modes and currencies. Hardcoded prices in copy cause billing disputes when the catalog updates.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

@@ -1,17 +1,40 @@
-# Feedback & Insights
+# Prioritizing Roadmap Bets Feedback Insights Reference
 
-## When to use
+## When To Use
 
-Scoring initiatives that collect subscriber input, support telemetry, or synthesize qualitative data into prioritization signals. Apply when betting on NPS surveys, support ticket classification, or GHL webhook-driven health signals that inform roadmap tradeoffs.
+Use this reference when the task touches feedback insights while working on Prioritizing Roadmap Bets code in this repository.
 
-## Project-relevant patterns
+## What To Inspect
 
-**Webhook health as proxy**: The `ghl_webhook_events` table captures INSTALL/UNINSTALL and CRM events. High-impact bets correlate uninstall spikes with recent deploys or subscription changes — effort is SQL aggregation on `processing_status` and `event_type`, not new data collection.
+- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
+- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
+- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Lead type mapping feedback**: `GhlLeadMapping` (seeded by `GhlConfigSeeder`) defines how `quantyra_leads` become GHL contacts. Medium-effort bets add per-location customization of these mappings, but require validation that `SyncLeadToGhlJob` handles malformed payloads without retry loops.
+## Recommended Workflow
 
-**Widget error telemetry**: The widget middleware chain validates API keys and origins. Low-effort bets log validation failures (e.g., origin mismatch) to `ghl_audit_logs` with `compliance_verified=false`, exposing configuration errors that block lead capture.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-## Warning
+## Quality Bar
 
-Do not build feedback mechanisms that bypass the existing audit infrastructure. The `GhlAuditService` dual-channel logging (database + file) is designed for MLS compliance — custom feedback tables may miss the `is_mls_data_access` flagging required for Stellar MLS reporting obligations.
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

@@ -1,17 +1,40 @@
-# Measurement & Testing
+# Crafting Page Messaging Measurement Testing Reference
 
-## When to use
+## When To Use
 
-Setting up analytics, A/B tests, or success metrics for page changes—understanding what "better" means and how to detect it.
+Use this reference when the task touches measurement testing while working on Crafting Page Messaging code in this repository.
 
-## Project-relevant patterns
+## What To Inspect
 
-**Trial-start as North Star** — For marketing pages, the primary conversion is Stripe Checkout session creation. Track this with the `billing.checkout` route event. Secondary: GHL OAuth start (`leadconnector.oauth.authorize`), which indicates install intent even if billing happens later.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**GHL location activation depth** — Not all installs are equal. A location that registers URLs and embeds a widget is more valuable than one that completes OAuth and goes dormant. Measure "locations with widget loads" separately from "locations with OAuth tokens."
+## Recommended Workflow
 
-**Teaser-to-upgrade funnel** — Track impressions of teaser-limited listings (3 items), then upgrade click-through rate. If teaser CTR is low, the constraint may be invisible or the upgrade path unclear. If it's high but conversion low, the pricing page may be the problem.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
 
 ## Pitfalls
 
-Avoid measuring "API call volume" as a marketing success metric. High Bridge proxy traffic can come from a single misconfigured widget or bot. Correlate API volume with distinct domain count or paying location count to measure real adoption.
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

@@ -1,18 +1,40 @@
-# Measurement Testing
+# Building Acquisition Tools Measurement Testing Reference
 
-## When to use
-Track tool effectiveness, subscription conversion rates, and system health through audit logs, subscription status monitoring, and A/B variant testing.
+## When To Use
 
-## Patterns
+Use this reference when the task touches measurement testing while working on Building Acquisition Tools code in this repository.
 
-**Dual-Channel Audit Logging**
-`GhlAuditService` writes to both `ghl_audit_logs` (PostgreSQL) and optional file channel (`GHL_AUDIT_LOG_PATH`). Track widget impressions via `request_type='widget_load'`, lead submissions via `request_type='lead_ingest'`, and conversion events via subscription status changes in `ghl_installed_locations`.
+## What To Inspect
 
-**Subscription Status Funnel**
-The `subscription_status` column cycles through `none → trial → active → past_due → cancelled`. Stripe webhooks update this via `SubscriptionSyncService`, which propagates tags back to GHL CRM for campaign segmentation. Test checkout flows using `./scripts/stripe-dev.sh trigger-checkout-completed`.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Widget Variant Testing**
-Create multiple `ghl_widget_configs` rows for the same location with different `gate_after_views` values. The widget API key determines which configuration serves, allowing parallel testing of gating thresholds without code changes.
+## Recommended Workflow
 
-## Warning
-The `RefreshDomainListingsCacheJob` runs every 15 minutes per active domain—monitor queue depth during load tests. Stalled queue workers prevent cache refresh, causing stale data that degrades conversion rates silently.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

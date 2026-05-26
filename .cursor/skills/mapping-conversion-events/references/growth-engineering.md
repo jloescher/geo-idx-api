@@ -1,26 +1,40 @@
-# Growth Engineering
+# Mapping Conversion Events Growth Engineering Reference
 
-## When to use
+## When To Use
 
-Building viral loops, automating lead workflows, or expanding GHL integration surface area. Reference when designing features that increase widget embed adoption or reduce churn.
+Use this reference when the task touches growth engineering while working on Mapping Conversion Events code in this repository.
 
-## Patterns
+## What To Inspect
 
-**Widget Viral Loop** (`routes/ghl-widget.php`)
-- Loader pattern: Single `<script>` tag embeds multiple widget types
-- Lead attribution: `quantyra_leads.payload` stores source widget and UTM params
-- Domain registration: Additional URLs in `ghl_registered_urls.additional_urls` (JSON array)
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Lead Sync Automation** (`app/Ghl/Sync/`)
-- `SyncLeadToGhlJob` processes `quantyra_leads` → GHL contacts
-- `GhlLeadMapping` configures pipeline/stage/tag assignment per `lead_type`
-- `LeadSyncService` creates contacts via `GhlApiClient` with auto-audit logging
+## Recommended Workflow
 
-**Token Refresh Automation** (`routes/console.php`)
-- Hourly: `ghl:refresh-tokens` prevents OAuth expiry
-- Schedule: `php artisan schedule:run` or `schedule:work` in dev
-- Queue: Requires running queue worker for background jobs
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-## Warning
+## Quality Bar
 
-Teaser gating (`BridgeTeaser` service) caps listings at 3 items for domain-authenticated requests. This is a revenue lever—do not cache teaser-applied responses as the underlying full data is still accessible via `idx:full` tokens. Cached bytes store full Bridge body; teaser applies after decompression.
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

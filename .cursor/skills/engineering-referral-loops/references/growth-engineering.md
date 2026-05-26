@@ -1,18 +1,40 @@
-# Growth Engineering for Partner Loops
+# Engineering Referral Loops Growth Engineering Reference
 
-## When to use
-When scaling from dozens to thousands of partner locations through caching, queue workers, and automated maintenance that reduces operational toil.
+## When To Use
 
-## Project-relevant patterns
+Use this reference when the task touches growth engineering while working on Engineering Referral Loops code in this repository.
 
-**Generation-based cache invalidation**
-Store `cache_generation` in `gis_source_states` table. When weekly probes detect ArcGIS layer metadata changes, increment generation—this invalidates both edge cache (Laravel Cache) and origin cache (PostgreSQL `gis_cache`) without manual purges.
+## What To Inspect
 
-**Scheduled token maintenance**
-Run `ghl:refresh-tokens` hourly via `routes/console.php` with `withoutOverlapping()`. Proactive refresh before `expires_at` prevents service outages when GHL tokens expire mid-day.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Domain-scoped listing cache**
-Cache `GET /api/v1/listings` per `domain_slug` in PostgreSQL with 15-minute TTL. Skip cache when `?filters=` present to ensure filtered queries always hit upstream for accuracy. This amortizes Bridge API costs across high-traffic domains.
+## Recommended Workflow
 
-## Warning
-Queue worker failures on token refresh jobs can silently accumulate. Monitor `failed_jobs` table for `RefreshGhlTokens` or `SyncLeadToGhlJob` failures—unhandled exceptions there don't bubble up to the OAuth callback and partners will experience broken sync without alerts.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

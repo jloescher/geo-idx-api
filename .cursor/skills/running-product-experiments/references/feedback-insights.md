@@ -1,38 +1,113 @@
-# Running Product Experiments Feedback Insights Reference
+# Feedback & Insights Reference
 
-## When To Use
+## Contents
+- Feedback Surfaces
+- Audit-Driven Insights
+- Structured Feedback Collection
+- Insight Extraction Patterns
+- Anti-Patterns
 
-Use this reference when the task touches feedback insights while working on Running Product Experiments code in this repository.
+---
 
-## What To Inspect
+## Feedback Surfaces
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+idx-api has no built-in feedback mechanism. Available signal sources:
 
-## Recommended Workflow
+| Source | Location | Signal type |
+|--------|----------|-------------|
+| Audit logs | `mls_proxy_audit_logs` | Usage patterns, errors |
+| Error responses | Handler return values | Friction points |
+| Support contact | External (email/Slack) | Qualitative |
+| Sync stats | `GET /api/v1/bridge/stats` | Data quality issues |
+| DNS verification failures | `domains` table | Onboarding friction |
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+## Audit-Driven Insights
 
-## Quality Bar
+### Extract pain points from error rates
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+```sql
+-- Domains with highest error rates (proxy failures logged by request_type)
+SELECT domain_slug,
+       COUNT(*) AS total_requests,
+       COUNT(*) FILTER (WHERE cache_hit = 'miss') AS cache_misses,
+       ROUND(100.0 * COUNT(*) FILTER (WHERE cache_hit = 'miss') / COUNT(*), 1) AS miss_pct
+FROM mls_proxy_audit_logs
+WHERE created_at > now() - INTERVAL '7 days'
+GROUP BY 1
+HAVING COUNT(*) FILTER (WHERE cache_hit = 'miss') > 0
+ORDER BY miss_pct DESC;
+```
 
-## Pitfalls
+### Identify under-engaged domains
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+```sql
+-- Domains that verified but never made an API call
+SELECT d.slug
+FROM domains d
+WHERE d.verified_at IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM mls_proxy_audit_logs l
+    WHERE l.domain_slug = d.slug
+  );
+```
 
-## Done Checklist
+These domains likely hit a friction point between verification and first API call.
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+## Structured Feedback Collection
+
+### DO: Add feedback endpoint with minimal friction
+
+```go
+// new code to add
+// POST /api/v1/feedback — token-authenticated
+type FeedbackRequest struct {
+    Category string `json:"category"` // "bug", "feature", "confusion"
+    Message  string `json:"message"`
+    URL      string `json:"url"`      // page or endpoint context
+}
+
+// Store in feedback table, no email required
+```
+
+### DO: Tag audit logs with error categories
+
+Extend `Logger.Log()` with an `error_category` field for classifying proxy failures:
+
+```go
+// new code to add
+type AuditOpts struct {
+    ErrorCategory *string // "timeout", "auth", "upstream_5xx", "invalid_query"
+}
+```
+
+## Insight Extraction Patterns
+
+1. **Weekly digest query** — Aggregate top errors, under-engaged domains, new activations
+2. **Support correlation** — When support contacts arrive, cross-reference audit logs for that domain's recent activity
+3. **Feature request clustering** — Group feedback by category, rank by domain count
+
+```sql
+-- new code to add — feedback summary view
+CREATE VIEW v_feedback_summary AS
+SELECT category,
+       COUNT(*) AS mentions,
+       COUNT(DISTINCT domain_slug) AS unique_domains,
+       array_agg(DISTINCT message ORDER BY created_at DESC) FILTER (WHERE created_at > now() - INTERVAL '30 days') AS recent_messages
+FROM feedback
+GROUP BY category
+ORDER BY unique_domains DESC;
+```
+
+## Anti-Patterns
+
+### WARNING: Treating all feedback equally
+
+A single loud user is not product insight. Weight feedback by domain engagement — a power user's bug report matters more than a never-activated domain's feature request.
+
+**Fix:** Always join feedback against usage data before prioritizing.
+
+### WARNING: Collecting feedback without acting on it
+
+A `/feedback` endpoint that writes to an unmonitored table is theater. Either commit to a review cadence (weekly) or don't build it.
+
+See the **queue-postgresql** skill for scheduling feedback aggregation jobs and the **auth-api-token** skill for securing feedback endpoints.

@@ -1,6 +1,6 @@
 # Quantyra GeoIDX — Documentation Index
 
-Central index for all documentation in this project. Implementation code lives in this repository root, and **reference and integration guides** live under `docs/`.
+Central index for **idx-api** (Go 1.25+). Implementation lives in `cmd/` and `internal/`; guides live under `docs/`.
 
 ---
 
@@ -8,54 +8,68 @@ Central index for all documentation in this project. Implementation code lives i
 
 | Document | Description |
 |----------|-------------|
-| [idx-api HTTP API overview](api.md) | `/api/v1` and GIS entrypoints; how dashboard Sanctum keys relate to `domain.token`; link to Stripe test user seeding. |
-| [OpenAPI spec document](yaak-api-collection.json) | Canonical OpenAPI `3.1.0` document used by Swagger UI (`/swagger`) and served at `/openapi.json`. |
-| [Bridge / MLS API](bridge-api-documentation.md) | Bridge Data Output API reference (Stellar MLS proxy usage). |
-| [IDX-API Bridge proxy](idx-api-bridge-proxy.md) | Secured Bridge proxy: `/api/v1/*`, `?domain=`, auth (domains + Sanctum **`idx:access`/`idx:full`**, Ultra/Mega **dashboard API keys**), listings cache (15m), **search cache**, listing pricing enrichment (`pricing` + `pricing_converted`), queued CoinGecko quote refresh, JSON photo URL rewrite to **idx-images**, CloudFront URL normalization, OData cursor pagination, `/images/*` streaming proxy + immutable CDN headers, audit, env, Docker. |
-| [Comps API](comps-api.md) | `POST /api/v1/comps/run` for A–E comps, investor modes (`rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`), BPO mode (`bpo`) with market-derived adjustments, and **home value estimator** (`home_value`) with Google Maps geocoding, condition overlay, and market-scaled renovation credits. |
-| [GoHighLevel OAuth (vendor)](gohighlevel-oauth-documentation.md) | Curated GHL OAuth 2.0, token refresh, scopes, webhooks (reference from marketplace docs). |
-| [GHL Marketplace integration](ghl-marketplace-integration.md) | Quantyra implementation in **idx-api**: OAuth, onboarding, widgets, API routes, jobs. |
-| [GHL deployment & operations](ghl-deployment-and-operations.md) | Docker, Dokploy, migrations, queues, scheduling. |
-| [Docker builds](../README.md) | Production Dockerfiles in this project (`Dockerfile.idx-api`, `Dockerfile.idx-images`) with project-root build context. |
-| [GHL environment variables](ghl-environment-variables.md) | All `GHL_*`, `IDX_*`, and related env vars for idx-api and compose. |
-| [Stripe & Laravel Cashier](stripe-laravel-cashier.md) | `STRIPE_*`, `CASHIER_*`, webhook URLs, Dashboard vs CLI signing secrets, local forwarding, **`php artisan billing:seed-test-users`** for Pro/Smart/Ultra/Mega Stripe test subscribers. |
-| [GHL database schema](ghl-database-schema.md) | PostgreSQL tables created for GHL, leads, audit, widgets. |
-| [GHL API & routes reference](ghl-api-routes-reference.md) | HTTP routes, auth, widgets, curl examples. |
+| [HTTP API overview](api.md) | `/api/v1`, GIS, auth (domain + PAT), dashboard tokens, OpenAPI |
+| [Go cutover runbook](go-cutover.md) | Laravel → Go migration, queue purge, API key re-issue |
+| [OpenAPI spec](yaak-api-collection.json) | OpenAPI 3.1 source (`GET /openapi.json`, `GET /swagger` on API host) |
+| [Bridge / MLS API](bridge-api-documentation.md) | Bridge Data Output upstream reference |
+| [Spark Platform (Beaches MLS)](spark/README.md) | Integration, RESO, compliance, fixtures |
+| [Spark — idx-api integration](spark/idx-api-integration.md) | Replication, dual hosts, queues, hybrid search |
+| [IDX-API Bridge proxy](idx-api-bridge-proxy.md) | Proxy auth, cache, mirror, search, images, env |
+| [Comps API](comps-api.md) | `POST /api/v1/comps/run` (BPO, home value, investor modes) |
+| [GIS API](gis-api.md) | Parcel/geometry proxy, teaser for `idx:access`-only PATs |
+| [GIS sources](gis-sources.md) | County parcel REST catalog, FDOR/FDOT findings, MLS coverage, probes |
+| [Database migrations](database-migrations.md) | Goose SQL, PostGIS, schema inventory |
+| [Listings mirror](listings-mirror.md) | Payload split, `$expand`, replication kickoff gating, hybrid search merge |
+| [FEMA flood enrichment](fema-flood-enrichment.md) | NFHL Layer 28 jobs, `fema_flood_zone_code`, FEMA-backed `low_risk_flood_zone_yn` |
+| [Deployment & operations](deployment-operations.md) | Docker, queues, scheduler leader lock, migrations |
+| [Coolify deployment](coolify-deployment.md) | Single-host and **multi-DC (NYC + ATL)** runbooks |
+| [README](../README.md) | Local dev, `make` targets, build & test |
 
 ---
 
-## Design & planning (internal)
-
-| Path | Purpose |
-|------|---------|
-| [superpowers/specs/2026-04-22-ghl-marketplace-integration-design.md](superpowers/specs/2026-04-22-ghl-marketplace-integration-design.md) | Approved product/design spec for the GHL app. |
-| [superpowers/plans/2026-04-22-ghl-marketplace-implementation.md](superpowers/plans/2026-04-22-ghl-marketplace-implementation.md) | Implementation plan checklist. |
-
----
-
-## Official external references
-
-- [GHL Marketplace — Getting Started](https://marketplace.gohighlevel.com/docs/oauth/GettingStarted)
-- [OAuth 2.0](https://marketplace.gohighlevel.com/docs/Authorization/OAuth2.0/)
-- [Create Marketplace App](https://marketplace.gohighlevel.com/docs/oauth/CreateMarketplaceApp/)
-- [Scopes](https://marketplace.gohighlevel.com/docs/Authorization/Scopes/)
-- [Webhook category](https://marketplace.gohighlevel.com/docs/category/webhook)
-
----
-
-## Project layout summary
+## Project layout
 
 | Path | Role |
 |------|------|
-| `app/`, `routes/`, `config/`, `database/` | Laravel 13 + Octane: **secured Bridge MLS proxy** (`/api/v1/*`, images), **GHL Marketplace app**, widgets, webhooks, and **Stripe / Cashier** billing (when enabled). |
-| `docs/` | Product, integration, deployment, and operations documentation. |
-| `tests/` | Feature and unit test coverage for Bridge and GHL flows. |
-| `Dockerfile.idx-api`, `Dockerfile.idx-images` | Production container images for API and image edge. |
+| `cmd/api`, `cmd/worker`, `cmd/scheduler`, `cmd/seed` | Binaries |
+| `internal/` | Handlers, services, queue, repository, config |
+| `migrations/` | Goose SQL schema |
+| `internal/web/static/` | Embedded dashboard/marketing assets |
+| `docs/` | Product and operations documentation |
+| `Dockerfile` | Targets: `api`, `worker`, `scheduler` |
+| `Dockerfile.idx-images` | Nginx edge for `/images/*` |
+| `scripts/verify-patroni-connectivity.sh` | Multi-DC DB smoke (`psql` + optional `/readyz`) |
 
-For a full product overview, see the root [README.md](../README.md). **Docker / Dokploy:** build from project root using [`Dockerfile.idx-api`] and [`Dockerfile.idx-images`] as documented in [README.md](../README.md).
+---
 
-## Dev run commands
+## Scheduled jobs (Go)
 
-- Docker dev up/watch: `./scripts/docker-dev.sh up-watch`
-- Docker dev down: `./scripts/docker-dev.sh down`
-- Stripe webhook forwarding: VS Code task `Stripe Dev: Listen` (or `./scripts/stripe-dev.sh listen`)
+`cmd/scheduler` enqueues (workers in `cmd/worker` execute):
+
+| Cron (approx.) | Queue job type | Purpose |
+|----------------|----------------|---------|
+| Every minute | `mls.replication_kickoff` on `sync-kickoff` | Bridge/Spark replication kickoff (deduped; see [listings-mirror](listings-mirror.md)) |
+| Every 15 min | `mls.proxy_cache_purge` | Purge expired `mls_search_cache` rows |
+| Every 10 min | `crypto.refresh_pricing` | CoinGecko snapshot refresh |
+| Daily 03:05 | `mls.purge_closed_listings` | Closed + rolling-window trim on `listings` |
+| Daily 04:15 | `mls.purge_replica_pages` | Stale `replica_pages` staging |
+| Monday 06:30 | `gis.probe_sources` | ArcGIS metadata probe |
+
+**Multi-DC:** deploy two schedulers only with PostgreSQL advisory lock (`SCHEDULER_LEADER_LOCK_ID`) — see [Coolify deployment §7](coolify-deployment.md#7-scheduler-cluster-leadership-required-for-2-schedulers).
+
+---
+
+## Dev commands
+
+```bash
+cp .env.example .env
+export GOOSE_DBSTRING="postgres://..."
+make migrate
+make seed-admin
+make run-api          # :8000
+make run-worker       # WORKER_QUEUES (include sync-kickoff + fetch/persist queues)
+make run-scheduler
+go test ./...
+```
+
+Docker: `docker compose -f docker-compose.dev.yml up --build`

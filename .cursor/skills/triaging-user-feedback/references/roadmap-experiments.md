@@ -1,38 +1,118 @@
-# Triaging User Feedback Roadmap Experiments Reference
+# Roadmap & Experiments Feedback
 
-## When To Use
+## Contents
+- Prioritization Framework
+- Experiment Surfaces
+- Validation Patterns
+- Impact Measurement
 
-Use this reference when the task touches roadmap experiments while working on Triaging User Feedback code in this repository.
+## Prioritization Framework
 
-## What To Inspect
+Roadmap decisions for Quantyra IDX should be data-driven using signals from audit logs and operational metrics, not gut feeling.
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+### Signal-Based Prioritization
 
-## Recommended Workflow
+| Signal Source | Weight | How to Measure |
+|---------------|--------|----------------|
+| Multiple users requesting same feature | High | Support tickets + forum mentions |
+| High error rate on specific endpoint | High | `mls_proxy_audit_logs` error frequency |
+| Low adoption of existing feature | Medium | Endpoint usage distribution |
+| Competitor parity gap | Medium | Market research |
+| Internal operational pain | Low-Medium | Worker/scheduler error logs |
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+### Priority Score Formula
 
-## Quality Bar
+```
+Priority = (Users Affected × Frequency) / (Implementation Effort × Risk)
+```
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+Where:
+- **Users Affected**: Count from `domains` table or audit log distinct domains
+- **Frequency**: Occurrences per week from audit logs
+- **Implementation Effort**: Hours estimated (1 = hours, 2 = days, 3 = weeks)
+- **Risk**: Breaking change risk (1 = safe, 2 = moderate, 3 = high)
 
-## Pitfalls
+## Experiment Surfaces
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+### API Surface Experiments
 
-## Done Checklist
+The API proxy layer (`internal/handler/`) supports feature experimentation through:
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+| Surface | What Can Vary | How to Segment |
+|---------|--------------|----------------|
+| Search response format | Property JSON shape, included fields | By `domain_slug` or token scope |
+| Cache TTL | `mls_search_cache` expiration | By dataset or endpoint |
+| GIS teaser limits | Fields included in teaser response | By `idx:access` vs `idx:full` scope |
+| Comps output | BPO vs home value vs investor mode | By request payload |
+
+### WARNING: A/B testing API responses
+
+API consumers are developers who write code against specific response shapes. Varying API responses by domain is dangerous — it creates hard-to-debug integration issues. Prefer:
+1. **Feature flags on new endpoints** (not varying existing ones)
+2. **Opt-in parameters** (`?include=gis` instead of automatic inclusion)
+3. **Versioned endpoints** (`/api/v2/search`) for breaking changes
+
+### Dashboard Surface Experiments
+
+The server-rendered dashboard (`internal/handler/dashboard/handler.go`) supports simpler experimentation:
+
+| Surface | What Can Vary | Risk |
+|---------|--------------|------|
+| DNS verification instructions | Copy, layout, auto-refresh | Low |
+| Token creation flow | Show example, scope descriptions | Low |
+| Domain listing order | Sort by status, recent activity | Low |
+| Empty states | Guidance for new users | Low |
+
+## Validation Patterns
+
+### Pattern: Validate Feature Request with Audit Data
+
+Before building a requested feature:
+
+```sql
+-- Check if requesters are actually active users
+SELECT a.domain_slug, COUNT(*) AS requests_last_30d
+FROM mls_proxy_audit_logs a
+WHERE a.domain_slug IN ('requester-domain-1', 'requester-domain-2')
+  AND a.created_at > NOW() - INTERVAL '30 days'
+GROUP BY a.domain_slug;
+```
+
+If requesting domains have zero API activity, the feature request is theoretical. Prioritize active users' feedback.
+
+### Pattern: Measure Impact After Ship
+
+After shipping a change:
+
+1. **Before/after comparison**: Same metric, two time periods
+2. **Affected vs unaffected**: Domains that got the change vs those that didn't
+3. **Support ticket volume**: Count of related tickets before and after
+
+```sql
+-- Before/after: compare cache hit rate after TTL change
+SELECT
+  CASE WHEN created_at < '2026-05-15' THEN 'before' ELSE 'after' END AS period,
+  ROUND(COUNT(CASE WHEN cache_hit = 'hit' THEN 1 END)::numeric / COUNT(*) * 100, 1) AS hit_rate
+FROM mls_proxy_audit_logs
+WHERE created_at BETWEEN '2026-05-01' AND '2026-05-30'
+GROUP BY period;
+```
+
+## Impact Measurement
+
+### DO: Ship small, measure fast
+
+Each roadmap item should have a measurable outcome defined before implementation:
+- "Reduce DNS verification retries by 50%" (measurable from domain status history)
+- "Increase search endpoint adoption to 60% of active domains" (measurable from audit logs)
+- "Reduce replication lag to < 5 minutes" (measurable from sync cursors)
+
+### DON'T: Ship without a measurement plan
+
+If you can't measure whether a change improved things, it shouldn't be on the roadmap. Every item needs a before-state baseline.
+
+## Related Skills
+
+- See the **product-analytics** skill for measurement queries
+- See the **engagement-adoption** skill for adoption tracking
+- See the **proxy-web** skill for cache TTL experimentation

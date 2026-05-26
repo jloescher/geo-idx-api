@@ -1,46 +1,114 @@
 ---
 name: strengthening-upgrade-moments
-description: Improves upgrade prompts and paywall messaging across the GeoIDX platform, including teaser gating, subscription tier positioning, and conversion-optimized copy in Livewire components, Blade templates, and API responses.
-allowed-tools: [Read, Edit, Write, Glob, Grep, Bash]
-model: sonnet
+description: |
+  Improves upgrade prompts and paywall messaging.
+  Use when: implementing or refactoring Strengthening Upgrade Moments work, troubleshooting conversion optimization, content copy, distribution, or aligning new changes with the repository's existing conventions
+allowed-tools: Read, Edit, Write, Glob, Grep, Bash
 ---
 
 # Strengthening Upgrade Moments Skill
 
-This skill helps improve upgrade prompts and paywall messaging across the Quantyra GeoIDX platform, from the 3-item teaser gate in the Bridge proxy to the subscription checkout flow and GHL widget surfaces.
+This fallback skill keeps Strengthening Upgrade Moments work aligned with the conventions already present in this repository. Prefer extending the closest existing implementation over inventing a new abstraction, and verify neighboring states before finishing.
+
+## Before You Code (REQUIRED)
+
+This skill's content was captured at generation time and MAY be stale. For ANY non-trivial change involving strengthening-upgrade-moments, verify against current docs FIRST:
+
+
+
+Then:
+
+1. **Match the installed version.** Cross-reference against the version installed in this repo. APIs change across minor versions; do not assume.
+2. **Discover provider best practices.** If the task touches a production-sensitive capability, inspect the provider service catalog, official docs, and project docs before choosing an implementation.
+3. **Respect explicit direction.** If the user explicitly asks for a specific mechanism, follow it. If project docs clearly mandate a mechanism, follow the project. In both cases, mention the provider-recommended alternative and make the chosen path safe.
+4. **Prefer provider-native primitives by default.** If no explicit user/project override exists and the change involves caching, rate limiting, background work, scheduled jobs, shared state, queues, or secrets, use the provider-recommended binding/API. Do not hand-roll an in-memory or polyfill solution that "works" locally but breaks under the provider's execution model — derive the need→native-primitive mapping yourself from this provider's docs.
+
+## Capability Contract
+
+Use this section when the user prompt touches production risk, even if the prompt does not name this technology explicitly.
+
+
+
+
+Required wiring surfaces:
+- runtime/infrastructure config: Dockerfile
+- nearest typed request/context boundary
+- handler/procedure boundary before external side effects
+
+Side-effect barrier:
+- Place guards before external APIs, auth mutations, email sends, analytics events, storage writes, and database mutations.
+
+
+Fallback policy:
+- Prefer provider-native/platform-managed primitives by default when no explicit override exists.
+- Follow clear user/project overrides, but mention the native alternative and tradeoff.
+- Fallbacks must be durable, multi-instance safe, and atomic under concurrency.
+
+Verification rules:
+- [error] native-or-explicit-override: Use the provider-native primitive first unless the user/project explicitly overrides it.
+- [error] atomic-fallback: Fallback counters must be atomic under concurrency.
 
 ## Quick Start
 
-1. Identify the upgrade surface: Bridge teaser (3 items), GIS feature caps, GHL widget gates, or the sales landing page
-2. Read the current implementation in `app/Services/Bridge/BridgeTeaser.php`, `app/Livewire/Marketing/SalesLandingPage.php`, or `app/Billing/SubscriptionCatalog.php`
-3. Check `config/billing.php` for tier definitions (Pro $39, Smart $79, Ultra $179, Mega $449)
-4. Review `resources/views/` for Blade templates rendering upgrade CTAs
-5. Ensure paywall copy aligns with the `SubscriptionCatalog` feature matrix
+### Inspect the current implementation
+
+```sh
+rg -n "strengthening-upgrade-moments|conversion-optimization|content-copy|distribution" .
+rg --files | rg "strengthening-upgrade-moments|conversion-optimization|content-copy"
+```
+
+### Make the smallest compatible change
+
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+
+### Verify before finishing
+
+- Verify the changed path and the most likely adjacent edge cases.
+- Check that naming, layering, and file placement still match nearby code.
+- Confirm there is a clear reason for any new abstraction, dependency, or workflow.
 
 ## Key Concepts
 
-**Teaser Gating**: The Bridge proxy caps non-`idx:full` responses at 3 listings. The `BridgeTeaser` service applies this after cache decompression. Upgrade messaging should clarify what "full access" unlocks (unlimited listings, GIS layers, API calls).
-
-**Subscription Tiers**: Four tiers defined in `SubscriptionCatalog` — Pro (3 domains, teaser), Smart (5 domains, full GHL), Ultra (unlimited domains, 2M API calls), Mega (unlimited everything, SLA). Each tier needs distinct value proposition copy.
-
-**Upgrade Contexts**:
-- **API responses**: `meta.teaser=true` flag in GIS/Bridge responses — clients render inline upsells
-- **GHL widgets**: `gate_after_views` and `require_otp` in `ghl_widget_configs` — embeddable surfaces need subtle upgrade nudges
-- **Dashboard**: `DashboardController` shows subscription status, usage counters, and upgrade CTAs
-- **Sales page**: `SalesLandingPage` Livewire component with billing interval toggle (monthly/annual 20% off)
-
-**MLS Compliance Constraints**: All upgrade messaging must preserve Stellar MLS Exhibit A requirements — no full MLS display without subscription, teaser counts hard-capped at 3 for domain-only auth.
+| Concept | Why it matters | What to check |
+|---------|----------------|---------------|
+| Existing patterns | Keeps the repo coherent | Start from the nearest matching implementation before editing |
+| Scope control | Prevents abstraction creep | Keep the change in the same layer as surrounding code |
+| Verification | Catches regressions early | Recheck adjacent states, edge cases, and integration points |
+| References | Speeds up repeat work | Use the linked topic files when the task needs deeper guidance |
 
 ## Common Patterns
 
-**Teaser-to-Upgrade Flow**: When `BridgeTeaser::apply()` truncates the list, the response should include upgrade signaling. Check `BridgeProxyController` for how `X-Domain-Slug` vs Bearer token paths diverge.
+### Conversion Optimization
 
-**Pricing Page Patterns**: The sales landing uses Livewire for real-time billing toggle. Plans are rendered from `SubscriptionCatalog::plans()` with Stripe price IDs. Annual discount is 20% — ensure copy reflects savings.
+**When:** The task touches conversion optimization in Strengthening Upgrade Moments work.
 
-**GHL Location Scoping**: Agency tokens (Company) vs Location tokens affect upgrade messaging. `ghl_installed_locations.subscription_status` drives gated feature access — use `SubscriptionSyncService` to push Stripe status to GHL.
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
 
-**Widget API Key Gates**: Widgets validate origins against `ghl_registered_urls`. Upgrade prompts in widget surfaces must respect CORS and use the `qh_*` API key for tracking attribution.
+### Content Copy
 
-**Metered Overage Messaging**: Ultra/Mega plans include 2M API calls; overage is metered. API responses nearing limits should include soft warnings before hard gates.
+**When:** The task touches content copy in Strengthening Upgrade Moments work.
 
-**Cashier Webhook Handling**: `stripe/webhook` updates subscription status. Ensure upgrade confirmation emails and in-app messaging align with `SubscriptionCheckoutController` session flash patterns.
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
+
+### Distribution
+
+**When:** The task touches distribution in Strengthening Upgrade Moments work.
+
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
+
+## See Also
+
+- [Conversion Optimization](references/conversion-optimization.md)
+- [Content Copy](references/content-copy.md)
+- [Distribution](references/distribution.md)
+- [Measurement Testing](references/measurement-testing.md)
+- [Growth Engineering](references/growth-engineering.md)
+- [Strategy Monetization](references/strategy-monetization.md)

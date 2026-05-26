@@ -1,38 +1,106 @@
-# Improving Activation Flow Engagement Adoption Reference
+# Engagement & Adoption Reference
 
-## When To Use
+## Contents
+- Measuring engagement
+- Feature discovery
+- Replication health as engagement signal
+- Search adoption patterns
+- Anti-patterns
 
-Use this reference when the task touches engagement adoption while working on Improving Activation Flow code in this repository.
+## Measuring Engagement
 
-## What To Inspect
+Engagement for an API product means: are customers making API calls, and are those calls succeeding?
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+### Key metrics from existing tables
 
-## Recommended Workflow
+```sql
+-- API call volume per domain (last 7 days)
+SELECT d.hostname, COUNT(a.id) AS calls
+FROM audit_logs a
+JOIN domains d ON d.id = a.subject_id
+WHERE a.created_at > NOW() - INTERVAL '7 days'
+  AND a.action = 'api.request'
+GROUP BY d.hostname
+ORDER BY calls DESC;
+```
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+### DO: Derive engagement from audit logs
 
-## Quality Bar
+The `audit_logs` table already records authenticated API access. Use it — don't add a separate analytics table.
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+### DON'T: Add external analytics services without checking
 
-## Pitfalls
+The architecture uses PostgreSQL for all state (no Redis, no external analytics). Adding Mixpanel/PostHog introduces a new dependency and network call in the request path. If you need richer analytics, extend `audit_logs` with a `metadata` JSONB column.
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+## Feature Discovery
 
-## Done Checklist
+Key features customers should discover after activation:
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+| Feature | Endpoint | Discovery signal |
+|---------|----------|-----------------|
+| MLS proxy | `GET /api/v1/properties` | First API call |
+| Search | `POST /api/v1/search` | Search request in audit logs |
+| GIS parcels | `GET /api/v1/gis` | GIS request in audit logs |
+| Comps/BPO | `POST /api/v1/comps/run` | Comps request in audit logs |
+| Images | `GET /images/*` | Image proxy hit |
+
+### DO: Surface feature availability in dashboard
+
+```go
+// new code to add — return feature availability based on token scope
+func FeatureAvailability(scopes []string) map[string]bool {
+    return map[string]bool{
+        "mls_proxy":     contains(scopes, "idx:access"),
+        "search":        contains(scopes, "idx:access"),
+        "gis":           contains(scopes, "idx:access"),
+        "comps":         contains(scopes, "idx:access"),
+        "dashboard":     contains(scopes, "idx:admin"),
+    }
+}
+```
+
+## Replication Health as Engagement Signal
+
+If replication is stale, customers cannot get data — engagement drops to zero.
+
+### DO: Monitor replication freshness
+
+```sql
+-- Check if replication is running
+SELECT dataset_slug,
+       replication_in_progress,
+       last_sync_finished_at
+FROM listing_sync_cursors;
+```
+
+The scheduler runs `mls.replication_kickoff` every minute. If `last_sync_finished_at` is stale beyond `MLS_REPLICATION_FRESHNESS_MINUTES` (default 15), the mirror is lagging. See the **queue-postgresql** skill.
+
+### DON'T: Assume data is always fresh
+
+Always check sync status before investigating "no data" issues. The worker must be running for replication to proceed. The scheduler enqueues; the worker executes.
+
+## Search Adoption Patterns
+
+`POST /api/v1/search` uses a hybrid strategy (PostGIS mirror + live MLS fallback). This is the highest-value endpoint for customers.
+
+### DO: Guide customers toward search after initial proxy use
+
+The proxy endpoint (`GET /api/v1/properties`) is the starting point. Search adds spatial filtering, sorting, and PostGIS performance. The natural adoption path is: proxy → search.
+
+### DON'T: Make search the first activation step
+
+Search requires populated `listings` table (replication complete). New customers should start with the live proxy to see data immediately, then migrate to search as their mirror fills.
+
+## Anti-patterns
+
+### WARNING: Adding engagement tracking in the hot path
+
+```go
+// BAD — synchronous analytics HTTP call in request handler
+func Handler(c *fiber.Ctx) error {
+    http.Post("https://analytics.example.com/track", ...) // blocks response
+    return c.JSON(data)
+}
+```
+
+Engagement tracking must be async (audit log write is fine — same DB, same transaction). Never add external HTTP calls in the API request path. See the **fiber** skill for middleware patterns.

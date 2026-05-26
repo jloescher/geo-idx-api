@@ -1,38 +1,106 @@
-# Designing Lifecycle Messages Content Copy Reference
+# Content Copy Reference
 
-## When To Use
+## Contents
+- Copy surfaces in the codebase
+- Tone and voice guidelines
+- Writing effective lifecycle messages
+- Anti-patterns
 
-Use this reference when the task touches content copy while working on Designing Lifecycle Messages code in this repository.
+## Copy Surfaces in the Codebase
 
-## What To Inspect
+| Surface | File | Format |
+|---|---|---|
+| Landing page hero | `internal/handler/marketing/handler.go:19` | Inline HTML string |
+| Dashboard heading | `internal/handler/dashboard/handler.go:124` | Inline HTML string |
+| Login page | `internal/web/layout.go:42` | Template constant |
+| Domain verified confirmation | `internal/handler/dashboard/handler.go:225` | Inline HTML string |
+| Invitation created confirmation | `internal/handler/dashboard/handler.go:269` | Inline HTML string |
+| TXT verification error | `internal/handler/dashboard/handler.go:214` | Inline string |
+| Invalid credentials | `internal/handler/dashboard/handler.go:98` | Inline string |
 
-- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
-- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
-- Prefer tactical edits with clear verification steps over broad strategy essays.
-- Search for nearby implementations before creating a new structure or helper.
+All copy is embedded in Go source as string literals. There are no external template files, markdown content files, or CMS surfaces.
 
-## Recommended Workflow
+## Tone and Voice Guidelines
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+The platform is a **B2B developer tool**. Copy should be:
 
-## Quality Bar
+- **Direct** — state what happened and what to do next
+- **Technical but approachable** — users are developers integrating MLS APIs
+- **Action-oriented** — every message should end with a clear next step
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+### DO: Lead with the outcome, follow with the action
 
-## Pitfalls
+```go
+// internal/handler/dashboard/handler.go:225 — GOOD
+// "Domain verified" (outcome) then "Save this production token now" (action)
+body := `<div class="card"><h1>Domain verified</h1><p>Save this production token now — it will not be shown again.</p>...`
+```
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+### DON'T: Use vague or passive language
 
-## Done Checklist
+```go
+// BAD — no clear outcome or next step
+body := `<div class="card"><h1>Processing complete</h1><p>Your request has been handled.</p>`
+```
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+## Writing Effective Lifecycle Messages
+
+### Per-stage copy guidelines
+
+| Stage | Goal | Tone | Key message |
+|---|---|---|---|
+| Invitation | Drive registration | Welcome + technical | "You've been invited to Quantyra IDX. Accept to set up your MLS domains and API keys." |
+| Registration | Complete signup | Minimal friction | Name + password only. No marketing copy needed. |
+| Domain verification | Complete DNS setup | Instructional | "Publish the TXT record, then verify." Include the record value prominently. |
+| Token creation | Secure the token | Urgent | "Save now — shown once." This pattern already works well. |
+| First API call | Activate usage | Guiding | "Try your first request." Include a curl example with their dataset. |
+
+### Email subject lines (when email is implemented)
+
+Subject lines for this B2B developer audience should:
+- Lead with the action required, not the brand name
+- Be specific: "Your Quantyra API key is ready" not "Update"
+- Include the domain or dataset when relevant: "Verify www.example.com for Quantyra IDX"
+
+### In-dashboard guidance copy
+
+The dashboard currently says: "Register domains, verify DNS, and manage API keys." This is functional but does not guide the user through the sequence. For a step-based approach, consider numbered steps with completed/pending state — see the **ux** skill for empty-state and guidance patterns.
+
+## Anti-patterns
+
+### WARNING: Concatenating user input into HTML
+
+```go
+// BAD — XSS if slug contains malicious HTML
+b.WriteString("<li><strong>" + slug + "</strong>")
+```
+
+**Why This Breaks:** User-provided domain slugs could contain `<script>` tags or event handlers. Even though domain slugs are typically safe, the pattern is wrong.
+
+**The Fix:**
+
+```go
+// GOOD — use the existing Esc helper
+// internal/handler/dashboard/handler.go:133 — correct pattern already used
+b.WriteString(`<li><strong>` + web.Esc(slug) + `</strong>...`
+```
+
+### WARNING: Generic error messages
+
+```go
+// internal/handler/dashboard/handler.go:98
+return c.Status(401).SendString("Invalid credentials")
+```
+
+This is correct for auth — it avoids information leakage. But for non-auth errors (like domain verification), be specific about what went wrong and how to fix it. The TXT verification error at line 214 is a good model:
+
+```go
+// GOOD — specific, actionable
+return c.Status(422).SendString("TXT record not found. Publish the verification record at your DNS host, then try again.")
+```
+
+## Related Skills
+
+- **frontend-design** — CSS badge, card, and form styling for copy surfaces
+- **ux** — empty states, step indicators, and in-dashboard guidance
+- **auth-api-token** — token display and security copy patterns

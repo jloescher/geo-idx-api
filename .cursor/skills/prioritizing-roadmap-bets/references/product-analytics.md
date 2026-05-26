@@ -1,17 +1,40 @@
-# Product Analytics
+# Prioritizing Roadmap Bets Product Analytics Reference
 
-## When to use
+## When To Use
 
-Scoring initiatives that add telemetry, usage dashboards, or data-driven prioritization inputs. Apply when betting on observability features in Pulse/Telescope, custom metrics pipelines, or billing metering hooks for Stripe overage.
+Use this reference when the task touches product analytics while working on Prioritizing Roadmap Bets code in this repository.
 
-## Project-relevant patterns
+## What To Inspect
 
-**Audit log as analytics source**: `bridge_proxy_audit_logs` and `ghl_audit_logs` already capture request counts, latency, and domain-level activity. High-impact bets aggregate these for subscriber-facing usage dashboards without new instrumentation — effort is query optimization on existing PostgreSQL tables.
+- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
+- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
+- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Stripe metered billing hooks**: The `SubscriptionCatalog` supports metered overage via `STRIPE_PRICE_IDX_API_OVERAGE_METERED`. Medium-effort analytics bets wire usage counters to Cashier's metered events, but risk double-charging if `bridge_proxy_audit_logs` deduplication is not handled.
+## Recommended Workflow
 
-**Octane/Pulse metrics**: FrankenPHP concurrency and request timing are visible via Pulse when `PULSE_ENABLED`. Low-effort bets expose these metrics to subscribers for transparency; high-effort bets build custom Pulse cards for domain-specific cache hit ratios.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-## Warning
+## Quality Bar
 
-Do not instrument new analytics without checking existing audit tables first. `ghl_sync_logs` already tracks lead sync success/failure; `ghl_webhook_events` captures inbound webhook volume. Duplicate logging increases storage costs and creates consistency risks across the 29 migration tables.
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

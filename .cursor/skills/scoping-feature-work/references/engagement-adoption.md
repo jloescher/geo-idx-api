@@ -1,38 +1,84 @@
-# Scoping Feature Work Engagement Adoption Reference
+# Engagement & Adoption Reference
 
-## When To Use
+Measuring and improving how customers use the Quantyra IDX API after activation.
 
-Use this reference when the task touches engagement adoption while working on Scoping Feature Work code in this repository.
+## Contents
+- Engagement Signals
+- Scoping Engagement Features
+- Anti-Patterns
 
-## What To Inspect
+## Engagement Signals
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+This is an API product — engagement is measured in audit logs and queue throughput, not page views.
 
-## Recommended Workflow
+| Signal | Source | Query |
+|--------|--------|-------|
+| API call volume | `mls_proxy_audit_logs` | `COUNT(*) GROUP BY domain_slug` |
+| Cache hit rate | `mls_proxy_audit_logs.cache_hit` | `COUNT(CASE WHEN cache_hit='HIT' THEN 1 END) / COUNT(*)` |
+| Search usage | Audit `request_type='search'` | Filter by request type |
+| Dataset diversity | Audit `domain_slug` + request params | Which MLS datasets get queried |
+| Replication health | `GET /api/v1/bridge/stats` | `replication_in_progress`, `last_sync_finished_at` |
+| Token churn | `personal_access_tokens` revocations | `WHERE deleted_at IS NOT NULL` |
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+### Key engagement query
 
-## Quality Bar
+```sql
+-- Weekly active domains (made at least one API call)
+SELECT domain_slug, COUNT(*) AS requests,
+       COUNT(CASE WHEN cache_hit = 'HIT' THEN 1 END) AS cache_hits
+FROM mls_proxy_audit_logs
+WHERE created_at > NOW() - INTERVAL '7 days'
+GROUP BY domain_slug
+ORDER BY requests DESC;
+```
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+## Scoping Engagement Features
 
-## Pitfalls
+### Tiered access / teaser mode
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+The GIS API already uses teaser tiers (`internal/handler/gis/handler.go`). The same pattern can scope new features:
 
-## Done Checklist
+| Tier | Auth requirement | Data depth |
+|------|-----------------|------------|
+| Public | None | Teaser/limited fields |
+| `idx:access` | Domain + token | Full parcel data |
+| `idx:full` | Domain + token | All fields + expanded collections |
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+When scoping a new feature, decide which tier it falls under. Teaser data drives sign-ups; full data drives token usage.
+
+### Scoping template for engagement features
+
+```
+Feature: [name]
+Current signal: [what audit/logs tell us today]
+Hypothesis: [adding X will increase Y signal]
+Measurement: [SQL query or endpoint to verify]
+Rollback: [feature flag or config toggle to disable]
+```
+
+### Example: Scope "saved searches" feature
+
+```
+Feature: Saved search alerts (email/webhook on new listings matching criteria)
+Current signal: POST /api/v1/search volume in audit logs
+Hypothesis: Alerts will increase daily active API calls by 20%
+Measurement: New request_type='alert_trigger' in audit logs + daily search count
+Rollback: MLS_ALERTS_ENABLED env var, no migration changes
+Process: scheduler (cron) + worker (new job type) + api (CRUD endpoints)
+```
+
+## Anti-Patterns
+
+### WARNING: Measuring engagement with dashboard page views
+
+This is an API product. Dashboard visits (`GET /dashboard`) do not indicate product engagement. Measure API call volume, search usage, and replication health — not HTML page loads.
+
+### WARNING: Adding engagement features that require new infrastructure
+
+The system uses PostgreSQL for everything (queue, cache, sessions). Do not introduce Redis, Kafka, or a message broker for engagement features. Use the existing PostgreSQL queue (`internal/queue`) for any background alert/notification work.
+
+## See Also
+
+- See the **cache-postgres** skill for cache hit rate patterns
+- See the **queue-postgresql** skill for background job patterns
+- See the **geospatial** skill for teaser tier implementation

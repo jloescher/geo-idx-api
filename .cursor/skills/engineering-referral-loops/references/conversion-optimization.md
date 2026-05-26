@@ -1,18 +1,40 @@
-# Conversion Optimization for Partner Loops
+# Engineering Referral Loops Conversion Optimization Reference
 
-## When to use
-When designing OAuth flows, widget embeds, or API onboarding where drop-off at any step costs leads. Focus on minimizing friction between install intent and activated usage.
+## When To Use
 
-## Project-relevant patterns
+Use this reference when the task touches conversion optimization while working on Engineering Referral Loops code in this repository.
 
-**Multi-step OAuth with progress persistence**
-Break installation into discrete recoverable steps: `install` landing → `authorize` redirect → `callback` exchange → `register-urls` → `complete`. Store intermediate state in session with `pending_oauth_token_id` so users can resume if interrupted.
+## What To Inspect
 
-**Teaser-gated upsell flow**
-Offer limited preview (3 listings, simplified GIS parcels) without registration, then gate full access behind OAuth or subscription. This mirrors the Bridge proxy teaser pattern where `idx:access` abilities show capped results while `idx:full` unlocks complete data.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**One-click embed distribution**
-Generate widget scripts with pre-authenticated API keys (`qh_{hash}`) after URL registration. The loader pattern (`/widget/loader.js`) lets partners paste a single script tag without configuring tokens manually.
+## Recommended Workflow
 
-## Warning
-Don't require URL registration before showing value. The GHL flow lets users authorize first, then register domains—this captures the OAuth token even if they abandon domain setup. Reversing the order loses leads at the top of funnel.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

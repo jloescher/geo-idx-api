@@ -1,17 +1,40 @@
-# Engagement & Adoption
+# Prioritizing Roadmap Bets Engagement Adoption Reference
 
-## When to use
+## When To Use
 
-Scoring initiatives that drive recurring API usage, widget embed proliferation, or subscription tier upgrades. Apply this when betting on features that increase requests to `/api/v1/*`, expand GHL widget deployments, or move subscribers from Pro to Ultra tiers.
+Use this reference when the task touches engagement adoption while working on Prioritizing Roadmap Bets code in this repository.
 
-## Project-relevant patterns
+## What To Inspect
 
-**Listings cache hit ratio**: The `LISTINGS_CACHE_TTL` (15 min) and `RefreshDomainListingsCacheJob` define engagement velocity. High-impact bets often improve cache freshness or expand cached endpoints — but effort scales with the `listings_cache` table migration complexity and Bridge API rate limits.
+- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
+- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
+- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Widget surface expansion**: New widget types (search, lead-form, showcase in `routes/ghl-widget.php`) drive adoption but require `GhlLeadMapping` updates and lead sync job scaling. Score effort by the `SyncLeadToGhlJob` queue throughput and GHL API timeout handling in `GhlApiClient`.
+## Recommended Workflow
 
-**Teaser gating thresholds**: The `SubscriptionCatalog` defines teaser limits by tier. Bets that adjust gating (e.g., raising teaser cap for Smart tier) have high revenue impact but risk MLS compliance if audit logging in `bridge_proxy_audit_logs` is bypassed or delayed.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-## Warning
+## Quality Bar
 
-Avoid optimizing for raw request volume without qualifying intent. The GIS proxy (`/api/v1/gis`) generates high engagement metrics (parcel overlays) but carries no MLS data — betting on GIS expansion may distract from Bridge proxy monetization that actually drives subscription value.
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

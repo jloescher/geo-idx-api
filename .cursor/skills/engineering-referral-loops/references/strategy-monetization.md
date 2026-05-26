@@ -1,19 +1,40 @@
-# Strategy and Monetization for Partner Ecosystems
+# Engineering Referral Loops Strategy Monetization Reference
 
-## When to use
-When designing pricing tiers, usage limits, and value-capture mechanisms that align partner success with revenue growth.
+## When To Use
 
-## Project-relevant patterns
+Use this reference when the task touches strategy monetization while working on Engineering Referral Loops code in this repository.
 
-**Teaser as a revenue lever**
-Cap non-full responses at 3 items (Bridge listings) or 40 features (GIS parcels). This creates natural upgrade pressure without hard paywalls—users see the data exists but need `idx:full` ability or a subscription tier for complete access.
+## What To Inspect
 
-**Tiered subscription alignment**
-Map feature limits to subscription status stored in `ghl_installed_locations.subscription_status`: Pro (3 domains), Smart (5 domains + OTP), Ultra (unlimited + 2M calls), Mega (SLA). Update status via Stripe webhook → `SubscriptionSyncService` → GHL tag sync.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Lead sync as value-add**
-Inbound widget leads create `quantyra_leads` rows that dispatch `SyncLeadToGhlJob` to push contacts/opportunities into the partner's GHL CRM. This makes your integration stickier—their CRM fills with leads you generated, increasing switching costs.
+## Recommended Workflow
 
-## Warning
-Avoid metering on upstream API calls you don't control. The Bridge proxy caches aggressively; billing on raw Bridge requests would undercharge cached domains and overcharge filtered queries. Meter on your own API surface (`mls_request_count`) or use Stripe's metered billing for actual usage events you log.
-=====
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

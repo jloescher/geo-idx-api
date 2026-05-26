@@ -1,26 +1,40 @@
-# Measurement & Testing
+# Reducing Form Falloff Measurement Testing Reference
 
-## When to use
-Tracking funnel metrics, identifying drop-off points, or validating form changes. Use when building dashboards or running optimization experiments.
+## When To Use
 
-## Patterns
+Use this reference when the task touches measurement testing while working on Reducing Form Falloff code in this repository.
 
-### Audit Logging for Drop-off Analysis
-Log form step completions to `ghl_audit_logs` with `is_mls_data_access=false` and a `step` metadata field. Query for sequences: view → form_open → email_entered → submit to identify abandonment points.
+## What To Inspect
 
-```php
-GhlAuditService::log([
-    'event' => 'widget_form_step',
-    'step' => 'email_entered',
-    'is_mls_data_access' => false,
-]);
-```
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-### A/B Test Assignment
-Store variant assignment in the widget API key metadata or pass `?variant=` through the loader.js query string. Ensure the variant parameter propagates to `quantyra_leads.payload` for downstream attribution.
+## Recommended Workflow
 
-### Lead Quality Scoring
-Tag leads in `ghl_lead_mappings` based on form completion depth. Partial submissions (email only) vs. full profiles (phone + timeline) should map to different GHL pipelines or opportunity stages for appropriate follow-up cadence.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-## Warning
-Avoid logging PII (emails, phones) in `ghl_audit_logs`—the table is query-optimized and may be exposed to analytics tools. Store sensitive lead data only in `quantyra_leads` with proper encryption.
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

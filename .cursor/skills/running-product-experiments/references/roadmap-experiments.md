@@ -1,38 +1,138 @@
-# Running Product Experiments Roadmap Experiments Reference
+# Roadmap & Experiments Reference
 
-## When To Use
+## Contents
+- Experiment Types for idx-api
+- Flag Implementation Tiers
+- Rollout Patterns
+- Verification Checklist
+- Anti-Patterns
 
-Use this reference when the task touches roadmap experiments while working on Running Product Experiments code in this repository.
+---
 
-## What To Inspect
+## Experiment Types for idx-api
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+| Type | Example | Duration |
+|------|---------|----------|
+| **Backend behavior** | Different search ranking, cache TTL, persist chunk size | 1–2 weeks |
+| **Feature gate** | New comps mode, GIS teaser tier changes | Until stable |
+| **Config tuning** | `REPLICATION_FRESHNESS_MINUTES`, `ROLLING_MONTHS` | 1 week |
+| **API response shape** | Flat vs nested listing payload, field inclusion | 2–4 weeks |
 
-## Recommended Workflow
+## Flag Implementation Tiers
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+### Tier 1: Environment variable (existing pattern)
 
-## Quality Bar
+For global on/off. No migration needed.
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+```go
+// Existing — internal/config/config.go
+StellarEnabled: envBool("MLS_STELLAR_ENABLED", true),
+```
 
-## Pitfalls
+**When to use:** Features that apply to all domains or all environments uniformly.
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+### Tier 2: Database-backed per-domain flag
 
-## Done Checklist
+For gradual rollout. Requires migration.
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+```sql
+-- new code to add
+CREATE TABLE feature_flags (
+    id           SERIAL PRIMARY KEY,
+    flag_key     TEXT NOT NULL,
+    domain_slug  TEXT,               -- NULL = all domains
+    enabled      BOOLEAN DEFAULT FALSE,
+    rollout_pct  SMALLINT DEFAULT 100,
+    active_from  TIMESTAMPTZ,
+    active_until TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ DEFAULT now()
+);
+CREATE UNIQUE INDEX idx_flags_key_domain ON feature_flags (flag_key, domain_slug);
+```
+
+```go
+// new code to add — repository method
+func (r *FlagRepo) IsEnabled(ctx context.Context, flagKey, domainSlug string) (bool, error) {
+    var enabled bool
+    err := r.db.QueryRowContext(ctx, `
+        SELECT COALESCE(
+            (SELECT enabled FROM feature_flags
+             WHERE flag_key = $1 AND domain_slug = $2),
+            (SELECT enabled FROM feature_flags
+             WHERE flag_key = $1 AND domain_slug IS NULL),
+            FALSE)
+    `, flagKey, domainSlug).Scan(&enabled)
+    return enabled, err
+}
+```
+
+### Tier 3: Deterministic percentage rollout
+
+Same domain always sees the same variant:
+
+```go
+// new code to add
+import "hash/crc32"
+
+func (r *FlagRepo) IsEnabled(ctx context.Context, flagKey, domainSlug string) (bool, error) {
+    var enabled bool
+    var rolloutPct int
+    err := r.db.QueryRowContext(ctx, `
+        SELECT enabled, COALESCE(rollout_pct, 100)
+        FROM feature_flags WHERE flag_key = $1 AND (domain_slug = $2 OR domain_slug IS NULL)
+        ORDER BY domain_slug DESC NULLS LAST LIMIT 1
+    `, flagKey, domainSlug).Scan(&enabled, &rolloutPct)
+    if err != nil || !enabled {
+        return false, err
+    }
+    hash := crc32.ChecksumIEEE([]byte(domainSlug)) % 100
+    return int(hash) < rolloutPct, nil
+}
+```
+
+## Rollout Patterns
+
+### Standard rollout sequence
+
+1. Create flag with `enabled = false`, `rollout_pct = 0`
+2. Deploy code — feature invisible
+3. Set `enabled = true`, `rollout_pct = 10` for canary domains
+4. Monitor audit logs for errors/latency
+5. Increase to 50%, then 100%
+6. Remove flag after full rollout (next migration)
+
+### Kill switch
+
+```sql
+-- Instant off for all domains
+UPDATE feature_flags SET enabled = false WHERE flag_key = 'new_search_ranking';
+```
+
+## Verification Checklist
+
+```
+Copy this checklist and track progress:
+- [ ] Migration created for feature_flags table (or env var added to config.go)
+- [ ] Flag evaluation fails closed (returns false on error)
+- [ ] Audit log extended with experiment_id/variant columns
+- [ ] Dashboard or admin API allows flag inspection
+- [ ] Staging environment tested with flag on and off
+- [ ] Rollback plan documented (SQL to disable flag)
+- [ ] Post-rollout migration to remove flag scheduled
+```
+
+## Anti-Patterns
+
+### WARNING: Non-deterministic rollout
+
+Using `rand.Float32()` for rollout assigns a different variant on every request. The same domain sees both variants, corrupting experiment data.
+
+**Fix:** Always hash a stable identifier (domain_slug, token_name) for deterministic assignment.
+
+### WARNING: Long-lived feature flags
+
+Flags that persist indefinitely become hidden config. Every flag should have a planned removal date.
+
+**Fix:** Set `active_until` and audit quarterly. Remove flags that have been 100% for >30 days.
+
+See the **cache-postgres** skill for caching flag evaluations and the **postgresql** skill for index patterns.

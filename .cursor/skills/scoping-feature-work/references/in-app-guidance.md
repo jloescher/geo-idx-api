@@ -1,38 +1,104 @@
-# Scoping Feature Work In App Guidance Reference
+# In-App Guidance Reference
 
-## When To Use
+Guidance patterns for the Quantyra IDX dashboard and API responses.
 
-Use this reference when the task touches in app guidance while working on Scoping Feature Work code in this repository.
+## Contents
+- Dashboard Guidance Surfaces
+- API Response Guidance
+- Scoping Guidance Features
 
-## What To Inspect
+## Dashboard Guidance Surfaces
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+The dashboard is server-rendered HTML (no JS framework). Guidance is inline in the handler output.
 
-## Recommended Workflow
+| Surface | Location | Current state |
+|---------|----------|---------------|
+| Domain verification instructions | `VerifyTXT()` response | Error message: "TXT record not found..." |
+| Token display | `VerifyTXT()` success | One-time display with copy target |
+| Staging token limit | `CreateStagingToken()` | 409 "Staging token already exists" |
+| Empty state | `Dashboard()` | No domains / no tokens messaging missing |
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+### WARNING: No empty-state guidance
 
-## Quality Bar
+**The Problem:** New users see a blank dashboard after login with no calls-to-action. The domain list and token list render empty `<ul>` elements.
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+**The Fix:** When scoping dashboard work, always include empty-state acceptance criteria:
 
-## Pitfalls
+```
+Given user has no domains
+When viewing /dashboard
+Then "Add your first domain" CTA is visible
+And the domain form is pre-focused
+```
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+## API Response Guidance
 
-## Done Checklist
+API responses guide developers integrating the proxy. Two patterns exist:
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+### Cache headers
+
+```go
+// Bridge handler sets cache status
+c.Set("X-IDX-Cache", "HIT") // or "MISS"
+```
+
+These headers guide integrators toward understanding cache behavior without reading docs.
+
+### Stats endpoint
+
+```go
+// internal/api/routes.go:93
+v1.Get("/bridge/stats", bridgeH.Stats)
+```
+
+`GET /api/v1/bridge/stats` returns replication state per dataset. This is the primary "health dashboard" for API consumers.
+
+## Scoping Guidance Features
+
+### Acceptance criteria for guidance changes
+
+```
+Given [user state: new / active / error]
+When [user encounters surface]
+Then [guidance message appears]
+And [message includes next action or link]
+```
+
+### Pattern: Inline help in dashboard
+
+The dashboard uses card-based layout (`<div class="card">`). Add guidance as a `<p class="help-text">` inside cards:
+
+```html
+<!-- new code to add -->
+<p class="help-text">
+  Add the hostname where your website is hosted.
+  We'll verify ownership via a DNS TXT record.
+</p>
+```
+
+### Pattern: Error response guidance in API
+
+API errors should include a `docs_url` field pointing to the relevant documentation:
+
+```go
+// new code to add
+return c.Status(400).JSON(fiber.Map{
+    "error":    "Dataset not found",
+    "docs_url": cfg.PlatformURL + "/docs/datasets",
+})
+```
+
+## Anti-Patterns
+
+### WARNING: Blocking guidance behind JavaScript
+
+The dashboard must work without JavaScript. Forms use native `method="post"`. Guidance text is server-rendered HTML. Do not add JS-dependent tooltips, modals, or wizards.
+
+### WARNING: Over-engineering dashboard UX
+
+The dashboard is a self-service tool for domain/token management. It is NOT the product. Scope dashboard changes as small, targeted improvements — not a SPA rebuild.
+
+## See Also
+
+- See the **ux** skill for dashboard design patterns
+- See the **frontend-design** skill for CSS and layout patterns

@@ -1,18 +1,40 @@
-# Measurement and Testing for Marketplace Integrations
+# Engineering Referral Loops Measurement Testing Reference
 
-## When to use
-When verifying webhook handlers, token refresh logic, or caching behavior; when instrumenting partner flows for compliance and debugging.
+## When To Use
 
-## Project-relevant patterns
+Use this reference when the task touches measurement testing while working on Engineering Referral Loops code in this repository.
 
-**Dual-channel audit logging**
-Log every GHL API call and webhook to both database (`ghl_audit_logs`) and optional file (`ghl_audit.log`). Include `latency_ms`, `response_status`, `is_mls_data_access`, and `compliance_verified` flags for post-hoc analysis.
+## What To Inspect
 
-**Webhook signature testing**
-Use configurable signature verification (`GHL_WEBHOOK_REQUIRE_SIGNATURE=false` in local) to test handlers without valid signatures. In tests, dispatch `ProcessGhlWebhookJob` directly to verify handler logic separate from signature middleware.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Teaser enforcement testing**
-Assert that non-`idx:full` responses contain ≤3 items in list-shaped JSON. Cache tests should verify that teaser truncation happens *after* cache retrieval so stored bytes remain canonical full payloads.
+## Recommended Workflow
 
-## Warning
-Don't test against real OAuth providers in CI. The GHL token refresh tests should mock `services.leadconnectorhq.com` responses—actual token exchanges during tests will fail with revoked credentials and pollute the token table with invalid rows.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

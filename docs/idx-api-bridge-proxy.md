@@ -1,8 +1,13 @@
-# IDX-API — Secured Bridge Data Output Proxy
+# IDX-API — Secured MLS proxy (Bridge + Spark)
 
-This document describes the **Quantyra idx-api** integration that proxies [Bridge Data Output](https://bridgedataoutput.com) for multiple **MLS datasets** (Stellar, Miami, etc.), adds **domain / token authentication**, **listings and search caching**, **teaser gating**, **MLS audit logging**, **automatic rewriting of image URLs in JSON** (including CloudFront origins) to the public **idx-images** host, **OData cursor pagination support**, and a secured **`/images/...`** binary proxy. Implementation lives in this repository.
+This document describes the **Quantyra idx-api** integration that proxies [Bridge Data Output](https://bridgedataoutput.com) and the [Spark Platform](https://sparkapi.com/) (BeachesMLS) for multiple **MLS feeds**, adds **domain / token authentication**, **listings and search caching**, **full JSON payloads** for authenticated internal traffic, **MLS audit logging**, **automatic rewriting of image URLs in JSON** (including CloudFront and Spark CDN origins) to the public **idx-images** host, **OData cursor pagination support**, and a secured **`/images/...`** binary proxy.
 
-**Upstream API reference** (endpoints, datasets, auth concepts): [bridge-api-documentation.md](bridge-api-documentation.md).
+> **Implementation (Go):** `internal/handler/bridge`, `internal/handler/images`, `internal/handler/gis`, `internal/api/middleware/domain_token.go`, `internal/service/sync`, `internal/queue`. Routes: `internal/api/routes.go`. See [go-cutover.md](go-cutover.md).
+
+**Upstream references:**
+
+- Bridge (Stellar, etc.): [bridge-api-documentation.md](bridge-api-documentation.md)
+- Spark (BeachesMLS): [spark/README.md](spark/README.md)
 
 **Production base URL** (typical): `https://idx-api.quantyralabs.cc` — or your `APP_URL` / `IDX_API_PUBLIC_URL`.
 
@@ -12,12 +17,13 @@ This document describes the **Quantyra idx-api** integration that proxies [Bridg
 
 | Goal | How it is met |
 |------|----------------|
-| Single MLS egress | All Bridge calls go through Laravel `Http` using `BRIDGE_API_KEY` (server-side only). |
-| Multi-dataset MLS control | Requests identify an **active** row in `domains` (via header, **`?domain=`** query, or `Referer` host) **or** present a valid **Sanctum personal access token** with IDX abilities. Dataset access is validated against `domains.allowed_mls_datasets` (defaults to `domains.mls_dataset`). |
-| Cost & latency control | Domain-scoped **`GET /api/v1/listings`** and **`POST /api/v1/search`** responses are cached in PostgreSQL (`listings_cache`, `bridge_search_cache`) for **15 minutes** (configurable), gzip-compressed — **skipped** when **`filters`** is present for collection endpoints so filtered feeds are never wrong. Search requests cache full payloads before teaser gating. |
+| Single MLS egress | Bridge and Spark credentials stay server-side (`BRIDGE_API_KEY`, `SPARK_ACCESS_TOKEN`). |
+| Multi-feed MLS control | Requests identify an **active** row in `domains` (via header, **`?domain=`** query, or `Referer` host) **or** present a valid **personal access token (PAT)** with IDX abilities. Feed access is validated against `domains.allowed_mls_datasets` (catalog keys like `bridge_stellar`, `spark_beaches`). |
+| Cost & latency control | **On-demand** live proxy cache in **`mls_search_cache`**: first identical upstream request (method + path + sorted query + POST body fingerprint) is stored gzip-compressed for **`LISTINGS_CACHE_TTL`** (default 15 min); repeats return **`X-IDX-Cache: HIT`**. Lookup routes use **`MLS_LOOKUP_CACHE_TTL`** (~30 days). **Active/Pending** inventory is served from the **PostGIS mirror** (`listings` table + sync jobs). **`listings_cache`** holds per-listing **Closed** RESO payloads for the comps engine (30-day TTL; see [Comps API](comps-api.md)). Scheduler job **`mls.proxy_cache_purge`** purges expired `mls_search_cache` and `listings_cache` rows. |
+| Hybrid map performance | `POST /api/v1/search`: Active/Pending from PostGIS replica; Closed from live upstream (Bridge or Spark per `?dataset=`); mixed status filters merge both (see **Hybrid search** under Caching & jobs). |
 | Pricing enrichment | Listing responses include top-level `pricing` quotes and per-listing `pricing_converted` data sourced from local cache/DB snapshots refreshed asynchronously by queue job. |
-| Lead / revenue gating | Non–`idx:full` clients receive **teaser** JSON (first list slice capped at **3** items for listings, **40** features for GIS) where applicable. Teaser is applied **after** cache retrieval. |
-| Auditability | Every proxied JSON request and image hit writes a row to **`bridge_proxy_audit_logs`**. |
+| Access model | **Domains** and **PATs** (`idx:access` or `idx:full`, plus domain binding for tokens) receive full Bridge/comps/search JSON. **GIS** applies teaser limits for **`idx:access`-only** PATs (`GIS_TEASER_*`). Domains and `idx:full` set full GIS access. No Stripe/plan-based shrinking on MLS proxy routes. |
+| Auditability | Every proxied JSON request and image hit writes a row to **`mls_proxy_audit_logs`**. |
 | Image CDN pattern | JSON responses rewrite Bridge **`…/listings/{key}/photos/{id}…`** and CloudFront URLs to **`{IDX_IMAGES_PUBLIC_URL}/images/{listingKey}/{photoId}`**; environment-specific normalization ensures consistent URLs across dev/staging/prod; binary **`GET /images/...`** is streamed from Bridge with **long-lived immutable** cache headers for Cloudflare edge caching (see [Image proxy](#image-proxy) and [JSON image URL rewriting](#json-image-url-rewriting)). |
 
 ---
@@ -30,14 +36,14 @@ flowchart LR
     GW[geo-web / browsers]
     MOB[mobile / tools]
   end
-  subgraph idx [idx-api]
-    MW[DomainOrTokenAuth]
-    BC[BridgeProxyController]
-    RW[BridgeImageUrlRewriter]
-    IC[ImageProxyController]
-    CACHE[(listings_cache)]
-    AUDIT[(bridge_proxy_audit_logs)]
-    JOB[RefreshDomainListingsCacheJob]
+  subgraph idx [idx-api Go]
+    MW[DomainToken middleware]
+    BC[bridge.Handler]
+    RW[mlspoxy/images.Rewriter]
+    IC[images.Handler]
+    CACHE[(mls_search_cache)]
+    AUDIT[(mls_proxy_audit_logs)]
+    JOB[mls.proxy_cache_purge]
   end
   BRIDGE[(Bridge Data Output)]
 
@@ -56,19 +62,17 @@ flowchart LR
 ```
 
 1. Client calls **`/api/v1/...`** or **`/images/...`** with domain identification or Bearer token.
-2. **`DomainOrTokenAuth`** (`middleware` alias **`domain.token`**) allows the request or returns **401 / 403**.
-3. **`BridgeProxyController`** builds the Bridge URL (Web API, RESO, or doc paths), forwards safe client headers and query string (internal params **`domain`** and **`teaser`** are **never** sent to Bridge), attaches **Bearer `BRIDGE_API_KEY`** to Bridge.
-4. For **domain-authenticated** listing collection, **`ListingsCacheService`** may return gzip-stored JSON from **`listings_cache`** if younger than TTL **and** the request has **no** `filters` query; otherwise Bridge is called and the row is updated when caching applies.
-5. **Teaser** may shrink list-shaped JSON; then **`BridgeImageUrlRewriter`** rewrites listing photo URLs in the JSON body to **`IDX_IMAGES_PUBLIC_URL`** (see below).
-6. **`BridgeProxyAuditLogger`** persists audit metadata.
-
-**GHL routes** (`/api/leadconnector/*`, widgets, web OAuth) are **not** wrapped by `domain.token`; see [GHL API & routes reference](ghl-api-routes-reference.md).
+2. **`DomainToken`** (`internal/api/middleware/domain_token.go`) allows the request or returns **401 / 403**.
+3. **`bridge.Handler`** builds the Bridge/Spark URL (Web API, RESO, or doc paths), forwards safe client headers and query string (internal param **`domain`** is **never** sent upstream), attaches **Bearer `BRIDGE_API_KEY`** or **`SPARK_ACCESS_TOKEN`**.
+4. For live proxy routes, **`internal/service/cache`** (`ProxyCache`) may return gzip-stored JSON from **`mls_search_cache`** when the request **fingerprint** matches a row younger than TTL; otherwise upstream is called, images are rewritten, and the response is stored (**`X-IDX-Cache: MISS`**).
+5. **`mlspoxy/images.Rewriter`** rewrites listing photo URLs in successful JSON bodies to **`IDX_IMAGES_PUBLIC_URL`** (see below).
+6. **`internal/service/audit.Logger`** persists audit metadata to **`mls_proxy_audit_logs`**.
 
 ---
 
 ## Authentication & authorization
 
-Middleware: **`App\Http\Middleware\DomainOrTokenAuth`**, registered as **`domain.token`** in `idx-api/bootstrap/app.php`.
+Middleware: **`DomainToken`** in `internal/api/middleware/domain_token.go`, applied on `/api/v1` and `/images` routes in `internal/api/routes.go`.
 
 ### Option A — Registered domain
 
@@ -78,50 +82,59 @@ Middleware: **`App\Http\Middleware\DomainOrTokenAuth`**, registered as **`domain
 | `GET ?domain=` | Same lookup as header when `X-Domain-Slug` is absent (useful for server clients that cannot set custom headers). **Not** forwarded to Bridge. |
 | `Referer` | If neither header nor `domain` query is set, the **host** portion of `Referer` is used the same way. |
 
-The domain must exist and **`is_active = true`**. Domain-authenticated callers **never** receive `idx:full`; teaser rules apply.
+The domain must exist and **`is_active = true`**. Domain-authenticated callers receive full outbound MLS JSON; middleware sets **`MLSFullAccess=true`** (same as `idx:full` for Bridge/comps; GIS teaser still applies only to `idx:access`-only PATs).
 
-### Option B — Sanctum personal access token
+### Option B — personal access token (PAT)
 
 | Header | Rule |
 |--------|------|
-| `Authorization: Bearer <token>` | Token must resolve via `PersonalAccessToken::findToken` and have **`idx:access`** and/or **`idx:full`**. |
+| `Authorization: Bearer <token>` | Token hash resolved via `repository.TokenRepo` (`personal_access_tokens`) with **`idx:access`** and/or **`idx:full`**. |
 
 | Ability | Effect |
 |---------|--------|
-| `idx:access` | Access allowed; **teaser** applies (list caps). |
-| `idx:full` | Access allowed; **full** listing payloads (no list teaser cap in the proxy layer). |
+| `idx:access` | Access allowed (legacy ability name; same full proxy behavior as `idx:full` once authenticated). |
+| `idx:full` | Access allowed; typical for dashboard PATs and `POST /api/auth/token`. |
 
 Invalid or ability-missing tokens → **403**.
 
-### Subscriber dashboard API keys (Ultra and Mega)
+### Dashboard API keys
 
-Subscribers on **Ultra** or **Mega** (active, valid default Cashier subscription matching catalog price IDs in `config/billing.php`) can create **personal access tokens** from the **GeoIDX dashboard** (`POST /dashboard/api-tokens`, “Generate API token”). Those tokens are meant for **`Authorization: Bearer …`** calls to **`/api/v1/*`** (same middleware as registered domains).
+The **GeoIDX dashboard** (`/dashboard`) presents a unified Setup flow for new users:
 
-| Plan | Token abilities | Bridge / GIS behavior |
-|------|-----------------|------------------------|
-| **Ultra** | `idx:access` | Same teaser rules as **domain** identification (e.g. list-shaped responses capped for non–full access). |
-| **Mega** | `idx:full` | Full payloads where the proxy applies `idx:full` (no list teaser cap in the proxy layer). |
+1. **Add your site** — register a domain hostname and select MLS feeds in one step
+2. **Verify ownership** — publish a DNS TXT record; the dashboard polls and shows verification status
+3. **Connect your app** — a **Production** API key is auto-generated on first successful domain verification and shown once for copying
 
-**Pro** and **Smart** do not receive this UI gate: they cannot create these keys from the dashboard (plan is widget-focused; upgrade path remains Ultra/Mega for REST API keys).
+**Key behavior:**
 
-**Not interchangeable with `POST /api/auth/token`:** the JSON login token endpoint issues Sanctum tokens with **`idx:read`** and **`idx:search`** for other flows. Those abilities do **not** satisfy `DomainOrTokenAuth` for `/api/v1` Bridge or GIS JSON. For server-side full access outside the dashboard, use the internal geo-web token pattern (`idx:full`): run **`php artisan idx-api:issue-geo-web-token`** (see `IssueGeoWebInternalTokenCommand`) or seed once via **`GeoWebInternalTokenSeeder`**.
+- On first TXT verification, a **Production** token (`name: Production`, ability: `idx:full`) is created automatically and flashed to the session for one-time display
+- A **Staging** token (`name: Staging`, ability: `idx:full`) can be generated from the Setup panel or via `POST /dashboard/api-tokens/staging`; only one Staging token per user (rejects duplicates)
+- Additional named tokens can be created from the **API Keys** panel (`/dashboard?panel=api`) via `POST /dashboard/api-tokens`
+- All tokens use ability **`idx:full`**
+- Every **`Authorization: Bearer …`** call to **`/api/v1/*`** must also send **`X-Domain-Slug`** or **`?domain=`** for a **TXT-verified** domain on the same account (same binding rules as `DomainToken`)
 
-After generation, the dashboard shows the raw token **once**; store it securely. Revocation: `DELETE /dashboard/api-tokens/{token}` from the dashboard UI.
+| Token source | Abilities | Bridge / GIS behavior |
+|--------------|-----------|------------------------|
+| **Auto-issued Production** (first domain verify) | `idx:full` | Full Bridge / GIS JSON for authenticated requests. |
+| **Staging** (one-click from Setup or `POST /dashboard/api-tokens/staging`) | `idx:full` | Same as Production — use for staging/preview frontends with the same domain slug. |
+| **Custom named** (`POST /dashboard/api-tokens` or API Keys panel) | `idx:full` | Full Bridge / GIS JSON for authenticated requests. |
+| **`POST /api/auth/token`** | `idx:full` | Same as dashboard PATs when used with domain identification (machine clients / scripts). |
+| **Geo-web internal** | `idx:full` | Issue a named PAT from `/dashboard` (or seed); pair with **`IDX_API_INTERNAL_TOKEN`** and a verified domain slug on requests. |
+
+After generation, the dashboard shows the raw token **once**; store it securely. Revocation: **API Keys** panel (`/dashboard?panel=api`) or `DELETE /dashboard/api-tokens/{token}`.
 
 ---
 
-### Teaser behavior
+### Response shaping (authenticated)
 
-- Applies to successful JSON responses where the decoder finds a top-level list under **`value`**, **`bundle`**, **`d`**, **`listings`**, or a top-level JSON **array**.
-- **Limit:** **3** items for non–`idx:full` contexts.
-- Cached bytes in **`listings_cache`** store the **full** Bridge body; teaser is applied **after** decompressing so the cache stays canonical.
-- **Image URL rewriting** runs **after** teaser on successful JSON so clients always see **`idx-images`** URLs regardless of teaser state.
+- **`mls_search_cache`** stores gzip-compressed upstream JSON keyed by request fingerprint (on-demand proxy/search). **`listings_cache`** stores per-listing Closed properties for comps (`COMPS_CLOSED_CACHE_DAYS`, default 30). Mirror Active/Pending data lives in **`listings`**.
+- **`mlspoxy/images.Rewriter`** runs on successful JSON so photo URLs resolve through **`idx-images`** for CDN and MLS compliance.
 
 ---
 
 ## JSON image URL rewriting
 
-Service: **`App\Services\Bridge\BridgeImageUrlRewriter`** (used by **`BridgeProxyController`** on successful JSON).
+Package: **`internal/mlspoxy/images`** (`Rewriter`, `NewRewriter`) — used by **`bridge.Handler`** on successful JSON responses.
 
 | Behavior | Detail |
 |----------|--------|
@@ -140,7 +153,7 @@ Non-JSON or malformed JSON responses are passed through unchanged.
 
 ### JSON API (`/api/...`)
 
-Laravel’s `routes/api.php` is prefixed with **`/api`**. All routes below use middleware **`domain.token`**.
+Routes are registered in **`internal/api/routes.go`** under the **`/api/v1`** group with **`DomainToken`** middleware.
 
 #### Bridge Web API (dataset segment from `BRIDGE_DATASET`, default `stellar`)
 
@@ -169,9 +182,20 @@ Built from `BRIDGE_HOST`, optional `BRIDGE_PATH_PREFIX`, `BRIDGE_DATASET`, and o
 | GET | `/api/v1/reso-offices/{officeKey}` | `Office` by key | |
 | GET | `/api/v1/reso-openhouses` | `OpenHouse` collection | |
 | GET | `/api/v1/reso-openhouses/{openHouseKey}` | `OpenHouse` by key | |
-| GET | `/api/v1/lookup` | `Lookup` collection | 30-day gzip cache per dataset + query fingerprint; clear with `php artisan bridge:clear-lookups-cache`. |
+| GET | `/api/v1/lookup` | `Lookup` collection | 30-day gzip cache per dataset + query fingerprint (`MLS_LOOKUP_CACHE_TTL`); purge stale rows via the proxy-cache purge job or `DELETE` from `mls_search_cache` by partition. |
 | POST | `/api/v1/search` | Structured search | Accepts `SearchRequest` JSON; translates to Bridge RESO OData with multi-dataset support, returns paginated results with stats. See [Search endpoint](#search-endpoint-post-apiv1search). |
-| POST | `/api/v1/comps/run` | Bridge comps + investor analysis | Supports modes `A`–`E`, `rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`; investor modes require `idx:full`. See [Comps API](comps-api.md). |
+| GET | `/api/v1/bridge/stats` | Replica stats | Returns per-feed replica row counts and last sync timestamps from `listing_sync_cursors` (Bridge and Spark mirror slugs). |
+| POST | `/api/v1/comps/run` | Bridge comps + investor analysis | Supports modes `A`–`E`, `rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`, `bpo`, `home_value` for authenticated `domain.token` callers. See [Comps API](comps-api.md). |
+
+#### Spark Platform (BeachesMLS)
+
+When `?dataset=spark_beaches` (or `beaches`), RESO routes use **Spark** on the **live** host (`sparkapi.com`) via `SparkClient`. Mirror sync uses **replication.sparkapi.com** only (workers).
+
+| Catalog key | Mirror slug | Upstream |
+|-------------|-------------|----------|
+| `spark_beaches` | `beaches` | Spark RESO OData |
+
+Full documentation: [spark/idx-api-integration.md](spark/idx-api-integration.md). Display rules: [spark/spark-compliance.md](spark/spark-compliance.md).
 
 #### Public & ancillary paths (doc-style paths on `BRIDGE_HOST`)
 
@@ -187,13 +211,13 @@ Built from `BRIDGE_HOST`, optional `BRIDGE_PATH_PREFIX`, `BRIDGE_DATASET`, and o
 Note: Zillow Zestimates (`/api/v1/zestimates/*`) and Reviews (`/api/v1/reviews/*`) endpoints are not available.
 ### Image proxy (no `/api` prefix)
 
-Registered in **`bootstrap/app.php`** `then` routing callback with middleware **`api`** + **`domain.token`**.
+Registered in **`internal/api/routes.go`** with **`DomainToken`** (same auth as `/api/v1`).
 
 | Method | Path | Behavior |
 |--------|------|----------|
-| GET | `/images/{listingKey}/{photoId}` | Proxies Bridge listing photo URL built from **`BRIDGE_LISTING_PHOTO_PATH`** and streams bytes directly to the client with immutable cache headers. |
+| GET | `/images/{listingKey}/{photoId}` | Proxies listing photos: Bridge via **`BRIDGE_LISTING_PHOTO_PATH`**; Spark via live Property `$expand=Media` and `MediaURL`. Immutable cache headers. |
 
-**Host `idx-images.quantyralabs.cc` (Docker `idx-images` service):** **`Dockerfile.idx-images`** builds **nginx only** and **reverse-proxies** `GET /images/*` to **`http://idx-api:8000`** with the same forwarded headers (**`Referer`**, **`Authorization`**, **`X-Domain-Slug`**) so **Laravel enforces the identical domain / Sanctum gate** as on **`idx-api.quantyralabs.cc`**. There is **no** standalone `image-proxy.php` or `?url=` bypass — unauthorized requests are rejected by idx-api (**401 / 403**) before any MLS bytes are returned.
+**Host `idx-images.quantyralabs.cc` (Docker `idx-images` service):** **`Dockerfile.idx-images`** builds **nginx only** and **reverse-proxies** `GET /images/*` to **`http://idx-api:8000`** with the same forwarded headers (**`Referer`**, **`Authorization`**, **`X-Domain-Slug`**) so **idx-api enforces the identical domain / PAT gate** as on **`idx-api.quantyralabs.cc`**. There is **no** `?url=` bypass — unauthorized requests are rejected by idx-api (**401 / 403**) before any MLS bytes are returned.
 
 **Response headers**
 
@@ -211,19 +235,38 @@ Registered in **`bootstrap/app.php`** `then` routing callback with middleware **
 | Table | Purpose |
 |-------|---------|
 | `domains` | `domain_slug` (unique), `is_active`, `mls_dataset` (default), `allowed_mls_datasets` (JSON array of permitted datasets). Seeds include approved hostnames (e.g. `searchtampabayhouses.com`). |
-| `listings_cache` | **PK** `domain_slug`; `compressed_data` (gzip); `last_updated`; `etag`. One logical row per domain for the listings collection cache. |
-| `bridge_search_cache` | **PK** (`partition_key`, `fingerprint`); `compressed_data` (gzip); `last_updated`. Caches `POST /api/v1/search`, `GET/POST /api/v1/properties`, and `GET /api/v1/lookup` responses by request fingerprint. Lookups use a 30-day TTL; search/properties use 15-minute TTL. |
+| `listings` | PostGIS mirror: **PK** `(dataset_slug, listing_key)`; typed columns + JSONB. Active/Pending replication; hybrid search mirror leg. |
+| `listings_cache` | Per-listing Closed comps cache (`domain_slug`, `feed_code`, `listing_key`); populated by comps write-through; purged with `mls.proxy_cache_purge`. |
+| `mls_search_cache` | **PK** (`partition_key`, `fingerprint`); on-demand live proxy cache. TTL: `LISTINGS_CACHE_TTL` / `MLS_LOOKUP_CACHE_TTL`. |
 | `crypto_price_snapshots` | **Unique** (`asset_id`, `vs_currency`); stores latest CoinGecko price per pair with `as_of` for listing enrichment. |
-| `bridge_proxy_audit_logs` | `logged_at`, `domain_slug`, `token_name`, `request_type`, `listing_count`, `ip_address`, `user_id` (nullable FK to `users`). |
-| `personal_access_tokens` | Laravel Sanctum; used for **`geo-web-internal`** and other PATs. |
+| `mls_proxy_audit_logs` | `logged_at`, `domain_slug`, `token_name`, `request_type`, `listing_count`, `cache_hit` (`HIT`/`MISS` for live proxy cache), `ip_address`, `user_id` (nullable FK to `users`). |
+| `personal_access_tokens` | SHA-256 hashed PATs; dashboard-issued and **`geo-web-internal`**. |
 
-Migrations live under `idx-api/database/migrations/` (`2026_04_22_120000` … `120300`).
+Migrations live under `database/migrations/` — see [Database migrations](database-migrations.md) (`2026_01_01_200000` domain/cache, `2026_01_01_500000` listings mirror).
 
 ---
 
 ## Search endpoint (`POST /api/v1/search`)
 
-The structured search endpoint accepts JSON payloads with filter criteria, translates them to Bridge RESO OData queries, caches results, and returns paginated listings with computed statistics.
+The structured search endpoint accepts JSON payloads with filter criteria and returns paginated listings with computed statistics. **Where the query runs** depends on `status` / `statuses` and a few special filters (see **Hybrid search routing** below). Results are still cached by fingerprint for **15 minutes** (`LISTINGS_CACHE_TTL`).
+
+### Hybrid search routing
+
+`HybridReplicaSearchDecision` classifies each request into one of three modes. Implementation: `HybridSearchService`, `BridgeSearchTranslator`, `HybridReplicaSearchDecision`.
+
+| Mode | When | Data source |
+|------|------|-------------|
+| **Postgres only** | Statuses are **Active** and/or **Pending** only (or omitted with default `active_only: true`) | PostGIS `listings` mirror (`HybridSearchService` local leg) |
+| **Bridge only** | **Closed** only; statuses outside Active/Pending/Closed; or filters that require live Bridge (e.g. `price_reduced_within_days`) | Live Bridge RESO OData |
+| **Split** | Request includes **both** replica statuses (Active/Pending) **and** Closed | Both legs: mirror for AP, Bridge for Closed; results **merged, deduped, sorted, then paginated** |
+
+**Mirror scope:** scheduled replication bulk-loads **Active + Pending** only. **Closed** is never bulk-replicated; Closed inventory is fetched on demand from Bridge/Spark. Daily queue job **`mls.purge_closed_listings`** removes stale Closed rows and applies the rolling mirror window.
+
+**Default when `status` is omitted:** with `active_only` true (default), search uses the mirror for Active inventory only. With `active_only` false and no statuses, search goes to Bridge only.
+
+**Mirror-backed response shape:** each result is a **flat RESO Property** object — `MergeMirrorListing` combines `raw_data`, JSONB expand columns, and **flat-merged** `custom_fields` keys (no nested `custom_fields` property). See [Listings mirror](listings-mirror.md#api-responses-mirror-backed).
+
+**PostGIS mirror filters:** `low_risk_floodzone` reads `listings.flood_zone_code`; `min_monthly_fees` / `max_monthly_fees` read `listings.estimated_total_monthly_fees` (Beaches: sum of association fees normalized to monthly at persist time).
 
 ### Request body (SearchRequest)
 
@@ -252,26 +295,32 @@ The structured search endpoint accepts JSON payloads with filter criteria, trans
 }
 ```
 
-### Filter to OData mapping
+### Filter mapping (`SearchRequest`)
 
-| Search Filter | Bridge OData Field |
-|---------------|-------------------|
-| `cities` | `City` (case-insensitive `contains`) |
-| `counties_or_parishes` | `CountyOrParish` |
-| `state_or_province` | `StateOrProvince` |
-| `price_min/max` | `ListPrice` |
-| `bedrooms_min` | `BedroomsTotal` |
-| `bathrooms_min` (full) | `BathroomsFull` |
-| `bathrooms_min` (total) | `BathroomsTotal` |
-| `property_types` | `PropertyType` |
-| `status` / `statuses` | `StandardStatus` |
-| `waterfront` | `WaterfrontYN` |
-| `pool` | `PoolPrivateYN` |
-| `garage_spaces_min` | `GarageSpaces` |
-| `year_built_min` | `YearBuilt` |
-| `sqft_min` | `LivingArea` |
-| `lot_size_min` | `LotSizeSquareFeet` |
-| `flood_zones` | `FloodZone` (post-filtered if unsupported upstream) |
+**PostGIS mirror leg** (Active/Pending local query — see `PostgisSearchService`):
+
+| Request field | Mirror column / behavior |
+|---------------|-------------------------|
+| `min_price` / `max_price` | `list_price` |
+| `min_beds` / `max_beds` | `bedrooms_total` |
+| `min_baths` / `max_baths` | `bathrooms_total_decimal` |
+| `min_sqft` / `max_sqft` | `living_area` |
+| `min_lot_size_acres` / `max_lot_size_acres` | `lot_size_acres` |
+| `min_year_built` / `max_year_built` | `year_built` |
+| `min_monthly_fees` / `max_monthly_fees` | `estimated_total_monthly_fees` |
+| `low_risk_floodzone` | `low_risk_flood_zone_yn = true` (from `fema_flood_zone_code` via FEMA enrichment — [fema-flood-enrichment.md](fema-flood-enrichment.md)) |
+| `waterfront`, `pool_private`, `dock`, etc. | matching `*_yn` boolean columns |
+| `city`, `state`, `county`, `postal_code` | address columns |
+| `property_types`, `property_sub_types`, `statuses` | `property_type`, `property_sub_type`, `standard_status` |
+
+**Live Bridge OData leg** (Closed-only, special filters, or Bridge fallback — see `BridgeSearchTranslator`):
+
+| Request field | Bridge OData / post-filter |
+|---------------|---------------------------|
+| Price, beds, baths, property type, status, geo, etc. | Standard RESO fields on `Property` |
+| `low_risk_floodzone` | `{DATASET}_FloodZoneCode` OData filter + post-filter when needed (e.g. `STELLAR_FloodZoneCode` for Stellar) |
+
+Normalized mirror columns (`flood_zone_code`, `estimated_total_monthly_fees`) are populated at replication persist by `ListingMirrorWriter` + `ListingResoFieldResolver` for **both** Stellar and Beaches. Stellar flood source: `STELLAR_FloodZoneCode` (fallback `FloodZoneCode`). Beaches flood: `Location_sp_and_sp_Legal_co_Flood_sp_Zone2`. Monthly fees: Stellar `{DATASET}_TotalMonthlyFees` when present; Beaches sum of `AssociationFee` / `AssociationFee2` converted by frequency — [Spark integration](spark/idx-api-integration.md#normalized-mirror-columns-persist--replication-updates).
 
 ### Dataset restrictions
 
@@ -326,7 +375,7 @@ curl -H "X-Domain-Slug: example.com" \
 - Cursor values are opaque tokens encoding OData `$top`/`$skip` state
 - Cursored results are cached separately with the same 15-minute TTL
 - `@odata.id` values in entities are rewritten to proxy URLs
-- All pagination is subject to domain/token authentication and teaser gating
+- All pagination is subject to domain/token authentication (`domain.token`)
 
 ---
 
@@ -334,17 +383,22 @@ curl -H "X-Domain-Slug: example.com" \
 
 | Mechanism | Detail |
 |-----------|--------|
-| **Listings DB cache** | **Only** `GET /api/v1/listings` when the caller authenticated as a **domain** (not token-only), and the request does **not** include a **`filters`** query (filtered queries always hit Bridge). TTL **`LISTINGS_CACHE_TTL`** seconds (default **900** = 15 minutes). |
-| **Search cache** | `POST /api/v1/search` results cached by fingerprint (dataset + normalized search params) per domain/token. Also caches `GET/POST /api/v1/properties` when no `?filters=` present. TTL **`LISTINGS_CACHE_TTL`** (default **900** = 15 minutes). |
-| **Lookups cache** | `GET /api/v1/lookup` responses cached by dataset + query fingerprint (`lookups:{dataset}`). TTL **`BRIDGE_LOOKUPS_CACHE_TTL`** (default **2,592,000** = 30 days). Clear with `php artisan bridge:clear-lookups-cache [--all|--dataset=stellar]`. |
+| **Live proxy cache (`mls_search_cache`)** | On-demand gzip cache for repeat **identical** live proxy requests (web, RESO, lookup, hybrid search live leg). Fingerprint = method + path + sorted query + POST body hash. Response header **`X-IDX-Cache`**: `HIT` or `MISS`. TTL **`LISTINGS_CACHE_TTL`** (default **900** s); lookup partition uses **`MLS_LOOKUP_CACHE_TTL`** (default 30 days). Scheduled job **`mls.proxy_cache_purge`** purges stale rows only — **no** Active/Pending pre-warm. |
+| **Mirror (Active/Pending)** | `listings` PostGIS table via replication jobs — authoritative for hybrid search mirror leg. |
+| **Comps Closed cache** | `listings_cache` — 30-day per-listing cache; not a full mirror. |
+| **Replica sync** | **`mls.replication_kickoff`** (every minute) enqueues **`bridge.fetch_page`** / **`spark.fetch_page`** on fetch queues. Staging: **`replica_pages`** (gzip JSON) → persist queues → **`listings`**. **Spark** replication uses **`MLS_SYNC_EXPAND`** (`Media,Unit,Room,OpenHouse`). **Bridge** uses **`BRIDGE_SYNC_EXPAND`** (`Media,OpenHouses,Rooms,UnitTypes`) only when **`BRIDGE_SYNC_FULL_PROPERTY=false`**; with full property (default), Media is inline and **`$expand` is omitted**. Bridge replication seed uses **Active/Pending status only** (Stellar rejects timestamp `$filter` on `/replication`). Spark may add **`ModificationTimestamp`** when rolling months are set. Rolling trim: daily **`mls.purge_closed_listings`**. Incremental cursor: **`listing_sync_cursors.last_modification_timestamp`**. **Closed** is not bulk-replicated. Details: [Listings mirror](listings-mirror.md). |
+| **Hybrid search** | `POST /api/v1/search`: **Active/Pending** → PostGIS mirror; **Closed** → live Bridge/Spark OData; **mixed** statuses → merge both sources (merge-then-page). |
+| **Replica purge** | **`mls.purge_closed_listings`** (daily) deletes Closed rows and rows outside **`MLS_LOCAL_MIRROR_ROLLING_MONTHS`** (default **12**; staging often **3**). **`mls.purge_replica_pages`** trims stale staging pages. |
+| **Replication observability** | Structured **`slog`** on scheduler/worker (`enqueued scheduled job`, fetch/persist handlers). Inspect `replica_pages`, `listing_sync_cursors`, and `GET /api/v1/bridge/stats`. |
+| **Lookups cache** | `GET /api/v1/lookup` uses the same `mls_search_cache` lookup partition; TTL **`MLS_LOOKUP_CACHE_TTL`** (default 30 days). Purge expired rows via the proxy-cache purge job or `DELETE` on `mls_search_cache` by partition. |
 | **Image edge cache** | `/images/*` responses are streamed from Bridge with immutable cache headers so Cloudflare/browser edges cache aggressively. |
-| **Scheduled refresh** | `routes/console.php` schedules a callback every **15 minutes** that dispatches **`RefreshDomainListingsCacheJob`** once per **active** domain (database queue). Requires a **queue worker** in each environment where refreshes must run. |
+| **Scheduled jobs (Go)** | `cmd/scheduler` enqueues replication kickoff (every minute), **`mls.proxy_cache_purge`** (every 15 min), **`crypto.refresh_pricing`**, **`mls.purge_replica_pages`**, **`mls.purge_closed_listings`**, weekly **`gis.probe_sources`**. Multi-DC: one scheduler holds **`pg_try_advisory_lock`** (`SCHEDULER_LEADER_LOCK_ID`). Run **`make run-worker`** (or worker image) for consumption. |
 
 ---
 
 ## Environment variables
 
-Set in **`idx-api/.env`** and/or root **`.env`** for Docker Compose. See also [GHL environment variables](ghl-environment-variables.md) for shared `IDX_*` URLs and core app settings (password hashing driver, etc.).
+Set in **`idx-api/.env`** and/or root **`.env`** for Docker Compose. See root **`.env.example`** for `IDX_*` URLs and core app settings (password hashing driver, etc.).
 
 | Variable | Required | Description |
 |----------|----------|-------------|
@@ -357,9 +411,35 @@ Set in **`idx-api/.env`** and/or root **`.env`** for Docker Compose. See also [G
 | `BRIDGE_IMAGE_REWRITE_HOSTS` | No | Comma-separated extra hostnames whose `…/listings/…/photos/…` URLs should be rewritten in JSON (in addition to defaults derived from **`BRIDGE_HOST`** and common Bridge domains). |
 | `BRIDGE_TIMEOUT` | No | HTTP timeout seconds. |
 | `LISTINGS_CACHE_TTL` | No | Seconds (default **900**). |
-| `BRIDGE_LOOKUPS_CACHE_TTL` | No | Lookup cache TTL in seconds (default **2,592,000** = 30 days). |
+| `MLS_LOOKUP_CACHE_TTL` | No | Lookup partition TTL (default **2,592,000** s ≈ 30 days). |
+| `BRIDGE_SYNC_FETCH_QUEUE` | No | Queue for kickoff + Bridge HTTP fetch jobs (default **`bridge-sync-fetch`**). |
+| `BRIDGE_SYNC_PERSIST_QUEUE` | No | Queue for parallel Postgres persist chunk/finalize jobs (default **`bridge-sync-persist`**). |
+| `BRIDGE_SYNC_QUEUE` | No | **Deprecated** alias for fetch queue (`BRIDGE_SYNC_FETCH_QUEUE`). |
+| `BRIDGE_SYNC_REPLICATION_TOP` | No | Replication `$top` page size (max 2000; default 2000). Must be an integer, not a URL. |
+| `BRIDGE_SYNC_INCREMENTAL_TOP` | No | Incremental `Property` `$top` page size (max 200; default 200). Must be an integer, not a URL. |
+| `BRIDGE_SYNC_MAX_CHAINED_FETCH_PAGES` | No | Optional safety cap on chained fetch jobs per kickoff (**0** = unlimited). |
+| `BRIDGE_SYNC_MAX_REQUESTS_PER_SECOND` | No | Max Bridge GETs per second during fetch chaining (default **2** → 500ms spacing). |
+| `BRIDGE_SYNC_MAX_REQUESTS_PER_MINUTE` | No | Proactive Bridge GET budget per minute (default **120**, max 334 burst). |
+| `BRIDGE_SYNC_MAX_REQUESTS_PER_HOUR` | No | Proactive hourly cap (default **4800**, under Bridge **5000/hour**). |
+| `BRIDGE_SYNC_MIN_FETCH_INTERVAL_MS` | No | Minimum delay between **fetch** jobs in milliseconds (default **500**); not applied to persist jobs. |
+| `BRIDGE_REPLICA_PAGE_RETENTION_HOURS` | No | Purge **completed** staging pages older than this (default **24**). |
+| `BRIDGE_REPLICA_FAILED_RETENTION_DAYS` | No | Purge **failed** staging pages after this many days (default **7**). |
+| `BRIDGE_SYNC_FULL_PROPERTY` | No | When **true** (default), replication/incremental fetch the full Property without `$select`; **no `$expand`** (Media inline per Bridge). When **false**, uses `$select` + **`BRIDGE_SYNC_EXPAND`**. |
+| `BRIDGE_SYNC_EXPAND` | No | Bridge OData `$expand` when not full property (default **`Media,OpenHouses,Rooms,UnitTypes`**). Do not use Spark names (`Unit`, `Room`, `OpenHouse`) — Stellar returns **400**. |
+| `MLS_SYNC_EXPAND` | No | Spark replication `$expand` (default **`Media,Unit,Room,OpenHouse`**). Alias: `SPARK_SYNC_EXPAND`. |
+| `BRIDGE_SYNC_INCLUDE_MEDIA` | No | **Incremental** only when **`BRIDGE_SYNC_FULL_PROPERTY=false`**: when **false**, adds `$unselect=Media`. With full property, Media is in the payload and stored in **`listings.media`**. |
+| `BRIDGE_SYNC_PERSIST_JOB_CHUNK` | No | Rows per persist queue job (default **50** in config); lower if workers hit memory limits. Tune worker RAM in [Coolify deployment](coolify-deployment.md). |
+| `BRIDGE_SYNC_MAX_REPLICATION_PAGES` | No | **Deprecated** — monolithic job page cap; pipeline chains until cursor clears. |
+| `BRIDGE_SYNC_MAX_INCREMENTAL_PAGES` | No | **Deprecated** — monolithic job page cap. |
+| `BRIDGE_SYNC_MAX_HTTP_RETRIES` | No | Max retry attempts for sync HTTP 429/503 handling (default 4). |
+| `MLS_LOCAL_MIRROR_ROLLING_MONTHS` | No | Rolling mirror window in months for purge, PostGIS search, and listings-cache OData (default **12**). Deprecated: `BRIDGE_LOCAL_MIRROR_ROLLING_MONTHS`, `SPARK_LOCAL_MIRROR_ROLLING_MONTHS`. |
+| `MLS_REPLICA_PAGE_RETENTION_HOURS` | No | Purge completed staging pages (default **24**). Deprecated: `BRIDGE_REPLICA_PAGE_RETENTION_HOURS`. |
+| `MLS_REPLICA_PAGE_FAILED_RETENTION_DAYS` | No | Purge failed staging pages (default **7**). Deprecated: `BRIDGE_REPLICA_FAILED_RETENTION_DAYS`. |
+| `MLS_STELLAR_REPLICATION_TOP` | No | Stellar replication `$top` (max 2000). Falls back to `BRIDGE_SYNC_REPLICATION_TOP`. |
+| `MLS_STELLAR_INCREMENTAL_TOP` | No | Stellar incremental `$top` (max 200). Falls back to `BRIDGE_SYNC_INCREMENTAL_TOP`. |
+| `BRIDGE_SYNC_UPSERT_CHUNK` | No | Upsert chunk size for batched Postgres writes (25-500, default 250). |
 | `IDX_IMAGES_PUBLIC_URL` | No | Public hostname for marketing / headers (default `https://idx-images.quantyralabs.cc`). Used for both image URL rewriting and environment normalization. |
-| `IDX_API_INTERNAL_TOKEN` | Ops / geo-web | Plaintext PAT for server-to-server calls; **issue via Artisan** (below). Not read automatically by idx-api logic—store where geo-web or scripts need it. |
+| `IDX_API_INTERNAL_TOKEN` | Ops / geo-web | Plaintext PAT for server-to-server calls; **issue from dashboard** (below). Not read automatically by idx-api logic—store where geo-web or scripts need it. |
 | `COINGECKO_API_KEY` | Recommended | CoinGecko API key used by scheduled pricing refresh job. |
 | `COINGECKO_BASE_URL` | No | CoinGecko API base URL (`https://api.coingecko.com/api/v3` by default). |
 | `COINGECKO_ASSET_IDS` | No | Comma-separated tracked assets (default `btc,eth,sol,xrp,ada`). |
@@ -372,35 +452,21 @@ Set in **`idx-api/.env`** and/or root **`.env`** for Docker Compose. See also [G
 
 ---
 
-## Sanctum — internal geo-web token
+## API token — internal geo-web token
 
 1. Ensure migrations have run (includes `personal_access_tokens`).
-2. Create or rotate token and print env line:
-
-```bash
-cd idx-api
-php artisan idx-api:issue-geo-web-token --force
-```
-
-Copy the printed `IDX_API_INTERNAL_TOKEN=...` into secrets / `.env` for **geo-web** (or other server clients). Abilities: **`idx:full`**, token name **`geo-web-internal`**.
+2. Create a PAT from **`/dashboard`** (name e.g. `geo-web-internal`, ability `idx:full`) or use your deployment seed workflow.
+3. Copy the one-time token into **`IDX_API_INTERNAL_TOKEN`** for **geo-web** (or other server clients).
 
 ### Clear lookups cache
 
-```bash
-# Clear lookups cache for a specific dataset
-php artisan bridge:clear-lookups-cache --dataset=stellar
-
-# Clear lookups cache for all datasets
-php artisan bridge:clear-lookups-cache --all
-```
-
-**First-time seed:** `DatabaseSeeder` calls `GeoWebInternalTokenSeeder`, which creates the token **only if** a `geo-web-internal` token does not already exist for the internal user.
+Delete stale rows from **`mls_search_cache`** where `partition_key` matches the lookup partition for the dataset, or wait for the scheduled **`mls.proxy_cache_purge`** purge job (`MLS_PROXY_CACHE_RETENTION_DAYS`).
 
 ---
 
 ## Example requests
 
-### Listings — registered domain (teaser)
+### Listings — registered domain
 
 ```bash
 curl -sS \
@@ -408,11 +474,12 @@ curl -sS \
   'https://idx-api.quantyralabs.cc/api/v1/listings?limit=50&offset=0'
 ```
 
-### Listings — full (Sanctum)
+### Listings — PAT (requires domain binding)
 
 ```bash
 curl -sS \
   -H "Authorization: Bearer ${IDX_API_INTERNAL_TOKEN}" \
+  -H 'X-Domain-Slug: searchtampabayhouses.com' \
   'https://idx-api.quantyralabs.cc/api/v1/listings?limit=50'
 ```
 
@@ -502,19 +569,19 @@ curl -sS \
 
 ## Docker & operations
 
-- **Dockerfiles** live at the **project root** (`Dockerfile.idx-api`, `Dockerfile.idx-images`). Build context is always **`.`** — see **[README.md](../README.md)** and [GHL deployment & operations](ghl-deployment-and-operations.md).
-- **Build / run** (repo root): `docker compose build` / `docker compose up` using root **`docker-compose.yml`**.
-- **idx-api service** env: root `docker-compose.yml` passes Bridge-related variables used for proxy + rewrite behavior (`BRIDGE_*`, `IDX_IMAGES_PUBLIC_URL`).
-- **Queue worker:** for `RefreshDomainListingsCacheJob` and `RefreshCryptoPricingJob` to execute, run e.g. `php artisan queue:work` (or Horizon) alongside the app. Schedule driver must run `php artisan schedule:run` (cron) or `schedule:work` in dev.
+- **Dockerfiles** at project root: [`Dockerfile`](../Dockerfile) targets **`api`**, **`worker`**, **`scheduler`**; [`Dockerfile.idx-images`](../Dockerfile.idx-images) for the image edge. Build context **`.`** — see **[README.md](../README.md)**, [Deployment & operations](deployment-operations.md), [Coolify deployment](coolify-deployment.md).
+- **Build / run:** `docker compose -f docker-compose.dev.yml up --build` or `./scripts/docker-dev.sh up-watch`.
+- **Queue worker:** `make run-worker` / Docker target `worker` — replication, **`mls.proxy_cache_purge`**, crypto pricing.
+- **Scheduler:** `make run-scheduler` / target `scheduler` — cron enqueue only; use advisory lock when two schedulers run (multi-DC).
 
 ---
 
 ## Compliance & security notes
 
-- Do **not** expose `BRIDGE_API_KEY` or Sanctum plaintext tokens to browsers or untrusted repos.
+- Do **not** expose `BRIDGE_API_KEY` or API token plaintext tokens to browsers or untrusted repos.
 - Keep **`domains`** aligned with Stellar MLS / Exhibit A–approved hostnames.
-- Retain **`bridge_proxy_audit_logs`** (and backups) according to your MLS compliance policy.
-- Mobile remains teaser-oriented until contractual amendments allow full MLS display.
+- Retain **`mls_proxy_audit_logs`** (and backups) according to your MLS compliance policy.
+- Mobile and embedded clients must still follow your MLS / board rules for field display, attribution, and refresh cadence—proxy responses are full JSON, but **what you render** may be constrained by license agreements.
 
 ---
 
@@ -527,7 +594,7 @@ curl -sS \
 | RESO **400** "Invalid parameter" | Query params like `city` or `limit` must be sent via JSON body (POST) or translated to OData (`$filter`, `$top`). The `/properties` endpoint handles this translation automatically. |
 | **401** on `/api/v1/*` | Missing `X-Domain-Slug` / `Referer` and missing Bearer token. |
 | **403** domain | Row missing or `is_active = false` in `domains`. |
-| **403** token | Wrong token or missing `idx:access` / `idx:full`. |
+| **403** token | Wrong token, missing `idx:access` / `idx:full`, domain not owned by token user, or domain not **TXT-verified** for PAT access. |
 | **403** "Dataset not allowed" | The requested `mls_dataset` is not in the domain's `allowed_mls_datasets`. Check the domain configuration. |
 | Cache never hits | Listings cache is **domain-only**; Bearer-only calls always hit Bridge. With **`?filters=`**, listings cache is **skipped** by design. Search cache requires `partition_key` (domain slug or user ID). |
 | `@odata.nextLink` returns wrong host | The proxy rewrites `nextLink` URLs to the current host. Verify request `Host` header or `APP_URL`. |
@@ -542,7 +609,6 @@ curl -sS \
 | Document | Topic |
 |----------|--------|
 | [bridge-api-documentation.md](bridge-api-documentation.md) | Bridge paths, datasets, conceptual overview. |
-| [ghl-api-routes-reference.md](ghl-api-routes-reference.md) | GHL-specific idx-api routes (orthogonal to Bridge v1). |
-| [ghl-environment-variables.md](ghl-environment-variables.md) | Shared `IDX_*` and deployment env patterns. |
-| [ghl-deployment-and-operations.md](ghl-deployment-and-operations.md) | Docker, queues, scheduling. |
+| [deployment-operations.md](deployment-operations.md) | Docker, queues, scheduling, Dokploy. |
+| [coolify-deployment.md](coolify-deployment.md) | Coolify production & staging. |
 | [../README.md](../README.md) | Project Dockerfiles and local build layout. |

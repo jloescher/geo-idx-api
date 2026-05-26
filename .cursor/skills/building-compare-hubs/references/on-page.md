@@ -1,55 +1,40 @@
-# On-Page UX Patterns
+# Building Compare Hubs On Page Reference
 
-When to use: Designing comparison layouts, alternative suggestion flows, and decision-support interfaces that guide users toward subscription upgrades.
+## When To Use
 
-## Patterns
+Use this reference when the task touches on page while working on Building Compare Hubs code in this repository.
 
-### Teaser-Gated Comparison
+## What To Inspect
 
-Limit non-subscribed comparison views to 3 items using the `BridgeTeaser` service pattern:
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-```php
-// In controller or Livewire
-if (!$user?->subscribed()) {
-    $alternatives = collect($allPlans)->take(3);
-    $upgradeCta = true;
-}
-```
+## Recommended Workflow
 
-Show blurred/faded rows beyond the limit with a clear CTA: "Upgrade to compare all plans."
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-### Alternative Discovery Cards
+## Quality Bar
 
-At decision friction points, surface relevant alternatives:
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
 
-```blade
-<div class="bg-gray-50 rounded-lg p-4 mt-6">
-    <h4>Not sure? Consider these alternatives:</h4>
-    <div class="flex gap-4 mt-2">
-        @foreach($alternatives as $alt)
-            <a href="{{ route('marketing.compare.show', $alt) }}" class="text-indigo-600 hover:underline">
-                {{ $alt['name'] }} — ${{ $alt['monthly'] }}/mo
-            </a>
-        @endforeach
-    </div>
-</div>
-```
 
-### Highlighted Differences Table
-
-Use a feature matrix with checkmarks/dashes. Highlight rows where plans differ:
-
-```blade
-<tr @class(['bg-yellow-50' => $feature['differs']])>
-    <td>{{ $feature['name'] }}</td>
-    @foreach($plans as $plan)
-        <td>@if($plan->hasFeature($feature))✓@else—@endif</td>
-    @endforeach
-</tr>
-```
 
 ## Pitfalls
 
-Do not show unlimited MLS listings in comparison previews—always apply the 3-item teaser cap (`BridgeTeaser::TEASER_LIMIT`) to maintain compliance with Stellar MLS data usage agreements on marketing pages.
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
 
------
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

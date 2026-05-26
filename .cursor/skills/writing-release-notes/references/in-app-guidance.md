@@ -1,38 +1,70 @@
-# Writing Release Notes In App Guidance Reference
+# In-App Guidance Reference
 
-## When To Use
+How release notes reference dashboard and in-app surfaces for Quantyra IDX API.
 
-Use this reference when the task touches in app guidance while working on Writing Release Notes code in this repository.
+## Dashboard Surfaces in Release Notes
 
-## What To Inspect
+The Quantyra dashboard (`/dashboard`) is an invite-only surface for domain management and API key creation. Release notes that touch dashboard flows should reference specific panels and actions.
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+### Dashboard Components
 
-## Recommended Workflow
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| Setup panel | Dashboard home | Domain TXT verification, auto-issued PAT |
+| API Keys panel | `/dashboard/api-tokens` | Custom named tokens (`idx:full`) |
+| Staging key | `/dashboard/api-tokens/staging` | One-click staging Bearer |
+| Domain management | Dashboard settings | Domain binding, MLS feed allowlists |
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+### DO: Reference dashboard actions customers take
 
-## Quality Bar
+```markdown
+## v2.1.0
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+### Dashboard
+- **API Keys**: New staging token endpoint — generate a staging Bearer from the API Keys panel without CLI access
+- **Domain Setup**: TXT verification now checks propagation automatically (no manual refresh needed)
+```
 
-## Pitfalls
+### DON'T: Describe internal handler changes
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+```markdown
+<!-- BAD — customers don't know or care about handler internals -->
+### Dashboard
+- `dashboard.NewHandler` now includes staging token route registration
+- Domain verification middleware refactored to separate TXT check from domain binding
+```
 
-## Done Checklist
+### In-App Guidance for New Features
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+When a release adds new API capability that requires dashboard configuration:
+
+1. Note if customers need to visit the dashboard to enable or configure
+2. Specify which panel (Setup, API Keys, Settings)
+3. State whether existing tokens gain access automatically or need re-issue
+
+Example:
+
+```markdown
+### GIS — Parcel Overlay
+- New `GET /api/v1/gis` endpoint for public government parcel GeoJSON
+- Accessible with existing `idx:full` tokens — no dashboard action needed
+- `idx:access` tokens receive teaser-limited responses (coordinate rounding, feature cap)
+```
+
+### API Token Scope Changes
+
+Token scope changes (`idx:access` vs `idx:full`) are breaking for some users. Always:
+
+- State which scope level is affected
+- Note if teaser limits apply (GIS uses `GIS_TEASER_MAX_FEATURES`, `GIS_TEASER_COORD_DECIMALS`)
+- Link to `docs/api.md` auth section for scope reference
+
+### WARNING: Undocumented Dashboard Changes
+
+If a release modifies dashboard behavior but no API endpoint changed, the release note is still needed — dashboard users are a distinct audience from API consumers. Never omit dashboard changes because "no API route changed."
+
+## Related References
+
+- See the **auth-api-token** skill for token scope documentation
+- See the **frontend-design** skill for dashboard UI changes
+- See the **ux** skill for dashboard UX patterns

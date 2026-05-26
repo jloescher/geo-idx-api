@@ -1,5 +1,11 @@
 # Quantyra IDX-Images edge image (project root build context)
 # Nginx TLS edge -> idx-api:8000/images/* (Laravel DomainOrTokenAuth + disk cache)
+#
+# Staging and production use this same image. Nginx proxies to `idx-api:8000` via Docker DNS
+# at request time (resolver 127.0.0.11 + variable proxy_pass in nginx.idx-images.conf). Still
+# deploy on the same Docker network as the API; set the web service hostname/alias to `idx-api`
+# unless you change the config. Coolify layout: docs/coolify-deployment.md
+#
 # Note: queue workers and scheduler run in idx-api containers, not idx-images.
 
 FROM nginx:1.27-alpine

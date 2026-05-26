@@ -1,18 +1,40 @@
-# Growth Engineering
+# Reducing Form Falloff Growth Engineering Reference
 
-## When to use
-Scaling lead capture infrastructure, optimizing queue throughput, or handling traffic spikes from marketing campaigns. Use when the widget volume exceeds single-server capacity.
+## When To Use
 
-## Patterns
+Use this reference when the task touches growth engineering while working on Reducing Form Falloff code in this repository.
 
-### Async Lead Persistence
-Queue writes to `quantyra_leads` via `SyncLeadToGhlJob` to prevent API latency from blocking the widget response. Return 202 Accepted immediately; retry GHL contact creation failures with exponential backoff.
+## What To Inspect
 
-### Cache Layer for Widget Config
-The 3-phase middleware fetches `ghl_widget_configs` on every request. Cache location-specific configs in Laravel Cache for the duration of the HTTP request lifecycle to reduce PostgreSQL queries.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-### Horizontal Scaling Considerations
-Store widget sessions client-side (JWT or encrypted cookie) rather than server-side session to keep idx-api stateless. The Bearer token lookup via `access_token_hash` is database-bound—consider read replicas for high-volume widget endpoints.
+## Recommended Workflow
 
-## Warning
-Do not enable server-side session affinity for widgets unless absolutely required—it complicates deployment and conflicts with the Octane worker model. Use signed client-side tokens for any session-like state.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

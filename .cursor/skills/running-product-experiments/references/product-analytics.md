@@ -1,38 +1,115 @@
-# Running Product Experiments Product Analytics Reference
+# Product Analytics Reference
 
-## When To Use
+## Contents
+- Current Analytics Infrastructure
+- Extending Audit Logging
+- Aggregation Strategy
+- Experiment Metric Queries
+- Anti-Patterns
 
-Use this reference when the task touches product analytics while working on Running Product Experiments code in this repository.
+---
 
-## What To Inspect
+## Current Analytics Infrastructure
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+idx-api has one analytics mechanism: **audit logging** in `internal/service/audit/logger.go`.
 
-## Recommended Workflow
+```go
+// Existing audit fields
+INSERT INTO mls_proxy_audit_logs
+  (domain_slug, token_name, request_type, listing_count, ip_address, user_id, cache_hit)
+```
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+**What exists:** Request-level proxy audit.
+**What's missing:** Funnel tracking, event taxonomy, cohort analysis, retention metrics, experiment assignment.
 
-## Quality Bar
+## Extending Audit Logging
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+### DO: Add experiment columns via migration
 
-## Pitfalls
+```sql
+-- new code to add — migrations/YYYYMMDDHHMMSS_add_experiment_columns.sql
+ALTER TABLE mls_proxy_audit_logs
+  ADD COLUMN experiment_id TEXT,
+  ADD COLUMN variant      TEXT;
+CREATE INDEX idx_audit_experiment ON mls_proxy_audit_logs (experiment_id);
+```
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+Then extend `Logger.Log()` to accept optional experiment metadata:
 
-## Done Checklist
+```go
+// new code to add
+type AuditOpts struct {
+    ExperimentID *string
+    Variant      *string
+}
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+func (l *Logger) LogWithOpts(c *fiber.Ctx, requestType string, listingCount *int, cacheHit *string, opts AuditOpts) {
+    // ... existing insert with experiment_id, variant
+}
+```
+
+### DON'T: Create a parallel event system alongside audit logs
+
+Two event pipelines means two sources of truth. Extend the existing table rather than building a separate `events` table unless the schema is fundamentally different.
+
+## Aggregation Strategy
+
+### WARNING: Querying raw audit logs at scale
+
+`mls_proxy_audit_logs` grows unbounded. Analytical queries on raw data degrade after ~1M rows.
+
+**Fix:** Add a scheduled aggregation job (see the **queue-postgresql** skill):
+
+```sql
+-- new code to add — daily rollup table
+CREATE TABLE daily_domain_metrics (
+    date         DATE NOT NULL,
+    domain_slug  TEXT NOT NULL,
+    request_type TEXT NOT NULL,
+    request_count INT NOT NULL DEFAULT 0,
+    avg_listing_count NUMERIC,
+    cache_hit_rate   NUMERIC,
+    PRIMARY KEY (date, domain_slug, request_type)
+);
+```
+
+Scheduler cron: `40 1 * * *` → `analytics.aggregate_daily` job type.
+
+## Experiment Metric Queries
+
+```sql
+-- Variant conversion: % of domains making first search within 7 days
+WITH assigned AS (
+    SELECT domain_slug, variant,
+           MIN(created_at) AS assigned_at
+    FROM mls_proxy_audit_logs
+    WHERE experiment_id = 'new_search_ui'
+    GROUP BY 1, 2
+),
+converted AS (
+    SELECT a.domain_slug, a.variant,
+           MIN(l.created_at) AS first_search
+    FROM assigned a
+    JOIN mls_proxy_audit_logs l ON l.domain_slug = a.domain_slug
+        AND l.request_type = 'search'
+        AND l.created_at <= a.assigned_at + INTERVAL '7 days'
+    GROUP BY 1, 2
+)
+SELECT a.variant,
+       COUNT(*) AS assigned,
+       COUNT(c.first_search) AS converted,
+       ROUND(100.0 * COUNT(c.first_search) / COUNT(*), 1) AS conversion_pct
+FROM assigned a
+LEFT JOIN converted c USING (domain_slug, variant)
+GROUP BY 1;
+```
+
+## Anti-Patterns
+
+### WARNING: Blocking request processing on analytics writes
+
+Never make analytics inserts part of a transaction that also does business logic. If analytics DB is slow, the API slows.
+
+**Fix:** Fire-and-forget goroutine or enqueue a job for analytics writes. Audit logs already use this pattern — the insert happens after the response is sent.
+
+See the **queue-postgresql** skill for async job patterns and the **postgresql** skill for migration patterns.

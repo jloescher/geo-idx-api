@@ -1,38 +1,93 @@
-# Scoping Feature Work Activation Onboarding Reference
+# Activation & Onboarding Reference
 
-## When To Use
+How users go from "no account" to "making authenticated API calls" in Quantyra IDX.
 
-Use this reference when the task touches activation onboarding while working on Scoping Feature Work code in this repository.
+## Contents
+- Onboarding Flow
+- Activation Milestones
+- Scoping New Onboarding Steps
+- Anti-Patterns
 
-## What To Inspect
+## Onboarding Flow
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+The activation path is linear and invite-gated:
 
-## Recommended Workflow
+```
+Admin seed → Invite link → Register → Login → Add domain → DNS TXT verify → Receive API token → First API call
+```
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+Each step maps to code in the dashboard handler (`internal/handler/dashboard/handler.go`):
 
-## Quality Bar
+| Step | Handler method | Storage |
+|------|---------------|---------|
+| Admin seed | `cmd/seed/main.go` | `users` table |
+| Create invite | `CreateInvitation()` | `invitations` table (SHA256 token hash) |
+| Accept invite | `AcceptInvitation()` | Creates `users` row |
+| Login | `Login()` | Session store (`fiber/v2/middleware/session`) |
+| Add domain | `StoreDomain()` | `domains` row (`verification_status: pending`) |
+| DNS verify | `VerifyTXT()` | `dns.VerifyTXT()` → updates status to `verified` |
+| Token issued | `tokens.Create()` inside `VerifyTXT()` | `personal_access_tokens` (SHA256 hash) |
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+### Activation milestone: first API call
 
-## Pitfalls
+The production token is **only** issued after DNS TXT verification succeeds (`dashboard/handler.go:224`). This is the activation gate — a verified domain proves the customer controls the hostname that will make API calls.
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+```go
+// internal/handler/dashboard/handler.go:224
+// Token is issued AFTER successful DNS verification
+plain, _ := h.tokens.Create(c.Context(), uid, "Production", []string{"idx:full"})
+```
 
-## Done Checklist
+## Activation Milestones
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+When scoping features, define which milestone the work advances:
+
+| Milestone | Signal | Table |
+|-----------|--------|-------|
+| Account created | `users` row exists | `users` |
+| Domain added | `domains` row with `pending` status | `domains` |
+| Domain verified | `verification_status = 'verified'` | `domains` |
+| Token issued | `personal_access_tokens` row | `personal_access_tokens` |
+| First API call | `mls_proxy_audit_logs` row | `mls_proxy_audit_logs` |
+| First search | Audit log with `request_type = 'search'` | `mls_proxy_audit_logs` |
+
+## Scoping New Onboarding Steps
+
+### WARNING: Adding steps before verification
+
+**The Problem:** Inserting onboarding steps between "add domain" and "DNS verify" drops activation rate. Each extra step is a drop-off point.
+
+**The Fix:** New onboarding steps should go **after** the first API call (post-activation). Pre-verification, the flow must stay minimal: add domain → verify → token.
+
+### Acceptance criteria template for onboarding changes
+
+```
+Given [user state from milestone table]
+When [user takes action]
+Then [observable outcome in table/API]
+And [no regression in existing activation path]
+```
+
+Example for "add MLS dataset selector to domain form":
+
+```
+Given user is logged in with no domains
+When user submits domain form with dataset=beaches
+Then domains row has mls_dataset='beaches' and allowed_mls_datasets='["beaches"]'
+And DNS verification flow still works unchanged
+```
+
+## Anti-Patterns
+
+### WARNING: Auto-issuing tokens without verification
+
+Tokens must require domain verification. Issuing tokens for unverified domains allows unauthenticated API access from any hostname — this defeats the domain-based auth model.
+
+### WARNING: Invitation tokens stored in plaintext
+
+`internal/service/auth/invitations.go` stores SHA256 hashes. Invitation links use the raw token in the URL (`/invite/:token`). Never store raw invitation tokens in the database.
+
+## See Also
+
+- See the **auth-api-token** skill for token creation and verification
+- See the **fiber** skill for session middleware patterns

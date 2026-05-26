@@ -1,25 +1,40 @@
-# Conversion Optimization
+# Reducing Form Falloff Conversion Optimization Reference
 
-## When to use
-Improving form completion rates for the GHL widget lead capture flows. Use when analyzing drop-off in the funnel from MLS listing views to submitted leads.
+## When To Use
 
-## Patterns
+Use this reference when the task touches conversion optimization while working on Reducing Form Falloff code in this repository.
 
-### Progressive Gating with View Thresholds
-Configure `gate_after_views` in `ghl_widget_configs` to delay the lead form requirement. Users browse ungated MLS content for N listing views before the form appears. Pair with `require_otp` for phone verification gating on high-intent actions like saving favorites or requesting showings.
+## What To Inspect
 
-```php
-// In widget config or middleware logic
-if ($viewCount >= config('ghl.widgets.gate_after_views', 3)) {
-    // Require lead form completion before showing more listings
-}
-```
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-### Minimize Required Fields
-Reduce `QuantyraLead` payload to email-only for initial capture. Use GHL contact enrichment to backfill name, phone, and address data after the lead enters the CRM. Map minimal fields in `GhlLeadMapping` to avoid overwhelming users.
+## Recommended Workflow
 
-### Inline Validation with Clear Errors
-Return structured validation errors from `POST /widget/api/leads` that the widget JS can display inline. Avoid generic "validation failed" messages; specify which field needs attention.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-## Warning
-Do not set `gate_after_views` to 0 on the free tier—this eliminates the teaser value proposition and can violate Stellar MLS display guidelines. Always maintain the teaser/listings boundary per the subscription tier.
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

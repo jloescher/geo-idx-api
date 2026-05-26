@@ -1,38 +1,69 @@
-# Writing Release Notes Product Analytics Reference
+# Product Analytics Reference
 
-## When To Use
+How release notes track and communicate measurable product changes for Quantyra IDX API.
 
-Use this reference when the task touches product analytics while working on Writing Release Notes code in this repository.
+## Measurable Changes in Release Notes
 
-## What To Inspect
+Quantyra IDX API changes fall into measurable categories. Good release notes tie features to observable metrics.
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+### Change Categories and Metrics
 
-## Recommended Workflow
+| Category | Example Change | Observable Metric |
+|----------|---------------|-------------------|
+| Performance | PostGIS mirror search | Response latency p50/p95 |
+| Data coverage | New MLS dataset support | `listings` row count per `dataset_slug` |
+| Feature adoption | Comps investor modes | `POST /api/v1/comps/run` mode distribution |
+| Reliability | Fair replication pipeline | `replica_pages` throughput, queue depth |
+| Cost | Proxy cache purge | `mls_search_cache` row count after purge |
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+### DO: Include measurable impact when available
 
-## Quality Bar
+```markdown
+## v2.2.0
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+### Performance
+- **Search**: PostGIS mirror leg returns Active/Pending results from indexed columns (no live Bridge call) — reduces p95 latency for covered statuses
+- **Replication**: Fair reservation across `bridge-sync-fetch` and `spark-sync-persist` queues prevents Bridge backlog from starving Spark fetch
+```
 
-## Pitfalls
+### DON'T: Claim improvements without grounding
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+```markdown
+<!-- BAD — no basis for the claim -->
+### Performance
+- Search is now much faster
+- Replication is significantly improved
+```
 
-## Done Checklist
+### Analytics-Adjacent Release Patterns
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+When a release adds instrumentation or monitoring:
+
+1. Note new env vars for observability (e.g., `SCHEDULER_STANDBY_POLL_SECONDS`)
+2. Reference log format changes (slog structured output)
+3. Mention new health endpoints or stat routes (`GET /api/v1/bridge/stats`)
+
+### Release Notes for Queue/Worker Changes
+
+Worker changes are analytics-relevant because they affect throughput and job completion:
+
+- New queue names must be added to `WORKER_QUEUES`
+- New job types (e.g., `crypto.refresh_pricing`) must be documented
+- Chunk size changes affect `pg_stat_statements` patterns
+
+See the **queue-postgresql** skill for job type documentation patterns.
+
+### Analytics Release Checklist
+
+Copy this checklist when release notes reference measurable changes:
+- [ ] Performance claims reference specific endpoints or queues
+- [ ] New metrics/health endpoints are named
+- [ ] Operator-facing env vars include defaults
+- [ ] Queue changes specify new `WORKER_QUEUES` values
+- [ ] Data coverage changes reference `dataset_slug` values
+
+## Related References
+
+- See the **queue-postgresql** skill for queue metrics documentation
+- See the **cache-postgres** skill for cache-related release notes
+- See `docs/deployment-operations.md` for operational metrics

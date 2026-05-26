@@ -1,38 +1,120 @@
-# Improving Activation Flow Roadmap Experiments Reference
+# Roadmap & Experiments Reference
 
-## When To Use
+## Contents
+- Experiment constraints in this architecture
+- Safe rollout patterns
+- Feature flags with PostgreSQL
+- A/B test considerations
+- Verification checklist
 
-Use this reference when the task touches roadmap experiments while working on Improving Activation Flow code in this repository.
+## Experiment Constraints
 
-## What To Inspect
+This is a Go API backend with PostgreSQL state. There is no frontend A/B testing framework. Experiments must be implemented as backend logic with database-backed configuration.
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+### DO: Use database-backed feature flags
 
-## Recommended Workflow
+```sql
+-- new code to add — feature flag table
+CREATE TABLE IF NOT EXISTS feature_flags (
+    key TEXT PRIMARY KEY,
+    enabled BOOLEAN NOT NULL DEFAULT false,
+    domains TEXT[] DEFAULT '{}',  -- empty = all domains, or list of domain IDs
+    config JSONB DEFAULT '{}',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+```go
+// new code to add — feature flag check
+func (r *Repository) IsFeatureEnabled(ctx context.Context, key, domainID string) (bool, error) {
+    var enabled bool
+    err := r.db.QueryRowContext(ctx,
+        `SELECT enabled AND (domains = '{}' OR $2 = ANY(domains))
+         FROM feature_flags WHERE key = $1`,
+        key, domainID,
+    ).Scan(&enabled)
+    return enabled, err
+}
+```
 
-## Quality Bar
+### DON'T: Use environment variables for per-domain experiments
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+```go
+// BAD — requires redeployment to change, applies to all domains
+os.Getenv("ENABLE_NEW_SEARCH")
 
-## Pitfalls
+// GOOD — database flag, changeable at runtime, scoped per domain
+repo.IsFeatureEnabled(ctx, "new_search_algorithm", domainID)
+```
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+## Safe Rollout Patterns
 
-## Done Checklist
+### Percentage rollout
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+```go
+// new code to add — deterministic rollout by domain ID hash
+func (r *Repository) IsRolloutEnabled(ctx context.Context, feature, domainID string, pct int) bool {
+    if pct >= 100 {
+        return true
+    }
+    h := fnv.New32a()
+    h.Write([]byte(domainID))
+    bucket := h.Sum32() % 100
+    return int(bucket) < pct
+}
+```
+
+### Domain allowlist rollout
+
+```sql
+-- Enable feature for specific domains first
+INSERT INTO feature_flags (key, enabled, domains)
+VALUES ('hybrid_search_v2', true, ARRAY['domain-id-1', 'domain-id-2']);
+```
+
+### Gradual expansion
+
+```
+1. Enable for 2 domains (internal testing)
+2. Verify: run integration tests, check audit logs for errors
+3. Enable for 10 domains (beta)
+4. Verify: compare response times and error rates
+5. Enable for 25% (hash-based rollout)
+6. Verify: `SELECT COUNT(*) FROM audit_logs WHERE action = 'search.request' AND metadata->>'source' = 'v2'`
+7. Enable for 100%
+```
+
+## A/B Test Considerations
+
+### DO: Store experiment assignment in metadata
+
+```go
+// new code to add — include experiment variant in audit log metadata
+metadata := map[string]interface{}{
+    "experiment": "search_algorithm",
+    "variant":    "v2_spatial",
+    "latency_ms": elapsed.Milliseconds(),
+}
+auditRepo.Record(ctx, "search.request", domainID, metadata)
+```
+
+### DON'T: Run A/B tests that change response schema
+
+Clients parse API responses. Returning different JSON shapes per variant breaks integrations. If testing a new search algorithm, return the same response shape — only change the ranking/filtering logic internally.
+
+## Verification Checklist
+
+```
+Copy this checklist and track progress:
+- [ ] Feature flag table exists and has the experiment key
+- [ ] Flag check is performed before the experimental code path
+- [ ] Audit logs record the variant assigned to each request
+- [ ] Rollback is possible by setting `enabled = false` (no redeployment)
+- [ ] Monitoring query exists to compare variants:
+      SELECT metadata->>'variant', COUNT(*), AVG((metadata->>'latency_ms')::float)
+      FROM audit_logs WHERE action = 'search.request'
+      AND created_at > NOW() - INTERVAL '1 day'
+      GROUP BY 1;
+```
+
+See the **cache-postgres** skill for caching experiment configs and the **queue-postgresql** skill for async experiment processing.

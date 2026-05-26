@@ -1,38 +1,117 @@
-# Triaging User Feedback Product Analytics Reference
+# Product Analytics Feedback
 
-## When To Use
+## Contents
+- Analytics Data Sources
+- Metric Queries
+- Funnel Analysis
+- Data Quality Monitoring
 
-Use this reference when the task touches product analytics while working on Triaging User Feedback code in this repository.
+## Analytics Data Sources
 
-## What To Inspect
+This platform does not use a dedicated analytics service. Product analytics are derived from PostgreSQL tables that already exist for operational purposes.
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+| Source | Table | Analytics Use |
+|--------|-------|---------------|
+| API audit logs | `mls_proxy_audit_logs` | Usage patterns, endpoint adoption, cache performance |
+| Domain records | `domains` | Activation funnel, verification rates |
+| Token records | `tokens` | Token lifecycle, scope usage |
+| Listings mirror | `listings` | Data coverage, dataset health |
+| Sync cursors | `listing_sync_cursors` | Replication freshness |
+| Job queue | `jobs` | Processing health (ephemeral — completed jobs deleted) |
 
-## Recommended Workflow
+### WARNING: Job queue is ephemeral
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+Completed jobs are **deleted** from `jobs` after success (normal queue behavior). You cannot query historical job performance from the `jobs` table. Use slog structured logs or add a `job_history` table if retrospective job analytics are needed.
 
-## Quality Bar
+## Metric Queries
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+### API Usage Metrics
 
-## Pitfalls
+```sql
+-- Daily request volume with cache performance
+SELECT DATE(created_at) AS day,
+       COUNT(*) AS total_requests,
+       COUNT(CASE WHEN cache_hit = 'hit' THEN 1 END) AS cache_hits,
+       ROUND(COUNT(CASE WHEN cache_hit = 'hit' THEN 1 END)::numeric / NULLIF(COUNT(*), 0) * 100, 1) AS hit_rate_pct
+FROM mls_proxy_audit_logs
+WHERE created_at > NOW() - INTERVAL '30 days'
+GROUP BY DATE(created_at)
+ORDER BY day;
+```
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+### Dataset Coverage
 
-## Done Checklist
+```sql
+-- Listings coverage by dataset (data quality metric)
+SELECT dataset_slug,
+       COUNT(*) AS total,
+       COUNT(list_price) AS with_price,
+       COUNT(coordinates) AS with_geom,
+       COUNT(flood_zone_code) AS with_flood
+FROM listings
+GROUP BY dataset_slug;
+```
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+### Replication Health
+
+```sql
+-- Sync freshness per dataset
+SELECT dataset_slug,
+       last_sync_finished_at,
+       replication_in_progress,
+       last_modification_timestamp
+FROM listing_sync_cursors;
+```
+
+## Funnel Analysis
+
+### Full User Funnel
+
+```sql
+-- From invitation to active API consumer
+WITH invited AS (SELECT id, email, created_at FROM users),
+     with_domain AS (SELECT user_id, MIN(created_at) AS domain_at FROM domains GROUP BY user_id),
+     verified AS (SELECT user_id, MIN(verified_at) AS verified_at FROM domains WHERE verification_status = 'verified' GROUP BY user_id),
+     with_token AS (SELECT domain_id, MIN(created_at) AS token_at FROM tokens GROUP BY domain_id),
+     active AS (SELECT DISTINCT domain_slug FROM mls_proxy_audit_logs WHERE created_at > NOW() - INTERVAL '7 days')
+SELECT
+  (SELECT COUNT(*) FROM invited) AS total_users,
+  (SELECT COUNT(*) FROM with_domain) AS added_domain,
+  (SELECT COUNT(*) FROM verified) AS verified_domain,
+  (SELECT COUNT(*) FROM with_token) AS created_token,
+  (SELECT COUNT(*) FROM active) AS active_last_7d;
+```
+
+## Data Quality Monitoring
+
+### DO: Use existing stats endpoint for monitoring
+
+`GET /api/v1/bridge/stats` (see `internal/service/sync/stats.go`) provides real-time replication health. Use it as a data quality signal source.
+
+### DON'T: Query listings table for real-time analytics
+
+The `listings` table can be large. For real-time analytics, prefer aggregate counts from `mls_proxy_audit_logs` with appropriate time filters rather than full table scans on `listings`.
+
+### Pattern: Detect Data Gaps from User Feedback
+
+When users report "missing listings" or "stale data":
+
+1. Check `listing_sync_cursors.last_sync_finished_at` — is it recent?
+2. Check `listings` count by `dataset_slug` — compare to expected volume
+3. Check `replica_pages` for stuck `pending`/`processing` rows
+4. Check worker logs for fetch/persist errors
+
+```sql
+-- Stuck replica pages (replication issue indicator)
+SELECT provider, dataset, status, COUNT(*), MIN(created_at) AS oldest
+FROM replica_pages
+WHERE status IN ('pending', 'processing')
+  AND created_at < NOW() - INTERVAL '1 hour'
+GROUP BY provider, dataset, status;
+```
+
+## Related Skills
+
+- See the **queue-postgresql** skill for job monitoring patterns
+- See the **cache-postgres** skill for cache performance analysis
+- See the **geospatial** skill for PostGIS data quality checks

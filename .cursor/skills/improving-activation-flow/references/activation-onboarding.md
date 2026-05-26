@@ -1,38 +1,124 @@
-# Improving Activation Flow Activation Onboarding Reference
+# Activation & Onboarding Reference
 
-## When To Use
+## Contents
+- Activation milestones
+- Domain creation flow
+- Token issuance flow
+- First-run verification
+- Common errors
 
-Use this reference when the task touches activation onboarding while working on Improving Activation Flow code in this repository.
+## Activation Milestones
 
-## What To Inspect
+The activation funnel for a new Quantyra IDX customer:
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+| Step | Action | Measured by |
+|------|--------|-------------|
+| 1. Domain authorized | Admin adds domain via `/dashboard` | `domains` row exists |
+| 2. Token created | Customer creates API token | `tokens` row exists with `active = true` |
+| 3. First API call | Customer hits `/api/v1/properties` or `/api/v1/search` | `audit_logs` entry with action `api.request` |
+| 4. Data returned | Customer receives listing data (200 response with results) | Response contains `value` array with items |
+| 5. Replication verified | Customer checks sync status | `GET /api/v1/bridge/stats` returns `last_sync_finished_at` |
 
-## Recommended Workflow
+### DO: Track milestones via audit logs
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+```go
+// new code to add — record activation milestone in audit log
+func (r *Repository) RecordMilestone(ctx context.Context, domainID, action string) error {
+    _, err := r.db.ExecContext(ctx,
+        `INSERT INTO audit_logs (action, subject_type, subject_id, metadata, created_at)
+         VALUES ($1, 'domain', $2, '{}', NOW())`,
+        action, domainID,
+    )
+    return err
+}
+// Call with: "domain.created", "token.created", "api.first_call", "data.first_listing"
+```
 
-## Quality Bar
+### DON'T: Use in-memory counters for milestone tracking
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+```go
+// BAD — lost on restart, not shared across instances, breaks multi-DC
+var activationCount map[string]int // shared mutable state
+```
 
-## Pitfalls
+In-memory state fails in multi-DC (NYC + ATL). Both API instances must see the same activation state. See the **cache-postgres** skill.
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+## Domain Creation Flow
 
-## Done Checklist
+The `/dashboard` is invite-only. Admin creates domains and customers manage tokens.
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+### DO: Validate domain uniqueness before insert
+
+```go
+// new code to add — idempotent domain creation
+func (r *Repository) CreateDomain(ctx context.Context, hostname string) (string, error) {
+    var id string
+    err := r.db.QueryRowContext(ctx,
+        `INSERT INTO domains (hostname, active, created_at)
+         VALUES ($1, true, NOW())
+         ON CONFLICT (hostname) DO UPDATE SET updated_at = NOW()
+         RETURNING id`,
+        hostname,
+    ).Scan(&id)
+    return id, err
+}
+```
+
+### DON'T: Skip hostname normalization
+
+```go
+// BAD — "Example.COM" and "example.com" create duplicate domains
+db.ExecContext(ctx, `INSERT INTO domains (hostname) VALUES ($1)`, rawHostname)
+
+// GOOD — normalize before insert
+hostname = strings.ToLower(strings.TrimPrefix(rawHostname, "www."))
+```
+
+## Token Issuance Flow
+
+Customers create tokens from the dashboard. Tokens use SHA-256 hashes (not Laravel Sanctum format).
+
+### DO: Hash tokens with SHA-256 at creation time
+
+```go
+// new code to add — consistent with existing auth pattern
+import "crypto/sha256"
+
+func HashToken(plaintext string) string {
+    h := sha256.Sum256([]byte(plaintext))
+    return hex.EncodeToString(h[:])
+}
+```
+
+### WARNING: Legacy Sanctum tokens are NOT accepted
+
+The Go API rejects `id|secret` format tokens. Customers must re-issue tokens from `/dashboard` after cutover. See `docs/go-cutover.md`.
+
+## First-Run Verification
+
+After activation, verify the customer can reach data:
+
+```
+Copy this checklist and track progress:
+- [ ] Domain exists in `domains` table with `active = true`
+- [ ] Token exists in `tokens` table linked to domain
+- [ ] `GET /api/v1/properties?dataset=stellar` returns 200 with `value` array
+- [ ] `GET /api/v1/bridge/stats` shows `last_sync_finished_at` not null
+- [ ] `POST /api/v1/search` returns listings within the domain's authorized area
+```
+
+### Validation loop
+
+1. Make changes to activation flow
+2. Verify: `GOFLAGS=-mod=mod go test ./internal/handler/auth/... ./internal/handler/bridge/...`
+3. If tests fail, fix and repeat step 2
+4. Manual smoke: create domain → create token → `curl -H "Authorization: Bearer <token>" http://localhost:8000/api/v1/properties?dataset=stellar`
+
+## Common Errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| 403 on `/api/v1/*` | Domain not in `domains` table or token revoked | Verify domain exists and token `active = true` |
+| Empty `value` array | Replication not yet complete | Check `GET /api/v1/bridge/stats` and wait for scheduler kickoff |
+| 401 on dashboard | Invite-only; admin must seed domain | Use `make seed-admin` then add domain from dashboard |
+| Legacy token rejected | Sanctum `id\|secret` format | Re-issue from `/dashboard` (see **auth-api-token** skill) |

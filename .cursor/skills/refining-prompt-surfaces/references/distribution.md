@@ -1,26 +1,40 @@
-# Distribution
+# Refining Prompt Surfaces Distribution Reference
 
-## When to use
-Deploying widget embeds, sharing GHL Marketplace app, or routing traffic between idx.quantyralabs.cc and idx-api.quantyralabs.cc surfaces.
+## When To Use
 
-## Patterns
+Use this reference when the task touches distribution while working on Refining Prompt Surfaces code in this repository.
 
-**Widget loader distribution**
-The `/widget/loader.js` route returns the embed script. Users paste this into GHL websites or external sites. The loader must:
-- Load from `IDX_API_PUBLIC_URL` (not `APP_URL` directly)
-- Include `data-api-key` and `data-location-id` attributes
-- Use `defer` attribute to avoid blocking host page render
+## What To Inspect
 
-**GHL Marketplace app URLs**
-Three canonical URLs are required in the GHL developer dashboard:
-- Installation: `https://idx-api.quantyralabs.cc/leadconnector/install`
-- OAuth callback: `https://idx-api.quantyralabs.cc/oauth/leadconnector/callback`
-- Webhooks: `https://idx-api.quantyralabs.cc/webhooks/leadconnector`
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-Use `route('leadconnector.install')` etc. in documentation—don't hardcode hostnames in case of staging environments.
+## Recommended Workflow
 
-**Image proxy routing**
-`idx-images.quantyralabs.cc` serves `/images/*` via Nginx reverse-proxy to `idx-api:8000`. When distributing listing photos in emails or external shares, always use `IDX_IMAGES_PUBLIC_URL` URLs—never expose `api.bridgedataoutput.com` direct links. The `BridgeImageUrlRewriter` handles this in JSON responses.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-## Warning
-Widget embeds validate Origin headers against registered URLs in `ghl_registered_urls`. If a user installs the widget on an unregistered domain, the API key will 403. Always prompt for URL registration during GHL onboarding—don't assume the GHL location domain matches the widget host.
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

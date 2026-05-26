@@ -1,71 +1,150 @@
-# Product Analytics
+# Product Analytics Reference
 
-Use when defining metrics, dashboards, and automated reports for stakeholder visibility into platform health and growth.
+## Contents
+- Data Sources
+- Key Queries
+- Schema Design for Product Events
+- Anti-Patterns
 
-## Patterns
+## Data Sources
 
-**Core Metrics View**
+### Existing: `mls_proxy_audit_logs`
+
+The only analytics-capable table. Schema from `migrations/00001_initial.sql`:
 
 ```sql
--- Weekly business health snapshot
-SELECT 
-    date_trunc('week', logged_at) as week,
-    COUNT(DISTINCT domain_slug) as active_domains,
-    COUNT(DISTINCT ghl_location_id) as active_locations,
-    SUM(listing_count) as total_listings_served,
-    AVG(CASE WHEN listing_count <= 3 THEN 1 ELSE 0 END) as teaser_rate,
-    COUNT(DISTINCT CASE WHEN request_type = 'image' THEN ip_address END) as unique_image_visitors
-FROM bridge_proxy_audit_logs
-GROUP BY week
-ORDER BY week DESC;
+CREATE TABLE mls_proxy_audit_logs (
+    id BIGSERIAL PRIMARY KEY,
+    logged_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    domain_slug VARCHAR(255) NULL,
+    token_name VARCHAR(255) NULL,
+    request_type VARCHAR(255) NOT NULL,
+    listing_count INT NULL,
+    cache_hit VARCHAR(8) NULL,
+    ip_address VARCHAR(45) NULL,
+    user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL
+);
 ```
 
-**Cohort Retention by Install Week**
+Index: `mls_proxy_audit_logs_logged_at_index` on `logged_at`.
+
+### Missing: Product Events Table
+
+No `product_events` table exists. Add one for non-proxy events (dashboard actions, auth, lifecycle):
 
 ```sql
--- Location retention: % still active N weeks after install
-WITH cohorts AS (
-    SELECT 
-        ghl_location_id,
-        date_trunc('week', created_at) as cohort_week
-    FROM ghl_installed_locations
-    WHERE status = 'active'
+-- new code to add — product events migration
+CREATE TABLE product_events (
+    id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+    event_name VARCHAR(255) NOT NULL,
+    properties JSONB NOT NULL DEFAULT '{}',
+    domain_slug VARCHAR(255) NULL,
+    session_id VARCHAR(255) NULL
+);
+CREATE INDEX product_events_created_at ON product_events(created_at);
+CREATE INDEX product_events_event_name ON product_events(event_name);
+CREATE INDEX product_events_user_id ON product_events(user_id);
+```
+
+## Key Queries
+
+### Activation Rate (Existing Data Only)
+
+```sql
+SELECT
+  COUNT(*) AS total_domains,
+  COUNT(DISTINCT a.domain_slug) AS active_domains
+FROM domains d
+LEFT JOIN (
+  SELECT DISTINCT domain_slug FROM mls_proxy_audit_logs
+  WHERE logged_at > NOW() - INTERVAL '30 days'
+) a ON a.domain_slug = d.slug
+WHERE d.verified = true;
+```
+
+### Retention Cohort by Domain
+
+```sql
+WITH weekly AS (
+  SELECT domain_slug, date_trunc('week', logged_at) AS week
+  FROM mls_proxy_audit_logs
+  WHERE logged_at > NOW() - INTERVAL '12 weeks'
 )
-SELECT 
-    c.cohort_week,
-    COUNT(DISTINCT c.ghl_location_id) as cohort_size,
-    COUNT(DISTINCT CASE WHEN a.logged_at > c.cohort_week + INTERVAL '1 week' THEN c.ghl_location_id END) as week_1_active,
-    COUNT(DISTINCT CASE WHEN a.logged_at > c.cohort_week + INTERVAL '4 weeks' THEN c.ghl_location_id END) as week_4_active
-FROM cohorts c
-LEFT JOIN bridge_proxy_audit_logs a ON a.domain_slug IN (
-    SELECT domain_slug FROM ghl_registered_urls WHERE ghl_oauth_token_id = (
-        SELECT id FROM ghl_oauth_tokens WHERE ghl_location_id = c.ghl_location_id
-    )
-)
-GROUP BY c.cohort_week;
+SELECT week, COUNT(DISTINCT domain_slug) AS active_domains
+FROM weekly GROUP BY week ORDER BY week;
 ```
 
-**Revenue-At-Risk Alerts**
+### Request Volume with Cache Efficiency
 
 ```sql
--- Locations with usage drop before renewal
-SELECT 
-    l.ghl_location_id,
-    l.subscription_status,
-    l.mls_request_count as total_requests,
-    COUNT(a.id) as requests_last_7_days,
-    CASE 
-        WHEN l.mls_request_count > 100 AND COUNT(a.id) = 0 THEN 'high_risk_churn'
-        WHEN COUNT(a.id) < 5 THEN 'low_engagement'
-        ELSE 'healthy'
-    END as health_status
-FROM ghl_installed_locations l
-LEFT JOIN bridge_proxy_audit_logs a ON l.ghl_location_id = a.user_id::text
-    AND a.logged_at > NOW() - INTERVAL '7 days'
-WHERE l.subscription_status IN ('active', 'trial')
-GROUP BY l.ghl_location_id, l.subscription_status, l.mls_request_count;
+SELECT logged_at::date AS day,
+       COUNT(*) AS total_requests,
+       COUNT(*) FILTER (WHERE cache_hit = 'HIT') AS cache_hits,
+       ROUND(COUNT(*) FILTER (WHERE cache_hit = 'HIT')::numeric
+             / NULLIF(COUNT(*), 0) * 100, 1) AS cache_hit_pct
+FROM mls_proxy_audit_logs
+WHERE logged_at > NOW() - INTERVAL '30 days'
+GROUP BY day ORDER BY day;
 ```
 
-## Warning
+### Top Domains by Usage
 
-Teaser vs full access distorts engagement metrics—always segment or normalize by `idx:full` token capability. Domain-authenticated requests with teaser caps will show artificially low listing counts and may appear as low engagement when they are actually active paid users.
+```sql
+SELECT domain_slug, COUNT(*) AS requests,
+       COUNT(DISTINCT request_type) AS endpoints_used,
+       MIN(logged_at) AS first_seen, MAX(logged_at) AS last_seen
+FROM mls_proxy_audit_logs
+WHERE logged_at > NOW() - INTERVAL '30 days'
+GROUP BY domain_slug ORDER BY requests DESC LIMIT 10;
+```
+
+## Dashboard Analytics Endpoints
+
+### Pattern: Admin Analytics API
+
+```go
+// new code to add — admin-only analytics endpoint
+func (h *Handler) GetAnalytics(c *fiber.Ctx) error {
+    isAdmin, _ := c.Locals("is_admin").(bool)
+    if !isAdmin { return c.SendStatus(403) }
+
+    rows, err := h.db.Pool.Query(c.Context(), `
+        SELECT logged_at::date AS day, COUNT(*)
+        FROM mls_proxy_audit_logs
+        WHERE logged_at > NOW() - INTERVAL '30 days'
+        GROUP BY day ORDER BY day
+    `)
+    // ... scan and return JSON ...
+}
+```
+
+## Anti-Patterns
+
+### WARNING: Unbounded Audit Table Growth
+
+`mls_proxy_audit_logs` has no retention policy. At high request volumes, this table grows unbounded. Add a scheduled purge:
+
+```sql
+-- new code to add — 90-day retention
+DELETE FROM mls_proxy_audit_logs WHERE logged_at < NOW() - INTERVAL '90 days';
+```
+
+Schedule via the scheduler (see `internal/scheduler/scheduler.go` for the cron job pattern).
+
+### WARNING: COUNT(*) on Large Audit Tables
+
+AVOID `SELECT COUNT(*) FROM mls_proxy_audit_logs` without a time filter. Always use `WHERE logged_at > NOW() - INTERVAL '...'`. The `logged_at` index supports this efficiently.
+
+### WARNING: Missing Index for Analytics Queries
+
+The only index is on `logged_at`. Common analytics patterns also filter by `domain_slug`. Add composite indexes when query performance degrades:
+
+```sql
+-- new code to add — if analytics queries are slow
+CREATE INDEX mls_proxy_audit_logs_domain_slug ON mls_proxy_audit_logs(domain_slug, logged_at);
+```
+
+See the **postgresql** skill for JSONB queries and index patterns.
+See the **queue-postgresql** skill for scheduled job patterns to run retention purges.

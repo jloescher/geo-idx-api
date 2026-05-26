@@ -1,17 +1,40 @@
-# Growth Engineering
+# Crafting Page Messaging Growth Engineering Reference
 
-## When to use
+## When To Use
 
-Building features or flows specifically designed to increase acquisition, activation, or retention—often at the intersection of product and marketing.
+Use this reference when the task touches growth engineering while working on Crafting Page Messaging code in this repository.
 
-## Project-relevant patterns
+## What To Inspect
 
-**Progressive domain expansion** — Start users on Pro (3 domains). When they attempt to add a 4th, trigger an upgrade modal: "Upgrade to Smart for 5 domains, or remove an existing domain." Make the constraint visible only at the point of friction.
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**GHL webhook-driven re-engagement** — Use GHL's webhook events (contacts created, opportunities moved) to trigger targeted messaging. A location that hasn't created a contact in 7 days gets a "Sync your first lead" email with the widget embed code.
+## Recommended Workflow
 
-**GIS parcel layer as retention hook** — The parcel overlay feature (`/api/v1/gis`) increases time-on-site without increasing MLS data costs. Track map interaction metrics. Locations with high GIS usage but low listing usage are candidates for "Unlock full listings" campaigns.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
+
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
 
 ## Pitfalls
 
-Do not build viral loops that violate Stellar MLS data restrictions. Sharing listings via public URL, allowing unauthenticated previews beyond the teaser limit, or caching images outside the approved CDN path all create compliance risk. All growth tactics must respect `domain.token` auth and teaser gating.
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

@@ -1,38 +1,72 @@
-# Writing Release Notes Roadmap Experiments Reference
+# Roadmap & Experiments Reference
 
-## When To Use
+How release notes reflect phased rollouts and experimental features for Quantyra IDX API.
 
-Use this reference when the task touches roadmap experiments while working on Writing Release Notes code in this repository.
+## Phased Rollout in Release Notes
 
-## What To Inspect
+Quantyra uses phased infrastructure (Phase 1: primary-only, Phase 2: read replicas). Release notes should reflect the current phase and any phase transitions.
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+### Phase Markers in Notes
 
-## Recommended Workflow
+| Phase | What to Document | Example |
+|-------|-----------------|---------|
+| Phase 1 (primary only) | All containers point to Patroni primary | `docs/coolify-deployment.md` §8 |
+| Phase 2 (read replicas) | `DB_READ_HOST` routing for API reads | `docs/coolify-deployment.md` §9 |
+| Experimental | Feature flags, env-var-gated behavior | `BRIDGE_SYNC_FULL_PROPERTY` |
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+### DO: Mark experimental features clearly
 
-## Quality Bar
+```markdown
+## v2.4.0
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+### Experimental
+- **Bridge**: Nav hydration after replication (`BRIDGE_SYNC_NAV_HYDRATE_AFTER_REPLICATION`, default `true`) — paginates `/Property` with nav `$expand` to backfill `unit`/`room`/`open_house` JSONB. Report issues with `dataset=stellar` listings missing expanded collections.
+```
 
-## Pitfalls
+### DON'T: Ship experimental features without disclosure
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+```markdown
+<!-- BAD — looks like a stable feature -->
+### Features
+- **Bridge**: Nav hydration now populates unit, room, and open house data after replication
+```
 
-## Done Checklist
+### Feature Flags and Env Vars
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+When a release introduces env-var-gated behavior, document:
+
+1. The env var name and default value
+2. What changes when the flag is enabled/disabled
+3. Which `dataset_slug` values are affected
+
+Known env-var gates from the codebase:
+
+| Env Var | Default | Controls |
+|---------|---------|----------|
+| `BRIDGE_SYNC_FULL_PROPERTY` | `true` | Full Property payload vs `$select` mode |
+| `BRIDGE_SYNC_NAV_HYDRATE_AFTER_REPLICATION` | `true` | Post-replication nav expand |
+| `MLS_LOCAL_MIRROR_ROLLING_MONTHS` | `12` (local), `3` (staging), `0` (prod) | Rolling window for mirror data |
+| `MLS_REPLICATION_FRESHNESS_MINUTES` | `15` | How often incremental sync runs |
+
+### Roadmap Transition Notes
+
+When a feature graduates from experimental to stable:
+
+```markdown
+### Graduated from Experimental
+- **Nav hydration** (`BRIDGE_SYNC_NAV_HYDRATE_AFTER_REPLICATION`) is now stable — enabled by default for all Bridge datasets. The env var remains for opt-out.
+```
+
+### Roadmap Release Checklist
+
+Copy this checklist for releases with phased or experimental changes:
+- [ ] Experimental features are marked with env var + default
+- [ ] Phase transitions (1→2) are called out explicitly
+- [ ] Graduated features are noted as no longer experimental
+- [ ] Dataset-specific behavior is documented per `dataset_slug`
+
+## Related References
+
+- See the **deploy-coolify** skill for multi-DC phase documentation
+- See the **deploy-patroni** skill for read replica phase notes
+- See `docs/coolify-deployment.md` §9 for Phase 2 read replica details

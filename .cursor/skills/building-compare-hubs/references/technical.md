@@ -1,62 +1,40 @@
-# Technical Implementation Reference
+# Building Compare Hubs Technical Reference
 
-When to use: Building comparison features, alternative pages, or discovery hubs that require Livewire components, Blade templates, and Laravel routing patterns.
+## When To Use
 
-## Patterns
+Use this reference when the task touches technical while working on Building Compare Hubs code in this repository.
 
-### Livewire 3 Component with Billing Toggle
+## What To Inspect
 
-```php
-// app/Livewire/Marketing/PlanComparison.php
-class PlanComparison extends Component
-{
-    public string $billingInterval = 'monthly';
-    
-    public function toggleInterval(): void
-    {
-        $this->billingInterval = $this->billingInterval === 'monthly' ? 'yearly' : 'monthly';
-    }
-    
-    public function render()
-    {
-        return view('livewire.marketing.plan-comparison', [
-            'plans' => SubscriptionCatalog::getPlans(),
-        ]);
-    }
-}
-```
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-Use the `SalesLandingPage` pattern: store toggle state in the component, pass computed pricing to the view, and persist selection via `#[Url]` for shareable comparison URLs.
+## Recommended Workflow
 
-### Comparison Grid with Tailwind CSS 4
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-```blade
-<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-    @foreach($plans as $plan)
-        <div @class([
-            'border-2 rounded-lg p-6',
-            'border-indigo-600 ring-4 ring-indigo-100' => $plan['recommended'],
-            'border-gray-200' => !$plan['recommended'],
-        ])>
-            <h3>{{ $plan['name'] }}</h3>
-            <p class="text-3xl font-bold">${{ $plan[$billingInterval] }}</p>
-        </div>
-    @endforeach
-</div>
-```
+## Quality Bar
 
-### Route Registration with Named Groups
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
 
-```php
-// routes/web.php
-Route::prefix('compare')->name('marketing.compare.')->group(function () {
-    Route::get('plans', [CompareController::class, 'plans'])->name('plans');
-    Route::get('alternatives/{plan}', [CompareController::class, 'alternatives'])->name('alternatives');
-});
-```
+
 
 ## Pitfalls
 
-Avoid hardcoding plan prices in Blade templates—always source from `SubscriptionCatalog::getPlans()` or `config/billing.php` to ensure Stripe price IDs and display amounts stay synchronized when tiers change.
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
 
------
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

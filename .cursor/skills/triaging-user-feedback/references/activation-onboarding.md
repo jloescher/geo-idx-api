@@ -1,38 +1,97 @@
-# Triaging User Feedback Activation Onboarding Reference
+# Activation & Onboarding Feedback
 
-## When To Use
+## Contents
+- Onboarding Journey Stages
+- Friction Signals by Stage
+- Dashboard Activation Patterns
+- Quick Win Opportunities
 
-Use this reference when the task touches activation onboarding while working on Triaging User Feedback code in this repository.
+## Onboarding Journey Stages
 
-## What To Inspect
+The Quantyra IDX onboarding flow spans: invite → login → domain setup → DNS verification → token creation → first API call. Each stage has observable friction points in `internal/handler/dashboard/handler.go`.
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+### Stage 1: Invite and Login
 
-## Recommended Workflow
+The dashboard is invite-only. Admins create invitations via `/dashboard/invitations`. New users receive credentials and log in at the centered login form.
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+**Friction signals:**
+- Failed login attempts (check slog for `Invalid credentials`)
+- Session creation failures
+- Users who log in but never add a domain
 
-## Quality Bar
+```sql
+-- Users who logged in but never registered a domain (activation drop-off)
+SELECT u.id, u.email, u.created_at
+FROM users u
+LEFT JOIN domains d ON d.user_id = u.id
+WHERE d.id IS NULL
+  AND u.created_at < NOW() - INTERVAL '3 days'
+ORDER BY u.created_at DESC;
+```
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+### Stage 2: Domain Setup and DNS Verification
 
-## Pitfalls
+Domain registration at `/dashboard/domains` requires DNS TXT record publication. This is the highest-friction step.
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+**Key error surface** (`internal/handler/dashboard/handler.go`):
+```go
+return c.Status(422).SendString("TXT record not found. Publish the verification record at your DNS host, then try again.")
+```
 
-## Done Checklist
+**Friction signals:**
+- Multiple 422 responses for same domain (DNS confusion)
+- Domains stuck in `pending` status for > 24 hours
+- Users retrying verification repeatedly
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+```sql
+-- Domains stuck in pending verification
+SELECT slug, created_at, NOW() - created_at AS age
+FROM domains
+WHERE verification_status = 'pending'
+  AND created_at < NOW() - INTERVAL '24 hours'
+ORDER BY created_at;
+```
+
+### Stage 3: Token Creation and First API Call
+
+Token creation at `/dashboard/api-tokens` generates a one-time display. The copy-to-clipboard UX (`internal/web/static/js/app.js` with `data-copy` attribute) reduces friction but the token is shown only once.
+
+**Friction signals:**
+- Tokens created but never used (check `mls_proxy_audit_logs`)
+- Token revocation shortly after creation (confusion about scopes)
+- Multiple tokens created for same domain (unable to find previous token)
+
+## Dashboard Activation Patterns
+
+### DO: Track activation funnel with audit data
+
+```sql
+-- Activation funnel: invited → logged in → domain added → verified → token used
+SELECT
+  COUNT(DISTINCT u.id) AS total_users,
+  COUNT(DISTINCT d.user_id) AS with_domain,
+  COUNT(DISTINCT CASE WHEN d.verification_status = 'verified' THEN d.user_id END) AS verified,
+  COUNT(DISTINCT a.domain_slug) AS made_api_call
+FROM users u
+LEFT JOIN domains d ON d.user_id = u.id
+LEFT JOIN (SELECT DISTINCT domain_slug FROM mls_proxy_audit_logs) a ON a.domain_slug = d.slug;
+```
+
+### DON'T: Rely on anecdotal feedback alone
+
+A single user saying "DNS verification is confusing" is a signal. Finding that 40% of domains sit in `pending` for > 48 hours is a priority. Always cross-reference qualitative feedback with audit data.
+
+## Quick Win Opportunities
+
+| Quick Win | Effort | Impact |
+|-----------|--------|--------|
+| Show DNS instructions inline instead of separate page | Small | Reduces verification retries |
+| Add "Test DNS" button that re-checks without page reload | Small | Faster verification loop |
+| Display token scope descriptions during creation | Small | Reduces token confusion |
+| Show "first API call" example after token creation | Small | Faster time-to-first-call |
+
+## Related Skills
+
+- See the **ux** skill for error message design patterns
+- See the **frontend-design** skill for dashboard UI patterns
+- See the **auth-api-token** skill for token scope details

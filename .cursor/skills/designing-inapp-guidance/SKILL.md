@@ -1,84 +1,114 @@
 ---
 name: designing-inapp-guidance
-description: Builds tooltips, tours, and contextual guidance for Laravel + Livewire + Tailwind applications
+description: |
+  Builds tooltips, tours, and contextual guidance.
+  Use when: implementing or refactoring Designing Inapp Guidance work, troubleshooting activation onboarding, engagement adoption, in app guidance, or aligning new changes with the repository's existing conventions
 allowed-tools: Read, Edit, Write, Glob, Grep, Bash
 ---
 
 # Designing Inapp Guidance Skill
 
-Designs and implements in-app guidance systems including tooltips, onboarding tours, and contextual help overlays using Blade components, Alpine.js, and Tailwind CSS.
+This fallback skill keeps Designing Inapp Guidance work aligned with the conventions already present in this repository. Prefer extending the closest existing implementation over inventing a new abstraction, and verify neighboring states before finishing.
+
+## Before You Code (REQUIRED)
+
+This skill's content was captured at generation time and MAY be stale. For ANY non-trivial change involving designing-inapp-guidance, verify against current docs FIRST:
+
+
+
+Then:
+
+1. **Match the installed version.** Cross-reference against the version installed in this repo. APIs change across minor versions; do not assume.
+2. **Discover provider best practices.** If the task touches a production-sensitive capability, inspect the provider service catalog, official docs, and project docs before choosing an implementation.
+3. **Respect explicit direction.** If the user explicitly asks for a specific mechanism, follow it. If project docs clearly mandate a mechanism, follow the project. In both cases, mention the provider-recommended alternative and make the chosen path safe.
+4. **Prefer provider-native primitives by default.** If no explicit user/project override exists and the change involves caching, rate limiting, background work, scheduled jobs, shared state, queues, or secrets, use the provider-recommended binding/API. Do not hand-roll an in-memory or polyfill solution that "works" locally but breaks under the provider's execution model — derive the need→native-primitive mapping yourself from this provider's docs.
+
+## Capability Contract
+
+Use this section when the user prompt touches production risk, even if the prompt does not name this technology explicitly.
+
+
+
+
+Required wiring surfaces:
+- runtime/infrastructure config: Dockerfile
+- nearest typed request/context boundary
+- handler/procedure boundary before external side effects
+
+Side-effect barrier:
+- Place guards before external APIs, auth mutations, email sends, analytics events, storage writes, and database mutations.
+
+
+Fallback policy:
+- Prefer provider-native/platform-managed primitives by default when no explicit override exists.
+- Follow clear user/project overrides, but mention the native alternative and tradeoff.
+- Fallbacks must be durable, multi-instance safe, and atomic under concurrency.
+
+Verification rules:
+- [error] native-or-explicit-override: Use the provider-native primitive first unless the user/project explicitly overrides it.
+- [error] atomic-fallback: Fallback counters must be atomic under concurrency.
 
 ## Quick Start
 
-1. Check existing UI components in `resources/views/components/` or `resources/views/livewire/`
-2. Create guidance components: `php artisan make:component Tooltip` or `php artisan make:livewire OnboardingTour`
-3. Use Alpine.js for state management (`x-data`, `x-show`, `x-transition`)
-4. Style with Tailwind utility classes
+### Inspect the current implementation
+
+```sh
+rg -n "designing-inapp-guidance|activation-onboarding|engagement-adoption|in-app-guidance" .
+rg --files | rg "designing-inapp-guidance|activation-onboarding|engagement-adoption"
+```
+
+### Make the smallest compatible change
+
+- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
+- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
+- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
+
+### Verify before finishing
+
+- Verify the changed path and the most likely adjacent edge cases.
+- Check that naming, layering, and file placement still match nearby code.
+- Confirm there is a clear reason for any new abstraction, dependency, or workflow.
 
 ## Key Concepts
 
-| Pattern | Implementation | Best For |
-|---------|---------------|----------|
-| **Tooltips** | Alpine `x-show` + absolute positioning | Hover hints, icon explanations |
-| **Step Tours** | Livewire component with step state | Feature introductions, onboarding |
-| **Spotlights** | Backdrop overlay + highlight box | Draw attention to new features |
-| **Contextual Help** | Collapsible panels, popovers | Form guidance, complex workflows |
-| **Beacon Pulsers** | CSS animations + Alpine toggle | Unseen feature notifications |
+| Concept | Why it matters | What to check |
+|---------|----------------|---------------|
+| Existing patterns | Keeps the repo coherent | Start from the nearest matching implementation before editing |
+| Scope control | Prevents abstraction creep | Keep the change in the same layer as surrounding code |
+| Verification | Catches regressions early | Recheck adjacent states, edge cases, and integration points |
+| References | Speeds up repeat work | Use the linked topic files when the task needs deeper guidance |
 
 ## Common Patterns
 
-### Tooltip Component
-```blade
-{{-- resources/views/components/tooltip.blade.php --}}
-<div x-data="{ open: false }" class="relative inline-block">
-    <span @mouseenter="open = true" @mouseleave="open = false">
-        {{ $trigger }}
-    </span>
-    <div x-show="open" x-transition class="absolute z-50 px-2 py-1 text-sm text-white bg-gray-900 rounded">
-        {{ $slot }}
-    </div>
-</div>
-```
+### Activation Onboarding
 
-### Tour Step State (Livewire)
-```php
-// Track progress in component
-public int $currentStep = 1;
-public bool $tourActive = true;
+**When:** The task touches activation onboarding in Designing Inapp Guidance work.
 
-public function nextStep(): void
-{
-    $this->currentStep++;
-}
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
 
-public function dismissTour(): void
-{
-    $this->tourActive = false;
-    // Persist: auth()->user()->update(['tour_completed' => true]);
-}
-```
+### Engagement Adoption
 
-### Spotlight Overlay
-```blade
-<div x-show="spotlight" class="fixed inset-0 z-40 bg-black/50">
-    <div class="absolute border-2 border-blue-500 rounded-lg shadow-lg"
-         :style="`top: ${highlightY}px; left: ${highlightX}px; width: ${highlightW}px; height: ${highlightH}px`">
-    </div>
-</div>
-```
+**When:** The task touches engagement adoption in Designing Inapp Guidance work.
 
-### Tailwind Animation Utilities
-- `animate-pulse` — Beacon attention grabbers
-- `animate-bounce` — Arrows, directional cues
-- `transition-opacity duration-300` — Smooth fades
-- `scale-100` → `scale-105` — Subtle emphasis
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
 
-### Persistence Patterns
-- Database: `users.onboarding_completed_at`
-- LocalStorage: Alpine `x-data` with `localStorage.getItem('tour-seen')`
-- Session: Flash messages for one-time guidance
+### In App Guidance
 
-### Accessibility
-- Add `role="tooltip"`, `aria-describedby` to triggers
-- Trap focus in modals with `x-trap` (Alpine plugin)
-- Respect `prefers-reduced-motion` with Tailwind `motion-safe:`
+**When:** The task touches in app guidance in Designing Inapp Guidance work.
+
+- Inspect the nearest existing implementation before introducing a new pattern.
+- Reuse naming, file placement, and helper utilities that are already established in this repo.
+- Keep the change easy to review and easy to extend without widening scope unnecessarily.
+
+## See Also
+
+- [Activation Onboarding](references/activation-onboarding.md)
+- [Engagement Adoption](references/engagement-adoption.md)
+- [In App Guidance](references/in-app-guidance.md)
+- [Product Analytics](references/product-analytics.md)
+- [Roadmap Experiments](references/roadmap-experiments.md)
+- [Feedback Insights](references/feedback-insights.md)

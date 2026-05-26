@@ -1,38 +1,131 @@
-# Orchestrating Feature Adoption Activation Onboarding Reference
+# Activation & Onboarding Reference
 
-## When To Use
+## Contents
+- Setup Flow Architecture
+- Progressive Setup Pattern
+- Empty States
+- Invitation Flow
+- Anti-Patterns
 
-Use this reference when the task touches activation onboarding while working on Orchestrating Feature Adoption code in this repository.
+## Setup Flow Architecture
 
-## What To Inspect
+The dashboard implements a three-step progressive setup: **domain registration → TXT verification → token creation**. Each step gates the next.
 
-- Tie recommendations to real in-app flows, states, or surfaces instead of generic product advice.
-- Preserve the existing activation, onboarding, and state-transition patterns around the touched area.
-- Keep copy, prompts, and nudges aligned with the surrounding product voice and UI structure.
-- Search for nearby implementations before creating a new structure or helper.
+**Key files:**
+- `internal/handler/dashboard/handler.go` — route handlers and setup logic
+- `internal/web/layout.go` — `Page()` and `LoginPage()` template wrappers
+- `internal/web/static/css/app.css` — badge and card styles
 
-## Recommended Workflow
+### Existing Setup Flow
 
-1. Find two or three nearby examples that already solve a similar problem.
-2. Decide whether to extend an existing abstraction or keep the change local.
-3. Apply the smallest change that keeps behavior predictable and naming consistent.
-4. Re-run the most relevant checks for the surface you touched.
-5. Update docs, tests, or supporting config only when the behavior truly changed.
+```
+User accepts invite → /invite/:token → account created → /login
+→ /dashboard → no domains? → add domain form
+→ domain added → badge-pending → verify TXT record
+→ TXT verified → badge-verified → auto-generate production token
+→ token displayed → copy button → integrate API
+```
 
-## Quality Bar
+Routes from `dashboard/handler.go`:
 
-- Prefer project-native conventions over generic framework advice.
-- Keep instructions concise, actionable, and tied to the repository's current structure.
-- Avoid new dependencies or patterns unless repetition clearly justifies them.
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/dashboard` | GET | Main dashboard with domains and tokens |
+| `/dashboard/domains` | POST | Add new domain with MLS dataset |
+| `/dashboard/domains/:id/verify-txt` | POST | Trigger TXT verification |
+| `/dashboard/api-tokens` | POST | Create production token |
+| `/dashboard/api-tokens/staging` | POST | Create staging token |
+| `/dashboard/api-tokens/:id` | DELETE | Revoke token |
+| `/invite/:token` | GET/POST | Invitation acceptance |
 
-## Pitfalls
+## Progressive Setup Pattern
 
-- Mixing incompatible patterns in the same surface or module.
-- Rewriting structure that could be extended safely in place.
-- Shipping without checking adjacent states, edge cases, or cleanup work.
+Dashboard handlers build HTML server-side using `web.Page()`. The template conditionally shows setup steps based on what the user has completed:
 
-## Done Checklist
+```go
+// existing pattern in dashboard/handler.go
+func (h *Handler) Dashboard(c *fiber.Ctx) error {
+    user := h.session.Get(c).Get("user")
+    domains := h.domainRepo.ListForUser(user.ID)
+    tokens := h.tokenRepo.ListForUser(user.ID)
+    // Build cards for domains and tokens
+    // Empty states shown when lists are empty
+}
+```
 
-- [ ] Verify the changed path and the most likely adjacent edge cases.
-- [ ] Check that naming, layering, and file placement still match nearby code.
-- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.
+### Activation Criteria
+
+A user is "activated" when they have:
+1. A verified domain (`badge-verified`)
+2. At least one active API token
+3. First successful API call (tracked in `mls_proxy_audit_logs`)
+
+## Empty States
+
+The dashboard renders inline forms for empty states rather than placeholder messages:
+
+```go
+// existing pattern — no domains shows add-domain form
+// existing pattern — no tokens shows create-token form
+```
+
+CSS supports these with the `.card`, `.form-stack`, and `.badge` classes from `app.css`.
+
+### WARNING: Do Not Replace Inline Forms with Landing Pages
+
+**The Problem:** Adding a full onboarding wizard or multi-page setup flow for a 3-step process.
+
+**Why This Breaks:** The dashboard is invite-only B2B — users arrive knowing what they need. Wizards add friction without improving comprehension.
+
+**The Fix:** Keep inline forms in cards. Show the next action and the reason to continue. Use `badge-pending` / `badge-verified` for status clarity.
+
+## Invitation Flow
+
+Admins create invitations via `/dashboard/invitations` (`requireAdmin` middleware). Invitations are time-limited tokens stored with SHA256 hashes.
+
+```go
+// existing pattern — invitation creation
+func (h *Handler) CreateInvitation(c *fiber.Ctx) error {
+    // Admin-only (requireAdmin middleware)
+    // Generate token, hash with SHA256, store with TTL
+    // Display invitation link to admin
+}
+```
+
+Acceptance at `/invite/:token` creates the user account and redirects to `/login`.
+
+## Anti-Patterns
+
+### WARNING: Client-Side Setup Progress Tracking
+
+**The Problem:**
+
+```javascript
+// BAD — tracking setup progress in localStorage
+localStorage.setItem('setup-step', 'domain-verified')
+```
+
+**Why This Breaks:** Multi-device, multi-session users lose progress. Dashboard server-rendered — client state fights the architecture.
+
+**The Fix:** Derive setup state from database: `COUNT(domains) > 0 AND domain.verified = true AND COUNT(tokens) > 0`.
+
+### WARNING: Email-Based Onboarding Drips
+
+**The Problem:** Adding email sequences for a 3-step setup.
+
+**Why This Breaks:** The system has no transactional email infrastructure. Adding one for onboarding emails is over-engineering.
+
+**The Fix:** Use the dashboard itself for guidance. If email nudges are needed later, add to the scheduler (`cmd/scheduler`) as a queued job type.
+
+## Workflow Checklist
+
+Copy this checklist for activation-related changes:
+- [ ] Step 1: Identify which setup step the change affects (domain, verify, token)
+- [ ] Step 2: Update dashboard handler to reflect new step or condition
+- [ ] Step 3: Ensure badge states (`badge-pending`, `badge-verified`) match
+- [ ] Step 4: Verify empty state shows correct inline form
+- [ ] Step 5: Test with unverified domain and no tokens
+- [ ] Step 6: Confirm audit log captures first-use event
+
+See the **auth-api-token** skill for token abilities and domain verification middleware.
+See the **ux** skill for dashboard layout and empty state patterns.

@@ -1,40 +1,70 @@
-# Content Copy
+# Content Copy Reference
 
-## When to use
-Reference when writing user-facing messaging, API documentation, or marketing copy for the IDX platform and GHL Marketplace integration.
+## Contents
+- Voice and Tone
+- Copy Surfaces in the Codebase
+- API Error Messages as Copy
+- Release Notes Structure
+- Anti-Patterns
 
-## Patterns
+## Voice and Tone
 
-### Capability-Based Headlines
-Focus on outcomes, not features. The subscription catalog uses tiered messaging:
+Quantyra IDX API targets developers and technical real estate professionals. Copy rules:
 
-| Tier | Headline Pattern |
-|------|------------------|
-| Pro | "Get started with IDX on your domain" |
-| Smart | "Unlock full GHL integration + phone OTP" |
-| Ultra | "Scale with unlimited domains + 2M API calls" |
-| Mega | "Enterprise SLA with custom branding" |
+1. **Direct**: Lead with what the endpoint returns, not why it matters philosophically
+2. **Technical**: Use RESO field names (`ListingKey`, `StandardStatus`), not invented abstractions
+3. **Concise**: One sentence per concept. No filler paragraphs.
 
-### Error Messages as Conversion Opportunities
-Bridge proxy auth failures return actionable next steps:
+## Copy Surfaces in the Codebase
 
-```php
-// DomainOrTokenAuth middleware
-if (!$domain) {
-    return response()->json([
-        'error' => 'Domain not registered',
-        'message' => 'Register your domain at ' . config('idx.platform_url') . '/dashboard',
-        'upgrade_url' => route('billing.checkout', ['plan' => 'pro']),
-    ], 403);
-}
+| Surface | Location | Copy type |
+|---------|----------|-----------|
+| API docs | `docs/*.md` | Endpoint reference, parameters, examples |
+| Dashboard | `internal/web/static/` | In-app messaging, onboarding, empty states |
+| Release notes | `docs/` | Feature changelog |
+| Health endpoints | `cmd/api/` | Status messages (`/healthz`, `/readyz`) |
+| Error responses | `internal/handler/` | API error JSON |
+
+## API Error Messages as Copy
+
+Error messages are read by developers integrating the API. They are copy.
+
+```go
+// BAD - Generic, no action path
+{"error": "Unauthorized"}
+
+// GOOD - Specific, tells developer what to fix
+{"error": "Invalid API token. Re-issue at /dashboard"}
 ```
 
-### Documentation Hierarchy
-Follow the established doc structure for consistency:
-1. **Quick Start** - Immediate runnable commands
-2. **Goals table** - What this achieves and how
-3. **Architecture diagram** - Mermaid flowchart showing data flow
-4. **Example requests** - Copy-paste curl commands
+## Release Notes Structure
 
-## Pitfall
-Avoid referencing internal code names ("geo-web", "Stellar") in user-facing copy. Use "your domain", "MLS listings", or "property data" instead.
+Follow the git commit convention already in use (see `git log`):
+
+```markdown
+## [Date] — [scope]: [imperative description]
+
+**What changed:** 1-2 sentences
+
+**API impact:** Breaking / Non-breaking / New endpoint
+
+**Migration:** Required steps (if any)
+```
+
+Commit message prefixes from the repo: `feat()`, `fix()`, `chore()`. Mirror these in release note sections.
+
+## Anti-Patterns
+
+### WARNING: Marketing Jargon in API Docs
+
+**The Problem:** Developers scanning docs for `POST /api/v1/search` parameters do not care about "revolutionary" or "next-generation" anything.
+
+**Why This Breaks:** Jargon adds zero information and signals that the docs are maintained by non-technical writers. Developer trust drops.
+
+**The Fix:** Use the exact RESO field names and HTTP methods. "Returns Active and Pending listings filtered by PostGIS bounding box" is complete.
+
+### WARNING: Inconsistent Dataset Naming
+
+**The Problem:** Mixing "Bridge" and "Stellar" or "Spark" and "Beaches" without context confuses readers.
+
+**The Fix:** Use the convention from `README.md`: `bridge_stellar` (or just "Stellar"), `spark_beaches` (or just "Beaches"). The `?dataset=` parameter uses `stellar` and `beaches`. Copy must match.

@@ -1,24 +1,40 @@
-# Distribution
+# Reducing Form Falloff Distribution Reference
 
-## When to use
-Deploying widgets across multiple domains, managing embed codes, or troubleshooting CORS failures. Use when expanding to new GHL locations or external websites.
+## When To Use
 
-## Patterns
+Use this reference when the task touches distribution while working on Reducing Form Falloff code in this repository.
 
-### Origin Coverage Checklist
-Before launch, verify `ghl_registered_urls.primary_url` and `additional_urls` include all variants: www/non-www, http/https, and any subdirectory paths where the widget loads. The 3-phase middleware rejects mismatched Origins with 403.
+## What To Inspect
 
-```bash
-# Test origin validation
-curl -X OPTIONS "/widget/api/leads?api_key=qh_..." \
-  -H "Origin: https://client-domain.com"
-```
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-### Widget Loader Embed Pattern
-Distribute the loader.js snippet with `data-api-key`, `data-location-id`, and `data-widget` attributes. The loader fetches config from `/widget/config/{apiKey}` and injects the appropriate surface (search, lead-form, showcase).
+## Recommended Workflow
 
-### Cross-Domain Lead Routing
-Use the MLS-scoped endpoint `/api/v1/mls/{mlsCode}/gis` alongside listings to align parcel data with the correct MLS region, ensuring widget context matches the registered domain's market.
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-## Warning
-Subdomain mismatches block submissions silently. If the widget works on `www.client.com` but fails on `client.com`, check that both variants are in `additional_urls` JSON array—CORS preflight fails closed for security.
+## Quality Bar
+
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

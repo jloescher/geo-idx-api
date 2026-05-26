@@ -1,27 +1,40 @@
-# Content Copy
+# Mapping Conversion Events Content Copy Reference
 
-## When to use
+## When To Use
 
-Crafting messaging for the sales landing page, subscription tier descriptions, and widget embed instructions. Reference when updating pricing displays or value propositions.
+Use this reference when the task touches content copy while working on Mapping Conversion Events code in this repository.
 
-## Patterns
+## What To Inspect
 
-**Subscription Tier Messaging** (`app/Billing/SubscriptionCatalog.php`)
-- Pro ($39/mo): "3 domains, teaser gating, basic GHL app"
-- Smart ($79/mo): "5 domains, full GHL app, phone + email OTP"
-- Ultra ($179/mo): "Unlimited domains, 2M API calls/mo, developer keys"
-- Mega ($449/mo): "Unlimited everything, custom branding, SLA targets"
+- Anchor every recommendation to a real page, route, content surface, or metadata entry in the repo.
+- Keep messaging, hierarchy, and measurement advice consistent with the project's current funnel design.
+- Prefer tactical edits with clear verification steps over broad strategy essays.
+- Search for nearby implementations before creating a new structure or helper.
 
-**Sales Landing Page** (`app/Livewire/Marketing/SalesLandingPage.php`)
-- Interval toggle: Monthly vs annual (20% discount highlighted)
-- Social proof: Lead volume estimates, GHL integration badge
-- CTA: "Start 14-day trial" with plan selection state
+## Recommended Workflow
 
-**Widget Embed Instructions** (`resources/views/ghl/`)
-- Installation complete page: Copy-pasteable loader.js snippet
-- Value prop: "Add IDX search to any GHL website in 60 seconds"
-- API key hint: `qh_...` prefix explained as "Quantyra Hash"
+1. Find two or three nearby examples that already solve a similar problem.
+2. Decide whether to extend an existing abstraction or keep the change local.
+3. Apply the smallest change that keeps behavior predictable and naming consistent.
+4. Re-run the most relevant checks for the surface you touched.
+5. Update docs, tests, or supporting config only when the behavior truly changed.
 
-## Warning
+## Quality Bar
 
-Do not expose `BRIDGE_API_KEY` or Sanctum plaintext tokens in any public-facing copy. The `idx-images.quantyralabs.cc` URLs shown in JSON responses are safe to display as they require domain/token authentication to resolve.
+- Prefer project-native conventions over generic framework advice.
+- Keep instructions concise, actionable, and tied to the repository's current structure.
+- Avoid new dependencies or patterns unless repetition clearly justifies them.
+
+
+
+## Pitfalls
+
+- Mixing incompatible patterns in the same surface or module.
+- Rewriting structure that could be extended safely in place.
+- Shipping without checking adjacent states, edge cases, or cleanup work.
+
+## Done Checklist
+
+- [ ] Verify the changed path and the most likely adjacent edge cases.
+- [ ] Check that naming, layering, and file placement still match nearby code.
+- [ ] Confirm there is a clear reason for any new abstraction, dependency, or workflow.

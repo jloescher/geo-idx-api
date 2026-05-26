@@ -1,6 +1,6 @@
 # idx-api HTTP API overview
 
-This document summarizes **versioned JSON APIs** exposed by the Laravel idx-api service (Octane + FrankenPHP ready).
+This document summarizes **versioned JSON APIs** exposed by the **Go** idx-api service (Fiber on port **8000**).
 
 ## OpenAPI 3.1 + Swagger UI
 
@@ -12,7 +12,9 @@ The Swagger page loads the canonical `openapi: "3.1.0"` document served by the A
 
 ## Authenticated IDX / Bridge proxy (`/api/v1`)
 
-All routes in `routes/api.php` under the `v1` prefix use the `domain.token` middleware (domain header / referer host **or** Sanctum bearer with `idx:access` / `idx:full`).
+All routes under `/api/v1` use **domain + token** middleware (`internal/api/middleware/domain_token.go`): domain header / Referer host **or** Bearer PAT with `idx:access` or `idx:full`, plus domain binding for token calls.
+
+**Access model (Go):** Bridge, search, and comps return **full** payloads for any authenticated `domain.token` caller (`idx:access` or `idx:full`). **GIS** applies teaser limits (`GIS_TEASER_MAX_FEATURES`, `GIS_TEASER_COORD_DECIMALS`) when the PAT has `idx:access` only (no `idx:full`). Domain identification and `idx:full` tokens set `MLSFullAccess=true` and receive full GIS GeoJSON.
 
 Core resources: listings, agents, offices, RESO Property, members, public parcels bridge, **structured search**, etc. See [`docs/idx-api-bridge-proxy.md`](idx-api-bridge-proxy.md) and [`docs/bridge-api-documentation.md`](bridge-api-documentation.md).
 
@@ -21,7 +23,7 @@ Core resources: listings, agents, offices, RESO Property, members, public parcel
 Comps endpoint supports standard sale-comps modes (`A`–`E`), investor modes (`rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`), BPO mode (`bpo`) with URAR-style market-derived adjustments, and **home value estimation** (`home_value`) for off-market properties using Google Maps geocoding.
 
 - Uses the same `domain.token` middleware and dataset resolution path as other `/api/v1` routes
-- `idx:full` is required for investor modes, BPO, and home value
+- Investor modes, BPO, and home value are available to all callers that pass `domain.token` (verified domain or PAT + domain slug)
 - Home value mode accepts owner-provided property details (address, bedrooms, bathrooms, condition, renovations) and returns an estimated value with confidence scoring
 - Renovation credits are dynamically derived from market data (not static)
 - Includes garage/parking, view, subdivision, and MLS area matching extensions
@@ -35,49 +37,43 @@ Listings responses now include:
 - `pricing_converted` on each listing item with fiat + digital asset conversions derived from `ListPrice`.
 
 Refresh pipeline details:
-- CoinGecko quotes are refreshed every 10 minutes by scheduled dispatch of `RefreshCryptoPricingJob`.
-- The job updates both PostgreSQL (`crypto_price_snapshots`) and Laravel cache (`coingecko.pricing.matrix`).
+- CoinGecko quotes are refreshed on a schedule via queue job `crypto.refresh_pricing` (`cmd/scheduler` → `cmd/worker`).
+- Snapshots stored in PostgreSQL `crypto_price_snapshots`.
 - Read path does not call CoinGecko; listing enrichment uses cache/DB only.
 
-### New: Structured Search endpoint (`POST /api/v1/search`)
+### Structured Search endpoint (`POST /api/v1/search`)
 
-The search endpoint accepts JSON payloads with filter criteria, translates them to Bridge RESO OData queries, and returns paginated results with computed statistics.
+The search endpoint accepts JSON payloads with filter criteria and returns paginated results with computed statistics. **Routing is hybrid:** Active/Pending inventory is served from the local PostGIS **`listings`** mirror when possible; **Closed** (and some special filters) use live Bridge OData; requests that mix Active/Pending and Closed merge both sources before pagination.
 
 **Features:**
 - Multi-dataset support (validated against domain's `allowed_mls_datasets`)
 - Structured filters: location (cities, counties, states), price range, beds/baths, property types, features (pool, waterfront), etc.
-- OData cursor pagination via `@odata.nextLink`
+- **PostGIS mirror leg** (Active/Pending): queries indexed columns; each hit is reassembled into a **flat RESO Property** (`raw_data` + JSONB expands + flat-merged `custom_fields`) — [Listings mirror](listings-mirror.md#api-responses-mirror-backed). `low_risk_floodzone` → `listings.flood_zone_code`; `min_monthly_fees` / `max_monthly_fees` → `listings.estimated_total_monthly_fees` (Beaches: association fees normalized to monthly at persist — see [Spark integration](spark/idx-api-integration.md#normalized-mirror-columns-persist--replication-updates))
+- **Hybrid routing:** mirror for Active/Pending; Bridge for Closed-only or unsupported statuses; split merge when both appear in `status` / `statuses`
+- OData cursor pagination via `@odata.nextLink` (Bridge leg; mirror leg uses SQL offset/limit)
 - 15-minute result caching (same cache mechanism as listings)
-- Teaser gating for non-full-access plans
+- No teaser gating on search (GIS teaser applies to `idx:access`-only PATs; see [GIS API](gis-api.md))
 - Image URL rewriting to `idx-images` host
 
-See [IDX-API Bridge proxy — Search endpoint](idx-api-bridge-proxy.md#search-endpoint-post-apiv1search) for full request/response format and filter mapping.
+See [IDX-API Bridge proxy — Search endpoint](idx-api-bridge-proxy.md#search-endpoint-post-apiv1search) for request body, filter mapping, and the routing table.
 
 ### How to obtain a Bearer token for `/api/v1`
 
 | Source | Abilities | Works with `domain.token`? |
 |--------|-----------|----------------------------|
-| **Subscriber dashboard** (GeoIDX dashboard → API Keys) | **`idx:access`** on **Ultra**, **`idx:full`** on **Mega** | Yes — intended for server or tooling calls to `/api/v1/*`. |
-| **`POST /api/auth/token`** (email + password + `device_name`) | `idx:read`, `idx:search` | **No** for Bridge proxy routes — those abilities are not accepted by `DomainOrTokenAuth`. Use dashboard keys or an internal `idx:full` token (e.g. `php artisan idx-api:issue-geo-web-token` / `GeoWebInternalTokenSeeder`). |
+| **Auto-issued Production** (GeoIDX Setup — first domain verification) | **`idx:full`** | Yes — auto-created on first TXT verify; shown once in Setup panel. |
+| **Staging** (Setup panel or `POST /dashboard/api-tokens/staging`) | **`idx:full`** | Yes — one-click Staging key for preview/staging sites (same domain slug, different Bearer). |
+| **Custom named** (API Keys panel or `POST /dashboard/api-tokens`) | **`idx:full`** | Yes — for additional server or tooling calls to `/api/v1/*`. |
+| **`POST /api/auth/token`** (email + password + `device_name`) | **`idx:full`** | Yes for `/api/v1/*` when paired with domain identification as above (same as other PATs). |
 
-Ultra dashboard keys behave like domain traffic (**teaser** list caps). Mega keys receive **full** payloads. Details: [IDX-API Bridge proxy — Subscriber dashboard API keys](idx-api-bridge-proxy.md#subscriber-dashboard-api-keys-ultra-and-mega).
-
-### Stripe test subscribers (all four plans)
-
-To create **Pro, Smart, Ultra, and Mega** users with **active Stripe test subscriptions** (for dashboard login and checkout QA), use:
-
-```bash
-php artisan billing:seed-test-users
-```
-
-Requirements, emails, passwords, payment-method options, and **example successful Artisan output** (INFO lines, summary table, shared password): [`docs/stripe-laravel-cashier.md` — Seed billing test users](stripe-laravel-cashier.md#seed-billing-test-users-in-stripe-test-mode).
+All tokens require **`X-Domain-Slug`** or **`?domain=`** with a verified domain on the same account. Dashboard PATs are minted with **`idx:full`**. Details: [IDX-API Bridge proxy — Dashboard API keys](idx-api-bridge-proxy.md#dashboard-api-keys).
 
 ## GIS public overlay (`/api/v1/gis`)
 
 **New:** Florida **public government** parcel GeoJSON proxy for Leaflet overlays—**not MLS data**.
 
 - **Routes:** `GET /api/v1/gis`, `GET /api/v1/mls/{mlsCode}/gis`
-- **Docs:** [`docs/gis-api.md`](gis-api.md) (OpenAPI-style parameters, examples for Pinellas / Tampa bbox, failover, caching, revenue notes).
-- **Caching:** Short **Laravel edge** TTL plus long-lived **Postgres origin** rows (per-source max age in days), invalidated when weekly metadata probes bump `gis_source_states.generation` or when you run `gis:clear-cache`.
+- **Docs:** [`docs/gis-api.md`](gis-api.md) (HTTP surface), [`docs/gis-sources.md`](gis-sources.md) (county REST catalog, FDOR/FDOT findings, MLS coverage)
+- **Caching:** In-process edge read of `gis_cache` (Postgres origin, TTL `GIS_EDGE_CACHE_TTL`, default 900s) plus per-source max age in days; invalidated when weekly `gis.probe_sources` jobs bump `gis_source_states.generation`. See [`docs/gis-api.md`](gis-api.md).
 
 Use this alongside `/api/v1/listings` with the same viewport parameters for a single map flow.
