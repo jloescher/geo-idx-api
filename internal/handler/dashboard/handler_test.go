@@ -55,3 +55,26 @@ func TestFormValuesMultipleDatasets(t *testing.T) {
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
+
+func TestRedirectLegacyDashboardRoutes(t *testing.T) {
+	cfg := config.Config{}
+	h := NewHandler(cfg, &repository.DB{}, testLogger())
+	app := fiber.New()
+	app.Get("/dashboard/setup", h.redirectToDomains)
+	app.Get("/dashboard/api-keys", h.redirectToDomains)
+
+	for _, path := range []string{"/dashboard/setup?verified=1", "/dashboard/api-keys"} {
+		req := httptest.NewRequest("GET", path, nil)
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != fiber.StatusFound {
+			t.Fatalf("%s status: %d", path, resp.StatusCode)
+		}
+		loc := resp.Header.Get("Location")
+		if !strings.Contains(loc, "/dashboard/domains") {
+			t.Fatalf("%s location: %s", path, loc)
+		}
+	}
+}

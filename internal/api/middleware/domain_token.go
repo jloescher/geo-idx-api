@@ -39,12 +39,23 @@ func handleToken(c *fiber.Ctx, domains *repository.DomainRepo, tokens *repositor
 	if slug == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "Missing domain identification. Send X-Domain-Slug (or ?domain=) matching a verified domain on your account.")
 	}
-	d, err := domains.FindActiveForUser(c.Context(), user.ID, slug)
-	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
-	}
-	if d == nil {
-		return fiber.NewError(fiber.StatusForbidden, "Domain is not registered, inactive, or not owned by this token.")
+	var d *dom.Domain
+	if tok.DomainID != nil {
+		d, err = domains.FindActiveByIDForUser(c.Context(), user.ID, *tok.DomainID)
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+		}
+		if d == nil || !strings.EqualFold(d.DomainSlug, slug) {
+			return fiber.NewError(fiber.StatusForbidden, "API token is not valid for this domain.")
+		}
+	} else {
+		d, err = domains.FindActiveForUser(c.Context(), user.ID, slug)
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+		}
+		if d == nil {
+			return fiber.NewError(fiber.StatusForbidden, "Domain is not registered, inactive, or not owned by this token.")
+		}
 	}
 	if !d.IsVerified() {
 		return fiber.NewError(fiber.StatusForbidden, "Domain must be TXT-verified before API token access is allowed.")

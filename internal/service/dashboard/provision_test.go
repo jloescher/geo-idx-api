@@ -55,6 +55,41 @@ func TestProvisionBundleIntegration(t *testing.T) {
 	if result.ProductionToken == "" || result.StagingToken == "" {
 		t.Fatal("expected plaintext tokens")
 	}
+
+	var prodDomainID, stagingDomainID int64
+	var stagingParent *int64
+	err = db.Pool.QueryRow(context.Background(), `
+		SELECT id, parent_domain_id FROM domains WHERE domain_slug = $1
+	`, host).Scan(&prodDomainID, &stagingParent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stagingParent != nil {
+		t.Fatalf("production should not have parent: %v", stagingParent)
+	}
+	err = db.Pool.QueryRow(context.Background(), `
+		SELECT id, parent_domain_id FROM domains WHERE domain_slug = $1
+	`, "staging."+host).Scan(&stagingDomainID, &stagingParent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stagingParent == nil || *stagingParent != prodDomainID {
+		t.Fatalf("staging parent: %v want %d", stagingParent, prodDomainID)
+	}
+
+	var prodTokDomain, stagingTokDomain int64
+	err = db.Pool.QueryRow(context.Background(), `
+		SELECT domain_id FROM personal_access_tokens WHERE tokenable_id = 1 AND name = 'Production' AND domain_id = $1
+	`, prodDomainID).Scan(&prodTokDomain)
+	if err != nil {
+		t.Fatalf("production token domain_id: %v", err)
+	}
+	err = db.Pool.QueryRow(context.Background(), `
+		SELECT domain_id FROM personal_access_tokens WHERE tokenable_id = 1 AND name = 'Staging' AND domain_id = $1
+	`, stagingDomainID).Scan(&stagingTokDomain)
+	if err != nil {
+		t.Fatalf("staging token domain_id: %v", err)
+	}
 }
 
 func testDSN(t *testing.T) string {

@@ -1,6 +1,6 @@
 # Admin dashboard
 
-Invite-only Fiber dashboard with section navigation for domain onboarding, API keys, and live ops monitoring.
+Invite-only Fiber dashboard with section navigation for domains (onboarding, API keys, DNS verify) and live ops monitoring.
 
 ## Navigation
 
@@ -8,25 +8,34 @@ Invite-only Fiber dashboard with section navigation for domain onboarding, API k
 |-------|---------|-------------|
 | `/dashboard` | — | Redirects to `/dashboard/monitoring` |
 | `/dashboard/monitoring` | Monitoring | Live ops metrics, 30s auto-refresh |
-| `/dashboard/setup` | Setup | Add domain, TXT verify, domain list (merged flow) |
-| `/dashboard/api-keys` | API keys | Token list with last-used timestamps |
+| `/dashboard/domains` | Domains | Add domain bundles, per-hostname API keys, TXT verify, delete |
 | `/dashboard/invite` | Invite user | Admin only |
 
-**Setup** combines the former “Add domain” and DNS verification flows: submitting the add-domain form provisions the bundle and scrolls to the verify panel with tokens and TXT records.
+Legacy URLs redirect to Domains (query string preserved):
 
-## Setup flow (add domain + verify)
+- `GET /dashboard/setup` → `/dashboard/domains`
+- `GET /dashboard/api-keys` → `/dashboard/domains`
 
-1. Open **Setup** → fill hostname + MLS dataset checkboxes → **Add domain & verify DNS**
+## Domains flow (add domain + verify)
+
+1. Open **Domains** → fill hostname + MLS dataset checkboxes → **Add domain & verify DNS**
 2. `POST /dashboard/domains` provisions in one PostgreSQL transaction:
    - Production domain (`example.com`)
-   - Staging domain (`staging.example.com`)
-   - **Production** and **Staging** API tokens (shown once in the verify panel)
+   - Staging domain (`staging.example.com`, `parent_domain_id` → production)
+   - One **Production** API token (`domain_id` → production row)
+   - One **Staging** API token (`domain_id` → staging row)
    - `allowed_mls_datasets` JSON from checkbox selections; first checked feed becomes default `mls_dataset`
-3. Redirect to `/dashboard/setup#verify` with a one-time session flash (tokens + TXT)
+3. Redirect to `/dashboard/domains#verify` with a one-time session flash (tokens + TXT)
 4. Publish TXT records at your DNS host
 5. Click **Verify TXT** per hostname (`POST /dashboard/domains/:id/verify-txt`)
 
-DNS TXT verification is required before API auth (`domains.verification_status`).
+### API keys on the Domains page
+
+- Each hostname shows a masked key (`idx_••••…`). **Show** / **Copy** work only when plaintext is in the current page flash (after provision or **Regenerate API key**).
+- `POST /dashboard/domains/:id/regenerate-token` replaces the key for that domain (old key stops working immediately).
+- `POST /dashboard/domains/:id/delete` removes the production domain; CASCADE deletes staging and both tokens.
+
+DNS TXT verification is required before API auth (`domains.verification_status`). Bearer tokens with `domain_id` set must be used with `X-Domain-Slug` matching that domain.
 
 ### MLS dataset checkboxes
 
@@ -62,18 +71,25 @@ County parcel sources, FDOR/FDOT upstream issues, and MLS coverage: [GIS sources
 
 ## UI state matrix
 
-| State | Monitoring | Setup (domains + verify) | API keys |
-|-------|------------|--------------------------|----------|
-| Loading | Skeleton tiles | — | — |
-| Empty | Zeros + “No data yet” | Empty state + add-domain form | Empty state + link to Setup |
-| Error | Alert + Retry | `.form-error` / `verify_error` query | — |
-| Success | Timestamp flash | Verify panel after provision; `verified=1` banner | — |
-| Stale | Amber badge | Pending badge on domain rows | — |
+| State | Monitoring | Domains |
+|-------|------------|---------|
+| Loading | Skeleton tiles | — |
+| Empty | Zeros + “No data yet” | Empty state + add-domain form |
+| Error | Alert + Retry | `.form-error`, `verify_error`, `error` query |
+| Success | Timestamp flash | Verify panel after provision; `verified=1` / `deleted=1` banners |
+| Stale | Amber badge | Pending badge on domain rows |
 
-## Legacy endpoints
+## Deprecated dashboard token endpoints
 
-Unchanged for backward compatibility:
+Manual token creation is disabled; use per-domain **Regenerate** on Domains:
 
-- `POST /dashboard/api-tokens` — manual token create
-- `POST /dashboard/api-tokens/staging` — no longer blocks duplicate “Staging” names
-- `POST /dashboard/domains/:id/verify-txt` — verifies DNS; mints Production token only if none exists
+- `POST /dashboard/api-tokens` → redirect with error
+- `POST /dashboard/api-tokens/staging` → redirect with error
+- `POST /dashboard/api-tokens/:id/revoke` → still supported (redirects to Domains)
+
+## Schema (domain-scoped tokens)
+
+Migration `00002_domain_token_scoping.sql` adds:
+
+- `domains.parent_domain_id` (staging → production, `ON DELETE CASCADE`)
+- `personal_access_tokens.domain_id` (`UNIQUE`, `ON DELETE CASCADE`)

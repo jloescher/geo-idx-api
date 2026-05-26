@@ -10,10 +10,6 @@ import (
 	"github.com/quantyralabs/idx-api/internal/repository"
 )
 
-// Simultaneous domain + prod/staging token creation + multi-dataset support + live monitoring =
-// faster domain onboarding → more pilot domains live faster → higher organic traffic and lead
-// volume while giving ops full visibility into data freshness (critical for MLS GRID compliance and conversion).
-
 // ProvisionRequest is input for atomic prod/staging domain + token bundle.
 type ProvisionRequest struct {
 	Hostname string
@@ -56,8 +52,7 @@ func NewProvisionService(db *repository.DB, tokens *repository.TokenRepo) *Provi
 	return &ProvisionService{db: db, tokens: tokens}
 }
 
-// ProvisionBundle creates production domain, staging domain, Production token, and Staging token in one transaction.
-// Revenue impact: one-click onboarding removes friction before the first IDX map call and accelerates lead capture.
+// ProvisionBundle creates production domain, staging domain, and one token per domain in one transaction.
 func (s *ProvisionService) ProvisionBundle(ctx context.Context, userID int64, req ProvisionRequest) (*ProvisionResult, error) {
 	host := strings.ToLower(strings.TrimSpace(req.Hostname))
 	if host == "" {
@@ -87,6 +82,7 @@ func (s *ProvisionService) ProvisionBundle(ctx context.Context, userID int64, re
 
 	prodID, err := repository.CreateDomain(ctx, tx, repository.DomainCreateParams{
 		UserID:               userID,
+		IsStaging:            false,
 		DomainSlug:           host,
 		MLSDataset:           defaultDS,
 		AllowedMLSDatasets:   allowedJSON,
@@ -102,6 +98,8 @@ func (s *ProvisionService) ProvisionBundle(ctx context.Context, userID int64, re
 
 	stagingID, err := repository.CreateDomain(ctx, tx, repository.DomainCreateParams{
 		UserID:               userID,
+		ParentDomainID:       &prodID,
+		IsStaging:            true,
 		DomainSlug:           stagingHost,
 		MLSDataset:           defaultDS,
 		AllowedMLSDatasets:   allowedJSON,
@@ -115,11 +113,11 @@ func (s *ProvisionService) ProvisionBundle(ctx context.Context, userID int64, re
 		return nil, err
 	}
 
-	prodPlain, err := s.tokens.CreateWithTx(ctx, tx, userID, "Production", []string{"idx:full"})
+	prodPlain, err := s.tokens.CreateForDomainWithTx(ctx, tx, userID, prodID, "Production", []string{"idx:full"})
 	if err != nil {
 		return nil, err
 	}
-	stagingPlain, err := s.tokens.CreateWithTx(ctx, tx, userID, "Staging", []string{"idx:full"})
+	stagingPlain, err := s.tokens.CreateForDomainWithTx(ctx, tx, userID, stagingID, "Staging", []string{"idx:full"})
 	if err != nil {
 		return nil, err
 	}

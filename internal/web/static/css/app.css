@@ -557,6 +557,65 @@ input:focus {
   border-left: 2px solid var(--border);
 }
 
+.domain-bundle {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.domain-bundle:last-child {
+  border-bottom: none;
+}
+
+.domain-bundle-staging {
+  margin-top: 0.75rem;
+  padding-left: 1rem;
+  border-left: 2px solid var(--border);
+}
+
+.domain-host-section {
+  margin-bottom: 0.75rem;
+}
+
+.token-block-heading {
+  margin: 0.75rem 0 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.token-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+}
+
+.token-field .token-box {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.token-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.token-hint {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.delete-bundle-form {
+  margin-top: 0.75rem;
+}
+
 .token-last-used,
 .muted-inline {
   font-size: 0.8rem;

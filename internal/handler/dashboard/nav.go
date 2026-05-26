@@ -11,8 +11,7 @@ type NavPage string
 
 const (
 	NavMonitoring NavPage = "monitoring"
-	NavSetup      NavPage = "setup"
-	NavAPIKeys    NavPage = "api-keys"
+	NavDomains    NavPage = "domains"
 	NavInvite     NavPage = "invite"
 )
 
@@ -23,8 +22,7 @@ func renderDashboardNav(active NavPage, isAdmin bool) string {
 		href  string
 	}{
 		{NavMonitoring, "Monitoring", "/dashboard/monitoring"},
-		{NavSetup, "Setup", "/dashboard/setup"},
-		{NavAPIKeys, "API keys", "/dashboard/api-keys"},
+		{NavDomains, "Domains", "/dashboard/domains"},
 	}
 	if isAdmin {
 		items = append(items, struct {

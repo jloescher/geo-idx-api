@@ -20,6 +20,15 @@ type TokenRepo struct {
 	db *DB
 }
 
+// TokenMeta is dashboard-safe token metadata (no secret).
+type TokenMeta struct {
+	ID        int64
+	DomainID  int64
+	Name      string
+	LastUsed  string
+	NeverUsed bool
+}
+
 func NewTokenRepo(db *DB) *TokenRepo {
 	return &TokenRepo{db: db}
 }
@@ -37,13 +46,12 @@ func (r *TokenRepo) FindByPlaintext(ctx context.Context, plain string) (*domain.
 	}
 	var tok domain.APIToken
 	err = pool.QueryRow(ctx, `
-		SELECT id, tokenable_id, name, token, abilities, last_used_at, expires_at
+		SELECT id, tokenable_id, domain_id, name, token, abilities, last_used_at, expires_at
 		FROM personal_access_tokens
 		WHERE tokenable_type = 'App\\Models\\User' AND token = $1
 		LIMIT 1
-	`, hash).Scan(&tok.ID, &tok.UserID, &tok.Name, &tok.TokenHash, &tok.Abilities, &tok.LastUsedAt, &tok.ExpiresAt)
+	`, hash).Scan(&tok.ID, &tok.UserID, &tok.DomainID, &tok.Name, &tok.TokenHash, &tok.Abilities, &tok.LastUsedAt, &tok.ExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		// Legacy Sanctum: token id|secret — re-issue required; not supported in Go path
 		return nil, nil, nil
 	}
 	if err != nil {
@@ -74,29 +82,109 @@ func (r *TokenRepo) HasAbility(tok *domain.APIToken, ability string) bool {
 }
 
 func (r *TokenRepo) Create(ctx context.Context, userID int64, name string, abilities []string) (plain string, err error) {
-	return r.createToken(ctx, r.db.Pool, userID, name, abilities)
+	return r.createToken(ctx, r.db.Pool, userID, 0, name, abilities)
 }
 
-// CreateWithTx mints a token inside an existing transaction.
+// CreateForDomain mints a token scoped to a domain row.
+func (r *TokenRepo) CreateForDomain(ctx context.Context, userID, domainID int64, name string, abilities []string) (plain string, err error) {
+	return r.createToken(ctx, r.db.Pool, userID, domainID, name, abilities)
+}
+
+// CreateForDomainWithTx mints a domain-scoped token inside a transaction.
+func (r *TokenRepo) CreateForDomainWithTx(ctx context.Context, tx pgx.Tx, userID, domainID int64, name string, abilities []string) (plain string, err error) {
+	return r.createToken(ctx, tx, userID, domainID, name, abilities)
+}
+
+// CreateWithTx mints a token inside an existing transaction (legacy, no domain).
 func (r *TokenRepo) CreateWithTx(ctx context.Context, tx pgx.Tx, userID int64, name string, abilities []string) (plain string, err error) {
-	return r.createToken(ctx, tx, userID, name, abilities)
+	return r.createToken(ctx, tx, userID, 0, name, abilities)
+}
+
+// RegenerateForDomain replaces the token for a domain atomically.
+func (r *TokenRepo) RegenerateForDomain(ctx context.Context, userID, domainID int64, name string, abilities []string) (plain string, err error) {
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var owner int64
+	err = tx.QueryRow(ctx, `SELECT user_id FROM domains WHERE id = $1`, domainID).Scan(&owner)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", fmt.Errorf("domain not found")
+	}
+	if err != nil {
+		return "", err
+	}
+	if owner != userID {
+		return "", fmt.Errorf("domain not found")
+	}
+
+	_, err = tx.Exec(ctx, `
+		DELETE FROM personal_access_tokens
+		WHERE tokenable_type = 'App\\Models\\User' AND tokenable_id = $1 AND domain_id = $2
+	`, userID, domainID)
+	if err != nil {
+		return "", err
+	}
+
+	plain, err = r.createToken(ctx, tx, userID, domainID, name, abilities)
+	if err != nil {
+		return "", err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
+	return plain, nil
+}
+
+// FindByDomain returns token metadata for a user's domain.
+func (r *TokenRepo) FindByDomain(ctx context.Context, userID, domainID int64) (*TokenMeta, error) {
+	pool, err := r.db.ReadPool(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var t TokenMeta
+	var lastUsed *time.Time
+	err = pool.QueryRow(ctx, `
+		SELECT id, domain_id, name, last_used_at
+		FROM personal_access_tokens
+		WHERE tokenable_type = 'App\\Models\\User' AND tokenable_id = $1 AND domain_id = $2
+		LIMIT 1
+	`, userID, domainID).Scan(&t.ID, &t.DomainID, &t.Name, &lastUsed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if lastUsed != nil {
+		t.LastUsed = lastUsed.Format(time.RFC3339)
+	} else {
+		t.NeverUsed = true
+	}
+	return &t, nil
 }
 
 type execer interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 }
 
-func (r *TokenRepo) createToken(ctx context.Context, db execer, userID int64, name string, abilities []string) (plain string, err error) {
+func (r *TokenRepo) createToken(ctx context.Context, db execer, userID, domainID int64, name string, abilities []string) (plain string, err error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
 	plain = "idx_" + hex.EncodeToString(b)
 	abil := `["` + strings.Join(abilities, `","`) + `"]`
+	var domainArg any
+	if domainID > 0 {
+		domainArg = domainID
+	}
 	_, err = db.Exec(ctx, `
-		INSERT INTO personal_access_tokens (tokenable_type, tokenable_id, name, token, abilities, created_at, updated_at)
-		VALUES ('App\\Models\\User', $1, $2, $3, $4, NOW(), NOW())
-	`, userID, name, HashToken(plain), abil)
+		INSERT INTO personal_access_tokens (tokenable_type, tokenable_id, domain_id, name, token, abilities, created_at, updated_at)
+		VALUES ('App\\Models\\User', $1, $2, $3, $4, $5, NOW(), NOW())
+	`, userID, domainArg, name, HashToken(plain), abil)
 	return plain, err
 }
 

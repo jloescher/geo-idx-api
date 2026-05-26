@@ -66,14 +66,17 @@ func (h *Handler) Register(app *fiber.App) {
 	app.Get("/dashboard", h.requireAuth, h.DashboardHome)
 	app.Get("/dashboard/monitoring", h.requireAuth, h.MonitoringPage)
 	app.Get("/dashboard/monitoring/data", h.SessionAuthMiddleware, h.MonitoringJSON)
-	app.Get("/dashboard/setup", h.requireAuth, h.SetupPage)
-	app.Get("/dashboard/api-keys", h.requireAuth, h.APIKeysPage)
+	app.Get("/dashboard/domains", h.requireAuth, h.DomainsPage)
+	app.Get("/dashboard/setup", h.requireAuth, h.redirectToDomains)
+	app.Get("/dashboard/api-keys", h.requireAuth, h.redirectToDomains)
 	app.Get("/dashboard/invite", h.requireAuth, h.requireAdmin, h.InvitePage)
 
 	app.Post("/dashboard/domains", h.requireAuth, h.StoreDomain)
 	app.Post("/dashboard/domains/:id/verify-txt", h.requireAuth, h.VerifyTXT)
-	app.Post("/dashboard/api-tokens", h.requireAuth, h.CreateToken)
-	app.Post("/dashboard/api-tokens/staging", h.requireAuth, h.CreateStagingToken)
+	app.Post("/dashboard/domains/:id/regenerate-token", h.requireAuth, h.RegenerateDomainToken)
+	app.Post("/dashboard/domains/:id/delete", h.requireAuth, h.DeleteDomainBundle)
+	app.Post("/dashboard/api-tokens", h.requireAuth, h.deprecateManualToken)
+	app.Post("/dashboard/api-tokens/staging", h.requireAuth, h.deprecateManualToken)
 	app.Delete("/dashboard/api-tokens/:id", h.requireAuth, h.RevokeToken)
 	app.Post("/dashboard/api-tokens/:id/revoke", h.requireAuth, h.RevokeToken)
 	app.Post("/dashboard/invitations", h.requireAuth, h.requireAdmin, h.CreateInvitation)
@@ -165,29 +168,35 @@ func (h *Handler) MonitoringPage(c *fiber.Ctx) error {
 	return c.Type("html").SendString(renderMonitoringPage(data))
 }
 
-func (h *Handler) SetupPage(c *fiber.Ctx) error {
+func (h *Handler) redirectToDomains(c *fiber.Ctx) error {
+	target := "/dashboard/domains"
+	if q := c.Context().URI().QueryString(); len(q) > 0 {
+		target += "?" + string(q)
+	}
+	return c.Redirect(target)
+}
+
+func (h *Handler) DomainsPage(c *fiber.Ctx) error {
 	uid, _ := c.Locals("user_id").(int64)
 	data, err := h.loadPageData(c, uid, "", "")
 	if err != nil {
 		return c.Status(500).SendString("Database error")
 	}
 	data.ProvisionFlash = h.takeProvisionFlash(c)
+	data.TokenReveals = h.takeTokenReveals(c)
 	if c.Query("verified") == "1" {
 		data.VerifySuccess = "Domain verified successfully."
+	}
+	if c.Query("deleted") == "1" {
+		data.VerifySuccess = "Domain bundle deleted."
 	}
 	if msg := c.Query("verify_error"); msg != "" {
 		data.VerifyError = msg
 	}
-	return c.Type("html").SendString(renderSetupPage(data))
-}
-
-func (h *Handler) APIKeysPage(c *fiber.Ctx) error {
-	uid, _ := c.Locals("user_id").(int64)
-	data, err := h.loadPageData(c, uid, "", "")
-	if err != nil {
-		return c.Status(500).SendString("Database error")
+	if msg := c.Query("error"); msg != "" {
+		data.DomainError = msg
 	}
-	return c.Type("html").SendString(renderAPIKeysPage(data))
+	return c.Type("html").SendString(renderDomainsPage(data))
 }
 
 func (h *Handler) InvitePage(c *fiber.Ctx) error {
@@ -217,48 +226,65 @@ func (h *Handler) loadPageData(c *fiber.Ctx, uid int64, domainErr, submittedHost
 
 	rows, err := pool.Query(c.Context(), `
 		SELECT id, domain_slug, verification_status,
-		       COALESCE(txt_verification_name, ''), COALESCE(txt_verification_value, '')
+		       COALESCE(txt_verification_name, ''), COALESCE(txt_verification_value, ''),
+		       parent_domain_id, is_staging
 		FROM domains WHERE user_id = $1 ORDER BY id
 	`, uid)
 	if err != nil {
 		return PageData{}, err
 	}
 	defer rows.Close()
+
+	prodRoots := []DomainRow{}
+	stagingByParent := map[int64]DomainRow{}
 	for rows.Next() {
 		var d DomainRow
-		if err := rows.Scan(&d.ID, &d.Slug, &d.Status, &d.TXTName, &d.TXTValue); err != nil {
+		var parentID *int64
+		if err := rows.Scan(&d.ID, &d.Slug, &d.Status, &d.TXTName, &d.TXTValue, &parentID, &d.IsStaging); err != nil {
 			return PageData{}, err
 		}
-		d.IsStaging = strings.HasPrefix(d.Slug, "staging.")
-		data.Domains = append(data.Domains, d)
+		tok, err := h.tokens.FindByDomain(c.Context(), uid, d.ID)
+		if err != nil {
+			return PageData{}, err
+		}
+		d.Token = tokMetaFromRepo(tok)
+		if parentID != nil {
+			d.ParentID = *parentID
+			stagingByParent[*parentID] = d
+			continue
+		}
+		if d.IsStaging {
+			continue
+		}
+		prodRoots = append(prodRoots, d)
 	}
-
-	tokRows, err := pool.Query(c.Context(), `
-		SELECT id, name, created_at::text, last_used_at::text
-		FROM personal_access_tokens
-		WHERE tokenable_type = 'App\Models\User' AND tokenable_id = $1
-		ORDER BY id DESC
-	`, uid)
-	if err != nil {
+	if err := rows.Err(); err != nil {
 		return PageData{}, err
 	}
-	defer tokRows.Close()
-	for tokRows.Next() {
-		var t TokenRow
-		var lastUsed *string
-		if err := tokRows.Scan(&t.ID, &t.Name, &t.Created, &lastUsed); err != nil {
-			return PageData{}, err
+
+	for _, d := range prodRoots {
+		bundle := DomainBundle{Production: d}
+		if st, ok := stagingByParent[d.ID]; ok {
+			stCopy := st
+			bundle.Staging = &stCopy
 		}
-		if lastUsed == nil || *lastUsed == "" {
-			t.NeverUsed = true
-		} else {
-			t.LastUsed = *lastUsed
-		}
-		data.Tokens = append(data.Tokens, t)
+		data.Bundles = append(data.Bundles, bundle)
 	}
 
 	_ = pool.QueryRow(c.Context(), `SELECT is_admin FROM users WHERE id = $1`, uid).Scan(&data.IsAdmin)
 	return data, nil
+}
+
+func tokMetaFromRepo(t *repository.TokenMeta) *TokenMeta {
+	if t == nil {
+		return nil
+	}
+	return &TokenMeta{
+		ID:        t.ID,
+		Name:      t.Name,
+		LastUsed:  t.LastUsed,
+		NeverUsed: t.NeverUsed,
+	}
 }
 
 func (h *Handler) StoreDomain(c *fiber.Ctx) error {
@@ -270,7 +296,7 @@ func (h *Handler) StoreDomain(c *fiber.Ctx) error {
 		if err != nil {
 			return c.Status(500).SendString("Database error")
 		}
-		return c.Type("html").SendString(renderSetupPage(data))
+		return c.Type("html").SendString(renderDomainsPage(data))
 	}
 	result, err := h.provision.ProvisionBundle(c.Context(), uid, dashsvc.ProvisionRequest{
 		Hostname: slug,
@@ -292,12 +318,12 @@ func (h *Handler) StoreDomain(c *fiber.Ctx) error {
 		if loadErr != nil {
 			return c.Status(500).SendString("Database error")
 		}
-		return c.Type("html").SendString(renderSetupPage(data))
+		return c.Type("html").SendString(renderDomainsPage(data))
 	}
 	if err := h.setProvisionFlash(c, result); err != nil {
 		h.logger.Warn("provision flash", "error", err)
 	}
-	return c.Redirect("/dashboard/setup#verify")
+	return c.Redirect("/dashboard/domains#verify")
 }
 
 func (h *Handler) VerifyTXT(c *fiber.Ctx) error {
@@ -316,13 +342,13 @@ func (h *Handler) VerifyTXT(c *fiber.Ctx) error {
 	}
 	ok, err := dns.VerifyTXT(c.Context(), txtHost, txtVal)
 	if err != nil {
-		return c.Redirect("/dashboard/setup?verify_error=" + urlQuery("DNS lookup failed. Try again in a moment."))
+		return c.Redirect("/dashboard/domains?verify_error=" + urlQuery("DNS lookup failed. Try again in a moment."))
 	}
 	if !ok {
 		_, _ = h.db.Pool.Exec(c.Context(), `
 			UPDATE domains SET verification_checked_at = NOW(), updated_at = NOW() WHERE id = $1
 		`, id)
-		return c.Redirect("/dashboard/setup?verify_error=" + urlQuery("TXT record not found for "+slug+". Publish the record at your DNS host, then try again."))
+		return c.Redirect("/dashboard/domains?verify_error=" + urlQuery("TXT record not found for "+slug+". Publish the record at your DNS host, then try again."))
 	}
 	_, err = h.db.Pool.Exec(c.Context(), `
 		UPDATE domains SET verification_status = 'verified', txt_verified_at = NOW(),
@@ -332,45 +358,59 @@ func (h *Handler) VerifyTXT(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	var existing int
-	_ = readPool.QueryRow(c.Context(), `
-		SELECT COUNT(*) FROM personal_access_tokens
-		WHERE tokenable_type = 'App\Models\User' AND tokenable_id = $1 AND name = 'Production'
-	`, uid).Scan(&existing)
-	if existing == 0 {
-		plain, _ := h.tokens.Create(c.Context(), uid, "Production", []string{"idx:full"})
-		sess, _ := h.sessions.Get(c)
-		sess.Set("token_flash", plain)
-		_ = sess.Save()
-	}
-	return c.Redirect("/dashboard/setup?verified=1#domains")
+	return c.Redirect("/dashboard/domains?verified=1#domains")
 }
 
-func (h *Handler) CreateStagingToken(c *fiber.Ctx) error {
+func (h *Handler) RegenerateDomainToken(c *fiber.Ctx) error {
 	uid, _ := c.Locals("user_id").(int64)
-	plain, err := h.tokens.Create(c.Context(), uid, "Staging", []string{"idx:full"})
+	domainID := parseInt64(c.Params("id"))
+	readPool, err := h.db.ReadPool(c.Context())
 	if err != nil {
-		return err
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
-	body := `<div class="card"><h1>Staging token</h1><p>Save this token now — it will not be shown again.</p><div class="token-box" id="token">` + web.Esc(plain) + `</div><p><a class="btn btn-primary" href="/dashboard/api-keys">Back to API keys</a></p></div>`
-	return c.Type("html").SendString(web.Page("Staging token", body))
+	var isStaging bool
+	err = readPool.QueryRow(c.Context(), `
+		SELECT is_staging FROM domains WHERE id = $1 AND user_id = $2
+	`, domainID, uid).Scan(&isStaging)
+	if err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "domain not found")
+	}
+	name := "Production"
+	if isStaging {
+		name = "Staging"
+	}
+	plain, err := h.tokens.RegenerateForDomain(c.Context(), uid, domainID, name, []string{"idx:full"})
+	if err != nil {
+		h.logger.Warn("regenerate token", "error", err, "domain_id", domainID)
+		return c.Redirect("/dashboard/domains?error=" + urlQuery("Could not regenerate API key."))
+	}
+	if err := h.setTokenReveal(c, domainID, plain); err != nil {
+		h.logger.Warn("token reveal flash", "error", err)
+	}
+	return c.Redirect("/dashboard/domains#domain-" + strconv.FormatInt(domainID, 10))
 }
 
-func (h *Handler) CreateToken(c *fiber.Ctx) error {
+func (h *Handler) DeleteDomainBundle(c *fiber.Ctx) error {
 	uid, _ := c.Locals("user_id").(int64)
-	name := c.FormValue("name")
-	plain, err := h.tokens.Create(c.Context(), uid, name, []string{"idx:full"})
-	if err != nil {
-		return err
+	domainID := parseInt64(c.Params("id"))
+	if err := repository.DeleteDomainBundle(c.Context(), h.db, uid, domainID); err != nil {
+		msg := "Could not delete domain."
+		if strings.Contains(err.Error(), "not staging") || strings.Contains(err.Error(), "production") {
+			msg = "Delete the production hostname row, not staging."
+		}
+		return c.Redirect("/dashboard/domains?error=" + urlQuery(msg))
 	}
-	body := `<div class="card"><h1>API token created</h1><p>Save this token now — it will not be shown again.</p><div class="token-box" id="token">` + web.Esc(plain) + `</div><p><a class="btn btn-primary" href="/dashboard/api-keys">Back to API keys</a></p></div>`
-	return c.Type("html").SendString(web.Page("Token", body))
+	return c.Redirect("/dashboard/domains?deleted=1#domains")
+}
+
+func (h *Handler) deprecateManualToken(c *fiber.Ctx) error {
+	return c.Redirect("/dashboard/domains?error=" + urlQuery("API keys are managed per domain. Use Regenerate on the Domains page."))
 }
 
 func (h *Handler) RevokeToken(c *fiber.Ctx) error {
 	uid, _ := c.Locals("user_id").(int64)
 	_ = h.tokens.Revoke(c.Context(), uid, parseInt64(c.Params("id")))
-	return c.Redirect("/dashboard/api-keys")
+	return c.Redirect("/dashboard/domains")
 }
 
 func (h *Handler) CreateInvitation(c *fiber.Ctx) error {

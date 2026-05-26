@@ -19,6 +19,14 @@
     return `${Number(n).toFixed(1)}%`;
   }
 
+  function fmtCryptoUsd(n) {
+    if (n === null || n === undefined) return "—";
+    return Number(n).toLocaleString(undefined, {
+      minimumFractionDigits: 3,
+      maximumFractionDigits: 3,
+    });
+  }
+
   function badgeClass(status) {
     if (status === "healthy") return "badge badge-healthy";
     if (status === "stale") return "badge badge-stale";
@@ -82,7 +90,7 @@ ${statusChip}
       ? cryptoAssets.map((a) =>
           tile(
             a.asset_key.toUpperCase(),
-            `$${Number(a.price_usd).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+            `$${fmtCryptoUsd(a.price_usd)}`,
             `${a.age_seconds}s ago`,
             null,
             a.stale ? "stale" : "healthy",
@@ -126,9 +134,9 @@ ${statusChip}
 
     const act = data.activation || {};
     const activationTiles = [
-      tile("Domains", fmtNum(act.domain_count), `${fmtNum(act.verified_domain_count)} verified`, "/dashboard/setup", null, "Domains"),
-      tile("API keys", fmtNum(act.token_count), "All users", "/dashboard/api-keys", null, "API keys"),
-      tile("Traffic 30d", fmtNum(act.domains_with_traffic_30d), "Domains with audit calls", "/dashboard/setup", null, "Activation traffic"),
+      tile("Domains", fmtNum(act.domain_count), `${fmtNum(act.verified_domain_count)} verified`, "/dashboard/domains", null, "Domains"),
+      tile("API keys", fmtNum(act.token_count), "Per-domain keys", "/dashboard/domains", null, "API keys"),
+      tile("Traffic 30d", fmtNum(act.domains_with_traffic_30d), "Domains with audit calls", "/dashboard/domains", null, "Activation traffic"),
     ];
 
     return (

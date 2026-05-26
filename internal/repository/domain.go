@@ -19,7 +19,7 @@ func NewDomainRepo(db *DB) *DomainRepo {
 }
 
 const domainSelectCols = `
-	id, user_id, domain_slug, is_active, mls_dataset, allowed_mls_datasets,
+	id, user_id, parent_domain_id, is_staging, domain_slug, is_active, mls_dataset, allowed_mls_datasets,
 	verification_status, verification_method, txt_verification_name, txt_verification_value,
 	txt_verified_at, created_at, updated_at
 `
@@ -35,6 +35,27 @@ func (r *DomainRepo) FindActiveBySlug(ctx context.Context, slug string) (*domain
 		WHERE is_active = true AND LOWER(domain_slug) = LOWER($1)
 		LIMIT 1
 	`, slug)
+	d, err := scanDomain(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+func (r *DomainRepo) FindActiveByIDForUser(ctx context.Context, userID, domainID int64) (*domain.Domain, error) {
+	pool, err := r.db.ReadPool(ctx)
+	if err != nil {
+		return nil, err
+	}
+	row := pool.QueryRow(ctx, `
+		SELECT `+domainSelectCols+`
+		FROM domains
+		WHERE is_active = true AND user_id = $1 AND id = $2
+		LIMIT 1
+	`, userID, domainID)
 	d, err := scanDomain(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -94,7 +115,7 @@ func (r *DomainRepo) ListActive(ctx context.Context) ([]domain.Domain, error) {
 func scanDomain(row pgx.Row) (*domain.Domain, error) {
 	var d domain.Domain
 	err := row.Scan(
-		&d.ID, &d.UserID, &d.DomainSlug, &d.IsActive, &d.MLSDataset, &d.AllowedMLSDatasets,
+		&d.ID, &d.UserID, &d.ParentDomainID, &d.IsStaging, &d.DomainSlug, &d.IsActive, &d.MLSDataset, &d.AllowedMLSDatasets,
 		&d.VerificationStatus, &d.VerificationMethod, &d.TXTVerificationName, &d.TXTVerificationValue,
 		&d.TXTVerifiedAt, &d.CreatedAt, &d.UpdatedAt,
 	)

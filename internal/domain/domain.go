@@ -9,6 +9,8 @@ import (
 type Domain struct {
 	ID                   int64           `db:"id"`
 	UserID               *int64          `db:"user_id"`
+	ParentDomainID       *int64          `db:"parent_domain_id"`
+	IsStaging            bool            `db:"is_staging"`
 	DomainSlug           string          `db:"domain_slug"`
 	IsActive             bool            `db:"is_active"`
 	MLSDataset           *string         `db:"mls_dataset"`
@@ -39,6 +41,7 @@ type User struct {
 type APIToken struct {
 	ID         int64      `db:"id"`
 	UserID     int64      `db:"tokenable_id"`
+	DomainID   *int64     `db:"domain_id"`
 	Name       string     `db:"name"`
 	TokenHash  string     `db:"token"`
 	Abilities  *string    `db:"abilities"`
