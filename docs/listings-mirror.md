@@ -118,6 +118,28 @@ Queue job **`mls.purge_closed_listings`** (scheduler daily cron):
 
 Default rolling months: **12** (local/dev), **3** (staging `APP_ENV`), **0** = all-time (production default).
 
+### Mirror key reconciliation (Withdrawn / Expired / Canceled)
+
+Incremental and replication fetches only return **Active/Pending** rows. When a listing leaves that set (Withdrawn, Expired, Canceled, etc.), upstream often **stops returning the row entirely** — so persist-time delete logic never runs and the mirror can keep a stale AP row.
+
+**Job:** `mls.mirror_key_reconcile` (scheduler **04:00 UTC** daily, queue `MLS_SYNC_KICKOFF_QUEUE`) enqueues per-dataset key sweeps:
+
+| Dataset | Job | Queue | Upstream |
+|---------|-----|-------|----------|
+| `stellar` | `bridge.reconcile_keys` | `bridge-sync-fetch` | `GET …/Property/replication` with AP `$filter`, `$select=ListingKey`, `$top=2000`, `next` link (fallback: `/Property` + `$skip`) |
+| `beaches` | `spark.reconcile_keys` | `spark-sync-fetch` | `GET …/Property` on replication host with **`SparkReplicationFilter`** (AP [+ rolling months]), `$select=ListingKey`, `$top=1000`, `@odata.nextLink` |
+
+Each page upserts keys into **`reconcile_listing_keys`** (`run_id`, `dataset_slug`, `listing_key`). After the last page, one anti-join deletes mirror rows not in that set, then staging rows for the run are removed.
+
+**Defer:** kickoff skips a dataset when `replication_in_progress`, `replication_next_url` is set, or a `replica_pages` row is active — same gating as incremental kickoff.
+
+**Distinct from:**
+
+- **`mls.purge_closed_listings`** (03:05 UTC) — deletes **Closed** (and rolling-window AP rows by age); does not target Withdrawn/Expired/Canceled tombstones still stored as Active/Pending.
+- **Incremental delete path** — only when a non-AP row appears in a fetch batch (rare for IDX tokens when status moves off AP).
+
+Uses the same cluster rate limiter as sync fetch (`sync_rate_budget`).
+
 ### RESO numeric normalization (persist)
 
 Indexed numerics are clamped to PostgreSQL column bounds in `internal/service/mls/normalize.go` (full payloads remain in `raw_data` / `custom_fields`):

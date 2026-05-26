@@ -18,6 +18,7 @@ func (r *Registry) InitServices(q *queue.Client) {
 	r.sparkSync = sync.NewSparkWorker(r.cfg, r.db, q, r.logger)
 	r.mirrorPurge = sync.NewPurgeClosed(r.cfg, r.db)
 	r.replicaStore = sync.NewReplicaPageStore(r.db, r.cfg)
+	r.keyReconcile = sync.NewKeyReconcile(r.cfg, r.db, q, r.logger)
 	r.gisMeta = gis.NewMetadataService(r.cfg, r.db, r.logger)
 	gisRepo := gisrepo.New(r.db)
 	r.gisPersistent = gis.NewPersistentGISService(r.cfg, gisRepo, q, r.logger)

@@ -249,6 +249,85 @@ func (s *BridgeSync) fetchPage(ctx context.Context, fetchURL string, query url.V
 	return result, nil
 }
 
+// FetchReconcileKeysPage loads ListingKey values for mirror reconciliation.
+// Primary path: /Property/replication with AP filter. On HTTP error, callers may retry with UseFallback.
+func (s *BridgeSync) FetchReconcileKeysPage(ctx context.Context, dataset string, nextURL *string, useFallback bool, collectionSkip int) (KeyPageResult, error) {
+	if useFallback {
+		return s.fetchReconcileKeysCollection(ctx, dataset, collectionSkip)
+	}
+
+	var fetchURL string
+	query := url.Values{}
+	if nextURL != nil && strings.TrimSpace(*nextURL) != "" {
+		fetchURL = *nextURL
+	} else {
+		fetchURL = s.propertyReplicationURL(dataset)
+		query.Set("$filter", BridgeReplicationFilter(s.cfg))
+		top := s.cfg.Bridge.SyncReplicationTop
+		if top <= 0 {
+			top = 2000
+		}
+		query.Set("$top", fmt.Sprintf("%d", top))
+		query.Set("$select", "ListingKey")
+	}
+
+	page, err := s.fetchPage(ctx, fetchURL, query, dataset, true)
+	if err != nil {
+		return KeyPageResult{}, err
+	}
+	return bridgeKeyPageFromResult(page), nil
+}
+
+func (s *BridgeSync) fetchReconcileKeysCollection(ctx context.Context, dataset string, skip int) (KeyPageResult, error) {
+	top := s.cfg.Bridge.SyncIncrementalTop
+	if top <= 0 {
+		top = 200
+	}
+	if top > 200 {
+		top = 200
+	}
+
+	fetchURL := s.propertyCollectionURL(dataset)
+	query := url.Values{}
+	query.Set("$filter", BridgeReplicationFilter(s.cfg))
+	query.Set("$select", "ListingKey")
+	query.Set("$orderby", "ListingKey asc")
+	query.Set("$top", fmt.Sprintf("%d", top))
+	query.Set("$skip", fmt.Sprintf("%d", skip))
+
+	page, err := s.fetchPage(ctx, fetchURL, query, dataset, false)
+	if err != nil {
+		return KeyPageResult{}, err
+	}
+	out := bridgeKeyPageFromResult(page)
+	out.UseFallback = true
+	out.CollectionSkip = skip
+	if page.HTTPError {
+		return out, nil
+	}
+	out.Complete = len(page.Rows) < top
+	if !out.Complete {
+		out.CollectionSkip = skip + top
+	}
+	return out, nil
+}
+
+func bridgeKeyPageFromResult(page PageResult) KeyPageResult {
+	out := KeyPageResult{
+		Keys:       dedupeListingKeys(listingKeysFromRows(page.Rows)),
+		NextURL:    page.NextReplicationURL,
+		HTTPError:  page.HTTPError,
+		HTTPStatus: page.HTTPStatus,
+		ODataError: page.ODataError,
+		FetchURL:   page.FetchURL,
+	}
+	if page.HTTPError {
+		return out
+	}
+	out.Complete = page.ReplicationComplete
+	return out
+}
+
 func (s *BridgeSync) oDataPropertyBase(dataset string) string {
 	host := strings.TrimRight(s.cfg.Bridge.Host, "/")
 	prefix := strings.Trim(s.cfg.Bridge.PathPrefix, "/")

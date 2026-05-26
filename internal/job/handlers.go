@@ -50,6 +50,19 @@ func (r *Registry) handlePurgeClosed(ctx context.Context, job *queue.ReservedJob
 	return r.mirrorPurge.Run(ctx)
 }
 
+func (r *Registry) handleMirrorKeyReconcile(ctx context.Context, job *queue.ReservedJob) error {
+	r.logger.Info("running mirror key reconcile kickoff", "job_id", job.ID)
+	return r.keyReconcile.Kickoff(ctx)
+}
+
+func (r *Registry) handleBridgeReconcileKeys(ctx context.Context, job *queue.ReservedJob) error {
+	return r.keyReconcile.RunBridgePage(ctx, job)
+}
+
+func (r *Registry) handleSparkReconcileKeys(ctx context.Context, job *queue.ReservedJob) error {
+	return r.keyReconcile.RunSparkPage(ctx, job)
+}
+
 func (r *Registry) handlePurgeReplicaPages(ctx context.Context, job *queue.ReservedJob) error {
 	return r.replicaStore.PurgeEligible(ctx)
 }

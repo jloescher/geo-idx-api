@@ -81,6 +81,7 @@ func (s *Scheduler) runAsLeader(ctx context.Context) error {
 	s.addJob(ctx, "mls-replication-resume", s.cfg.MLS.ReplicationResumeCron, s.cfg.MLS.SyncKickoffQueue, queue.TypeMLSReplicationResume)
 	s.addJob(ctx, "purge-replica", "0 15 4 * * *", "default", queue.TypeMLSPurgeReplicaPages)
 	s.addJob(ctx, "purge-closed", "0 5 3 * * *", "default", queue.TypeMLSPurgeClosed)
+	s.addJob(ctx, "mirror-key-reconcile", "0 0 4 * * *", s.cfg.MLS.SyncKickoffQueue, queue.TypeMLSMirrorKeyReconcile)
 	s.addJob(ctx, "fema-flood-enrich", "0 30 4 * * *", s.cfg.FEMA.EnrichQueue, queue.TypeFEMAFloodEnrichKickoff)
 	s.addJob(ctx, "gis-probe", "0 30 6 * * 1", s.cfg.GIS.Queue, queue.TypeGISProbeSources)
 	s.addJob(ctx, "gis-monthly-parcel-refresh", "0 0 2 1 * *", s.cfg.GIS.SyncQueue, queue.TypeGISMonthlyParcelRefresh)
@@ -94,6 +95,7 @@ func (s *Scheduler) runAsLeader(ctx context.Context) error {
 	s.logger.Info("cron schedules registered",
 		"mls_kickoff", "every minute at :00",
 		"mls_replication_resume", s.cfg.MLS.ReplicationResumeCron,
+		"mirror_key_reconcile", "daily 04:00 UTC",
 		"mls_proxy_cache_purge", "every 15 min",
 		"coingecko", "every 10 min",
 		"gis_monthly_parcel_refresh", "1st of month 02:00",

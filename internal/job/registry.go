@@ -26,6 +26,7 @@ type Registry struct {
 	sparkSync          *sync.SparkWorker
 	mirrorPurge        *sync.PurgeClosed
 	replicaStore       *sync.ReplicaPageStore
+	keyReconcile       *sync.KeyReconcile
 	gisMeta            *gis.MetadataService
 	gisPersistent      *gis.PersistentGISService
 	crypto             *crypto.PricingService
@@ -49,6 +50,9 @@ func (r *Registry) RegisterAll(w *queue.Worker) {
 	w.Register(queue.TypeSparkPersistChunk, r.handleSparkPersistChunk)
 	w.Register(queue.TypeSparkPersistFinalize, r.handleSparkPersistFinalize)
 	w.Register(queue.TypeMLSPurgeClosed, r.handlePurgeClosed)
+	w.Register(queue.TypeMLSMirrorKeyReconcile, r.handleMirrorKeyReconcile)
+	w.Register(queue.TypeBridgeReconcileKeys, r.handleBridgeReconcileKeys)
+	w.Register(queue.TypeSparkReconcileKeys, r.handleSparkReconcileKeys)
 	w.Register(queue.TypeMLSPurgeReplicaPages, r.handlePurgeReplicaPages)
 	w.Register(queue.TypeGISProbeSources, r.handleGISProbe)
 	w.Register(queue.TypeGISMonthlyParcelRefresh, r.handleGISMonthlyParcelRefresh)

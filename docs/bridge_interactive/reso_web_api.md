@@ -46,6 +46,8 @@ To reduce payload size and improve performance we recommend using the `select` p
 BridgeModificationTimestamp is the best field to use for incremental updates as it represents the last modification in the Bridge system; ModificationTimestamp is ingested directly from the MLS system and is not a consistent proxy for modifications to the listing in the Bridge database.
 
 **idx-api after replication:** query `…/Property` (not `/replication`) with `$filter=BridgeModificationTimestamp gt {last_cursor}` and `$orderby=BridgeModificationTimestamp asc`, `$top` ≤ 200. Use a **bare ISO-8601** timestamp in the filter (e.g. `gt 2025-05-20T04:51:45Z`); `datetime'…'` literals return HTTP 400 on Stellar. Cursor: `listing_sync_cursors.last_modification_timestamp`. See [Listings mirror](../listings-mirror.md#after-initial-replication-bridge--stellar).
+
+**idx-api mirror key reconcile (nightly):** lightweight **`/Property/replication`** sweep with Active/Pending `$filter` and `$select=ListingKey` only (same catalog as seed; not a full re-seed). Removes mirror rows when listings leave the AP catalog (Withdrawn/Expired/Canceled). See [Listings mirror — Mirror key reconciliation](../listings-mirror.md#mirror-key-reconciliation-withdrawn--expired--canceled).
 Media
 Rather than keeping it in a separate resource, Media is returned as an object directly on the Property record. Typically, it is the highest resolution media available from the MLS and is stored on our CDN. You may link directly to the CDN.
 

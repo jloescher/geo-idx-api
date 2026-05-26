@@ -359,6 +359,49 @@ func sparkBodySnippet(body []byte) string {
 	return s
 }
 
+// FetchReconcileKeysPage loads ListingKey values for mirror reconciliation (AP-filtered replication catalog).
+func (s *SparkSync) FetchReconcileKeysPage(ctx context.Context, dataset string, nextURL *string) (KeyPageResult, error) {
+	var fetchURL string
+	query := url.Values{}
+	if nextURL != nil && strings.TrimSpace(*nextURL) != "" {
+		fetchURL = *nextURL
+	} else {
+		fetchURL = s.propertyCollectionURL()
+		query.Set("$filter", SparkReplicationFilter(s.cfg))
+		top := s.cfg.Spark.SyncReplicationTop
+		if top <= 0 {
+			top = 1000
+		}
+		if top > 1000 {
+			top = 1000
+		}
+		query.Set("$top", fmt.Sprintf("%d", top))
+		query.Set("$select", "ListingKey")
+	}
+
+	page, err := s.fetchPage(ctx, fetchURL, query, dataset, true)
+	if err != nil {
+		return KeyPageResult{}, err
+	}
+	return sparkKeyPageFromResult(page), nil
+}
+
+func sparkKeyPageFromResult(page PageResult) KeyPageResult {
+	out := KeyPageResult{
+		Keys:       dedupeListingKeys(listingKeysFromRows(page.Rows)),
+		NextURL:    page.NextReplicationURL,
+		HTTPError:  page.HTTPError,
+		HTTPStatus: page.HTTPStatus,
+		ODataError: page.ODataError,
+		FetchURL:   page.FetchURL,
+	}
+	if page.HTTPError {
+		return out
+	}
+	out.Complete = page.ReplicationComplete
+	return out
+}
+
 func (s *SparkSync) propertyCollectionURL() string {
 	host := strings.TrimRight(s.cfg.Spark.ReplicationHost, "/")
 	root := strings.Trim(s.cfg.Spark.ReplicationReso, "/")

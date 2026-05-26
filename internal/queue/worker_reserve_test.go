@@ -4,7 +4,6 @@ import "testing"
 
 func TestReserveWeightedPrefersAlternatingPools(t *testing.T) {
 	w := &Worker{
-		client: nil,
 		queues: []string{"bridge-sync-fetch", "spark-sync-fetch", "bridge-sync-persist", "spark-sync-persist", "default"},
 	}
 	fetchQ, persistQ, otherQ := partitionWorkerQueues(w.queues)

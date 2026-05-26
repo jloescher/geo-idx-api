@@ -155,6 +155,8 @@ StandardStatus eq 'Active' or StandardStatus eq 'Pending'
 
 **Purge:** queue job **`mls.purge_replica_pages`** (shared `replica_pages` table; retention via `MLS_REPLICA_PAGE_RETENTION_HOURS` / `SPARK_REPLICA_PAGE_*`).
 
+**Mirror key reconcile:** nightly **`mls.mirror_key_reconcile`** (04:00 UTC) walks the **same AP-filtered replication catalog** as seed (`SparkReplicationFilter`), `$select=ListingKey` only, and deletes mirror rows whose keys are no longer upstream — see [Listings mirror — Mirror key reconciliation](../listings-mirror.md#mirror-key-reconciliation-withdrawn--expired--canceled). Defers when replication is in progress.
+
 ### Key code (Go)
 
 | Component | Location |
