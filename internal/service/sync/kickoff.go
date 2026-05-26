@@ -12,10 +12,10 @@ import (
 
 // Kickoff dispatches replication fetch when datasets need catch-up.
 type Kickoff struct {
-	cfg       config.Config
-	db        *repository.DB
-	queue     *queue.Client
-	store     *ReplicaPageStore
+	cfg     config.Config
+	db      *repository.DB
+	queue   *queue.Client
+	store   *ReplicaPageStore
 	cursors *CursorStore
 	logger  *slog.Logger
 }

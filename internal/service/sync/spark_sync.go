@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -84,24 +85,34 @@ func (s *SparkSync) FetchIncrementalPage(ctx context.Context, cursor SyncCursor,
 	// cursor already caught up to "now".
 	if !cursor.LastModificationTimestamp.Before(*windowEnd) {
 		return PageResult{
-			ReplicationComplete: true,
+			ReplicationComplete:  true,
 			IncrementalWindowEnd: windowEnd,
 		}, nil
 	}
 
-	result, err := s.fetchIncrementalOnce(ctx, cursor, skip, *windowEnd, true)
+	result, err := s.fetchIncrementalOnce(ctx, cursor, skip, *windowEnd, sparkIncrementalWithExpand)
 	if err != nil {
 		return result, err
 	}
 	if result.HTTPError && result.HTTPStatus == http.StatusBadRequest {
-		retry, retryErr := s.fetchIncrementalOnce(ctx, cursor, skip, *windowEnd, false)
+		retry, retryErr := s.fetchIncrementalOnce(ctx, cursor, skip, *windowEnd, sparkIncrementalNoExpand)
 		if retryErr != nil {
 			return result, retryErr
 		}
 		if !retry.HTTPError {
 			result = retry
+		} else if retry.HTTPStatus == http.StatusBadRequest {
+			bare, bareErr := s.fetchIncrementalOnce(ctx, cursor, skip, *windowEnd, sparkIncrementalBare)
+			if bareErr != nil {
+				return result, bareErr
+			}
+			if !bare.HTTPError {
+				result = bare
+			} else {
+				result = coalesceSparkIncremental400Failures(result, retry, bare)
+			}
 		} else {
-			result.ODataError = retry.ODataError
+			result = retry
 		}
 	}
 	if cursor.IncrementalWindowEnd == nil {
@@ -110,7 +121,17 @@ func (s *SparkSync) FetchIncrementalPage(ctx context.Context, cursor SyncCursor,
 	return result, nil
 }
 
-func (s *SparkSync) fetchIncrementalOnce(ctx context.Context, cursor SyncCursor, skip int, windowEnd time.Time, withExpand bool) (PageResult, error) {
+// incremental fetch shapes: Spark sometimes returns HTTP 400 on incremental with $expand
+// and/or $orderby; we retry with simpler queries.
+type sparkIncrementalVariant int
+
+const (
+	sparkIncrementalWithExpand sparkIncrementalVariant = iota
+	sparkIncrementalNoExpand
+	sparkIncrementalBare
+)
+
+func (s *SparkSync) fetchIncrementalOnce(ctx context.Context, cursor SyncCursor, skip int, windowEnd time.Time, variant sparkIncrementalVariant) (PageResult, error) {
 	top := s.cfg.Spark.SyncIncrementalTop
 	if top <= 0 {
 		top = 1000
@@ -118,23 +139,60 @@ func (s *SparkSync) fetchIncrementalOnce(ctx context.Context, cursor SyncCursor,
 	if top > 1000 {
 		top = 1000
 	}
+	if variant == sparkIncrementalBare {
+		if top > 250 {
+			top = 250
+		}
+	}
 
 	lower := cursor.LastModificationTimestamp.UTC().Format("2006-01-02T15:04:05Z")
 	upper := windowEnd.UTC().Format("2006-01-02T15:04:05Z")
-	filter := fmt.Sprintf("(%s) and ModificationTimestamp gt %s and ModificationTimestamp lt %s",
+	// activePendingStatusFilter is already parenthesized; avoid ((...)) which some OData stacks reject.
+	filter := fmt.Sprintf("%s and ModificationTimestamp gt %s and ModificationTimestamp lt %s",
 		activePendingStatusFilter, lower, upper)
 
 	fetchURL := s.propertyCollectionURL()
 	query := url.Values{}
 	query.Set("$filter", filter)
-	query.Set("$orderby", "ModificationTimestamp asc")
+	if variant != sparkIncrementalBare {
+		query.Set("$orderby", "ModificationTimestamp asc")
+	}
 	query.Set("$top", fmt.Sprintf("%d", top))
 	query.Set("$skip", fmt.Sprintf("%d", skip))
-	if withExpand {
+	if variant == sparkIncrementalWithExpand {
 		s.applySyncExpand(query, false)
 	}
 
 	return s.fetchPage(ctx, fetchURL, query, cursor.DatasetSlug, false)
+}
+
+func coalesceSpark400Messages(parts ...string) string {
+	var b strings.Builder
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteString(" | ")
+		}
+		b.WriteString(p)
+	}
+	return b.String()
+}
+
+func coalesceSparkIncremental400Failures(expand400, noExpand400, bare400 PageResult) PageResult {
+	out := bare400
+	out.HTTPError = true
+	out.ODataError = coalesceSpark400Messages(
+		expand400.ODataError,
+		noExpand400.ODataError,
+		bare400.ODataError,
+	)
+	if out.ODataError == "" {
+		out.ODataError = "Spark returned HTTP 400 on incremental (expand, no-expand, and bare attempts)"
+	}
+	return out
 }
 
 func (s *SparkSync) applySyncExpand(query url.Values, replication bool) {
@@ -194,7 +252,8 @@ func (s *SparkSync) fetchPage(ctx context.Context, fetchURL string, query url.Va
 	}
 	if got.Status < 200 || got.Status >= 300 {
 		result.HTTPError = true
-		result.ODataError = sparkODataErrorMessage(body)
+		ct := strings.ToLower(got.Header.Get("Content-Type"))
+		result.ODataError = sparkHTTPErrorDetail(body, ct)
 		return result, nil
 	}
 
@@ -231,24 +290,73 @@ func (s *SparkSync) fetchPage(ctx context.Context, fetchURL string, query url.Va
 	return result, nil
 }
 
-func sparkODataErrorMessage(body []byte) string {
-	var parsed struct {
+var (
+	// Keep this regexp permissive; we trim/snippet the extracted text afterwards.
+	// Using bounded repeats (e.g. {1,2000}) can trip Go's RE2 parser depending on grouping.
+	sparkXMLMessageRE = regexp.MustCompile(`(?i)<(?:m:)?message[^>]*>([^<]+)</(?:m:)?message>`)
+)
+
+func sparkHTTPErrorDetail(body []byte, contentType string) string {
+	if msg := sparkODataJSONError(body); msg != "" {
+		return msg
+	}
+	if strings.Contains(contentType, "xml") || looksLikeXML(body) {
+		if m := sparkXMLMessageRE.FindSubmatch(body); len(m) > 1 {
+			return strings.TrimSpace(string(m[1]))
+		}
+	}
+	return sparkBodySnippet(body)
+}
+
+func looksLikeXML(body []byte) bool {
+	b := strings.TrimSpace(string(body))
+	return strings.HasPrefix(b, "<?xml") || strings.HasPrefix(b, "<") && strings.Contains(b, "<error")
+}
+
+func sparkODataJSONError(body []byte) string {
+	var envelope struct {
 		Error struct {
 			Message string `json:"message"`
 			Code    string `json:"code"`
 		} `json:"error"`
+		ODataError struct {
+			Message *struct {
+				Lang  string `json:"lang"`
+				Value string `json:"value"`
+			} `json:"message"`
+			Code string `json:"code"`
+		} `json:"odata.error"`
 	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
+	if err := json.Unmarshal(body, &envelope); err != nil {
 		return ""
 	}
-	msg := strings.TrimSpace(parsed.Error.Message)
+	msg := strings.TrimSpace(envelope.Error.Message)
 	if msg == "" {
-		msg = strings.TrimSpace(parsed.Error.Code)
+		msg = strings.TrimSpace(envelope.Error.Code)
+	}
+	if msg == "" && envelope.ODataError.Message != nil {
+		msg = strings.TrimSpace(envelope.ODataError.Message.Value)
+	}
+	if msg == "" {
+		msg = strings.TrimSpace(envelope.ODataError.Code)
 	}
 	if len(msg) > 500 {
 		msg = msg[:500] + "…"
 	}
 	return msg
+}
+
+func sparkBodySnippet(body []byte) string {
+	s := strings.TrimSpace(string(body))
+	if s == "" {
+		return ""
+	}
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	if len(s) > 400 {
+		s = s[:400] + "…"
+	}
+	return s
 }
 
 func (s *SparkSync) propertyCollectionURL() string {

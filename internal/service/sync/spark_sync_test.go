@@ -108,7 +108,7 @@ func TestSparkSync_FetchIncrementalPageBuildsWindowFilter(t *testing.T) {
 	syncer := NewSparkSync(cfg, nil)
 	_, err := syncer.FetchIncrementalPage(t.Context(), SyncCursor{
 		LastModificationTimestamp: &lower,
-		IncrementalWindowEnd:            &upper,
+		IncrementalWindowEnd:      &upper,
 	}, 0)
 	if err != nil {
 		t.Fatal(err)
