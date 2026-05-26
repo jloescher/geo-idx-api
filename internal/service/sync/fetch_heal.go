@@ -68,3 +68,46 @@ func maybeSelfHealReplicationFetch(
 		"provider", provider, "dataset", dataset, "job_id", id, "delay", delay)
 	return true, nil
 }
+
+const incrementalBadRequestHealDelay = 30 * time.Second
+
+// maybeSelfHealIncrementalBadRequest clears a pinned incremental_window_end and re-enqueues
+// incremental fetch after Spark/Bridge reject the OData query with HTTP 400.
+// Returns true when the current job should complete without failing.
+func maybeSelfHealIncrementalBadRequest(
+	ctx context.Context,
+	q *queue.Client,
+	cursors *CursorStore,
+	logger *slog.Logger,
+	provider, dataset, fetchQueue, jobType, mode string,
+	httpStatus int,
+) (bool, error) {
+	if mode != "incremental" || httpStatus != http.StatusBadRequest {
+		return false, nil
+	}
+
+	pending, err := q.HasPendingFetch(ctx, fetchQueue, jobType, dataset)
+	if err != nil {
+		return false, err
+	}
+	if pending {
+		logger.Info("incremental 400 self-heal skipped: fetch already pending",
+			"provider", provider, "dataset", dataset)
+		return true, nil
+	}
+
+	if err := cursors.ApplyPatch(ctx, dataset, CursorPatch{ClearIncrementalWindowEnd: true}); err != nil {
+		return false, err
+	}
+
+	id, err := q.Enqueue(ctx, fetchQueue, jobType, fetchPageArgs{
+		Dataset: dataset,
+		Mode:    "incremental",
+	}, incrementalBadRequestHealDelay)
+	if err != nil {
+		return false, err
+	}
+	logger.Info("incremental 400 self-heal: cleared window and re-enqueued fetch",
+		"provider", provider, "dataset", dataset, "job_id", id, "delay", incrementalBadRequestHealDelay)
+	return true, nil
+}

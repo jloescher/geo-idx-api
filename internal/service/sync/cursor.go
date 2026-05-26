@@ -21,12 +21,13 @@ type SyncCursor struct {
 
 // CursorPatch updates cursor fields after a fetch/persist cycle.
 type CursorPatch struct {
-	ApplyReplicationState bool
-	ReplicationNextURL    *string
-	ReplicationInProgress *bool
-	MaxModificationTs     *time.Time
-	IncrementalWindowEnd  *time.Time
-	MarkSyncFinished      bool
+	ApplyReplicationState     bool
+	ReplicationNextURL        *string
+	ReplicationInProgress     *bool
+	MaxModificationTs         *time.Time
+	IncrementalWindowEnd      *time.Time
+	ClearIncrementalWindowEnd bool
+	MarkSyncFinished          bool
 }
 
 // CursorStore reads/writes listing_sync_cursors.
@@ -107,7 +108,9 @@ func mergeCursorPatch(c SyncCursor, patch CursorPatch, now time.Time) SyncCursor
 	if patch.ApplyReplicationState {
 		out.ReplicationNextURL = patch.ReplicationNextURL
 	}
-	if patch.IncrementalWindowEnd != nil {
+	if patch.ClearIncrementalWindowEnd {
+		out.IncrementalWindowEnd = nil
+	} else if patch.IncrementalWindowEnd != nil {
 		out.IncrementalWindowEnd = patch.IncrementalWindowEnd
 	}
 	if patch.MaxModificationTs != nil {

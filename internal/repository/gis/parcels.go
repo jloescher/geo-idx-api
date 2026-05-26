@@ -14,6 +14,7 @@ func (r *Repository) BulkUpsertParcels(ctx context.Context, rows []ParcelRow, ch
 	if len(rows) == 0 {
 		return nil
 	}
+	rows = dedupeParcelRows(rows)
 	if chunkSize <= 0 {
 		chunkSize = 500
 	}
@@ -29,7 +30,35 @@ func (r *Repository) BulkUpsertParcels(ctx context.Context, rows []ParcelRow, ch
 	return nil
 }
 
+// dedupeParcelRows keeps one row per (parcel_id, source_key); later rows win.
+// Prevents PostgreSQL "ON CONFLICT DO UPDATE command cannot affect row a second time".
+func dedupeParcelRows(rows []ParcelRow) []ParcelRow {
+	if len(rows) <= 1 {
+		return rows
+	}
+	type key struct {
+		parcelID  string
+		sourceKey string
+	}
+	seen := make(map[key]int, len(rows))
+	out := make([]ParcelRow, 0, len(rows))
+	for _, row := range rows {
+		k := key{parcelID: row.ParcelID, sourceKey: row.SourceKey}
+		if idx, ok := seen[k]; ok {
+			out[idx] = row
+			continue
+		}
+		seen[k] = len(out)
+		out = append(out, row)
+	}
+	return out
+}
+
 func (r *Repository) upsertParcelBatch(ctx context.Context, rows []ParcelRow) error {
+	rows = dedupeParcelRows(rows)
+	if len(rows) == 0 {
+		return nil
+	}
 	var b strings.Builder
 	b.WriteString(`INSERT INTO gis_parcels (
 		parcel_id, source_key, county, geometry, properties,

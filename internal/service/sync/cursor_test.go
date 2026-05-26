@@ -57,6 +57,15 @@ func TestMergeCursorPatch_maxModificationTsMonotonic(t *testing.T) {
 	}
 }
 
+func TestMergeCursorPatch_clearIncrementalWindowEnd(t *testing.T) {
+	end := time.Now()
+	c := SyncCursor{IncrementalWindowEnd: &end}
+	merged := mergeCursorPatch(c, CursorPatch{ClearIncrementalWindowEnd: true}, time.Now())
+	if merged.IncrementalWindowEnd != nil {
+		t.Fatal("expected incremental_window_end cleared")
+	}
+}
+
 func TestMergeCursorPatch_markSyncFinishedClearsWindow(t *testing.T) {
 	window := time.Now().UTC()
 	c := SyncCursor{IncrementalWindowEnd: &window}

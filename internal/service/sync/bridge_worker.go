@@ -134,6 +134,10 @@ func (w *BridgeWorker) FetchPage(ctx context.Context, job *queue.ReservedJob) er
 			"bridge", args.Dataset, w.cfg.Bridge.SyncFetchQueue, queue.TypeBridgeFetchPage, args.Mode, cursor, fetchErr); healed {
 			return err
 		}
+		if healed, err := maybeSelfHealIncrementalBadRequest(ctx, w.queue, w.cursors, w.logger,
+			"bridge", args.Dataset, w.cfg.Bridge.SyncFetchQueue, queue.TypeBridgeFetchPage, args.Mode, result.HTTPStatus); healed {
+			return err
+		}
 		return fetchErr
 	}
 
@@ -213,8 +217,8 @@ func (w *BridgeWorker) continuationPlan(args fetchPageArgs, result PageResult) (
 	}
 
 	patch := CursorPatch{
-		MaxModificationTs:      result.MaxModificationTs,
-		MarkSyncFinished: !result.IncrementalHasMore,
+		MaxModificationTs: result.MaxModificationTs,
+		MarkSyncFinished:  !result.IncrementalHasMore,
 	}
 	if result.IncrementalHasMore {
 		top := w.cfg.Bridge.SyncIncrementalTop

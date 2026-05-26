@@ -122,6 +122,10 @@ func (w *SparkWorker) FetchPage(ctx context.Context, job *queue.ReservedJob) err
 			"spark", args.Dataset, w.cfg.Spark.SyncFetchQueue, queue.TypeSparkFetchPage, args.Mode, cursor, fetchErr); healed {
 			return err
 		}
+		if healed, err := maybeSelfHealIncrementalBadRequest(ctx, w.queue, w.cursors, w.logger,
+			"spark", args.Dataset, w.cfg.Spark.SyncFetchQueue, queue.TypeSparkFetchPage, args.Mode, result.HTTPStatus); healed {
+			return err
+		}
 		return fetchErr
 	}
 
