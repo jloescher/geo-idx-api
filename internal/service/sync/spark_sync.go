@@ -74,18 +74,49 @@ func (s *SparkSync) FetchIncrementalPage(ctx context.Context, cursor SyncCursor,
 		return PageResult{ReplicationComplete: true}, nil
 	}
 
+	windowEnd := cursor.IncrementalWindowEnd
+	if windowEnd == nil {
+		now := time.Now().UTC()
+		windowEnd = &now
+	}
+
+	// Spark rejects empty windows (gt >= lt). Common right after replication when the
+	// cursor already caught up to "now".
+	if !cursor.LastModificationTimestamp.Before(*windowEnd) {
+		return PageResult{
+			ReplicationComplete: true,
+			IncrementalWindowEnd: windowEnd,
+		}, nil
+	}
+
+	result, err := s.fetchIncrementalOnce(ctx, cursor, skip, *windowEnd, true)
+	if err != nil {
+		return result, err
+	}
+	if result.HTTPError && result.HTTPStatus == http.StatusBadRequest {
+		retry, retryErr := s.fetchIncrementalOnce(ctx, cursor, skip, *windowEnd, false)
+		if retryErr != nil {
+			return result, retryErr
+		}
+		if !retry.HTTPError {
+			result = retry
+		} else {
+			result.ODataError = retry.ODataError
+		}
+	}
+	if cursor.IncrementalWindowEnd == nil {
+		result.IncrementalWindowEnd = windowEnd
+	}
+	return result, nil
+}
+
+func (s *SparkSync) fetchIncrementalOnce(ctx context.Context, cursor SyncCursor, skip int, windowEnd time.Time, withExpand bool) (PageResult, error) {
 	top := s.cfg.Spark.SyncIncrementalTop
 	if top <= 0 {
 		top = 1000
 	}
 	if top > 1000 {
 		top = 1000
-	}
-
-	windowEnd := cursor.IncrementalWindowEnd
-	if windowEnd == nil {
-		now := time.Now().UTC()
-		windowEnd = &now
 	}
 
 	lower := cursor.LastModificationTimestamp.UTC().Format("2006-01-02T15:04:05Z")
@@ -99,16 +130,11 @@ func (s *SparkSync) FetchIncrementalPage(ctx context.Context, cursor SyncCursor,
 	query.Set("$orderby", "ModificationTimestamp asc")
 	query.Set("$top", fmt.Sprintf("%d", top))
 	query.Set("$skip", fmt.Sprintf("%d", skip))
-	s.applySyncExpand(query, false)
+	if withExpand {
+		s.applySyncExpand(query, false)
+	}
 
-	result, err := s.fetchPage(ctx, fetchURL, query, cursor.DatasetSlug, false)
-	if err != nil {
-		return result, err
-	}
-	if cursor.IncrementalWindowEnd == nil {
-		result.IncrementalWindowEnd = windowEnd
-	}
-	return result, nil
+	return s.fetchPage(ctx, fetchURL, query, cursor.DatasetSlug, false)
 }
 
 func (s *SparkSync) applySyncExpand(query url.Values, replication bool) {
@@ -168,6 +194,7 @@ func (s *SparkSync) fetchPage(ctx context.Context, fetchURL string, query url.Va
 	}
 	if got.Status < 200 || got.Status >= 300 {
 		result.HTTPError = true
+		result.ODataError = sparkODataErrorMessage(body)
 		return result, nil
 	}
 
@@ -202,6 +229,26 @@ func (s *SparkSync) fetchPage(ctx context.Context, fetchURL string, query url.Va
 	}
 	result.IncrementalHasMore = len(rows) >= top
 	return result, nil
+}
+
+func sparkODataErrorMessage(body []byte) string {
+	var parsed struct {
+		Error struct {
+			Message string `json:"message"`
+			Code    string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return ""
+	}
+	msg := strings.TrimSpace(parsed.Error.Message)
+	if msg == "" {
+		msg = strings.TrimSpace(parsed.Error.Code)
+	}
+	if len(msg) > 500 {
+		msg = msg[:500] + "…"
+	}
+	return msg
 }
 
 func (s *SparkSync) propertyCollectionURL() string {

@@ -27,6 +27,7 @@ type PageResult struct {
 	Forbidden            bool
 	HTTPError            bool
 	HTTPStatus           int
+	ODataError           string
 	FetchURL             string
 	UpstreamURL          string
 	ODataQuery           map[string]string

@@ -73,6 +73,15 @@ func (w *SparkWorker) FetchPage(ctx context.Context, job *queue.ReservedJob) err
 		return nil
 	}
 
+	// Pin the upper bound before HTTP so queue retries use the same window (not a sliding "now").
+	if args.Mode == "incremental" && cursor.IncrementalWindowEnd == nil {
+		windowEnd := time.Now().UTC()
+		if err := w.cursors.ApplyPatch(ctx, args.Dataset, CursorPatch{IncrementalWindowEnd: &windowEnd}); err != nil {
+			return err
+		}
+		cursor.IncrementalWindowEnd = &windowEnd
+	}
+
 	if skip, err := skipReplicationFetchWhenPageActive(ctx, w.store, w.logger, "spark", args.Dataset, args.Mode); err != nil || skip {
 		return err
 	}
@@ -101,7 +110,13 @@ func (w *SparkWorker) FetchPage(ctx context.Context, job *queue.ReservedJob) err
 		})
 	}
 	if result.HTTPError {
-		w.logger.Error("spark fetch http error", "dataset", args.Dataset, "status", result.HTTPStatus, "url", result.UpstreamURL)
+		w.logger.Error("spark fetch http error",
+			"dataset", args.Dataset,
+			"status", result.HTTPStatus,
+			"mode", args.Mode,
+			"odata_error", result.ODataError,
+			"url", result.UpstreamURL,
+		)
 		fetchErr := fetchHTTPFailure("spark", result.HTTPStatus)
 		if healed, err := maybeSelfHealReplicationFetch(ctx, w.cfg, w.queue, w.logger,
 			"spark", args.Dataset, w.cfg.Spark.SyncFetchQueue, queue.TypeSparkFetchPage, args.Mode, cursor, fetchErr); healed {

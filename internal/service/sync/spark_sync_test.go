@@ -159,3 +159,63 @@ func TestSparkSync_FetchIncrementalPageRollingMonthsSingleModificationGt(t *test
 		t.Fatalf("incremental must not embed replication rolling base filter: %q", filter)
 	}
 }
+
+func TestSparkSync_FetchIncrementalPageSkipsEmptyWindow(t *testing.T) {
+	now := time.Date(2026, 5, 26, 6, 37, 0, 0, time.UTC)
+	syncer := NewSparkSync(config.Config{
+		Spark: config.SparkConfig{AccessToken: "tok"},
+	}, nil)
+	result, err := syncer.FetchIncrementalPage(t.Context(), SyncCursor{
+		LastModificationTimestamp: &now,
+		IncrementalWindowEnd:      &now,
+	}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.ReplicationComplete || len(result.Rows) != 0 {
+		t.Fatalf("expected empty completed incremental, got %#v", result)
+	}
+}
+
+func TestSparkSync_FetchIncrementalPageRetriesWithoutExpandOn400(t *testing.T) {
+	var calls int
+	var hadExpand bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		hadExpand = r.URL.Query().Get("$expand") != ""
+		if hadExpand {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"code":"400","message":"expand not allowed"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"value":[]}`))
+	}))
+	defer srv.Close()
+
+	lower := time.Date(2026, 5, 26, 6, 35, 0, 0, time.UTC)
+	upper := time.Date(2026, 5, 26, 6, 37, 0, 0, time.UTC)
+	syncer := NewSparkSync(config.Config{
+		Spark: config.SparkConfig{
+			AccessToken:     "tok",
+			ReplicationHost: srv.URL,
+			ReplicationReso: "Reso/OData",
+		},
+		MLS: config.MLSConfig{
+			LocalMirrorRollingMonths: 0,
+			SyncExpand:               "Media,Unit,Room,OpenHouse",
+		},
+	}, nil)
+	result, err := syncer.FetchIncrementalPage(t.Context(), SyncCursor{
+		LastModificationTimestamp: &lower,
+		IncrementalWindowEnd:      &upper,
+	}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 {
+		t.Fatalf("calls = %d, want 2 (expand then no-expand)", calls)
+	}
+	if result.HTTPError {
+		t.Fatalf("expected success on no-expand retry, status=%d msg=%q", result.HTTPStatus, result.ODataError)
+	}
+}

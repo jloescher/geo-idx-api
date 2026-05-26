@@ -319,7 +319,35 @@ Geo benefit is largest when an API region is **near** a replica in that region.
 
 ---
 
-## 11. Local smoke build
+## 11. Troubleshooting: `push access denied` after a successful build
+
+If deploy logs show **Building docker image completed** then fail on:
+
+```text
+Pushing image to docker registry (worker-2:ca8df74…)
+push access denied, repository does not exist or may require authorization:
+  server message: insufficient_scope: authorization failed
+```
+
+**Cause:** Coolify built the image on the Coolify host (`re-db`) and is trying to `docker push` to Docker Hub as `docker.io/library/<name>` (e.g. `web`, `worker-1`, `worker-3`). Those names come from the app’s **Docker image / registry image name** field. You cannot push to `library/worker-*` without Docker Hub credentials for that namespace, and you should not use bare names like `web` as a registry repo.
+
+The Go compile step is fine; only the **registry handoff** (usually for an **additional server** on the same app) fails.
+
+**Fix (pick one):**
+
+| Approach | When to use | What to do |
+|----------|-------------|------------|
+| **A. One server per app** | Recommended for NYC + ATL split (§8) | Each Coolify app runs on **one** server only (`re-db` *or* `re-node-02`). Remove **Additional Servers** on the app. Clear **Docker Registry** image name (leave empty) so Coolify runs the image locally with no push. |
+| **B. Private registry (GHCR)** | Same app must run on two hosts, or you want CI-built images | Coolify **Settings → Docker Registries**: add `ghcr.io` with a PAT (`write:packages`). Per app set image to e.g. `ghcr.io/jloescher/geo-idx-api-worker` (workers share the `worker` target), tag `production` or `sha-<commit>`. Match [`.github/workflows/docker-publish.yml`](../.github/workflows/docker-publish.yml). |
+| **C. Prebuilt only** | Avoid on-server builds entirely | Disable Dockerfile build on the app; deploy `ghcr.io/jloescher/geo-idx-api-worker:production` (or `:sha-…`) from GHA after `main` push. |
+
+**Do not** set registry image name to short labels (`web`, `worker-1`, `worker-2`) unless they are the full registry path you own (e.g. `ghcr.io/<owner>/geo-idx-api-worker`).
+
+After changing registry settings, redeploy one app and confirm the log no longer contains `Pushing image to docker registry` unless you intentionally use GHCR.
+
+---
+
+## 12. Local smoke build
 
 ```bash
 docker build -f Dockerfile --target api -t idx-api:local .
@@ -329,6 +357,6 @@ docker run --rm -p 8000:8000 --env-file .env idx-api:local
 
 ---
 
-## Legacy note
+## 13. Legacy note
 
 Older docs referenced FrankenPHP/Octane (`Dockerfile.production`, `php artisan queue:work`). The **current** stack is **Go binaries** in [`Dockerfile`](../Dockerfile). Remove FrankenPHP base image variables from Coolify if migrating an existing project.
