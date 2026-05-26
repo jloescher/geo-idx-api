@@ -13,6 +13,7 @@ import (
 	"github.com/quantyralabs/idx-api/internal/api/ctxkeys"
 	"github.com/quantyralabs/idx-api/internal/config"
 	"github.com/quantyralabs/idx-api/internal/mlspoxy"
+	"github.com/quantyralabs/idx-api/internal/mlspoxy/spark"
 	"github.com/quantyralabs/idx-api/internal/service/cache"
 )
 
@@ -23,10 +24,10 @@ type LiveSearch struct {
 	proxyCache *cache.ProxyCache
 }
 
-func NewLiveSearch(cfg config.Config, proxyCache *cache.ProxyCache) *LiveSearch {
+func NewLiveSearch(cfg config.Config, proxyCache *cache.ProxyCache, sparkLimiter spark.RateLimiter) *LiveSearch {
 	return &LiveSearch{
 		cfg:        cfg,
-		factory:    mlspoxy.NewFactory(cfg),
+		factory:    mlspoxy.NewFactory(cfg, sparkLimiter),
 		proxyCache: proxyCache,
 	}
 }

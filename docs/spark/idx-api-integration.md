@@ -70,6 +70,13 @@ Configured in [`internal/config/config.go`](../../internal/config/config.go) (`S
 | `SPARK_API_VERSION` | Version prefix (default `v1`) |
 | `SPARK_LIVE_RESO_ROOT` | Live RESO path (default `Reso/OData`; try `Version/3/Reso/OData` if metadata 404) |
 | `SPARK_RESO_BASE_URL` | Legacy override for **replication** base only |
+| `SPARK_SYNC_MAX_REQUESTS_PER_SECOND` | Cluster-wide min spacing (default `4`) |
+| `SPARK_SYNC_MAX_REQUESTS_PER_5MIN` | Rolling 5-minute cap (default `1200`) |
+| `SPARK_SYNC_MAX_HTTP_RETRIES` | In-request retries on 429/503 (default `4`) |
+| `SPARK_TIMEOUT` | HTTP client timeout (default `90s`; use `120` in production) |
+| `MLS_SYNC_RATE_LIMIT_RETRY_SECONDS` | Queue delay after 429 (default `300`) |
+
+Live traffic (`sparkapi.com`) and replication (`replication.sparkapi.com`) share the same Spark API key budget and the same PostgreSQL `sync_rate_budget` row. Deploy identical values on **both** fetch workers and all API replicas.
 
 ### Smoke tests
 

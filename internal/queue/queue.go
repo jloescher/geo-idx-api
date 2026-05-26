@@ -277,6 +277,42 @@ func (c *Client) Release(ctx context.Context, job *ReservedJob, maxAttempts int,
 	return err
 }
 
+// ReleaseAt re-queues a failed job for a custom delay. When decrementAttempts is true,
+// the reserve-time attempt increment is rolled back (soft retry for rate limits).
+func (c *Client) ReleaseAt(ctx context.Context, job *ReservedJob, delay time.Duration, decrementAttempts bool) error {
+	available := time.Now().Add(delay).Unix()
+	if decrementAttempts {
+		_, err := c.pool.Exec(ctx, fmt.Sprintf(`
+			UPDATE %s
+			SET reserved_at = NULL, available_at = $1, attempts = GREATEST(attempts - 1, 0)
+			WHERE id = $2
+		`, c.table), available, job.ID)
+		return err
+	}
+	_, err := c.pool.Exec(ctx, fmt.Sprintf(`
+		UPDATE %s SET reserved_at = NULL, available_at = $1 WHERE id = $2
+	`, c.table), available, job.ID)
+	return err
+}
+
+// HasPendingFetch reports whether a fetch_page job for the dataset is queued or in-flight.
+func (c *Client) HasPendingFetch(ctx context.Context, queueName, jobType, dataset string) (bool, error) {
+	var exists bool
+	err := c.pool.QueryRow(ctx, fmt.Sprintf(`
+		SELECT EXISTS (
+			SELECT 1 FROM %s
+			WHERE queue = $1
+			  AND (
+			    (reserved_at IS NULL AND available_at <= extract(epoch from now())::bigint)
+			    OR reserved_at IS NOT NULL
+			  )
+			  AND payload::jsonb->>'type' = $2
+			  AND payload::jsonb->'args'->>'dataset' = $3
+		)
+	`, c.table), queueName, jobType, dataset).Scan(&exists)
+	return exists, err
+}
+
 func (j *ReservedJob) Attempts() int {
 	return j.attempts
 }

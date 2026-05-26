@@ -23,7 +23,7 @@ func LiveResoPropertyEndpoint(cfg config.Config, feed dom.FeedDefinition) (LiveR
 		if strings.TrimSpace(cfg.Spark.AccessToken) == "" {
 			return LiveResoEndpoint{}, fmt.Errorf("live MLS credentials not configured for feed %q", feed.Code)
 		}
-		sc := spark.NewClient(cfg)
+		sc := spark.NewClient(cfg, nil)
 		return LiveResoEndpoint{
 			PropertyURL: sc.LiveResoURL("Property", feed.Dataset),
 			Bearer:      cfg.Spark.AccessToken,

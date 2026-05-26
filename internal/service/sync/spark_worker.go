@@ -85,6 +85,10 @@ func (w *SparkWorker) FetchPage(ctx context.Context, job *queue.ReservedJob) err
 		result, err = w.sync.FetchIncrementalPage(ctx, cursor, args.IncrementalSkip)
 	}
 	if err != nil {
+		if healed, healErr := maybeSelfHealReplicationFetch(ctx, w.cfg, w.queue, w.logger,
+			"spark", args.Dataset, w.cfg.Spark.SyncFetchQueue, queue.TypeSparkFetchPage, args.Mode, cursor, err); healed {
+			return healErr
+		}
 		return err
 	}
 
@@ -98,7 +102,12 @@ func (w *SparkWorker) FetchPage(ctx context.Context, job *queue.ReservedJob) err
 	}
 	if result.HTTPError {
 		w.logger.Error("spark fetch http error", "dataset", args.Dataset, "status", result.HTTPStatus, "url", result.UpstreamURL)
-		return fmt.Errorf("spark fetch http %d for dataset %s", result.HTTPStatus, args.Dataset)
+		fetchErr := fetchHTTPFailure("spark", result.HTTPStatus)
+		if healed, err := maybeSelfHealReplicationFetch(ctx, w.cfg, w.queue, w.logger,
+			"spark", args.Dataset, w.cfg.Spark.SyncFetchQueue, queue.TypeSparkFetchPage, args.Mode, cursor, fetchErr); healed {
+			return err
+		}
+		return fetchErr
 	}
 
 	if len(result.Rows) == 0 && args.Mode == "incremental" && !result.IncrementalHasMore {

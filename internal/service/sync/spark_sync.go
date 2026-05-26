@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -28,15 +27,21 @@ type SparkSync struct {
 	cfg     config.Config
 	http    *http.Client
 	cursors *CursorStore
+	limiter *ClusterRateLimiter
 }
 
 func NewSparkSync(cfg config.Config, db *repository.DB) *SparkSync {
+	var limiter *ClusterRateLimiter
+	if db != nil {
+		limiter = NewSparkClusterRateLimiter(db.Pool, cfg)
+	}
 	return &SparkSync{
 		cfg: cfg,
 		http: &http.Client{
 			Timeout: cfg.Spark.Timeout,
 		},
 		cursors: NewCursorStore(db),
+		limiter: limiter,
 	}
 }
 
@@ -132,6 +137,11 @@ func (s *SparkSync) fetchPage(ctx context.Context, fetchURL string, query url.Va
 		reqURL = fetchURL + sep + query.Encode()
 	}
 
+	maxRetries := s.cfg.Spark.SyncMaxHTTPRetries
+	if maxRetries < 1 {
+		maxRetries = 1
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return PageResult{}, err
@@ -139,29 +149,24 @@ func (s *SparkSync) fetchPage(ctx context.Context, fetchURL string, query url.Va
 	req.Header.Set("Authorization", "Bearer "+s.cfg.Spark.AccessToken)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := s.http.Do(req)
+	got, err := doODataGET(ctx, s.http, s.limiter, req, maxRetries, "spark")
 	if err != nil {
 		return PageResult{}, err
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return PageResult{}, err
-	}
+	body := got.Body
 
 	result := PageResult{
 		FetchURL:    fetchURL,
 		UpstreamURL: reqURL,
 		ODataQuery:  odataQueryMap(query),
-		HTTPStatus:  resp.StatusCode,
+		HTTPStatus:  got.Status,
 	}
 
-	if resp.StatusCode == 403 {
+	if got.Status == 403 {
 		result.Forbidden = true
 		return result, nil
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if got.Status < 200 || got.Status >= 300 {
 		result.HTTPError = true
 		return result, nil
 	}
@@ -179,7 +184,7 @@ func (s *SparkSync) fetchPage(ctx context.Context, fetchURL string, query url.Va
 
 	result.Rows = rows
 	result.MaxModificationTs = maxModificationTimestampFromRows(dataset, rows)
-	next := extractNextURL(resp.Header.Get("Link"), body)
+	next := extractNextURL(got.Header.Get("Link"), body)
 	result.NextReplicationURL = next
 
 	if replication {

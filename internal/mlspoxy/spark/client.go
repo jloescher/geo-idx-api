@@ -2,6 +2,7 @@ package spark
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,18 +13,25 @@ import (
 	"github.com/quantyralabs/idx-api/internal/config"
 )
 
-// Client proxies Spark Platform live RESO API.
-type Client struct {
-	cfg   config.SparkConfig
-	token string
-	http  *http.Client
+// RateLimiter coordinates outbound Spark HTTP across API and worker processes.
+type RateLimiter interface {
+	Wait(ctx context.Context) error
 }
 
-func NewClient(cfg config.Config) *Client {
+// Client proxies Spark Platform live RESO API.
+type Client struct {
+	cfg     config.SparkConfig
+	token   string
+	http    *http.Client
+	limiter RateLimiter
+}
+
+func NewClient(cfg config.Config, limiter RateLimiter) *Client {
 	return &Client{
-		cfg:   cfg.Spark,
-		token: cfg.Spark.AccessToken,
-		http:  &http.Client{Timeout: cfg.Spark.Timeout},
+		cfg:     cfg.Spark,
+		token:   cfg.Spark.AccessToken,
+		http:    &http.Client{Timeout: cfg.Spark.Timeout},
+		limiter: limiter,
 	}
 }
 
@@ -74,6 +82,12 @@ func (c *Client) proxy(fc *fiber.Ctx, upstream string, mergeQuery bool) (int, []
 	req.Header.Set("Accept", "application/json")
 	if ct := fc.Get("Content-Type"); ct != "" {
 		req.Header.Set("Content-Type", ct)
+	}
+
+	if c.limiter != nil {
+		if err := c.limiter.Wait(fc.Context()); err != nil {
+			return 0, nil, nil, err
+		}
 	}
 
 	resp, err := c.http.Do(req)

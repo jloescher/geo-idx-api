@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -38,17 +37,21 @@ type BridgeSync struct {
 	cfg     config.Config
 	http    *http.Client
 	cursors *CursorStore
-	limiter *syncRateLimiter
+	limiter *ClusterRateLimiter
 }
 
 func NewBridgeSync(cfg config.Config, db *repository.DB) *BridgeSync {
+	var limiter *ClusterRateLimiter
+	if db != nil {
+		limiter = NewBridgeClusterRateLimiter(db.Pool, cfg)
+	}
 	return &BridgeSync{
 		cfg: cfg,
 		http: &http.Client{
 			Timeout: cfg.Bridge.Timeout,
 		},
 		cursors: NewCursorStore(db),
-		limiter: newSyncRateLimiter(cfg.Bridge.SyncMaxRequestsPerSecond),
+		limiter: limiter,
 	}
 }
 
@@ -182,47 +185,19 @@ func (s *BridgeSync) fetchPage(ctx context.Context, fetchURL string, query url.V
 		maxRetries = 1
 	}
 
-	var resp *http.Response
-	var body []byte
-	var lastStatus int
-
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		if err := s.limiter.wait(ctx); err != nil {
-			return PageResult{}, err
-		}
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-		if err != nil {
-			return PageResult{}, err
-		}
-		req.Header.Set("Authorization", "Bearer "+s.cfg.Bridge.APIKey)
-		req.Header.Set("Accept", "application/json")
-
-		resp, err = s.http.Do(req)
-		if err != nil {
-			return PageResult{}, err
-		}
-		body, err = io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			return PageResult{}, err
-		}
-
-		lastStatus = resp.StatusCode
-		if resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode != http.StatusServiceUnavailable {
-			break
-		}
-		if attempt+1 < maxRetries {
-			wait := time.Duration(attempt+1) * 500 * time.Millisecond
-			timer := time.NewTimer(wait)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return PageResult{}, ctx.Err()
-			case <-timer.C:
-			}
-		}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return PageResult{}, err
 	}
+	req.Header.Set("Authorization", "Bearer "+s.cfg.Bridge.APIKey)
+	req.Header.Set("Accept", "application/json")
+
+	got, err := doODataGET(ctx, s.http, s.limiter, req, maxRetries, "bridge")
+	if err != nil {
+		return PageResult{}, err
+	}
+	body := got.Body
+	lastStatus := got.Status
 
 	result := PageResult{
 		FetchURL:    fetchURL,
@@ -253,7 +228,7 @@ func (s *BridgeSync) fetchPage(ctx context.Context, fetchURL string, query url.V
 
 	result.Rows = rows
 	result.MaxModificationTs = maxModificationTimestampFromRows(dataset, rows)
-	next := extractNextURL(resp.Header.Get("Link"), body)
+	next := extractNextURL(got.Header.Get("Link"), body)
 	result.NextReplicationURL = next
 
 	if replication {

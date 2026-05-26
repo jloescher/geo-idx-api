@@ -17,6 +17,7 @@ import (
 	"github.com/quantyralabs/idx-api/internal/mlspoxy"
 	"github.com/quantyralabs/idx-api/internal/mlspoxy/bridge"
 	"github.com/quantyralabs/idx-api/internal/repository"
+	"github.com/quantyralabs/idx-api/internal/service/sync"
 )
 
 // Handler streams MLS listing photos with NVMe disk cache.
@@ -28,7 +29,7 @@ type Handler struct {
 }
 
 func NewHandler(cfg config.Config, db *repository.DB, _ *slog.Logger) *Handler {
-	return &Handler{cfg: cfg, db: db, factory: mlspoxy.NewFactory(cfg)}
+	return &Handler{cfg: cfg, db: db, factory: mlspoxy.NewFactory(cfg, sync.NewSparkClusterRateLimiter(db.Pool, cfg))}
 }
 
 func (h *Handler) Show(c *fiber.Ctx) error {

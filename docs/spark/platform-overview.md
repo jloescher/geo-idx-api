@@ -93,9 +93,17 @@ From Spark API overview:
 | IDX | 1,500 requests per 5 minutes |
 | VOW / Broker Back Office | 4,000 requests per 5 minutes |
 
-Exceeded limits return HTTP **429**. Replication pagination counts each page as a separate request.
+Exceeded limits return HTTP **429** (Spark error **1550**). Replication pagination counts each page as a separate request. The limit is **per API key across all hosts** — `replication.sparkapi.com` and `sparkapi.com` share one pool.
 
-idx-api uses conservative sync rate limits (`SPARK_SYNC_MAX_REQUESTS_PER_SECOND`, default 2) on replication fetch jobs.
+idx-api enforces cluster-wide caps in PostgreSQL (`sync_rate_budget`, provider `spark`) before replication fetch jobs **and** live proxy/search/image calls:
+
+| Variable | Default | Role |
+|----------|---------|------|
+| `SPARK_SYNC_MAX_REQUESTS_PER_SECOND` | `4` | Minimum spacing between Spark HTTP attempts |
+| `SPARK_SYNC_MAX_REQUESTS_PER_5MIN` | `1200` | Rolling 5-minute window (headroom below 1500) |
+| `MLS_SYNC_RATE_LIMIT_RETRY_SECONDS` | `300` | Queue/self-heal delay after 429 |
+
+In-process limiters alone do not coordinate multiple fetch workers or API replicas.
 
 ---
 

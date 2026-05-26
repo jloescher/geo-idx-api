@@ -17,6 +17,9 @@ type Worker struct {
 	queues            []string
 	handlers          map[string]HandlerFunc
 	maxAttempts       int
+	rateLimitMax      int
+	rateLimitRetry    time.Duration
+	timeoutRetry      time.Duration
 	pollEvery         time.Duration
 	logger            *slog.Logger
 	fairQueueCursor   int
@@ -26,17 +29,49 @@ type Worker struct {
 	fairPoolCursor    int
 }
 
+// WorkerRetryPolicy configures soft retries for MLS upstream failures.
+type WorkerRetryPolicy struct {
+	MaxAttempts        int
+	RateLimitMax       int
+	RateLimitRetry     time.Duration
+	TimeoutRetry       time.Duration
+}
+
 func NewWorker(client *Client, queues []string, pollEvery time.Duration, logger *slog.Logger) *Worker {
+	return NewWorkerWithRetry(client, queues, pollEvery, logger, WorkerRetryPolicy{
+		MaxAttempts:    3,
+		RateLimitMax:   50,
+		RateLimitRetry: 300 * time.Second,
+		TimeoutRetry:   60 * time.Second,
+	})
+}
+
+func NewWorkerWithRetry(client *Client, queues []string, pollEvery time.Duration, logger *slog.Logger, policy WorkerRetryPolicy) *Worker {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	if policy.MaxAttempts < 1 {
+		policy.MaxAttempts = 3
+	}
+	if policy.RateLimitMax < 1 {
+		policy.RateLimitMax = 50
+	}
+	if policy.RateLimitRetry <= 0 {
+		policy.RateLimitRetry = 300 * time.Second
+	}
+	if policy.TimeoutRetry <= 0 {
+		policy.TimeoutRetry = 60 * time.Second
+	}
 	return &Worker{
-		client:      client,
-		queues:      queues,
-		handlers:    make(map[string]HandlerFunc),
-		maxAttempts: 3,
-		pollEvery:   pollEvery,
-		logger:      logger,
+		client:         client,
+		queues:         queues,
+		handlers:       make(map[string]HandlerFunc),
+		maxAttempts:    policy.MaxAttempts,
+		rateLimitMax:   policy.RateLimitMax,
+		rateLimitRetry: policy.RateLimitRetry,
+		timeoutRetry:   policy.TimeoutRetry,
+		pollEvery:      pollEvery,
+		logger:         logger,
 	}
 }
 
@@ -127,7 +162,7 @@ func (w *Worker) Run(ctx context.Context) error {
 
 		if err := w.process(ctx, job); err != nil {
 			w.logger.Error("job failed", "id", job.ID, "type", job.Payload.Type, "error", err)
-			_ = w.client.Release(ctx, job, w.maxAttempts, err)
+			_ = w.releaseFailed(ctx, job, err)
 		} else {
 			_ = w.client.Delete(ctx, job.ID)
 			w.handleBatchComplete(ctx, job)
@@ -173,6 +208,22 @@ func (w *Worker) wait(ctx context.Context, ticker *time.Ticker, notify <-chan st
 	case <-ticker.C:
 	case <-notify:
 	}
+}
+
+func (w *Worker) releaseFailed(ctx context.Context, job *ReservedJob, jobErr error) error {
+	if IsRateLimited(jobErr) {
+		if job.Attempts() >= w.rateLimitMax {
+			return w.client.Fail(ctx, job, jobErr)
+		}
+		return w.client.ReleaseAt(ctx, job, w.rateLimitRetry, true)
+	}
+	if IsTimeout(jobErr) {
+		if job.Attempts() >= w.maxAttempts {
+			return w.client.Fail(ctx, job, jobErr)
+		}
+		return w.client.ReleaseAt(ctx, job, w.timeoutRetry, false)
+	}
+	return w.client.Release(ctx, job, w.maxAttempts, jobErr)
 }
 
 func (w *Worker) sleep(ctx context.Context, d time.Duration) {

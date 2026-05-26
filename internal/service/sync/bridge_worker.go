@@ -112,6 +112,10 @@ func (w *BridgeWorker) FetchPage(ctx context.Context, job *queue.ReservedJob) er
 		result, err = w.sync.FetchIncrementalPage(ctx, args.Dataset, cursor, args.IncrementalSkip)
 	}
 	if err != nil {
+		if healed, healErr := maybeSelfHealReplicationFetch(ctx, w.cfg, w.queue, w.logger,
+			"bridge", args.Dataset, w.cfg.Bridge.SyncFetchQueue, queue.TypeBridgeFetchPage, args.Mode, cursor, err); healed {
+			return healErr
+		}
 		return err
 	}
 
@@ -125,7 +129,12 @@ func (w *BridgeWorker) FetchPage(ctx context.Context, job *queue.ReservedJob) er
 	}
 	if result.HTTPError {
 		w.logger.Error("bridge fetch http error", "dataset", args.Dataset, "status", result.HTTPStatus, "url", result.UpstreamURL)
-		return fmt.Errorf("bridge fetch http %d for dataset %s", result.HTTPStatus, args.Dataset)
+		fetchErr := fetchHTTPFailure("bridge", result.HTTPStatus)
+		if healed, err := maybeSelfHealReplicationFetch(ctx, w.cfg, w.queue, w.logger,
+			"bridge", args.Dataset, w.cfg.Bridge.SyncFetchQueue, queue.TypeBridgeFetchPage, args.Mode, cursor, fetchErr); healed {
+			return err
+		}
+		return fetchErr
 	}
 
 	if len(result.Rows) == 0 && (args.Mode == "incremental" || args.Mode == "nav_hydrate") && !result.IncrementalHasMore {

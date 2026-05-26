@@ -13,6 +13,11 @@ func (r *Registry) handleReplicationKickoff(ctx context.Context, job *queue.Rese
 	return r.replicationKickoff.Run(ctx)
 }
 
+func (r *Registry) handleReplicationResume(ctx context.Context, job *queue.ReservedJob) error {
+	r.logger.Info("running replication resume", "job_id", job.ID)
+	return r.replicationKickoff.ResumeStalledReplication(ctx)
+}
+
 func (r *Registry) handleProxyCachePurge(ctx context.Context, job *queue.ReservedJob) error {
 	return r.proxyCachePurge.Run(ctx, job)
 }

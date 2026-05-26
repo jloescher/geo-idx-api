@@ -16,6 +16,7 @@ type SyncCursor struct {
 	ReplicationNextURL        *string
 	ReplicationInProgress     bool
 	LastSyncFinishedAt        *time.Time
+	UpdatedAt                 time.Time
 }
 
 // CursorPatch updates cursor fields after a fetch/persist cycle.
@@ -45,7 +46,7 @@ func (s *CursorStore) ForDataset(ctx context.Context, dataset string) (SyncCurso
 		VALUES ($1, FALSE, NOW(), NOW())
 		ON CONFLICT (dataset_slug) DO UPDATE SET updated_at = listing_sync_cursors.updated_at
 		RETURNING dataset_slug, last_modification_timestamp, incremental_window_end,
-			replication_next_url, replication_in_progress, last_sync_finished_at
+			replication_next_url, replication_in_progress, last_sync_finished_at, updated_at
 	`, dataset).Scan(
 		&c.DatasetSlug,
 		&c.LastModificationTimestamp,
@@ -53,6 +54,7 @@ func (s *CursorStore) ForDataset(ctx context.Context, dataset string) (SyncCurso
 		&c.ReplicationNextURL,
 		&c.ReplicationInProgress,
 		&c.LastSyncFinishedAt,
+		&c.UpdatedAt,
 	)
 	return c, err
 }

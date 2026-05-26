@@ -17,17 +17,18 @@ type ProxyClient interface {
 
 // Factory selects upstream MLS client by feed provider.
 type Factory struct {
-	cfg config.Config
+	cfg           config.Config
+	sparkLimiter  spark.RateLimiter
 }
 
-func NewFactory(cfg config.Config) *Factory {
-	return &Factory{cfg: cfg}
+func NewFactory(cfg config.Config, sparkLimiter spark.RateLimiter) *Factory {
+	return &Factory{cfg: cfg, sparkLimiter: sparkLimiter}
 }
 
 func (f *Factory) ForRequest(c *fiber.Ctx) ProxyClient {
 	def, _ := c.Locals(ctxkeys.MLSFeedDef).(dom.FeedDefinition)
 	if def.Provider == "spark" {
-		return &sparkWrapper{spark.NewClient(f.cfg)}
+		return &sparkWrapper{spark.NewClient(f.cfg, f.sparkLimiter)}
 	}
 	return &bridgeWrapper{bridge.NewClient(f.cfg, def)}
 }

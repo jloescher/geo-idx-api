@@ -40,6 +40,7 @@ func NewRegistry(cfg config.Config, db *repository.DB, logger *slog.Logger) *Reg
 func (r *Registry) RegisterAll(w *queue.Worker) {
 	w.Register(queue.TypeNoop, r.handleNoop)
 	w.Register(queue.TypeMLSReplicationKickoff, r.handleReplicationKickoff)
+	w.Register(queue.TypeMLSReplicationResume, r.handleReplicationResume)
 	w.Register(queue.TypeMLSProxyCachePurge, r.handleProxyCachePurge)
 	w.Register(queue.TypeBridgeFetchPage, r.handleBridgeFetchPage)
 	w.Register(queue.TypeBridgePersistChunk, r.handleBridgePersistChunk)

@@ -46,7 +46,7 @@ type Handler struct {
 func NewHandler(cfg config.Config, db *repository.DB, auditor *audit.Logger, logger *slog.Logger) *Handler {
 	return &Handler{
 		cfg:      cfg,
-		factory:  mlspoxy.NewFactory(cfg),
+		factory:  mlspoxy.NewFactory(cfg, sync.NewSparkClusterRateLimiter(db.Pool, cfg)),
 		rewriter: images.NewRewriter(cfg),
 		audit:    auditor,
 		proxyCache: cache.NewProxyCache(cfg, db),

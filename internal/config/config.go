@@ -131,22 +131,25 @@ type BridgeConfig struct {
 }
 
 type SparkConfig struct {
-	AccessToken         string
-	ReplicationHost     string
-	ReplicationReso     string
-	APIHost             string
-	APIVersion          string
-	LiveResoRoot        string
-	Datasets            []string
-	Timeout             time.Duration
-	SyncFetchQueue      string
-	SyncPersistQueue    string
-	SyncPersistChunk    int
-	SyncUpsertChunk     int
-	SyncReplicationTop  int
-	SyncIncrementalTop  int
-	SyncExpand          string
-	SyncMaxChainedFetch int
+	AccessToken                string
+	ReplicationHost            string
+	ReplicationReso            string
+	APIHost                    string
+	APIVersion                 string
+	LiveResoRoot               string
+	Datasets                   []string
+	Timeout                    time.Duration
+	SyncFetchQueue             string
+	SyncPersistQueue           string
+	SyncPersistChunk           int
+	SyncUpsertChunk            int
+	SyncReplicationTop         int
+	SyncIncrementalTop         int
+	SyncExpand                 string
+	SyncMaxChainedFetch        int
+	SyncMaxRequestsPerSecond   int
+	SyncMaxRequestsPer5Min     int
+	SyncMaxHTTPRetries         int
 }
 
 type MLSConfig struct {
@@ -162,6 +165,11 @@ type MLSConfig struct {
 	SyncExpand                     string
 	SyncReplicationExpand          string
 	SyncKickoffQueue               string
+	RateLimitRetrySeconds          int
+	TimeoutRetrySeconds            int
+	RateLimitMaxAttempts           int
+	ReplicationResumeStallMinutes  int
+	ReplicationResumeCron          string
 }
 
 type GISConfig struct {
@@ -289,15 +297,18 @@ func Load() (Config, error) {
 			APIVersion:          env("SPARK_API_VERSION", "v1"),
 			LiveResoRoot:        env("SPARK_LIVE_RESO_ROOT", "Reso/OData"),
 			Datasets:            splitCSV(env("SPARK_DATASETS", "beaches")),
-			Timeout:             envDuration("SPARK_TIMEOUT", 30*time.Second),
-			SyncFetchQueue:      env("SPARK_SYNC_FETCH_QUEUE", "spark-sync-fetch"),
-			SyncPersistQueue:    env("SPARK_SYNC_PERSIST_QUEUE", "spark-sync-persist"),
-			SyncPersistChunk:    envInt("SPARK_SYNC_PERSIST_JOB_CHUNK", 50),
-			SyncUpsertChunk:     envInt("MLS_BEACHES_UPSERT_CHUNK_SIZE", envInt("SPARK_SYNC_UPSERT_CHUNK", 375)),
-			SyncReplicationTop:  envInt("SPARK_SYNC_REPLICATION_TOP", 1000),
-			SyncIncrementalTop:  envInt("SPARK_SYNC_INCREMENTAL_TOP", 1000),
-			SyncExpand:          envSyncExpand(),
-			SyncMaxChainedFetch: envInt("SPARK_SYNC_MAX_CHAINED_FETCH_PAGES", 0),
+			Timeout:                  envDuration("SPARK_TIMEOUT", 90*time.Second),
+			SyncFetchQueue:           env("SPARK_SYNC_FETCH_QUEUE", "spark-sync-fetch"),
+			SyncPersistQueue:         env("SPARK_SYNC_PERSIST_QUEUE", "spark-sync-persist"),
+			SyncPersistChunk:         envInt("SPARK_SYNC_PERSIST_JOB_CHUNK", 50),
+			SyncUpsertChunk:          envInt("MLS_BEACHES_UPSERT_CHUNK_SIZE", envInt("SPARK_SYNC_UPSERT_CHUNK", 375)),
+			SyncReplicationTop:       envInt("SPARK_SYNC_REPLICATION_TOP", 1000),
+			SyncIncrementalTop:       envInt("SPARK_SYNC_INCREMENTAL_TOP", 1000),
+			SyncExpand:               envSyncExpand(),
+			SyncMaxChainedFetch:      envInt("SPARK_SYNC_MAX_CHAINED_FETCH_PAGES", 0),
+			SyncMaxRequestsPerSecond: envInt("SPARK_SYNC_MAX_REQUESTS_PER_SECOND", 4),
+			SyncMaxRequestsPer5Min:   envInt("SPARK_SYNC_MAX_REQUESTS_PER_5MIN", 1200),
+			SyncMaxHTTPRetries:       envInt("SPARK_SYNC_MAX_HTTP_RETRIES", 4),
 		},
 		MLS: MLSConfig{
 			LocalMirrorRollingMonths:       envMirrorRollingMonths(),
@@ -311,7 +322,12 @@ func Load() (Config, error) {
 			BeachesPersistChunk:            envInt("MLS_BEACHES_PERSIST_CHUNK_SIZE", 50),
 			SyncExpand:                     envSyncExpand(),
 			SyncReplicationExpand:          env("MLS_SYNC_REPLICATION_EXPAND", ""),
-			SyncKickoffQueue:               env("MLS_SYNC_KICKOFF_QUEUE", "sync-kickoff"),
+			SyncKickoffQueue:              env("MLS_SYNC_KICKOFF_QUEUE", "sync-kickoff"),
+			RateLimitRetrySeconds:         envInt("MLS_SYNC_RATE_LIMIT_RETRY_SECONDS", 300),
+			TimeoutRetrySeconds:           envInt("MLS_SYNC_TIMEOUT_RETRY_SECONDS", 60),
+			RateLimitMaxAttempts:          envInt("MLS_SYNC_RATE_LIMIT_MAX_ATTEMPTS", 50),
+			ReplicationResumeStallMinutes: envInt("MLS_REPLICATION_RESUME_STALL_MINUTES", 3),
+			ReplicationResumeCron:         env("MLS_REPLICATION_RESUME_CRON", "0 */2 * * * *"),
 		},
 		GIS: GISConfig{
 			EdgeCacheTTL:         envDuration("GIS_EDGE_CACHE_TTL", 900*time.Second),

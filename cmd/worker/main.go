@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/quantyralabs/idx-api/internal/config"
@@ -38,7 +39,12 @@ func main() {
 	registry := job.NewRegistry(cfg, db, logger)
 	registry.InitServices(q)
 
-	worker := queue.NewWorker(q, cfg.Queue.WorkerQueues, cfg.Queue.PollInterval, logger)
+	worker := queue.NewWorkerWithRetry(q, cfg.Queue.WorkerQueues, cfg.Queue.PollInterval, logger, queue.WorkerRetryPolicy{
+		MaxAttempts:    3,
+		RateLimitMax:   cfg.MLS.RateLimitMaxAttempts,
+		RateLimitRetry: time.Duration(cfg.MLS.RateLimitRetrySeconds) * time.Second,
+		TimeoutRetry:   time.Duration(cfg.MLS.TimeoutRetrySeconds) * time.Second,
+	})
 	registry.RegisterAll(worker)
 
 	logger.Info("worker started", "queues", cfg.Queue.WorkerQueues)

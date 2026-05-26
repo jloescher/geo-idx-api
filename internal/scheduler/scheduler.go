@@ -78,6 +78,7 @@ func (s *Scheduler) runAsLeader(ctx context.Context) error {
 	s.addJob(ctx, "coingecko", "0 */10 * * * *", s.cfg.Coingecko.Queue, queue.TypeCryptoRefreshPricing)
 	s.addJob(ctx, "mls-proxy-cache-purge", "0 */15 * * * *", "default", queue.TypeMLSProxyCachePurge)
 	s.addJob(ctx, "mls-kickoff", "0 * * * * *", s.cfg.MLS.SyncKickoffQueue, queue.TypeMLSReplicationKickoff)
+	s.addJob(ctx, "mls-replication-resume", s.cfg.MLS.ReplicationResumeCron, s.cfg.MLS.SyncKickoffQueue, queue.TypeMLSReplicationResume)
 	s.addJob(ctx, "purge-replica", "0 15 4 * * *", "default", queue.TypeMLSPurgeReplicaPages)
 	s.addJob(ctx, "purge-closed", "0 5 3 * * *", "default", queue.TypeMLSPurgeClosed)
 	s.addJob(ctx, "fema-flood-enrich", "0 30 4 * * *", s.cfg.FEMA.EnrichQueue, queue.TypeFEMAFloodEnrichKickoff)
@@ -92,6 +93,7 @@ func (s *Scheduler) runAsLeader(ctx context.Context) error {
 
 	s.logger.Info("cron schedules registered",
 		"mls_kickoff", "every minute at :00",
+		"mls_replication_resume", s.cfg.MLS.ReplicationResumeCron,
 		"mls_proxy_cache_purge", "every 15 min",
 		"coingecko", "every 10 min",
 		"gis_monthly_parcel_refresh", "1st of month 02:00",

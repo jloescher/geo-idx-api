@@ -83,6 +83,13 @@ Multi-DC: same split across NYC/ATL workers; all poll the shared `jobs` table on
 | `MLS_STELLAR_PERSIST_CHUNK_SIZE` / `MLS_BEACHES_PERSIST_CHUNK_SIZE` | optional row chunk override | optional row chunk override |
 | `*_SYNC_UPSERT_CHUNK` | `BRIDGE_SYNC_UPSERT_CHUNK` | `MLS_BEACHES_UPSERT_CHUNK_SIZE` / `SPARK_SYNC_UPSERT_CHUNK` |
 | `MLS_SYNC_EXPAND` / `BRIDGE_SYNC_EXPAND` | — | trim if compliant (smaller OData) |
+| `BRIDGE_SYNC_MAX_REQUESTS_PER_SECOND` | `2` (cluster-wide via `sync_rate_budget`) | — |
+| `SPARK_SYNC_MAX_REQUESTS_PER_SECOND` | — | `4` (cluster-wide; replication + live API) |
+| `SPARK_SYNC_MAX_REQUESTS_PER_5MIN` | — | `1200` (~80% of Spark IDX 1500/5min cap) |
+| `SPARK_TIMEOUT` | — | `120` recommended in production |
+| `MLS_SYNC_RATE_LIMIT_RETRY_SECONDS` | `300` on fetch-worker + API | same on all processes using Spark |
+
+Set the **same** fetch-worker env on every DC (NYC + ATL). Per-process throttles are insufficient with two fetch workers: spacing is enforced in PostgreSQL (`sync_rate_budget`) before each Bridge/Spark HTTP call.
 
 **Smoke after deploy:** scheduler + workers running; logs show **interleaved** `enqueued fetch` for `stellar` and `beaches` (not many Bridge stores with no Spark). SQL: at most one `pending`/`processing` `replica_pages` row per `provider`+`dataset`; `GET /api/v1/bridge/stats` shows `replication_in_progress` / `last_sync_finished_at` per dataset.
 

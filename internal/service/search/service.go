@@ -11,6 +11,7 @@ import (
 	"github.com/quantyralabs/idx-api/internal/repository"
 	"github.com/quantyralabs/idx-api/internal/service/audit"
 	"github.com/quantyralabs/idx-api/internal/service/cache"
+	"github.com/quantyralabs/idx-api/internal/service/sync"
 )
 
 // Service implements hybrid POST /api/v1/search.
@@ -27,7 +28,7 @@ func NewService(cfg config.Config, db *repository.DB, proxyCache *cache.ProxyCac
 		cfg:      cfg,
 		db:       db,
 		postgis:  NewPostgisSearch(db),
-		upstream: NewLiveSearch(cfg, proxyCache),
+		upstream: NewLiveSearch(cfg, proxyCache, sync.NewSparkClusterRateLimiter(db.Pool, cfg)),
 	}
 }
 
