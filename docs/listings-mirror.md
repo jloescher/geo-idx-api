@@ -52,6 +52,17 @@ Expand lists control **upstream fetch** and which keys are stripped into JSONB a
 
 At persist, Bridge upstream keys are mapped to canonical JSONB columns (`Rooms` → `room`, etc.) in `internal/service/mls/listing_payload.go`.
 
+### Navigation collection aliases
+
+| Upstream key variants | DB column | API output key |
+|----------------------|-----------|----------------|
+| `Media` | `media` | `Media` |
+| `Unit`, `UnitTypes`, `Units` | `unit` | `Unit` |
+| `Room`, `Rooms` | `room` | `Room` |
+| `OpenHouse`, `OpenHouses` | `open_house` | `OpenHouse` |
+
+These keys must **not** appear in `custom_fields` or `raw_data` after persist. Historical rows with misplaced navigation can be repaired with [`docs/scripts/listings_nav_jsonb_cleanup.sql`](scripts/listings_nav_jsonb_cleanup.sql) (manual run on Patroni primary — not a Goose migration).
+
 ---
 
 ## Modification timestamps
@@ -87,16 +98,22 @@ Per [Bridge RESO Web API](https://bridgedataoutput.com/docs/platform/API/zg-data
 
 Clients expect one **flat RESO Property object** (same shape as upstream), not internal column names.
 
-**`POST /api/v1/search`** (PostGIS leg) and future mirror-backed reads use `MergeMirrorListing` (`internal/service/mls/listing_payload.go`):
+**`POST /api/v1/search`** (PostGIS leg), comps mirror leg, and MLS subject resolution use `BuildPublicListingJSON` (`internal/service/mls/listing_response.go`):
 
-1. Start from `raw_data`
-2. Reattach `Media`, `Unit`, `Room`, `OpenHouse` from JSONB columns when present
-3. **Flat-merge** keys from `custom_fields` onto the root (`raw_data` wins on key collision)
-4. Do **not** emit a top-level `"custom_fields"` property
+1. Map indexed **typed columns** to RESO PascalCase (`ListPrice`, `BedroomsTotal`, …)
+2. Attach `Media`, `Unit`, `Room`, `OpenHouse` from JSONB columns when present
+3. **Flat-merge** provider extensions from `custom_fields` onto the root (`STELLAR_*`, Spark `_sp_*`, and other unmapped keys). Extensions are stored in **`custom_fields` at rest**, not in `raw_data`.
+4. **Dedupe:** typed column keys win on exact match; provider aliases resolved into typed columns are omitted from the merge (e.g. `STELLAR_FloodZoneCode` when `FloodZoneCode` is present; `STELLAR_TotalMonthlyFees` when `EstimatedTotalMonthlyFees` is present)
+5. **Omit** top-level keys whose value is JSON `null` (navigation arrays are not recursively stripped)
+6. Do **not** emit `raw_data`, `custom_fields`, or `@odata.*` in the response
 
-**Live proxy** (`GET /api/v1/properties`, Bridge/Spark upstream) passes JSON through unchanged — no `custom_fields` column involved.
+`raw_data` remains a **storage** column for slim mapped RESO scalars at persist; mirror-backed APIs do not return it. At persist, extension keys copied into typed columns are stripped from `custom_fields` ([`BuildCustomFields`](internal/service/mls/listing_payload.go)).
 
-Example response fragment after merge:
+**Live proxy** (`GET /api/v1/listings/{id}`, `GET /api/v1/properties('…')`, etc.) returns **upstream-shaped** JSON from Bridge/Spark (including `$expand` navigation inline when requested). Mirror column split rules do not apply. Single-property proxy responses strip `@odata.*`, accidental `raw_data` / `custom_fields` wrappers, and normalize Bridge nav aliases (`Rooms` → `Room`) via `SanitizeUpstreamPropertyJSON`.
+
+**Closed comps cache** (`listings_cache`) stores **upstream** Property snapshots from live Closed fetches (write-through after `SanitizeUpstreamPropertyJSON`), not mirror-assembled rows.
+
+Example response fragment:
 
 ```json
 {

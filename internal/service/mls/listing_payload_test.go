@@ -69,7 +69,7 @@ func TestBuildCustomFieldsIncludesUnmappedScalars(t *testing.T) {
 		"STELLAR_Foo":    "bar",
 		"Media":          []any{},
 	}
-	custom := BuildCustomFields(row, MirrorProviderBridge, []string{"Media"})
+	custom := BuildCustomFields(row, MirrorProviderBridge, []string{"Media"}, "STELLAR")
 	var m map[string]any
 	if err := json.Unmarshal(custom, &m); err != nil {
 		t.Fatal(err)

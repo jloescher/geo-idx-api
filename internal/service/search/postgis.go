@@ -32,7 +32,7 @@ func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchR
 	}
 
 	q := `
-		SELECT raw_data, media, unit, room, open_house, custom_fields FROM listings
+		SELECT ` + mls.MirrorListingColumns + ` FROM listings
 		WHERE dataset_slug = $1
 	`
 	if len(req.Statuses) == 0 {
@@ -164,25 +164,14 @@ func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchR
 
 	var results []json.RawMessage
 	for rows.Next() {
-		var raw, media, unit, room, openHouse, custom []byte
-		if err := rows.Scan(&raw, &media, &unit, &room, &openHouse, &custom); err != nil {
+		mirrorRow, err := mls.ScanMirrorListingRow(rows.Scan)
+		if err != nil {
 			return SearchResult{}, err
 		}
-		if len(raw) == 0 && len(media) == 0 && len(unit) == 0 && len(room) == 0 && len(openHouse) == 0 && len(custom) == 0 {
+		if mirrorRow.ListingKey == "" {
 			continue
 		}
-		payloads := mls.ExpandedPayload{
-			Media:        json.RawMessage(media),
-			Unit:         json.RawMessage(unit),
-			Room:         json.RawMessage(room),
-			OpenHouse:    json.RawMessage(openHouse),
-			HasMedia:     len(media) > 0,
-			HasUnit:      len(unit) > 0,
-			HasRoom:      len(room) > 0,
-			HasOpenHouse: len(openHouse) > 0,
-		}
-		merged := mls.MergeMirrorListing(json.RawMessage(raw), payloads, json.RawMessage(custom))
-		results = append(results, merged)
+		results = append(results, mls.BuildPublicListingJSON(mirrorRow))
 	}
 	hasMore := len(results) > limit
 	if hasMore {

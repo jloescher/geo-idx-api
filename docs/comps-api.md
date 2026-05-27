@@ -4,8 +4,8 @@ MLS comparables and investor analysis for the active feed resolved by `domain.to
 
 **Data sources:**
 
-- **Closed / sold comps** — **`listings_cache`** per domain + feed (30-day write-through after live fetch; radius scope) when enough rows are cached, else live RESO upstream (`bridge_*` / `spark_*`). Closed rows are not bulk-replicated into the `listings` mirror.
-- **Active / Pending competition** — PostGIS `listings` mirror for **all** enabled MLS feeds (Stellar, Beaches, etc.).
+- **Closed / sold comps** — **`listings_cache`** per domain + feed (30-day write-through after live fetch; radius scope) when enough rows are cached, else live RESO upstream (`bridge_*` / `spark_*`). Cached payloads are **upstream-shaped** Property JSON (sanitized on write — `@odata.*` stripped, Bridge nav aliases normalized), not assembled from `listings` mirror columns. Closed rows are not bulk-replicated into the `listings` mirror.
+- **Active / Pending competition** — PostGIS `listings` mirror for **all** enabled MLS feeds (Stellar, Beaches, etc.). Comp objects use `BuildPublicListingJSON` (typed columns + JSONB nav + flat `custom_fields`; no `raw_data` in the response).
 - **Rental (`rent_hold_cashflow`, `flip_vs_hold`)** — Closed leases from live Bridge/Spark; Active/Pending leases from the mirror.
 
 ## Auth and access

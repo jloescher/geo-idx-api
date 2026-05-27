@@ -264,7 +264,7 @@ The structured search endpoint accepts JSON payloads with filter criteria and re
 
 **Default when `status` is omitted:** with `active_only` true (default), search uses the mirror for Active inventory only. With `active_only` false and no statuses, search goes to Bridge only.
 
-**Mirror-backed response shape:** each result is a **flat RESO Property** object — `MergeMirrorListing` combines `raw_data`, JSONB expand columns, and **flat-merged** `custom_fields` keys (no nested `custom_fields` property). See [Listings mirror](listings-mirror.md#api-responses-mirror-backed).
+**Mirror-backed response shape:** each result is a **flat RESO Property** object — `BuildPublicListingJSON` maps typed columns, attaches JSONB navigation (`Media`, `Unit`, `Room`, `OpenHouse`), and **flat-merges** `custom_fields` extensions (no `raw_data`, no nested `custom_fields` property). See [Listings mirror](listings-mirror.md#api-responses-mirror-backed).
 
 **PostGIS mirror filters:** `low_risk_floodzone` reads `listings.flood_zone_code`; `min_monthly_fees` / `max_monthly_fees` read `listings.estimated_total_monthly_fees` (Beaches: sum of association fees normalized to monthly at persist time).
 

@@ -96,58 +96,117 @@ func NormalizeBridgeExpandKeys(row map[string]any) {
 	}
 }
 
+// navigationCollectionKeys returns all upstream property names for RESO navigation collections.
+func navigationCollectionKeys() []string {
+	return []string{
+		"Media",
+		"Unit", "UnitTypes", "Units",
+		"Room", "Rooms",
+		"OpenHouse", "OpenHouses",
+	}
+}
+
+func navigationCollectionSet() map[string]struct{} {
+	keys := navigationCollectionKeys()
+	set := make(map[string]struct{}, len(keys))
+	for _, k := range keys {
+		set[k] = struct{}{}
+	}
+	return set
+}
+
+func stripNavigationFromMap(m map[string]any) {
+	for _, k := range navigationCollectionKeys() {
+		delete(m, k)
+	}
+}
+
 // StripKeysForProvider returns raw_data keys to remove after payload split.
 func StripKeysForProvider(provider MirrorProvider, expandKeys []string) []string {
-	keys := append([]string(nil), expandKeys...)
-	if provider == MirrorProviderBridge {
-		for _, extra := range []string{"Rooms", "UnitTypes", "OpenHouses"} {
-			keys = append(keys, extra)
+	return navigationStripKeys(provider, expandKeys)
+}
+
+// navigationStripKeys is the full key list stripped from raw_data at persist.
+func navigationStripKeys(provider MirrorProvider, expandKeys []string) []string {
+	seen := make(map[string]struct{}, len(expandKeys)+8)
+	var keys []string
+	add := func(k string) {
+		if _, ok := seen[k]; ok {
+			return
 		}
+		seen[k] = struct{}{}
+		keys = append(keys, k)
 	}
+	for _, k := range expandKeys {
+		add(k)
+	}
+	for _, k := range navigationCollectionKeys() {
+		add(k)
+	}
+	_ = provider
 	return keys
 }
 
-// ExtractExpandedPayloads reads all configured expand keys from the row.
+// ExtractExpandedPayloads reads navigation collections from the row using all known aliases.
 func ExtractExpandedPayloads(row map[string]any, provider MirrorProvider, expandKeys []string) ExpandedPayload {
 	if provider == MirrorProviderBridge {
 		NormalizeBridgeExpandKeys(row)
 	}
 	var p ExpandedPayload
 	for _, key := range expandKeys {
-		val, ok := ExtractJSONBField(row, key)
-		if !ok {
-			continue
-		}
-		switch key {
-		case "Media":
-			p.Media, p.HasMedia = val, true
-		case "Unit", "UnitTypes":
-			p.Unit, p.HasUnit = val, true
-		case "Room", "Rooms":
-			p.Room, p.HasRoom = val, true
-		case "OpenHouse", "OpenHouses":
-			p.OpenHouse, p.HasOpenHouse = val, true
+		applyNavKeyToPayload(&p, row, key)
+	}
+	// Always resolve via alias lists so incremental rows without $expand still land in JSONB columns.
+	if !p.HasMedia {
+		for _, alias := range []string{"Media"} {
+			if val, ok := ExtractJSONBField(row, alias); ok {
+				p.Media, p.HasMedia = val, true
+				break
+			}
 		}
 	}
-	// Bridge $expand uses OpenHouses, Rooms, UnitTypes — map after canonical normalization.
-	if provider == MirrorProviderBridge {
-		if !p.HasRoom {
-			if val, ok := ExtractJSONBField(row, "Rooms"); ok {
-				p.Room, p.HasRoom = val, true
-			}
-		}
-		if !p.HasUnit {
-			if val, ok := ExtractJSONBField(row, "UnitTypes"); ok {
+	if !p.HasUnit {
+		for _, alias := range []string{"Unit", "UnitTypes", "Units"} {
+			if val, ok := ExtractJSONBField(row, alias); ok {
 				p.Unit, p.HasUnit = val, true
+				break
 			}
 		}
-		if !p.HasOpenHouse {
-			if val, ok := ExtractJSONBField(row, "OpenHouses"); ok {
+	}
+	if !p.HasRoom {
+		for _, alias := range []string{"Room", "Rooms"} {
+			if val, ok := ExtractJSONBField(row, alias); ok {
+				p.Room, p.HasRoom = val, true
+				break
+			}
+		}
+	}
+	if !p.HasOpenHouse {
+		for _, alias := range []string{"OpenHouse", "OpenHouses"} {
+			if val, ok := ExtractJSONBField(row, alias); ok {
 				p.OpenHouse, p.HasOpenHouse = val, true
+				break
 			}
 		}
 	}
 	return p
+}
+
+func applyNavKeyToPayload(p *ExpandedPayload, row map[string]any, key string) {
+	val, ok := ExtractJSONBField(row, key)
+	if !ok {
+		return
+	}
+	switch key {
+	case "Media":
+		p.Media, p.HasMedia = val, true
+	case "Unit", "UnitTypes", "Units":
+		p.Unit, p.HasUnit = val, true
+	case "Room", "Rooms":
+		p.Room, p.HasRoom = val, true
+	case "OpenHouse", "OpenHouses":
+		p.OpenHouse, p.HasOpenHouse = val, true
+	}
 }
 
 // StripJSONBKeysFromRaw removes expanded keys from the stored property JSON blob.
@@ -185,10 +244,10 @@ func PersistExpandKeys(provider MirrorProvider, sparkExpand, bridgeExpand string
 }
 
 // BuildCustomFields collects unmapped RESO keys not stored in typed columns or expanded JSONB.
-func BuildCustomFields(row map[string]any, provider MirrorProvider, expandKeys []string) json.RawMessage {
+func BuildCustomFields(row map[string]any, provider MirrorProvider, expandKeys []string, datasetUpper string) json.RawMessage {
 	mapped := mappedScalarFieldNames()
-	expandSet := make(map[string]struct{}, len(expandKeys)+4)
-	for _, k := range StripKeysForProvider(provider, expandKeys) {
+	expandSet := navigationCollectionSet()
+	for _, k := range navigationStripKeys(provider, expandKeys) {
 		expandSet[k] = struct{}{}
 	}
 
@@ -205,6 +264,8 @@ func BuildCustomFields(row map[string]any, provider MirrorProvider, expandKeys [
 		}
 		out[k] = v
 	}
+	stripNavigationFromMap(out)
+	stripResolvedProviderExtensionsFromCustom(out, provider, datasetUpper)
 	if len(out) == 0 {
 		return nil
 	}
@@ -260,20 +321,12 @@ func attachJSONB(root map[string]any, key string, payload json.RawMessage, prese
 	if err := json.Unmarshal(payload, &val); err != nil {
 		return
 	}
+	if val == nil {
+		return
+	}
 	root[key] = val
 }
 
 func flatMergeCustomFields(root map[string]any, customFields json.RawMessage) {
-	if len(customFields) == 0 {
-		return
-	}
-	var custom map[string]any
-	if err := json.Unmarshal(customFields, &custom); err != nil {
-		return
-	}
-	for k, v := range custom {
-		if _, exists := root[k]; !exists {
-			root[k] = v
-		}
-	}
+	flatMergeCustomFieldsPublic(root, customFields)
 }

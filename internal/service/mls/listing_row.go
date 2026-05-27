@@ -107,13 +107,17 @@ func BuildListingRecord(
 		mlsID = &s
 	}
 
+	if provider == MirrorProviderBridge {
+		NormalizeBridgeExpandKeys(row)
+	}
+
 	if len(expandKeys) == 0 {
 		expandKeys = ParseExpandKeys("")
 	}
 
 	payloads := ExtractExpandedPayloads(row, provider, expandKeys)
-	storedRaw := StripJSONBKeysFromRaw(raw, StripKeysForProvider(provider, expandKeys))
-	custom := BuildCustomFields(row, provider, expandKeys)
+	storedRaw := StripJSONBKeysFromRaw(raw, navigationStripKeys(provider, expandKeys))
+	custom := BuildCustomFields(row, provider, expandKeys, datasetUpper)
 
 	stdStatus := stringValue(row["StandardStatus"])
 	var stdPtr *string

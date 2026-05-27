@@ -2,7 +2,6 @@ package comps
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -40,24 +39,22 @@ func (e *Engine) subjectFromMLS(ctx context.Context, dataset string, in SubjectI
 	if key == "" {
 		return SubjectProfile{}, fmt.Errorf("subject.listing_id is required for mls subject")
 	}
-	var raw, media, unit, room, openHouse, custom []byte
 	var listPrice *float64
 	pool, err := e.db.ReadPool(ctx)
 	if err != nil {
 		return SubjectProfile{}, err
 	}
-	err = pool.QueryRow(ctx, `
-		SELECT raw_data, media, unit, room, open_house, custom_fields, list_price
+	dbRow := pool.QueryRow(ctx, `
+		SELECT `+mls.MirrorListingColumns+`, list_price
 		FROM listings WHERE dataset_slug = $1 AND listing_key = $2
-	`, ds, key).Scan(&raw, &media, &unit, &room, &openHouse, &custom, &listPrice)
+	`, ds, key)
+	mirrorRow, err := mls.ScanMirrorListingRow(func(dest ...any) error {
+		return dbRow.Scan(append(dest, &listPrice)...)
+	})
 	if err != nil {
 		return SubjectProfile{}, fmt.Errorf("subject listing not found in mirror: %s", key)
 	}
-	merged := mls.MergeMirrorListing(json.RawMessage(raw), mls.ExpandedPayload{
-		Media: json.RawMessage(media), Unit: json.RawMessage(unit),
-		Room: json.RawMessage(room), OpenHouse: json.RawMessage(openHouse),
-		HasMedia: len(media) > 0, HasUnit: len(unit) > 0, HasRoom: len(room) > 0, HasOpenHouse: len(openHouse) > 0,
-	}, json.RawMessage(custom))
+	merged := mls.BuildPublicListingJSON(mirrorRow)
 	comp := parseProperty(merged)
 	sub := SubjectProfile{
 		Type:         "mls",

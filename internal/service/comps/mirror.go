@@ -2,7 +2,6 @@ package comps
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -25,7 +24,7 @@ func (e *Engine) findMirrorComps(
 		limit = 25
 	}
 	q := `
-		SELECT raw_data, media, unit, room, open_house, custom_fields,
+		SELECT ` + mls.MirrorListingColumns + `,
 		       standard_status, list_price, latitude, longitude, listing_key
 		FROM listings WHERE dataset_slug = $1
 	`
@@ -86,19 +85,19 @@ func (e *Engine) findMirrorComps(
 
 	var out []CompRecord
 	for rows.Next() {
-		var raw, media, unit, room, oh, custom []byte
 		var status string
 		var listPrice *float64
 		var lat, lng *float64
 		var key string
-		if err := rows.Scan(&raw, &media, &unit, &room, &oh, &custom, &status, &listPrice, &lat, &lng, &key); err != nil {
+		mirrorRow, err := mls.ScanMirrorListingRow(func(dest ...any) error {
+			args := make([]any, 0, len(dest)+4)
+			args = append(args, dest...)
+			return rows.Scan(append(args, &status, &listPrice, &lat, &lng, &key)...)
+		})
+		if err != nil {
 			return nil, err
 		}
-		merged := mls.MergeMirrorListing(json.RawMessage(raw), mls.ExpandedPayload{
-			Media: json.RawMessage(media), Unit: json.RawMessage(unit),
-			Room: json.RawMessage(room), OpenHouse: json.RawMessage(oh),
-			HasMedia: len(media) > 0,
-		}, json.RawMessage(custom))
+		merged := mls.BuildPublicListingJSON(mirrorRow)
 		c := parseProperty(merged)
 		c.ListingKey = key
 		c.StandardStatus = status

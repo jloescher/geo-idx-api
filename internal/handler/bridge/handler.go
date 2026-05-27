@@ -15,6 +15,7 @@ import (
 	"github.com/quantyralabs/idx-api/internal/service/audit"
 	"github.com/quantyralabs/idx-api/internal/service/cache"
 	"github.com/quantyralabs/idx-api/internal/service/crypto"
+	"github.com/quantyralabs/idx-api/internal/service/mls"
 	"github.com/quantyralabs/idx-api/internal/service/search"
 	"github.com/quantyralabs/idx-api/internal/service/sync"
 )
@@ -234,6 +235,9 @@ func (h *Handler) finishProxy(c *fiber.Ctx, auditType string, cli mlspoxy.ProxyC
 	var cacheHit *string
 	if status >= 200 && status < 300 {
 		body = images.RewriteBytes(h.rewriter, body, mlspoxy.Feed(c).Dataset, listingKey)
+		if listingKey != "" {
+			body = mls.SanitizeUpstreamPropertyJSON(body)
+		}
 		if c.Query("include_pricing") == "1" {
 			body = h.pricing.InjectIntoJSON(c.Context(), body)
 		}

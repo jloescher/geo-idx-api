@@ -1,0 +1,315 @@
+package mls
+
+import (
+	"encoding/json"
+	"strings"
+	"time"
+)
+
+// MirrorListingColumns is the SELECT column list for mirror-backed API reads (excludes raw_data).
+const MirrorListingColumns = `
+	listing_key, mls_listing_id, standard_status, list_price,
+	bedrooms_total, bathrooms_total_decimal, living_area, lot_size_acres,
+	year_built, stories_total, city, county_or_parish, postal_code, state_or_province,
+	property_type, property_sub_type, on_market_date, close_date,
+	modification_timestamp, price_change_timestamp, previous_list_price,
+	flood_zone_code, estimated_total_monthly_fees,
+	latitude, longitude,
+	waterfront_yn, pool_private_yn, dock_yn, new_construction_yn, garage_yn,
+	association_yn, spa_yn, fireplace_yn, senior_community_yn,
+	subdivision_name, elementary_school, middle_or_junior_school, high_school,
+	special_listing_conditions,
+	street_number, street_name, list_agent_mls_id, list_office_mls_id,
+	media, unit, room, open_house, custom_fields`
+
+// MirrorListingRow is a listings mirror row for public API assembly (no raw_data).
+type MirrorListingRow struct {
+	ListingKey                string
+	MlsListingID              *string
+	StandardStatus            *string
+	ListPrice                 float64
+	BedroomsTotal             *int16
+	BathroomsTotalDecimal     *float64
+	LivingArea                *float64
+	LotSizeAcres              *float64
+	YearBuilt                 *int16
+	StoriesTotal              *int16
+	City                      *string
+	CountyOrParish            *string
+	PostalCode                *string
+	StateOrProvince           *string
+	PropertyType              *string
+	PropertySubType           *string
+	OnMarketDate              *time.Time
+	CloseDate                 *time.Time
+	ModificationTimestamp     *time.Time
+	PriceChangeTimestamp      *time.Time
+	PreviousListPrice         *float64
+	FloodZoneCode             *string
+	EstimatedTotalMonthlyFees *float64
+	Latitude                  *float64
+	Longitude                 *float64
+	WaterfrontYN              *bool
+	PoolPrivateYN             *bool
+	DockYN                    *bool
+	NewConstructionYN         *bool
+	GarageYN                  *bool
+	AssociationYN             *bool
+	SpaYN                     *bool
+	FireplaceYN               *bool
+	SeniorCommunityYN         *bool
+	SubdivisionName           *string
+	ElementarySchool          *string
+	MiddleOrJuniorSchool      *string
+	HighSchool                *string
+	SpecialListingConditions  json.RawMessage
+	StreetNumber              *string
+	StreetName                *string
+	ListAgentMlsID            *string
+	ListOfficeMlsID           *string
+	Media                     json.RawMessage
+	Unit                      json.RawMessage
+	Room                      json.RawMessage
+	OpenHouse                 json.RawMessage
+	CustomFields              json.RawMessage
+}
+
+// ScanMirrorListingRow reads mirror listing columns from a database row (order matches MirrorListingColumns).
+func ScanMirrorListingRow(scan func(dest ...any) error) (MirrorListingRow, error) {
+	var row MirrorListingRow
+	var media, unit, room, openHouse, custom, special []byte
+	err := scan(
+		&row.ListingKey, &row.MlsListingID, &row.StandardStatus, &row.ListPrice,
+		&row.BedroomsTotal, &row.BathroomsTotalDecimal, &row.LivingArea, &row.LotSizeAcres,
+		&row.YearBuilt, &row.StoriesTotal, &row.City, &row.CountyOrParish, &row.PostalCode, &row.StateOrProvince,
+		&row.PropertyType, &row.PropertySubType, &row.OnMarketDate, &row.CloseDate,
+		&row.ModificationTimestamp, &row.PriceChangeTimestamp, &row.PreviousListPrice,
+		&row.FloodZoneCode, &row.EstimatedTotalMonthlyFees,
+		&row.Latitude, &row.Longitude,
+		&row.WaterfrontYN, &row.PoolPrivateYN, &row.DockYN, &row.NewConstructionYN, &row.GarageYN,
+		&row.AssociationYN, &row.SpaYN, &row.FireplaceYN, &row.SeniorCommunityYN,
+		&row.SubdivisionName, &row.ElementarySchool, &row.MiddleOrJuniorSchool, &row.HighSchool,
+		&special,
+		&row.StreetNumber, &row.StreetName, &row.ListAgentMlsID, &row.ListOfficeMlsID,
+		&media, &unit, &room, &openHouse, &custom,
+	)
+	if err != nil {
+		return MirrorListingRow{}, err
+	}
+	row.SpecialListingConditions = json.RawMessage(special)
+	row.Media = json.RawMessage(media)
+	row.Unit = json.RawMessage(unit)
+	row.Room = json.RawMessage(room)
+	row.OpenHouse = json.RawMessage(openHouse)
+	row.CustomFields = json.RawMessage(custom)
+	return row, nil
+}
+
+// BuildPublicListingJSON assembles a flat RESO Property from typed columns, navigation JSONB, and custom_fields.
+// Output never includes raw_data, custom_fields, or @odata.* keys.
+func BuildPublicListingJSON(row MirrorListingRow) json.RawMessage {
+	root := map[string]any{}
+
+	putString(root, "ListingKey", row.ListingKey)
+	putStringPtr(root, "ListingId", row.MlsListingID)
+	putStringPtr(root, "StandardStatus", row.StandardStatus)
+	root["ListPrice"] = row.ListPrice
+	putInt16Ptr(root, "BedroomsTotal", row.BedroomsTotal)
+	putFloatPtr(root, "BathroomsTotalDecimal", row.BathroomsTotalDecimal)
+	putFloatPtr(root, "LivingArea", row.LivingArea)
+	putFloatPtr(root, "LotSizeAcres", row.LotSizeAcres)
+	putInt16Ptr(root, "YearBuilt", row.YearBuilt)
+	putInt16Ptr(root, "StoriesTotal", row.StoriesTotal)
+	putStringPtr(root, "City", row.City)
+	putStringPtr(root, "CountyOrParish", row.CountyOrParish)
+	putStringPtr(root, "PostalCode", row.PostalCode)
+	putStringPtr(root, "StateOrProvince", row.StateOrProvince)
+	putStringPtr(root, "PropertyType", row.PropertyType)
+	putStringPtr(root, "PropertySubType", row.PropertySubType)
+	putDatePtr(root, "OnMarketDate", row.OnMarketDate)
+	putDatePtr(root, "CloseDate", row.CloseDate)
+	putTimestampPtr(root, "ModificationTimestamp", row.ModificationTimestamp)
+	putTimestampPtr(root, "PriceChangeTimestamp", row.PriceChangeTimestamp)
+	putFloatPtr(root, "PreviousListPrice", row.PreviousListPrice)
+	putStringPtr(root, "FloodZoneCode", row.FloodZoneCode)
+	putFloatPtr(root, "EstimatedTotalMonthlyFees", row.EstimatedTotalMonthlyFees)
+	putFloatPtr(root, "Latitude", row.Latitude)
+	putFloatPtr(root, "Longitude", row.Longitude)
+	putBoolPtr(root, "WaterfrontYN", row.WaterfrontYN)
+	putBoolPtr(root, "PoolPrivateYN", row.PoolPrivateYN)
+	putBoolPtr(root, "DockYN", row.DockYN)
+	putBoolPtr(root, "NewConstructionYN", row.NewConstructionYN)
+	putBoolPtr(root, "GarageYN", row.GarageYN)
+	putBoolPtr(root, "AssociationYN", row.AssociationYN)
+	putBoolPtr(root, "SpaYN", row.SpaYN)
+	putBoolPtr(root, "FireplaceYN", row.FireplaceYN)
+	putBoolPtr(root, "SeniorCommunityYN", row.SeniorCommunityYN)
+	putStringPtr(root, "SubdivisionName", row.SubdivisionName)
+	putStringPtr(root, "ElementarySchool", row.ElementarySchool)
+	putStringPtr(root, "MiddleOrJuniorSchool", row.MiddleOrJuniorSchool)
+	putStringPtr(root, "HighSchool", row.HighSchool)
+	putStringPtr(root, "StreetNumber", row.StreetNumber)
+	putStringPtr(root, "StreetName", row.StreetName)
+	putStringPtr(root, "ListAgentMlsId", row.ListAgentMlsID)
+	putStringPtr(root, "ListOfficeMlsId", row.ListOfficeMlsID)
+	attachRawJSON(root, "SpecialListingConditions", row.SpecialListingConditions)
+
+	payloads := ExpandedPayload{
+		Media:        row.Media,
+		Unit:         row.Unit,
+		Room:         row.Room,
+		OpenHouse:    row.OpenHouse,
+		HasMedia:     len(row.Media) > 0,
+		HasUnit:      len(row.Unit) > 0,
+		HasRoom:      len(row.Room) > 0,
+		HasOpenHouse: len(row.OpenHouse) > 0,
+	}
+	attachJSONB(root, "Media", payloads.Media, payloads.HasMedia)
+	attachJSONB(root, "Unit", payloads.Unit, payloads.HasUnit)
+	attachJSONB(root, "Room", payloads.Room, payloads.HasRoom)
+	attachJSONB(root, "OpenHouse", payloads.OpenHouse, payloads.HasOpenHouse)
+	flatMergeCustomFieldsPublic(root, row.CustomFields)
+
+	SanitizePublicListingMap(root)
+	omitNullTopLevel(root)
+	out, err := json.Marshal(root)
+	if err != nil {
+		return json.RawMessage("{}")
+	}
+	return out
+}
+
+// SanitizePublicListingMap removes internal and OData metadata keys from a Property object.
+func SanitizePublicListingMap(root map[string]any) map[string]any {
+	if root == nil {
+		return map[string]any{}
+	}
+	for k := range root {
+		if isForbiddenPublicKey(k) {
+			delete(root, k)
+		}
+	}
+	return root
+}
+
+// SanitizeUpstreamPropertyJSON strips @odata.* and accidental mirror wrapper keys from live upstream Property JSON.
+func SanitizeUpstreamPropertyJSON(body json.RawMessage) json.RawMessage {
+	if len(body) == 0 {
+		return body
+	}
+	var root map[string]any
+	if err := json.Unmarshal(body, &root); err != nil {
+		return body
+	}
+	NormalizeBridgeExpandKeys(root)
+	stripBridgeNavigationAliases(root)
+	SanitizePublicListingMap(root)
+	omitNullTopLevel(root)
+	out, err := json.Marshal(root)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+func stripBridgeNavigationAliases(root map[string]any) {
+	aliases := []struct{ bridge, canonical string }{
+		{"Rooms", "Room"},
+		{"UnitTypes", "Unit"},
+		{"OpenHouses", "OpenHouse"},
+	}
+	for _, a := range aliases {
+		if _, has := root[a.canonical]; has {
+			delete(root, a.bridge)
+		}
+	}
+}
+
+func isForbiddenPublicKey(k string) bool {
+	if k == "raw_data" || k == "custom_fields" {
+		return true
+	}
+	return strings.HasPrefix(k, "@odata")
+}
+
+func flatMergeCustomFieldsPublic(root map[string]any, customFields json.RawMessage) {
+	if len(customFields) == 0 {
+		return
+	}
+	var custom map[string]any
+	if err := json.Unmarshal(customFields, &custom); err != nil {
+		return
+	}
+	nav := navigationCollectionSet()
+	for k, v := range custom {
+		if isForbiddenPublicKey(k) {
+			continue
+		}
+		if _, isNav := nav[k]; isNav {
+			continue
+		}
+		if isJSONNull(v) {
+			continue
+		}
+		if shouldSkipCustomMergeKey(root, k) {
+			continue
+		}
+		root[k] = v
+	}
+}
+
+func putString(m map[string]any, key, val string) {
+	if val != "" {
+		m[key] = val
+	}
+}
+
+func putStringPtr(m map[string]any, key string, val *string) {
+	if val != nil && *val != "" {
+		m[key] = *val
+	}
+}
+
+func putFloatPtr(m map[string]any, key string, val *float64) {
+	if val != nil {
+		m[key] = *val
+	}
+}
+
+func putInt16Ptr(m map[string]any, key string, val *int16) {
+	if val != nil {
+		m[key] = *val
+	}
+}
+
+func putBoolPtr(m map[string]any, key string, val *bool) {
+	if val != nil {
+		m[key] = *val
+	}
+}
+
+func putDatePtr(m map[string]any, key string, val *time.Time) {
+	if val != nil {
+		m[key] = val.Format("2006-01-02")
+	}
+}
+
+func putTimestampPtr(m map[string]any, key string, val *time.Time) {
+	if val != nil {
+		m[key] = val.UTC().Format(time.RFC3339)
+	}
+}
+
+func attachRawJSON(root map[string]any, key string, raw json.RawMessage) {
+	if len(raw) == 0 {
+		return
+	}
+	var val any
+	if err := json.Unmarshal(raw, &val); err != nil {
+		return
+	}
+	if isJSONNull(val) {
+		return
+	}
+	root[key] = val
+}
