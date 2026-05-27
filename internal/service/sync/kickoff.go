@@ -176,16 +176,10 @@ func (k *Kickoff) tryIncrementalKickoff(ctx context.Context, provider, dataset, 
 		return nil
 	}
 
-	fresh := NewFreshness(k.cfg, k.db)
-	current, err := fresh.IsCurrent(ctx, dataset, provider)
-	if err != nil {
-		return err
-	}
-	if !current {
-		k.logger.Debug("kickoff skipped: mirror not current (catch-up)",
-			"provider", provider, "dataset", dataset)
-		return nil
-	}
+	// Never gate incremental on Freshness.IsCurrent here. That check treats "last
+	// sync older than ReplicationFreshnessMinutes" as catch-up — the same clock
+	// shouldPollIncremental already uses — which would skip the very fetch that
+	// refreshes last_sync_finished_at (deadlocks both feeds as permanently stale).
 
 	if !k.shouldPollIncremental(cursor) {
 		return nil
