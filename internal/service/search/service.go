@@ -11,6 +11,7 @@ import (
 	"github.com/quantyralabs/idx-api/internal/repository"
 	"github.com/quantyralabs/idx-api/internal/service/audit"
 	"github.com/quantyralabs/idx-api/internal/service/cache"
+	"github.com/quantyralabs/idx-api/internal/service/mls"
 	"github.com/quantyralabs/idx-api/internal/service/sync"
 )
 
@@ -54,6 +55,8 @@ func (s *Service) Handle(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadGateway, err.Error())
 	}
+	datasetSlug := mls.DatasetSlugFromFeedCode(feed)
+	result.Results = filterSearchResultsForPublic(result.Results, datasetSlug)
 	rewriter := images.NewRewriter(s.cfg)
 	feedDef := mlspoxy.Feed(c)
 	for i, r := range result.Results {
@@ -94,6 +97,8 @@ type SearchRequest struct {
 	PropertyType           *string  `json:"property_type"`
 	PropertySubType        *string  `json:"property_sub_type"`
 	City                   *string  `json:"city"`
+	CountyOrParish         *string  `json:"county_or_parish"`
+	RemarksQuery           *string  `json:"remarks_query"`
 	PostalCode             *string  `json:"postal_code"`
 	PoolPrivate            *bool    `json:"pool_private"`
 	Waterfront             *bool    `json:"waterfront"`

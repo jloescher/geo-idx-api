@@ -27,8 +27,11 @@ func TestDecideRouteSplit(t *testing.T) {
 
 func TestBuildODataFilterStatuses(t *testing.T) {
 	req := SearchRequest{Statuses: []string{"Active", "Closed"}}
-	f := buildODataFilter(req)
+	f := buildODataFilter(req, "stellar")
 	if f == "" || !strings.Contains(f, "StandardStatus") {
 		t.Fatalf("filter %q", f)
+	}
+	if !strings.Contains(f, "InternetEntireListingDisplayYN") {
+		t.Fatalf("expected compliance filter in %q", f)
 	}
 }

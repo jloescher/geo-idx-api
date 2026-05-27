@@ -83,6 +83,7 @@ func (s *Scheduler) runAsLeader(ctx context.Context) error {
 	s.addJob(ctx, "purge-closed", "0 5 3 * * *", "default", queue.TypeMLSPurgeClosed)
 	s.addJob(ctx, "mirror-key-reconcile", "0 0 4 * * *", s.cfg.MLS.SyncKickoffQueue, queue.TypeMLSMirrorKeyReconcile)
 	s.addJob(ctx, "fema-flood-enrich", "0 30 4 * * *", s.cfg.FEMA.EnrichQueue, queue.TypeFEMAFloodEnrichKickoff)
+	s.addJob(ctx, "mls-geocode-listings", "0 15 5 * * *", s.cfg.Geocode.EnrichQueue, queue.TypeMLSGeocodeListingsKickoff)
 	s.addJob(ctx, "gis-probe", "0 30 6 * * 1", s.cfg.GIS.Queue, queue.TypeGISProbeSources)
 	s.addJob(ctx, "gis-monthly-parcel-refresh", "0 0 2 1 * *", s.cfg.GIS.SyncQueue, queue.TypeGISMonthlyParcelRefresh)
 	s.addJob(ctx, "gis-annual-boundaries-refresh", "0 0 3 1 1 *", s.cfg.GIS.SyncQueue, queue.TypeGISAnnualBoundariesRefresh)

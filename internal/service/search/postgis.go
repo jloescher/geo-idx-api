@@ -8,16 +8,18 @@ import (
 	"time"
 
 	"github.com/quantyralabs/idx-api/internal/repository"
+	gisrepo "github.com/quantyralabs/idx-api/internal/repository/gis"
 	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
 
 // PostgisSearch queries local listings mirror.
 type PostgisSearch struct {
-	db *repository.DB
+	db  *repository.DB
+	gis *gisrepo.Repository
 }
 
 func NewPostgisSearch(db *repository.DB) *PostgisSearch {
-	return &PostgisSearch{db: db}
+	return &PostgisSearch{db: db, gis: gisrepo.New(db)}
 }
 
 func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchRequest, rollingMonths int) (SearchResult, error) {
@@ -37,6 +39,7 @@ func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchR
 	`
 	if len(req.Statuses) == 0 {
 		q += ` AND LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')`
+		q += publicListingComplianceSQL
 	}
 	args := []any{dataset}
 	n := 2
@@ -90,9 +93,14 @@ func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchR
 		args = append(args, strings.TrimSpace(*req.PropertySubType))
 		n++
 	}
-	if req.City != nil && strings.TrimSpace(*req.City) != "" {
-		q += fmt.Sprintf(" AND LOWER(city) = LOWER($%d)", n)
-		args = append(args, strings.TrimSpace(*req.City))
+	var err error
+	q, args, n, err = appendGeographyFilter(ctx, p.gis, q, args, n, req.City, req.CountyOrParish)
+	if err != nil {
+		return SearchResult{}, err
+	}
+	if req.RemarksQuery != nil && strings.TrimSpace(*req.RemarksQuery) != "" {
+		q += fmt.Sprintf(` AND to_tsvector('english', COALESCE(public_remarks, '')) @@ plainto_tsquery('english', $%d)`, n)
+		args = append(args, strings.TrimSpace(*req.RemarksQuery))
 		n++
 	}
 	if req.PostalCode != nil && strings.TrimSpace(*req.PostalCode) != "" {
@@ -171,7 +179,11 @@ func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchR
 		if mirrorRow.ListingKey == "" {
 			continue
 		}
-		results = append(results, mls.BuildPublicListingJSON(mirrorRow))
+		body, ok := mls.BuildPublicListingJSONForSearch(mirrorRow)
+		if !ok {
+			continue
+		}
+		results = append(results, body)
 	}
 	hasMore := len(results) > limit
 	if hasMore {

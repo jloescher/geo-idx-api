@@ -21,6 +21,8 @@ These endpoints are represented in `docs/yaak-api-collection.json`.
 | GET | `/images/:listingKey/:photoId` | `DomainToken` | `images.Handler.Show` | Stream listing photo via proxy/cache. |
 | GET | `/api/v1/gis` | `DomainToken` + `MLSAccess` (GIS bypass in access middleware) | `gis.Handler.Show` | GIS parcel GeoJSON by bbox. |
 | GET | `/api/v1/mls/:mlsCode/gis` | `DomainToken` + `MLSAccess` (GIS bypass in access middleware) | `gis.Handler.ShowForMLS` | MLS-scoped GIS parcel GeoJSON. |
+| GET | `/api/v1/gis/autocomplete/cities` | `DomainToken` + `MLSAccess` | `gis.Handler.AutocompleteCities` | City \| county suggestions (`q`, optional `limit`). Requires `pg_trgm` (migration 00007). |
+| GET | `/api/v1/gis/autocomplete/counties` | `DomainToken` + `MLSAccess` | `gis.Handler.AutocompleteCounties` | County name/slug suggestions (`q`, optional `limit`). |
 | GET | `/api/v1/listings` | `DomainToken` + `MLSAccess` | `bridge.Handler.Listings` | MLS web listings collection proxy. |
 | GET | `/api/v1/listings/:listingId` | `DomainToken` + `MLSAccess` | `bridge.Handler.Listing` | MLS listing detail proxy. |
 | GET | `/api/v1/agents` | `DomainToken` + `MLSAccess` | `bridge.Handler.Agents` | MLS agents collection proxy. |

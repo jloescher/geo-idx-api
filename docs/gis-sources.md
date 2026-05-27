@@ -66,28 +66,27 @@ Administrative boundaries sync from **FDOT Admin Boundaries** (`gis.fdot.gov`):
 
 Constants: `FDOTCountiesURL`, `FDOTCitiesURL`, `FDOTZipsURL` in `internal/service/gis/arcgis_client.go`.
 
-### Known issue: `gis_cities.county` is NULL
+### City–county pairs (`gis_cities.county`)
 
-**Symptom:** All 920 FDOT city rows have `county IS NULL` on staging.
+FDOT layer 7 (Census places) has **no county attribute** in ArcGIS properties (`ExtractCityRow` in `internal/service/gis/field_extract.go`). County is derived after sync:
 
-**Cause:** `ExtractCityRow` looks for `COUNTY`, `COUNTYNAME`, or `COUNTY_NAME` in ArcGIS properties (`internal/service/gis/field_extract.go`). FDOT layer 7 is Census **place** data and exposes `NAME`, `GEOID`, `POP`, etc. — **no county attribute**.
+1. **`ExpandCityCountyPairs`** (`internal/repository/gis/boundaries.go`) — one row per `(city_name, county_slug)` for each county polygon that intersects the city geometry; **nearest county** fallback when no intersection (Florida Keys / island gaps).
+2. Wired from **`sync_boundaries.go`** after each FDOT city import.
+3. One-time prod script: [`docs/scripts/gis_cities_county_expand.sql`](../docs/scripts/gis_cities_county_expand.sql).
+4. Migration **`00008_gis_cities_county_not_null.sql`** sets `gis_cities.county NOT NULL` after expand validation passes.
 
-**Fix (planned):** Derive county via PostGIS spatial join against `gis_counties` at sync time or one-time backfill:
+**Verify before NOT NULL migration:**
 
 ```sql
--- Run on staging / primary (tie-break needed for multi-county cities)
-SELECT c.city_name, co.county_name
-FROM gis_cities c
-JOIN gis_counties co ON ST_Intersects(c.geometry, co.geometry)
-WHERE c.city_name IN ('Tampa', 'Orlando');
+SELECT COUNT(*) FROM gis_cities WHERE county IS NULL;  -- expect 0
 ```
 
-**Verify:**
+**Spot-check multi-county cities:**
 
 ```sql
-SELECT COUNT(*) AS total,
-       COUNT(county) AS with_county
-FROM gis_cities;
+SELECT city_name, county FROM gis_cities
+WHERE lower(city_name) IN ('jacksonville', 'midway', 'four corners')
+ORDER BY city_name, county;
 ```
 
 ---

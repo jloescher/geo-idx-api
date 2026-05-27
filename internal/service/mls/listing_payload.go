@@ -279,6 +279,11 @@ func mappedScalarFieldNames() map[string]struct{} {
 	extra := []string{
 		"BathroomsTotalInteger", "BuildingAreaTotal", "AssociationFee", "AssociationFeeFrequency",
 		"AssociationFee2", "AssociationFee2Frequency", "MlsStatus", "ClosePrice", "DockYN",
+		"GarageSpaces", "MLSAreaMajor", "DaysOnMarket", "TaxAnnualAmount",
+		"HeatingYN", "CoolingYN", "CarportYN", "AttachedGarageYN",
+		"InternetConsumerCommentYN", "InternetAddressDisplayYN", "InternetEntireListingDisplayYN",
+		"InternetAutomatedValuationDisplayYN", "IDXParticipationYN", "IDXOfficeParticipationYN",
+		"UnparsedAddress", "PublicRemarks",
 	}
 	for _, n := range extra {
 		names[n] = struct{}{}

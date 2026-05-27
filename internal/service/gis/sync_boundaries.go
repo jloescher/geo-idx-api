@@ -54,11 +54,11 @@ func (s *BoundarySyncService) runFullBoundarySync(ctx context.Context, fingerpri
 	if err := s.syncLayer(ctx, FDOTCitiesURL, gen, &fp, s.syncCities, 0); err != nil {
 		return err
 	}
-	updated, err := s.db.BackfillCityCounties(ctx, gen)
+	inserted, deleted, err := s.db.ExpandCityCountyPairs(ctx, gen)
 	if err != nil {
-		return fmt.Errorf("backfill city counties: %w", err)
+		return fmt.Errorf("expand city county pairs: %w", err)
 	}
-	s.logger.Info("gis city county backfill", "fingerprint", fp, "generation", gen, "updated", updated)
+	s.logger.Info("gis city county expand", "fingerprint", fp, "generation", gen, "upserted", inserted, "deleted_stale", deleted)
 	if err := s.syncLayer(ctx, FDOTZipsURL, gen, &fp, s.syncZips, zipSyncPageSize(s.cfg.GIS)); err != nil {
 		return err
 	}
@@ -123,10 +123,10 @@ func (s *BoundarySyncService) RunGapFill(ctx context.Context) error {
 		if err := s.syncLayer(ctx, FDOTCitiesURL, gen, &fp, s.syncCities, 0); err != nil {
 			return err
 		}
-		if updated, err := s.db.BackfillCityCounties(ctx, gen); err != nil {
-			return fmt.Errorf("backfill city counties: %w", err)
+		if inserted, deleted, err := s.db.ExpandCityCountyPairs(ctx, gen); err != nil {
+			return fmt.Errorf("expand city county pairs: %w", err)
 		} else {
-			s.logger.Info("gis city county backfill", "generation", gen, "updated", updated)
+			s.logger.Info("gis city county expand", "generation", gen, "upserted", inserted, "deleted_stale", deleted)
 		}
 		if _, err := s.db.DeleteStaleCities(ctx, FDOTAdminBoundariesKey, gen); err != nil {
 			return err
@@ -155,9 +155,9 @@ func (s *BoundarySyncService) ensureCityCountiesBackfilled(ctx context.Context) 
 	}
 	updated, err := s.db.BackfillMissingCityCounties(ctx)
 	if err != nil {
-		return fmt.Errorf("backfill missing city counties: %w", err)
+		return fmt.Errorf("expand missing city counties: %w", err)
 	}
-	s.logger.Info("gis city county backfill", "missing_before", missing, "updated", updated)
+	s.logger.Info("gis city county expand", "missing_before", missing, "rows_touched", updated)
 	return nil
 }
 

@@ -98,7 +98,14 @@ Per [Bridge RESO Web API](https://bridgedataoutput.com/docs/platform/API/zg-data
 
 Clients expect one **flat RESO Property object** (same shape as upstream), not internal column names.
 
-**`POST /api/v1/search`** (PostGIS leg), comps mirror leg, and MLS subject resolution use `BuildPublicListingJSON` (`internal/service/mls/listing_response.go`):
+**Public search visibility** (response-time only; DB stores full MLS data):
+
+- Exclude listings when `internet_entire_listing_display_yn IS FALSE` or (Stellar) `idx_participation_yn IS FALSE`
+- Omit address fields when `internet_address_display_yn IS FALSE`; omit valuation keys when `internet_automated_valuation_display_yn IS FALSE`
+- Filter `Media[]` to items whose `Permission` includes `Public` or `IDX` (fail open when `Permission` is missing)
+- `InternetConsumerCommentYN` gates end-user comment UI only — it does **not** strip `PublicRemarks` or media descriptions
+
+**`POST /api/v1/search`** (PostGIS leg), comps mirror leg, and MLS subject resolution use `BuildPublicListingJSON` (`internal/service/mls/listing_response.go`); the search path uses `BuildPublicListingJSONForSearch` to apply the rules above.
 
 1. Map indexed **typed columns** to RESO PascalCase (`ListPrice`, `BedroomsTotal`, …)
 2. Attach `Media`, `Unit`, `Room`, `OpenHouse` from JSONB columns when present
@@ -244,4 +251,10 @@ Expect row counts to grow for `stellar` and `beaches`, `replication_in_progress`
 
 ## Schema
 
-Single migration: [`migrations/00001_initial.sql`](../migrations/00001_initial.sql). Fresh databases: `make migrate` then full re-replication to populate JSONB columns and canonical timestamps.
+Migrations: [`00001_initial.sql`](../migrations/00001_initial.sql) (base mirror), [`00006_listings_search_columns.sql`](../migrations/00006_listings_search_columns.sql) (14 IDX/facet columns, `unparsed_address`, `public_remarks`, geocode audit columns, AP indexes + FTS), [`00007_gis_trgm_autocomplete.sql`](../migrations/00007_gis_trgm_autocomplete.sql), [`00008_gis_cities_county_not_null.sql`](../migrations/00008_gis_cities_county_not_null.sql) (after `docs/scripts/gis_cities_county_expand.sql`).
+
+**Geocode backfill:** worker job `mls.geocode_listings_*` uses `GOOGLE_MAPS_GEOCODING_API_KEY` and `BuildGeocodeQuery` (Beaches full `UnparsedAddress` vs Stellar street + city/state/ZIP). Scheduler cron `0 15 5 * * *` on `GEOCODE_QUEUE` (default `default`).
+
+**Backfill script:** [`docs/scripts/listings_field_promote_backfill.sql`](../docs/scripts/listings_field_promote_backfill.sql) promotes the 14 RESO keys + `UnparsedAddress` / `PublicRemarks` from JSONB, then strips promoted keys.
+
+Fresh databases: `make migrate` then full re-replication to populate typed columns; run promote backfill on primary when upgrading existing data.

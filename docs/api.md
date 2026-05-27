@@ -40,3 +40,13 @@ It returns a token payload:
 ## Detailed endpoint reference
 
 For a full route-by-route table (methods, auth, handlers, and behavior notes), see `docs/routes-reference.md`.
+
+### Search (`POST /api/v1/search`)
+
+Hybrid mirror + upstream search. Active/Pending defaults to PostGIS; Closed uses live RESO. Public results exclude non-IDX / non-display listings (see `docs/listings-mirror.md`).
+
+| JSON field | Description |
+|------------|-------------|
+| `city` | Geography filter: expands via GIS autocomplete, then `LIKE` on `listings.city` / `county_or_parish` (not exact equality). |
+| `county_or_parish` | County display name or slug from autocomplete; same OR-LIKE geography expansion. |
+| `remarks_query` | Optional full-text search on typed `public_remarks` (`plainto_tsquery`, English). |

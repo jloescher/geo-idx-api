@@ -6,6 +6,7 @@ import (
 	"github.com/quantyralabs/idx-api/internal/service/cache"
 	"github.com/quantyralabs/idx-api/internal/service/crypto"
 	"github.com/quantyralabs/idx-api/internal/service/fema"
+	"github.com/quantyralabs/idx-api/internal/service/geocode"
 	"github.com/quantyralabs/idx-api/internal/service/gis"
 	"github.com/quantyralabs/idx-api/internal/service/sync"
 )
@@ -24,6 +25,9 @@ func (r *Registry) InitServices(q *queue.Client) {
 	r.gisPersistent = gis.NewPersistentGISService(r.cfg, gisRepo, q, r.logger)
 	r.crypto = crypto.NewPricingService(r.cfg, r.db, r.logger)
 	r.femaEnrich = fema.NewEnrichmentService(r.cfg, r.db, q, r.logger)
+	r.geocodeEnrich = geocode.NewEnrichmentService(r.cfg, r.db, q, r.logger)
 	r.bridgeSync.SetFEMAEnrichment(r.femaEnrich)
 	r.sparkSync.SetFEMAEnrichment(r.femaEnrich)
+	r.bridgeSync.SetGeocodeEnrichment(r.geocodeEnrich)
+	r.sparkSync.SetGeocodeEnrichment(r.geocodeEnrich)
 }

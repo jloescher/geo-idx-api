@@ -138,6 +138,8 @@ Renovation credit amounts are derived from the market's `gla_per_sf` and median 
 
 ### Home Value mode (`home_value_params`)
 
+**Public `sold_comps`:** BPO/reconciliation runs on the **full** sold comp set (including non-IDX rows). The `sold_comps` array in the API response is filtered to listings that pass public IDX/display gates (`InternetEntireListingDisplayYN`, and on Stellar `IDXParticipationYN`). `comparable_count` reflects the filtered set shown to consumers.
+
 `home_value` mode supports two subject resolution paths:
 
 1. **Address path** (`address` provided) -- geocoded via Google Maps API to resolve lat/lng, uses owner-provided details

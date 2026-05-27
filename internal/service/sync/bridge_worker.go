@@ -11,6 +11,7 @@ import (
 	"github.com/quantyralabs/idx-api/internal/queue"
 	"github.com/quantyralabs/idx-api/internal/repository"
 	"github.com/quantyralabs/idx-api/internal/service/fema"
+	"github.com/quantyralabs/idx-api/internal/service/geocode"
 	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
 
@@ -23,13 +24,19 @@ type BridgeWorker struct {
 	mirror     *ListingMirrorWriter
 	sync       *BridgeSync
 	cursors    *CursorStore
-	femaEnrich *fema.EnrichmentService
-	logger     *slog.Logger
+	femaEnrich    *fema.EnrichmentService
+	geocodeEnrich *geocode.EnrichmentService
+	logger        *slog.Logger
 }
 
 // SetFEMAEnrichment attaches the FEMA flood enrichment service (optional).
 func (w *BridgeWorker) SetFEMAEnrichment(s *fema.EnrichmentService) {
 	w.femaEnrich = s
+}
+
+// SetGeocodeEnrichment attaches the geocode backfill service (optional).
+func (w *BridgeWorker) SetGeocodeEnrichment(s *geocode.EnrichmentService) {
+	w.geocodeEnrich = s
 }
 
 func NewBridgeWorker(cfg config.Config, db *repository.DB, q *queue.Client, logger *slog.Logger) *BridgeWorker {
@@ -148,6 +155,11 @@ func (w *BridgeWorker) FetchPage(ctx context.Context, job *queue.ReservedJob) er
 		if w.femaEnrich != nil {
 			if err := w.femaEnrich.EnqueueKickoffIfAbsent(ctx, ""); err != nil {
 				w.logger.Warn("fema flood enrich kickoff", "error", err)
+			}
+		}
+		if w.geocodeEnrich != nil {
+			if err := w.geocodeEnrich.EnqueueKickoffIfAbsent(ctx, ""); err != nil {
+				w.logger.Warn("geocode enrich kickoff", "error", err)
 			}
 		}
 		return nil
@@ -426,6 +438,11 @@ func (w *BridgeWorker) PersistFinalize(ctx context.Context, job *queue.ReservedJ
 	if args.MarkSyncFinished && w.femaEnrich != nil {
 		if err := w.femaEnrich.EnqueueKickoffIfAbsent(ctx, ""); err != nil {
 			w.logger.Warn("fema flood enrich kickoff", "error", err)
+		}
+	}
+	if args.MarkSyncFinished && w.geocodeEnrich != nil {
+		if err := w.geocodeEnrich.EnqueueKickoffIfAbsent(ctx, ""); err != nil {
+			w.logger.Warn("geocode enrich kickoff", "error", err)
 		}
 	}
 	return nil

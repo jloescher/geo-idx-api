@@ -2,6 +2,7 @@ package mls
 
 import (
 	"encoding/json"
+	"math"
 	"strings"
 	"time"
 )
@@ -72,6 +73,22 @@ type ListingRecord struct {
 	StreetName                *string
 	ListAgentMlsID            *string
 	ListOfficeMlsID           *string
+	GarageSpaces              *float64
+	MLSAreaMajor              *string
+	DaysOnMarket              *int32
+	TaxAnnualAmount           *float64
+	HeatingYN                 *bool
+	CoolingYN                 *bool
+	CarportYN                 *bool
+	AttachedGarageYN          *bool
+	InternetConsumerCommentYN *bool
+	InternetAddressDisplayYN  *bool
+	InternetEntireListingDisplayYN *bool
+	InternetAutomatedValuationDisplayYN *bool
+	IDXParticipationYN        *bool
+	IDXOfficeParticipationYN  *bool
+	UnparsedAddress           *string
+	PublicRemarks             *string
 }
 
 // BuildListingRecord maps a RESO Property row to mirror columns.
@@ -188,8 +205,44 @@ func BuildListingRecord(
 		StreetName:                  optionalString(row["StreetName"]),
 		ListAgentMlsID:              optionalString(row["ListAgentMlsId"]),
 		ListOfficeMlsID:             optionalString(row["ListOfficeMlsId"]),
+		GarageSpaces:                garageSpacesPtr(row["GarageSpaces"]),
+		MLSAreaMajor:                optionalString(row["MLSAreaMajor"]),
+		DaysOnMarket:                optionalInt32Ptr(row["DaysOnMarket"]),
+		TaxAnnualAmount:             ClampNumeric14_2Ptr(row["TaxAnnualAmount"]),
+		HeatingYN:                   boolPtr(row["HeatingYN"]),
+		CoolingYN:                   boolPtr(row["CoolingYN"]),
+		CarportYN:                   boolPtr(row["CarportYN"]),
+		AttachedGarageYN:            boolPtr(row["AttachedGarageYN"]),
+		InternetConsumerCommentYN:   boolPtr(row["InternetConsumerCommentYN"]),
+		InternetAddressDisplayYN:    boolPtr(row["InternetAddressDisplayYN"]),
+		InternetEntireListingDisplayYN: boolPtr(row["InternetEntireListingDisplayYN"]),
+		InternetAutomatedValuationDisplayYN: boolPtr(row["InternetAutomatedValuationDisplayYN"]),
+		IDXOfficeParticipationYN:    boolPtr(row["IDXOfficeParticipationYN"]),
+		UnparsedAddress:             optionalString(row["UnparsedAddress"]),
+		PublicRemarks:               optionalString(row["PublicRemarks"]),
+	}
+	if strings.EqualFold(datasetSlug, "stellar") {
+		rec.IDXParticipationYN = boolPtr(row["IDXParticipationYN"])
 	}
 	return rec, RowActionUpsert
+}
+
+func garageSpacesPtr(v any) *float64 {
+	f, ok := numericValue(v)
+	if !ok {
+		return nil
+	}
+	out := clampRange(f, 0, 999.99)
+	return &out
+}
+
+func optionalInt32Ptr(v any) *int32 {
+	f, ok := numericValue(v)
+	if !ok {
+		return nil
+	}
+	i := int32(math.Round(f))
+	return &i
 }
 
 func optionalString(v any) *string {

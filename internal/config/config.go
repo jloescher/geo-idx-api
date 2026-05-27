@@ -207,8 +207,11 @@ type AuthConfig struct {
 }
 
 type GeocodeConfig struct {
-	GoogleMapsAPIKey string
-	HTTPTimeout      time.Duration
+	GoogleMapsAPIKey     string
+	HTTPTimeout          time.Duration
+	EnrichQueue          string
+	EnrichBatchSize      int
+	MaxRequestsPerSecond int
 }
 
 type CoingeckoConfig struct {
@@ -362,8 +365,11 @@ func Load() (Config, error) {
 			AdminSeedName:   firstNonEmpty(env("ADMIN_SEED_NAME", ""), "Quantyra Admin"),
 		},
 		Geocode: GeocodeConfig{
-			GoogleMapsAPIKey: env("GOOGLE_MAPS_GEOCODING_API_KEY", ""),
-			HTTPTimeout:      envDuration("GEOCODING_TIMEOUT", 12*time.Second),
+			GoogleMapsAPIKey:     env("GOOGLE_MAPS_GEOCODING_API_KEY", ""),
+			HTTPTimeout:          envDuration("GEOCODING_TIMEOUT", 12*time.Second),
+			EnrichQueue:          env("GEOCODE_QUEUE", "default"),
+			EnrichBatchSize:      envInt("GEOCODE_BATCH_SIZE", 200),
+			MaxRequestsPerSecond: envInt("GEOCODE_MAX_REQUESTS_PER_SECOND", 5),
 		},
 		Coingecko: CoingeckoConfig{
 			APIKey:      env("COINGECKO_API_KEY", ""),

@@ -56,6 +56,37 @@ func TestBuildListingRecordStellarFixture(t *testing.T) {
 	}
 }
 
+func TestBuildListingRecordPromotesIDXAndFacetFields(t *testing.T) {
+	resolver := mls.NewResoFieldResolver()
+
+	stellarRow, stellarRaw := loadFixtureListing(t, fixturePath("bridge_interactive/stellar_50_listings.json"), 0)
+	stellarRec, action := mls.BuildListingRecord("stellar", mls.MirrorProviderBridge, stellarRow, stellarRaw, resolver, nil)
+	if action != mls.RowActionUpsert {
+		t.Fatalf("stellar action %s", action)
+	}
+	if stellarRec.IDXParticipationYN == nil || !*stellarRec.IDXParticipationYN {
+		t.Fatalf("stellar IDXParticipationYN: %+v", stellarRec.IDXParticipationYN)
+	}
+	if stellarRec.UnparsedAddress == nil || *stellarRec.UnparsedAddress != "353 N Temple AVENUE" {
+		t.Fatalf("stellar UnparsedAddress: %+v", stellarRec.UnparsedAddress)
+	}
+
+	beachesRow, beachesRaw := loadFixtureListing(t, fixturePath("spark/beaches_50_listings.json"), 1)
+	beachesRec, action := mls.BuildListingRecord("beaches", mls.MirrorProviderSpark, beachesRow, beachesRaw, resolver, nil)
+	if action != mls.RowActionUpsert {
+		t.Fatalf("beaches action %s", action)
+	}
+	if beachesRec.GarageSpaces == nil || *beachesRec.GarageSpaces != 3 {
+		t.Fatalf("beaches GarageSpaces: %+v", beachesRec.GarageSpaces)
+	}
+	if beachesRec.PublicRemarks == nil || len(*beachesRec.PublicRemarks) < 10 {
+		t.Fatalf("beaches PublicRemarks: %+v", beachesRec.PublicRemarks)
+	}
+	if beachesRec.IDXParticipationYN != nil {
+		t.Fatal("beaches idx_participation_yn should stay nil")
+	}
+}
+
 func TestBuildListingRecordBeachesFloodZone(t *testing.T) {
 	b, err := os.ReadFile(fixturePath("spark/beaches_50_listings.json"))
 	if err != nil {

@@ -26,6 +26,8 @@ Same as other `/api/v1/*` Bridge proxy routes:
 |--------|------|-------------|
 | GET | `/api/v1/gis` | Florida GIS features for the authenticated domain/token. |
 | GET | `/api/v1/mls/{mlsCode}/gis` | Same payload, MLS-scoped for analytics / future routing (`mlsCode` must be listed in `GIS_FLORIDA_MLS_CODES`). |
+| GET | `/api/v1/gis/autocomplete/cities` | City \| county suggestions (`q`, optional `limit`, default 10). One row per `(city_name, county)` after county expansion. |
+| GET | `/api/v1/gis/autocomplete/counties` | County name/slug suggestions (`q`, optional `limit`). |
 
 ## Query parameters
 
@@ -216,7 +218,7 @@ Read path deduplicates by `parcel_id`, preferring county failover rows over stat
 
 Boundary types (`city`, `county`, `zip`) do not live-fallback to ArcGIS; run `gis.annual_boundaries_refresh` if empty.
 
-**Known data issue:** FDOT cities sync does not populate `gis_cities.county` (FDOT layer 7 has no county field). See [GIS sources § cities county NULL](gis-sources.md#known-issue-gis_citiescounty-is-null).
+**City–county catalog:** After FDOT import, `ExpandCityCountyPairs` fills `gis_cities.county` (multi-county cities get one row per county). Autocomplete and search geography use these pairs. See [GIS sources § city–county pairs](gis-sources.md#citycounty-pairs-gis_citiescounty).
 
 ## Chaining with `/listings`
 

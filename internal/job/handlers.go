@@ -5,6 +5,7 @@ import (
 
 	"github.com/quantyralabs/idx-api/internal/queue"
 	"github.com/quantyralabs/idx-api/internal/service/fema"
+	"github.com/quantyralabs/idx-api/internal/service/geocode"
 	"github.com/quantyralabs/idx-api/internal/service/gis"
 )
 
@@ -114,4 +115,20 @@ func (r *Registry) handleFEMAFloodEnrichBatch(ctx context.Context, job *queue.Re
 		return err
 	}
 	return r.femaEnrich.RunBatch(ctx, args)
+}
+
+func (r *Registry) handleGeocodeListingsKickoff(ctx context.Context, job *queue.ReservedJob) error {
+	args, err := geocode.UnmarshalGeocodeKickoffArgs(job.Payload.Args)
+	if err != nil {
+		return err
+	}
+	return r.geocodeEnrich.Kickoff(ctx, args)
+}
+
+func (r *Registry) handleGeocodeListingsBatch(ctx context.Context, job *queue.ReservedJob) error {
+	args, err := geocode.UnmarshalGeocodeBatchArgs(job.Payload.Args)
+	if err != nil {
+		return err
+	}
+	return r.geocodeEnrich.RunBatch(ctx, args)
 }

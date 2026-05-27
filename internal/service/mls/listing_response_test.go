@@ -168,6 +168,28 @@ func TestBuildCustomFieldsStripsResolvedProviderExtensions(t *testing.T) {
 	}
 }
 
+func TestSanitizeUpstreamPropertyJSONForInternalPreservesAddress(t *testing.T) {
+	raw := []byte(`{
+		"@odata.context":"x",
+		"ListingKey":"k",
+		"InternetAddressDisplayYN":false,
+		"UnparsedAddress":"123 Main St",
+		"Media":[{"Permission":["Private"]}]
+	}`)
+	out := mls.SanitizeUpstreamPropertyJSONForInternal(raw)
+	var m map[string]any
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["UnparsedAddress"] != "123 Main St" {
+		t.Fatalf("address stripped: %#v", m)
+	}
+	media, ok := m["Media"].([]any)
+	if !ok || len(media) != 1 {
+		t.Fatalf("media should remain for comps: %#v", m["Media"])
+	}
+}
+
 func TestSanitizeUpstreamPropertyJSON(t *testing.T) {
 	raw := []byte(`{"@odata.context":"x","ListingKey":"k","Rooms":[],"raw_data":{},"custom_fields":{}}`)
 	out := mls.SanitizeUpstreamPropertyJSON(raw)

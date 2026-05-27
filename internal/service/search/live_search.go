@@ -15,6 +15,7 @@ import (
 	"github.com/quantyralabs/idx-api/internal/mlspoxy"
 	"github.com/quantyralabs/idx-api/internal/mlspoxy/spark"
 	"github.com/quantyralabs/idx-api/internal/service/cache"
+	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
 
 // LiveSearch queries live upstream RESO for statuses not stored in the mirror (any MLS feed).
@@ -41,8 +42,9 @@ func (l *LiveSearch) Search(ctx context.Context, c *fiber.Ctx, feedCode string, 
 
 	partition := cache.SearchPartition(mlsDomainSlug(c), feedCode)
 	fp := searchFingerprint(req)
+	datasetSlug := mls.DatasetSlugFromFeedCode(feedCode)
 	if body, ok, err := l.proxyCache.Get(ctx, partition, fp); err == nil && ok {
-		return parseSearchBody(body)
+		return parseSearchBody(body, datasetSlug)
 	}
 
 	u, err := url.Parse(endpoint.PropertyURL)
@@ -50,7 +52,7 @@ func (l *LiveSearch) Search(ctx context.Context, c *fiber.Ctx, feedCode string, 
 		return SearchResult{}, err
 	}
 	q := u.Query()
-	if filter := buildODataFilter(req); filter != "" {
+	if filter := buildODataFilter(req, datasetSlug); filter != "" {
 		q.Set("$filter", filter)
 	}
 	limit := req.Limit
@@ -69,7 +71,7 @@ func (l *LiveSearch) Search(ctx context.Context, c *fiber.Ctx, feedCode string, 
 		return SearchResult{}, err
 	}
 	_ = l.proxyCache.Put(ctx, partition, fp, body)
-	return parseSearchBody(body)
+	return parseSearchBody(body, datasetSlug)
 }
 
 func mlsDomainSlug(c *fiber.Ctx) string {
@@ -83,18 +85,22 @@ func searchFingerprint(req SearchRequest) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func parseSearchBody(body []byte) (SearchResult, error) {
+func parseSearchBody(body []byte, datasetSlug string) (SearchResult, error) {
 	var envelope struct {
 		Value []json.RawMessage `json:"value"`
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
-		return SearchResult{Results: []json.RawMessage{body}}, nil
+		return SearchResult{Results: filterSearchResultsForPublic([]json.RawMessage{body}, datasetSlug)}, nil
 	}
-	return SearchResult{Results: envelope.Value, HasMore: false}, nil
+	return SearchResult{Results: filterSearchResultsForPublic(envelope.Value, datasetSlug), HasMore: false}, nil
 }
 
-func buildODataFilter(req SearchRequest) string {
+func buildODataFilter(req SearchRequest, datasetSlug string) string {
 	var parts []string
+	parts = append(parts, "(InternetEntireListingDisplayYN ne false)")
+	if strings.EqualFold(datasetSlug, "stellar") {
+		parts = append(parts, "(IDXParticipationYN ne false or IDXParticipationYN eq null)")
+	}
 	if len(req.Statuses) > 0 {
 		var quoted []string
 		for _, st := range req.Statuses {

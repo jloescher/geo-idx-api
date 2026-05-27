@@ -35,13 +35,14 @@ func (e *Engine) runHomeValueMode(ctx context.Context, domainSlug string, feed m
 		low = round2(estimate * 0.95)
 		high = round2(estimate * 1.05)
 	}
-	resp.SoldComps = sold
+	publicSold := FilterCompRecordsForPublicHomeValue(sold, feed.Dataset)
+	resp.SoldComps = publicSold
 	resp.HomeValueResult = map[string]any{
 		"estimate":               round2(estimate),
 		"low":                    round2(low),
 		"high":                   round2(high),
 		"confidence":             math.Max(homeValueConfidence(len(sold)), recon.Confidence),
-		"comparable_count":       len(sold),
+		"comparable_count":       len(publicSold),
 		"condition_applied":      subject.Condition != "",
 		"condition_rating":       subject.Condition,
 		"market_rates":           rates,

@@ -1,0 +1,7 @@
+# Ripgrep: skip paths that are slow to search or never useful for code audits.
+# (Git already ignores /bin/ for repo-root searches; this helps explicit `rg bin/` etc.)
+
+/bin/
+/docs/bridge_interactive/*.json
+/docs/spark/*.json
+/docs/compliance/

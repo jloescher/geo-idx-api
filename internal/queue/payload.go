@@ -34,6 +34,8 @@ const (
 	TypeCryptoRefreshPricing       = "crypto.refresh_pricing"
 	TypeFEMAFloodEnrichKickoff     = "fema.flood_enrich_kickoff"
 	TypeFEMAFloodEnrichBatch       = "fema.flood_enrich_batch"
+	TypeMLSGeocodeListingsKickoff  = "mls.geocode_listings_kickoff"
+	TypeMLSGeocodeListingsBatch    = "mls.geocode_listings_batch"
 	TypeBatchComplete              = "queue.batch_complete"
 )
 

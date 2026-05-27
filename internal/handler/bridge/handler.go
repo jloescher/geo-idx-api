@@ -236,7 +236,7 @@ func (h *Handler) finishProxy(c *fiber.Ctx, auditType string, cli mlspoxy.ProxyC
 	if status >= 200 && status < 300 {
 		body = images.RewriteBytes(h.rewriter, body, mlspoxy.Feed(c).Dataset, listingKey)
 		if listingKey != "" {
-			body = mls.SanitizeUpstreamPropertyJSON(body)
+			body = mls.SanitizeUpstreamPropertyJSONWithDataset(body, mlspoxy.Feed(c).Dataset)
 		}
 		if c.Query("include_pricing") == "1" {
 			body = h.pricing.InjectIntoJSON(c.Context(), body)

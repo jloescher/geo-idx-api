@@ -62,6 +62,8 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 	// GIS (mls.access bypasses feed check inside middleware)
 	v1.Get("/gis", gisH.Show)
 	v1.Get("/mls/:mlsCode/gis", gisH.ShowForMLS)
+	v1.Get("/gis/autocomplete/cities", gisH.AutocompleteCities)
+	v1.Get("/gis/autocomplete/counties", gisH.AutocompleteCounties)
 
 	// MLS web API (dataset-agnostic paths)
 	v1.Get("/listings", bridgeH.Listings)

@@ -109,7 +109,7 @@ func (e *Engine) writeThroughClosedCache(ctx context.Context, repo *compscache.R
 		if c.ListingKey == "" || c.ClosePrice <= 0 {
 			continue
 		}
-		normalized := mls.SanitizeUpstreamPropertyJSON(raw)
+		normalized := mls.SanitizeUpstreamPropertyJSONForInternal(raw)
 		row := compscache.ClosedUpsertRow{
 			ListingKey:     c.ListingKey,
 			StandardStatus: strings.ToLower(strings.TrimSpace(c.StandardStatus)),

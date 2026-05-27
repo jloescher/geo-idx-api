@@ -173,6 +173,12 @@ func upsertListing(ctx context.Context, tx pgx.Tx, rec mls.ListingRecord) error 
 			subdivision_name, elementary_school, middle_or_junior_school, high_school,
 			special_listing_conditions, raw_data, media, unit, room, open_house, custom_fields,
 			street_number, street_name, list_agent_mls_id, list_office_mls_id,
+			garage_spaces, mls_area_major, days_on_market, tax_annual_amount,
+			heating_yn, cooling_yn, carport_yn, attached_garage_yn,
+			internet_consumer_comment_yn, internet_address_display_yn,
+			internet_entire_listing_display_yn, internet_automated_valuation_display_yn,
+			idx_participation_yn, idx_office_participation_yn,
+			unparsed_address, public_remarks,
 			mirror_persisted_at, created_at, updated_at
 		) VALUES (
 			$1, $2, $3, $4,
@@ -187,6 +193,10 @@ func upsertListing(ctx context.Context, tx pgx.Tx, rec mls.ListingRecord) error 
 			$37, $38, $39, $40,
 			$41, $42, $43, $44, $45, $46, $47,
 			$48, $49, $50, $51,
+			$52, $53, $54, $55,
+			$56, $57, $58, $59,
+			$60, $61, $62, $63,
+			$64, $65, $66, $67,
 			NOW(), NOW(), NOW()
 		)
 		ON CONFLICT (dataset_slug, listing_key) DO UPDATE SET
@@ -238,6 +248,22 @@ func upsertListing(ctx context.Context, tx pgx.Tx, rec mls.ListingRecord) error 
 			street_name = EXCLUDED.street_name,
 			list_agent_mls_id = EXCLUDED.list_agent_mls_id,
 			list_office_mls_id = EXCLUDED.list_office_mls_id,
+			garage_spaces = EXCLUDED.garage_spaces,
+			mls_area_major = EXCLUDED.mls_area_major,
+			days_on_market = EXCLUDED.days_on_market,
+			tax_annual_amount = EXCLUDED.tax_annual_amount,
+			heating_yn = EXCLUDED.heating_yn,
+			cooling_yn = EXCLUDED.cooling_yn,
+			carport_yn = EXCLUDED.carport_yn,
+			attached_garage_yn = EXCLUDED.attached_garage_yn,
+			internet_consumer_comment_yn = EXCLUDED.internet_consumer_comment_yn,
+			internet_address_display_yn = EXCLUDED.internet_address_display_yn,
+			internet_entire_listing_display_yn = EXCLUDED.internet_entire_listing_display_yn,
+			internet_automated_valuation_display_yn = EXCLUDED.internet_automated_valuation_display_yn,
+			idx_participation_yn = EXCLUDED.idx_participation_yn,
+			idx_office_participation_yn = EXCLUDED.idx_office_participation_yn,
+			unparsed_address = EXCLUDED.unparsed_address,
+			public_remarks = EXCLUDED.public_remarks,
 			mirror_persisted_at = NOW(),
 			updated_at = NOW()
 	`,
@@ -258,6 +284,12 @@ func upsertListing(ctx context.Context, tx pgx.Tx, rec mls.ListingRecord) error 
 		nullableJSONB(rec.OpenHouse, rec.HasOpenHouse),
 		rec.CustomFields,
 		rec.StreetNumber, rec.StreetName, rec.ListAgentMlsID, rec.ListOfficeMlsID,
+		rec.GarageSpaces, rec.MLSAreaMajor, rec.DaysOnMarket, rec.TaxAnnualAmount,
+		rec.HeatingYN, rec.CoolingYN, rec.CarportYN, rec.AttachedGarageYN,
+		rec.InternetConsumerCommentYN, rec.InternetAddressDisplayYN,
+		rec.InternetEntireListingDisplayYN, rec.InternetAutomatedValuationDisplayYN,
+		rec.IDXParticipationYN, rec.IDXOfficeParticipationYN,
+		rec.UnparsedAddress, rec.PublicRemarks,
 	)
 	if err != nil {
 		return wrapListingPersistErr(rec, err)
