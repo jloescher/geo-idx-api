@@ -27,7 +27,13 @@ Top-level keys:
 ### Subject
 
 - `subject.type`: `mls` or `off_market`
-- `mls`: requires `subject.listing_id`
+- `mls`: requires `subject.listing_id` (use `listings.mls_listing_id`; `listing_key` is also accepted)
+  - Resolution order:
+    1. `listings` mirror lookup by `mls_listing_id` (fallback `listing_key`) in the active feed dataset
+    2. If no mirror row exists (for example, closed-only historical listing), live RESO OData lookup with:
+       - `StandardStatus eq 'Closed'`
+       - `(ListingId eq '<id>' or ListingKey eq '<id>')`
+    3. Most recent closed match (`$orderby=CloseDate desc`, `$top=1`) is used as subject
 - `off_market`: requires `subject.lat`, `subject.lng`
 - Optional subject enrichments now supported:
   - `garage_spaces`, `carport_spaces`, `covered_spaces`, `open_parking_spaces`, `parking_stalls_total`
@@ -55,8 +61,8 @@ Top-level keys:
   - returns `bpo_result` with full 14-line adjustment grid, reconciliation, and confidence scoring
 - `home_value`:
   - Home value estimation from owner-provided details or an active MLS listing
-  - Two paths: `address` + geocoding via Google Maps, or `listing_id` + Bridge lookup
-  - When `listing_id` is provided, property details auto-populate from the MLS/upstream Property row
+  - Two paths: `address` + geocoding via Google Maps, or `listing_id` + mirror lookup
+  - When `listing_id` is provided, property details auto-populate from the mirrored listing row (`mls_listing_id` match, `listing_key` fallback)
   - **Condition:** pass `subject.condition` explicitly (`poor`, `fair`, `good`, `excellent`), or omit it to auto-derive from the listing (`PropertyCondition` then `PublicRemarks`; see below). When no match is found, the condition adjustment is skipped (`condition_applied: false`).
   - Renovation credits (kitchen, bathrooms, HVAC) derived from market data (scales with local price levels)
   - Expanded `property_type` enum: `sfr`, `townhouse`, `condo`, `manufactured`, `duplex`, `triplex`, `quadplex`, `modular`
@@ -135,7 +141,7 @@ Renovation credit amounts are derived from the market's `gla_per_sf` and median 
 `home_value` mode supports two subject resolution paths:
 
 1. **Address path** (`address` provided) -- geocoded via Google Maps API to resolve lat/lng, uses owner-provided details
-2. **Listing ID path** (`listing_id` provided) -- fetches active listing from Bridge, auto-populates all subject fields from the MLS record
+2. **Listing ID path** (`listing_id` provided) -- resolves listing in the mirror by `mls_listing_id` (or `listing_key` fallback), auto-populates all subject fields from the MLS record
 
 When `listing_id` is provided, the following fields are auto-populated from the listing record and become optional in the request: `address`, `bedrooms`, `full_bathrooms`, `living_area_sqft`, `year_built`, `property_type`, `stories`, `pool`, `waterfront`, `garage_spaces`, `subdivision_name`, `mls_area_major`.
 
@@ -162,7 +168,7 @@ When `listing_id` is provided, the following fields are auto-populated from the 
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `listing_id` | string | MLS listing ID -- fetches property details from Bridge, alternative to `address` |
+| `listing_id` | string | MLS listing ID (`listings.mls_listing_id`) -- resolves property details from the mirror (with `listing_key` fallback), alternative to `address` |
 | `condition` | string | One of: `poor`, `fair`, `good`, `excellent` (auto-derived from listing when using `listing_id`) |
 | `garage_spaces` | integer | Garage parking spaces |
 | `pool` | boolean | Has private pool |

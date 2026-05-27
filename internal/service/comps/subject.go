@@ -2,9 +2,11 @@ package comps
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
 
@@ -46,19 +48,26 @@ func (e *Engine) subjectFromMLS(ctx context.Context, dataset string, in SubjectI
 	}
 	dbRow := pool.QueryRow(ctx, `
 		SELECT `+mls.MirrorListingColumns+`, list_price
-		FROM listings WHERE dataset_slug = $1 AND listing_key = $2
+		FROM listings
+		WHERE dataset_slug = $1
+		  AND (mls_listing_id = $2 OR listing_key = $2)
+		ORDER BY CASE WHEN mls_listing_id = $2 THEN 0 ELSE 1 END
+		LIMIT 1
 	`, ds, key)
 	mirrorRow, err := mls.ScanMirrorListingRow(func(dest ...any) error {
 		return dbRow.Scan(append(dest, &listPrice)...)
 	})
 	if err != nil {
-		return SubjectProfile{}, fmt.Errorf("subject listing not found in mirror: %s", key)
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return SubjectProfile{}, err
+		}
+		return e.subjectFromLiveClosed(ctx, ds, key, in)
 	}
 	merged := mls.BuildPublicListingJSON(mirrorRow)
 	comp := parseProperty(merged)
 	sub := SubjectProfile{
 		Type:         "mls",
-		ListingKey:   key,
+		ListingKey:   mirrorRow.ListingKey,
 		ListingID:    in.ListingID,
 		Lat:          comp.Lat,
 		Lng:          comp.Lng,
