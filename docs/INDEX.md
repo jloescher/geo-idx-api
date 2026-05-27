@@ -8,9 +8,10 @@ Central index for **idx-api** (Go 1.25+). Implementation lives in `cmd/` and `in
 
 | Document | Description |
 |----------|-------------|
-| [HTTP API overview](api.md) | `/api/v1`, GIS, auth (domain + PAT), dashboard tokens, OpenAPI |
+| [HTTP API overview](api.md) | Current route groups, auth model, and API surface summary |
+| [Route reference (code-aligned)](routes-reference.md) | Full method/path/auth map from Fiber route registration |
 | [Go cutover runbook](go-cutover.md) | Laravel → Go migration, queue purge, API key re-issue |
-| [OpenAPI spec](yaak-api-collection.json) | OpenAPI 3.1 source (`GET /openapi.json`, `GET /swagger` on API host) |
+| [OpenAPI spec](yaak-api-collection.json) | OpenAPI 3.1 source for JSON/API endpoints (`/api`, `/api/v1`, `/images`, infra) |
 | [Bridge / MLS API](bridge-api-documentation.md) | Bridge Data Output upstream reference |
 | [Spark Platform (Beaches MLS)](spark/README.md) | Integration, RESO, compliance, fixtures |
 | [Spark — idx-api integration](spark/idx-api-integration.md) | Replication, dual hosts, queues, hybrid search |

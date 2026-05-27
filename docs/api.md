@@ -1,80 +1,42 @@
 # idx-api HTTP API overview
 
-This document summarizes **versioned JSON APIs** exposed by the **Go** idx-api service (Fiber on port **8000**).
+This document summarizes the currently registered HTTP surface in the Go Fiber app (`internal/api/routes.go` + dashboard/static mounts).
 
-## OpenAPI 3.1 + Swagger UI
+## Canonical machine-readable API doc
 
-- **Spec document (OpenAPI 3.1):** `GET /openapi.json`
-- **Swagger UI:** `GET /swagger`
-- **Spec source file:** `docs/yaak-api-collection.json`
+- OpenAPI source file: `docs/yaak-api-collection.json`
+- This repository does **not** currently register `/openapi.json` or `/swagger` routes in `internal/api/routes.go`.
 
-The Swagger page loads the canonical `openapi: "3.1.0"` document served by the API host.
+## Route groups
 
-## Authenticated IDX / Bridge proxy (`/api/v1`)
+- Infrastructure (public): `/healthz`, `/readyz`, `/health/replicas`, `/metrics`
+- Marketing/static (public): `/`, `/static/*`
+- API auth: `/api/auth/token`, `/api/auth/user`
+- Versioned API: `/api/v1/*` (MLS proxy, GIS, search, comps, operations)
+- Admin API (session-cookie protected): `/api/v1/admin/*`
+- Image proxy: `/images/:listingKey/:photoId`
+- Dashboard HTML/session flows: `/login`, `/logout`, `/dashboard/*`, `/invite/:token`
 
-All routes under `/api/v1` use **domain + token** middleware (`internal/api/middleware/domain_token.go`): domain header / Referer host **or** Bearer PAT with `idx:access` or `idx:full`, plus domain binding for token calls.
+## Authentication model (code-aligned)
 
-**Access model (Go):** Bridge, search, and comps return **full** payloads for any authenticated `domain.token` caller (`idx:access` or `idx:full`). **GIS** applies teaser limits (`GIS_TEASER_MAX_FEATURES`, `GIS_TEASER_COORD_DECIMALS`) when the PAT has `idx:access` only (no `idx:full`). Domain identification and `idx:full` tokens set `MLSFullAccess=true` and receive full GIS GeoJSON.
+- `DomainToken` middleware protects `/api/v1/*` and `/images/*`.
+- Token mode: `Authorization: Bearer <token>` with `idx:access` or `idx:full`, plus `X-Domain-Slug` header or `?domain=` query.
+- Domain mode (no bearer): domain resolved from `X-Domain-Slug`, `?domain=`, or `Referer` host.
+- `MLSAccess` middleware resolves allowed dataset/feed for `/api/v1/*` except GIS bypass paths.
+- Admin API routes (`/api/v1/admin/*`) require dashboard `session_id` cookie via `SessionAuthMiddleware`.
 
-Core resources: listings, agents, offices, RESO Property, members, public parcels bridge, **structured search**, etc. See [`docs/idx-api-bridge-proxy.md`](idx-api-bridge-proxy.md) and [`docs/bridge-api-documentation.md`](bridge-api-documentation.md).
+## Token issuance
 
-### New: Comparables, investor analysis & home value estimation (`POST /api/v1/comps/run`)
+`POST /api/auth/token` accepts:
 
-Comps endpoint supports standard sale-comps modes (`A`–`E`), investor modes (`rent_hold_cashflow`, `flip_vs_hold`, `appraiser_simulation`), BPO mode (`bpo`) with URAR-style market-derived adjustments, and **home value estimation** (`home_value`) for off-market properties using Google Maps geocoding.
+- `email` (string)
+- `password` (string)
 
-- Uses the same `domain.token` middleware and dataset resolution path as other `/api/v1` routes
-- Investor modes, BPO, and home value are available to all callers that pass `domain.token` (verified domain or PAT + domain slug)
-- Home value mode accepts owner-provided property details (address, bedrooms, bathrooms, condition, renovations) and returns an estimated value with confidence scoring
-- Renovation credits are dynamically derived from market data (not static)
-- Includes garage/parking, view, subdivision, and MLS area matching extensions
+It returns a token payload:
 
-See [`docs/comps-api.md`](comps-api.md) for request/response details and mode behavior.
+- `token` (plaintext PAT)
+- `abilities` (currently includes `idx:full`)
 
-### New: Listing pricing enrichment (`GET /api/v1/listings`, `GET /api/v1/listings/{listingId}`)
+## Detailed endpoint reference
 
-Listings responses now include:
-- a top-level `pricing` object (`status`, `as_of`, and quote matrix), and
-- `pricing_converted` on each listing item with fiat + digital asset conversions derived from `ListPrice`.
-
-Refresh pipeline details:
-- CoinGecko quotes are refreshed on a schedule via queue job `crypto.refresh_pricing` (`cmd/scheduler` → `cmd/worker`).
-- Snapshots stored in PostgreSQL `crypto_price_snapshots`.
-- Read path does not call CoinGecko; listing enrichment uses cache/DB only.
-
-### Structured Search endpoint (`POST /api/v1/search`)
-
-The search endpoint accepts JSON payloads with filter criteria and returns paginated results with computed statistics. **Routing is hybrid:** Active/Pending inventory is served from the local PostGIS **`listings`** mirror when possible; **Closed** (and some special filters) use live Bridge OData; requests that mix Active/Pending and Closed merge both sources before pagination.
-
-**Features:**
-- Multi-dataset support (validated against domain's `allowed_mls_datasets`)
-- Structured filters: location (cities, counties, states), price range, beds/baths, property types, features (pool, waterfront), etc.
-- **PostGIS mirror leg** (Active/Pending): queries indexed columns; each hit is assembled into a **flat RESO Property** from typed columns + JSONB navigation + flat-merged `custom_fields` (no `raw_data` / `custom_fields` keys in the response) — [Listings mirror](listings-mirror.md#api-responses-mirror-backed). `low_risk_floodzone` → `listings.flood_zone_code`; `min_monthly_fees` / `max_monthly_fees` → `listings.estimated_total_monthly_fees` (Beaches: association fees normalized to monthly at persist — see [Spark integration](spark/idx-api-integration.md#normalized-mirror-columns-persist--replication-updates))
-- **Live proxy leg** (Closed, collections): upstream OData JSON — not mirror-assembled; see [Listings mirror — live proxy](listings-mirror.md#api-responses-mirror-backed)
-- **Hybrid routing:** mirror for Active/Pending; Bridge for Closed-only or unsupported statuses; split merge when both appear in `status` / `statuses`
-- OData cursor pagination via `@odata.nextLink` (Bridge leg; mirror leg uses SQL offset/limit)
-- 15-minute result caching (same cache mechanism as listings)
-- No teaser gating on search (GIS teaser applies to `idx:access`-only PATs; see [GIS API](gis-api.md))
-- Image URL rewriting to `idx-images` host
-
-See [IDX-API Bridge proxy — Search endpoint](idx-api-bridge-proxy.md#search-endpoint-post-apiv1search) for request body, filter mapping, and the routing table.
-
-### How to obtain a Bearer token for `/api/v1`
-
-| Source | Abilities | Works with `domain.token`? |
-|--------|-----------|----------------------------|
-| **Auto-issued Production** (GeoIDX Setup — first domain verification) | **`idx:full`** | Yes — auto-created on first TXT verify; shown once in Setup panel. |
-| **Staging** (Setup panel or `POST /dashboard/api-tokens/staging`) | **`idx:full`** | Yes — one-click Staging key for preview/staging sites (same domain slug, different Bearer). |
-| **Custom named** (API Keys panel or `POST /dashboard/api-tokens`) | **`idx:full`** | Yes — for additional server or tooling calls to `/api/v1/*`. |
-| **`POST /api/auth/token`** (email + password + `device_name`) | **`idx:full`** | Yes for `/api/v1/*` when paired with domain identification as above (same as other PATs). |
-
-All tokens require **`X-Domain-Slug`** or **`?domain=`** with a verified domain on the same account. Dashboard PATs are minted with **`idx:full`**. Details: [IDX-API Bridge proxy — Dashboard API keys](idx-api-bridge-proxy.md#dashboard-api-keys).
-
-## GIS public overlay (`/api/v1/gis`)
-
-**New:** Florida **public government** parcel GeoJSON proxy for Leaflet overlays—**not MLS data**.
-
-- **Routes:** `GET /api/v1/gis`, `GET /api/v1/mls/{mlsCode}/gis`
-- **Docs:** [`docs/gis-api.md`](gis-api.md) (HTTP surface), [`docs/gis-sources.md`](gis-sources.md) (county REST catalog, FDOR/FDOT findings, MLS coverage)
-- **Caching:** In-process edge read of `gis_cache` (Postgres origin, TTL `GIS_EDGE_CACHE_TTL`, default 900s) plus per-source max age in days; invalidated when weekly `gis.probe_sources` jobs bump `gis_source_states.generation`. See [`docs/gis-api.md`](gis-api.md).
-
-Use this alongside `/api/v1/listings` with the same viewport parameters for a single map flow.
+For a full route-by-route table (methods, auth, handlers, and behavior notes), see `docs/routes-reference.md`.
