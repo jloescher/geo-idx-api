@@ -104,11 +104,33 @@ func (r *MonitoringRepo) CacheHitRate15m(ctx context.Context) (CacheHitStats, er
 // QueueCount is pending/reserved/failed jobs for a queue name.
 type QueueCount struct {
 	Queue         string `json:"queue"`
-	Pending       int64  `json:"pending"`
-	Reserved      int64  `json:"reserved"`
+	Pending       int64  `json:"pending"`   // ready now (not reserved, available_at <= now)
+	Scheduled     int64  `json:"scheduled"` // delayed (not reserved, available_at > now)
+	Reserved      int64  `json:"reserved"`  // claimed by a worker
 	Failed        int64  `json:"failed"`
 	FailedRecent  int64  `json:"failed_recent"`
 	StaleReserved int64  `json:"stale_reserved"`
+}
+
+// InFlightJob is a row in jobs that is ready, scheduled, or reserved.
+type InFlightJob struct {
+	JobID      int64  `json:"job_id"`
+	Queue      string `json:"queue"`
+	JobType    string `json:"job_type"`
+	State      string `json:"state"` // ready, scheduled, reserved
+	AgeSeconds int64  `json:"age_seconds"`
+	Attempts   int    `json:"attempts"`
+	Stale      bool   `json:"stale"`
+}
+
+// ActiveJobBatch is an open job_batches row still draining child jobs.
+type ActiveJobBatch struct {
+	BatchID     string `json:"batch_id"`
+	Name        string `json:"name"`
+	PendingJobs int    `json:"pending_jobs"`
+	TotalJobs   int    `json:"total_jobs"`
+	FailedJobs  int    `json:"failed_jobs"`
+	AgeSeconds  int64  `json:"age_seconds"`
 }
 
 // ListQueueCounts returns job counts grouped by queue.
@@ -120,6 +142,7 @@ func (r *MonitoringRepo) ListQueueCounts(ctx context.Context, staleReservedAfter
 	rows, err := r.db.Pool.Query(ctx, `
 		SELECT q.queue,
 		       COALESCE(j.pending, 0) AS pending,
+		       COALESCE(j.scheduled, 0) AS scheduled,
 		       COALESCE(j.reserved, 0) AS reserved,
 		       COALESCE(f.failed, 0) AS failed,
 		       COALESCE(fr.failed_recent, 0) AS failed_recent,
@@ -132,6 +155,7 @@ func (r *MonitoringRepo) ListQueueCounts(ctx context.Context, staleReservedAfter
 		LEFT JOIN (
 			SELECT queue,
 			       COUNT(*) FILTER (WHERE reserved_at IS NULL AND available_at <= EXTRACT(EPOCH FROM NOW())::bigint) AS pending,
+			       COUNT(*) FILTER (WHERE reserved_at IS NULL AND available_at > EXTRACT(EPOCH FROM NOW())::bigint) AS scheduled,
 			       COUNT(*) FILTER (WHERE reserved_at IS NOT NULL) AS reserved,
 			       COUNT(*) FILTER (
 			       	WHERE reserved_at IS NOT NULL
@@ -158,7 +182,7 @@ func (r *MonitoringRepo) ListQueueCounts(ctx context.Context, staleReservedAfter
 	out := make([]QueueCount, 0)
 	for rows.Next() {
 		var row QueueCount
-		if err := rows.Scan(&row.Queue, &row.Pending, &row.Reserved, &row.Failed, &row.FailedRecent, &row.StaleReserved); err != nil {
+		if err := rows.Scan(&row.Queue, &row.Pending, &row.Scheduled, &row.Reserved, &row.Failed, &row.FailedRecent, &row.StaleReserved); err != nil {
 			return nil, err
 		}
 		out = append(out, row)
@@ -343,6 +367,116 @@ type JobTypeCount struct {
 	Queue   string `json:"queue"`
 	JobType string `json:"job_type"`
 	Count   int64  `json:"count"`
+}
+
+// ListInFlightJobs returns ready, scheduled, and reserved jobs for the ops dashboard.
+func (r *MonitoringRepo) ListInFlightJobs(ctx context.Context, staleReservedAfterSec, limit int) ([]InFlightJob, error) {
+	if staleReservedAfterSec < 60 {
+		staleReservedAfterSec = 600
+	}
+	if limit < 1 {
+		limit = 25
+	}
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT j.id,
+		       j.queue,
+		       COALESCE(NULLIF(substring(j.payload from '"type"\s*:\s*"([^"]+)"'), ''), 'unknown') AS job_type,
+		       CASE
+		           WHEN j.reserved_at IS NOT NULL THEN 'reserved'
+		           WHEN j.available_at > EXTRACT(EPOCH FROM NOW())::bigint THEN 'scheduled'
+		           ELSE 'ready'
+		       END AS state,
+		       EXTRACT(EPOCH FROM (
+		           NOW() - to_timestamp(CASE WHEN j.reserved_at IS NOT NULL THEN j.reserved_at ELSE j.created_at END)
+		       ))::bigint AS age_seconds,
+		       j.attempts,
+		       (
+		           j.reserved_at IS NOT NULL
+		           AND j.reserved_at < EXTRACT(EPOCH FROM NOW())::bigint - $1::bigint
+		       ) AS stale
+		FROM jobs j
+		ORDER BY
+		    CASE WHEN j.reserved_at IS NOT NULL THEN 0 ELSE 1 END,
+		    CASE WHEN j.reserved_at IS NOT NULL THEN j.reserved_at ELSE j.available_at END ASC,
+		    j.id ASC
+		LIMIT $2
+	`, staleReservedAfterSec, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]InFlightJob, 0)
+	for rows.Next() {
+		var row InFlightJob
+		if err := rows.Scan(&row.JobID, &row.Queue, &row.JobType, &row.State, &row.AgeSeconds, &row.Attempts, &row.Stale); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// ListActiveJobBatches returns unfinished batches with pending or failed child jobs.
+func (r *MonitoringRepo) ListActiveJobBatches(ctx context.Context, limit int) ([]ActiveJobBatch, error) {
+	if limit < 1 {
+		limit = 10
+	}
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT id,
+		       name,
+		       pending_jobs,
+		       total_jobs,
+		       failed_jobs,
+		       EXTRACT(EPOCH FROM (NOW() - to_timestamp(created_at)))::bigint AS age_seconds
+		FROM job_batches
+		WHERE finished_at IS NULL
+		  AND (pending_jobs > 0 OR failed_jobs > 0)
+		ORDER BY created_at DESC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]ActiveJobBatch, 0)
+	for rows.Next() {
+		var row ActiveJobBatch
+		if err := rows.Scan(&row.BatchID, &row.Name, &row.PendingJobs, &row.TotalJobs, &row.FailedJobs, &row.AgeSeconds); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// TopReservedJobTypes groups currently reserved jobs by queue and payload type.
+func (r *MonitoringRepo) TopReservedJobTypes(ctx context.Context, limit int) ([]JobTypeCount, error) {
+	if limit < 1 {
+		limit = 10
+	}
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT queue,
+		       COALESCE(NULLIF(substring(payload from '"type"\s*:\s*"([^"]+)"'), ''), 'unknown') AS job_type,
+		       COUNT(*) AS cnt
+		FROM jobs
+		WHERE reserved_at IS NOT NULL
+		GROUP BY queue, job_type
+		ORDER BY cnt DESC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]JobTypeCount, 0)
+	for rows.Next() {
+		var row JobTypeCount
+		if err := rows.Scan(&row.Queue, &row.JobType, &row.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
 }
 
 // TopPendingJobTypes returns the busiest pending job types (limit 10).

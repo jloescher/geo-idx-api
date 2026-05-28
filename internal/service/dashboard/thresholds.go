@@ -1,6 +1,9 @@
 package dashboard
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/quantyralabs/idx-api/internal/repository"
 )
 
@@ -116,8 +119,48 @@ type IncidentInput struct {
 	SchedulerBackendCount  int64
 	TotalStaleReserved     int64
 	StaleReservedAfterSecs int
+	StaleInFlight          []repository.InFlightJob
 	TotalFailed            int64
 	SyncPipelineStatus     string
+}
+
+// StaleReservedIncidentDetail builds warning copy for stale reserved queue jobs.
+func StaleReservedIncidentDetail(in IncidentInput) string {
+	base := "Jobs reserved longer than " + formatStaleReservedThreshold(in.StaleReservedAfterSecs) + " (half of DB_QUEUE_RESERVATION_TIMEOUT). Workers may have crashed or the job is stuck."
+	if len(in.StaleInFlight) == 0 {
+		return base + " Check Queues → In-flight jobs."
+	}
+	const max = 3
+	var parts []string
+	for i, job := range in.StaleInFlight {
+		if i >= max {
+			break
+		}
+		parts = append(parts, job.Queue+" "+job.JobType+" (id "+formatInt64(job.JobID)+", "+formatInt64(job.AgeSeconds)+"s)")
+	}
+	return base + " Examples: " + strings.Join(parts, "; ") + "."
+}
+
+func formatStaleReservedThreshold(sec int) string {
+	if sec < 60 {
+		return strconv.Itoa(sec) + "s"
+	}
+	return strconv.Itoa(sec/60) + "m"
+}
+
+func formatInt64(n int64) string {
+	return strconv.FormatInt(n, 10)
+}
+
+// filterStaleInFlight returns reserved jobs past the stale threshold for incident copy.
+func filterStaleInFlight(jobs []repository.InFlightJob) []repository.InFlightJob {
+	out := make([]repository.InFlightJob, 0, len(jobs))
+	for _, j := range jobs {
+		if j.Stale {
+			out = append(out, j)
+		}
+	}
+	return out
 }
 
 func schedulerLeaderIncidentDetail(in IncidentInput) string {
@@ -152,7 +195,7 @@ func BuildIncidents(in IncidentInput) []IncidentMetric {
 			Severity: "warning",
 			Source:   "queues",
 			Title:    "Stale reserved jobs detected",
-			Detail:   "At least one queue has jobs reserved longer than the monitoring stale threshold.",
+			Detail:   StaleReservedIncidentDetail(in),
 		})
 	}
 	if in.TotalFailed > 0 {

@@ -105,7 +105,14 @@ ${statusChip}
     return [
       tile("Datasets", fmtNum(listings.length), `${fmtNum(staleListings)} stale`, null, staleListings > 0 ? "stale" : "healthy", "Listing datasets"),
       tile("Open incidents", fmtNum(incidents.length), "Across monitoring tabs", null, incidents.some((i) => i.severity === "critical") ? "critical" : incidents.length > 0 ? "stale" : "healthy", "Open incidents"),
-      tile("Queue pending", fmtNum(queues.total_pending), `${fmtNum(queues.total_stale_reserved)} stale reserved`, null, queues.status || "unknown", "Queue pending jobs"),
+      tile(
+        "Queue depth",
+        fmtNum((queues.total_pending || 0) + (queues.total_reserved || 0) + (queues.total_scheduled || 0)),
+        `${fmtNum(queues.total_reserved || 0)} reserved · ${fmtNum(queues.total_stale_reserved || 0)} stale`,
+        null,
+        queues.status || "unknown",
+        "In-flight queue jobs"
+      ),
       tile(
         "Cache hit rate",
         fmtPct(cache.hit_rate_pct),
@@ -257,14 +264,31 @@ ${statusChip}
   function renderQueuePanel(data) {
     const queues = data.queues || {};
     const queueRows = queues.by_queue || [];
+    const staleAfterMin = Math.round((queues.stale_reserved_after_seconds || 600) / 60);
     const rollupTiles = [
       tile(
-        "Pending",
+        "Ready",
         fmtNum(queues.total_pending),
-        `${fmtNum(queues.total_stale_reserved || 0)} stale reserved`,
+        "Available now (not reserved)",
         null,
-        queues.status === "healthy" ? "healthy" : queues.status || "unknown",
-        "Total pending jobs"
+        (queues.total_pending || 0) > QUEUE_PENDING_STALE ? "stale" : "healthy",
+        "Jobs ready to reserve"
+      ),
+      tile(
+        "Reserved",
+        fmtNum(queues.total_reserved),
+        `${fmtNum(queues.total_stale_reserved || 0)} stale (>${staleAfterMin}m)`,
+        null,
+        (queues.total_stale_reserved || 0) > 0 ? "stale" : (queues.total_reserved || 0) > 0 ? "healthy" : "healthy",
+        "Jobs claimed by workers"
+      ),
+      tile(
+        "Scheduled",
+        fmtNum(queues.total_scheduled),
+        "Delayed (available_at in future)",
+        null,
+        (queues.total_scheduled || 0) > 0 ? "healthy" : "healthy",
+        "Delayed jobs"
       ),
       tile(
         "Failed (7d)",
@@ -273,14 +297,6 @@ ${statusChip}
         null,
         (queues.total_failed_recent || 0) > 0 ? "stale" : "healthy",
         "Recent failed jobs"
-      ),
-      tile(
-        "Queues tracked",
-        fmtNum(queueRows.length),
-        queues.status === "healthy" && queueRows.length ? "Configured workers listening" : "From WORKER_QUEUES + sync queues",
-        null,
-        queueRows.length ? "healthy" : "unknown",
-        "Known queue roll-up"
       ),
     ];
     const cache = data.cache || {};
@@ -298,15 +314,25 @@ ${statusChip}
     const queueTiles = queueRows.map((q) => {
       const name = q.queue || "unknown";
       const pending = q.pending ?? 0;
+      const scheduled = q.scheduled ?? 0;
       const reserved = q.reserved ?? 0;
+      const staleReserved = q.stale_reserved ?? 0;
       const failed = q.failed ?? 0;
       const failedRecent = q.failed_recent ?? 0;
+      const chip =
+        staleReserved > 0 || failedRecent > 0
+          ? "stale"
+          : pending > QUEUE_PENDING_STALE
+            ? "stale"
+            : reserved > 0 || pending > 0 || scheduled > 0
+              ? "healthy"
+              : "healthy";
       return tile(
         name,
-        fmtNum(pending),
-        `${fmtNum(reserved)} reserved · ${fmtNum(failed)} failed (${fmtNum(failedRecent)} in 7d)`,
+        fmtNum(pending + reserved + scheduled),
+        `${fmtNum(pending)} ready · ${fmtNum(reserved)} reserved (${fmtNum(staleReserved)} stale) · ${fmtNum(scheduled)} scheduled`,
         monitoringTabHref("queues"),
-        failedRecent > 0 || pending > QUEUE_PENDING_STALE ? "stale" : "healthy",
+        chip,
         `Queue ${name}`
       );
     });
@@ -337,16 +363,46 @@ ${statusChip}
         `Failed jobs ${row.queue} ${row.job_type}`
       )
     );
+    const inFlightRows = (queues.in_flight || []).map((row) => [
+      row.job_id ?? "—",
+      row.queue || "—",
+      row.job_type || "unknown",
+      row.state || "—",
+      fmtNum(row.age_seconds) + "s",
+      fmtNum(row.attempts),
+      row.stale ? "stale" : "ok",
+    ]);
+    const batchRows = (queues.active_batches || []).map((row) => [
+      row.name || row.batch_id || "—",
+      `${fmtNum(row.pending_jobs)} / ${fmtNum(row.total_jobs)}`,
+      fmtNum(row.failed_jobs),
+      fmtNum(row.age_seconds) + "s",
+    ]);
+    const readyTypeRows = (queues.top_job_types || []).slice(0, 10).map((row) => [
+      row.queue || "—",
+      row.job_type || "unknown",
+      fmtNum(row.count),
+    ]);
+    const reservedTypeRows = (queues.reserved_job_types || []).slice(0, 10).map((row) => [
+      row.queue || "—",
+      row.job_type || "unknown",
+      fmtNum(row.count),
+    ]);
+    const inFlightSection = inFlightRows.length
+      ? renderStatList("In-flight jobs", inFlightRows, ["ID", "Queue", "Type", "State", "Age", "Attempts", "Stale"])
+      : `<div class="metric-group"><h3 class="metric-group-title">In-flight jobs</h3><div class="empty-state"><p>No rows in jobs</p><p class="empty-hint">Successful jobs are deleted immediately. Reserved and ready rows appear here while work is outstanding.</p></div></div>`;
+    const batchSection = batchRows.length
+      ? renderStatList("Active batches", batchRows, ["Batch", "Pending / total", "Failed", "Age"])
+      : `<div class="metric-group"><h3 class="metric-group-title">Active batches</h3><div class="empty-state"><p>No open batches</p><p class="empty-hint">Multi-chunk persist batches (e.g. spark-replica-persist:beaches) show pending/total while workers drain chunks.</p></div></div>`;
     return (
       renderGroup("Queue Roll-up", rollupTiles) +
       renderGroup("Queue Health", queueTiles) +
+      inFlightSection +
+      batchSection +
       renderGroup("Queue Performance", cacheTiles) +
       renderGroup("Failed Jobs", failedTiles) +
-      renderStatList(
-        "Pending Job Types",
-        (queues.top_job_types || []).slice(0, 10).map((row) => [row.queue || "—", row.job_type || "unknown", fmtNum(row.count)]),
-        ["Queue", "Type", "Pending"]
-      )
+      renderStatList("Ready job types", readyTypeRows, ["Queue", "Type", "Ready"]) +
+      renderStatList("Reserved job types", reservedTypeRows, ["Queue", "Type", "Reserved"])
     );
   }
 

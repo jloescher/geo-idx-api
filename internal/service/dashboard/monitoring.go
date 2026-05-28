@@ -116,14 +116,20 @@ type CacheMetric struct {
 }
 
 type QueuesMetric struct {
-	ByQueue            []repository.QueueCount      `json:"by_queue"`
-	TopTypes           []repository.JobTypeCount    `json:"top_job_types"`
-	FailedTop          []repository.FailedJobDetail `json:"failed_top"`
-	TotalPending       int64                        `json:"total_pending"`
-	TotalStaleReserved int64                        `json:"total_stale_reserved"`
-	TotalFailed        int64                        `json:"total_failed"`
-	TotalFailedRecent  int64                        `json:"total_failed_recent"`
-	Status             string                       `json:"status"`
+	ByQueue                []repository.QueueCount      `json:"by_queue"`
+	TopTypes               []repository.JobTypeCount    `json:"top_job_types"`
+	ReservedTypes          []repository.JobTypeCount    `json:"reserved_job_types"`
+	InFlight               []repository.InFlightJob     `json:"in_flight"`
+	ActiveBatches          []repository.ActiveJobBatch  `json:"active_batches"`
+	FailedTop              []repository.FailedJobDetail `json:"failed_top"`
+	TotalPending           int64                        `json:"total_pending"`
+	TotalScheduled         int64                        `json:"total_scheduled"`
+	TotalReserved          int64                        `json:"total_reserved"`
+	TotalStaleReserved     int64                        `json:"total_stale_reserved"`
+	TotalFailed            int64                        `json:"total_failed"`
+	TotalFailedRecent      int64                        `json:"total_failed_recent"`
+	StaleReservedAfterSecs int                          `json:"stale_reserved_after_seconds"`
+	Status                 string                       `json:"status"`
 }
 
 type SyncPipelineMetric struct {
@@ -335,6 +341,27 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 	if topTypes == nil {
 		topTypes = make([]repository.JobTypeCount, 0)
 	}
+	reservedTypes, err := s.repo.TopReservedJobTypes(ctx, 10)
+	if err != nil {
+		return nil, err
+	}
+	if reservedTypes == nil {
+		reservedTypes = make([]repository.JobTypeCount, 0)
+	}
+	inFlight, err := s.repo.ListInFlightJobs(ctx, staleReservedAfter, 25)
+	if err != nil {
+		return nil, err
+	}
+	if inFlight == nil {
+		inFlight = make([]repository.InFlightJob, 0)
+	}
+	activeBatches, err := s.repo.ListActiveJobBatches(ctx, 10)
+	if err != nil {
+		return nil, err
+	}
+	if activeBatches == nil {
+		activeBatches = make([]repository.ActiveJobBatch, 0)
+	}
 	failedTop, err := s.repo.TopFailedJobDetails(ctx, 10)
 	if err != nil {
 		return nil, err
@@ -343,24 +370,34 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 		failedTop = make([]repository.FailedJobDetail, 0)
 	}
 	var pending int64
+	var scheduled int64
+	var reserved int64
 	var staleReserved int64
 	var totalFailed int64
 	var totalFailedRecent int64
 	for _, q := range queues {
 		pending += q.Pending
+		scheduled += q.Scheduled
+		reserved += q.Reserved
 		staleReserved += q.StaleReserved
 		totalFailed += q.Failed
 		totalFailedRecent += q.FailedRecent
 	}
 	snap.Queues = QueuesMetric{
-		ByQueue:            queues,
-		TopTypes:           topTypes,
-		FailedTop:          failedTop,
-		TotalPending:       pending,
-		TotalStaleReserved: staleReserved,
-		TotalFailed:        totalFailed,
-		TotalFailedRecent:  totalFailedRecent,
-		Status:             QueueStatus(pending, staleReserved, totalFailedRecent),
+		ByQueue:                queues,
+		TopTypes:               topTypes,
+		ReservedTypes:          reservedTypes,
+		InFlight:               inFlight,
+		ActiveBatches:          activeBatches,
+		FailedTop:              failedTop,
+		TotalPending:           pending,
+		TotalScheduled:         scheduled,
+		TotalReserved:          reserved,
+		TotalStaleReserved:     staleReserved,
+		TotalFailed:            totalFailed,
+		TotalFailedRecent:      totalFailedRecent,
+		StaleReservedAfterSecs: staleReservedAfter,
+		Status:                 QueueStatus(pending, staleReserved, totalFailedRecent),
 	}
 
 	snap.SyncPipeline = SyncPipelineMetric{
@@ -401,6 +438,7 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 		SchedulerBackendCount:  scheduler.SchedulerBackends,
 		TotalStaleReserved:     snap.Queues.TotalStaleReserved,
 		StaleReservedAfterSecs: staleReservedAfter,
+		StaleInFlight:          filterStaleInFlight(inFlight),
 		TotalFailed:            snap.Queues.TotalFailedRecent,
 		SyncPipelineStatus:     snap.SyncPipeline.Status,
 	})

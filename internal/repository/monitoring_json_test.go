@@ -7,7 +7,7 @@ import (
 
 func TestQueueCountJSONUsesSnakeCase(t *testing.T) {
 	raw, err := json.Marshal(QueueCount{
-		Queue: "bridge-sync-fetch", Pending: 3, Reserved: 1, Failed: 0,
+		Queue: "bridge-sync-fetch", Pending: 3, Scheduled: 1, Reserved: 1, Failed: 0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -16,7 +16,7 @@ func TestQueueCountJSONUsesSnakeCase(t *testing.T) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"queue", "pending", "reserved", "failed"} {
+	for _, key := range []string{"queue", "pending", "scheduled", "reserved", "failed", "stale_reserved"} {
 		if _, ok := m[key]; !ok {
 			t.Fatalf("missing json key %q in %s", key, raw)
 		}

@@ -4,8 +4,21 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/quantyralabs/idx-api/internal/repository"
 	"github.com/quantyralabs/idx-api/internal/service/dashboard"
 )
+
+func TestStaleReservedIncidentDetail(t *testing.T) {
+	detail := dashboard.StaleReservedIncidentDetail(dashboard.IncidentInput{
+		StaleReservedAfterSecs: 1800,
+		StaleInFlight: []repository.InFlightJob{
+			{JobID: 42, Queue: "spark-sync-persist", JobType: "spark.persist_chunk", AgeSeconds: 1900},
+		},
+	})
+	if !strings.Contains(detail, "spark.persist_chunk") || !strings.Contains(detail, "id 42") {
+		t.Fatalf("expected job detail in incident copy, got %q", detail)
+	}
+}
 
 func TestSchedulerLeaderIncidentDetail(t *testing.T) {
 	incidents := dashboard.BuildIncidents(dashboard.IncidentInput{

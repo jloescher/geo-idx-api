@@ -61,7 +61,7 @@ Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sess
 
 - **Overview**: system rollup, queue pressure, cache efficiency, activation counters.
 - **Ingest & Sync**: listing freshness + lag by dataset and `replica_pages` pipeline state.
-- **Queue & Jobs**: queue depth, stale reservations (derived from `DB_QUEUE_RESERVATION_TIMEOUT`), failed job hotspots.
+- **Queue & Jobs**: ready / reserved / scheduled roll-up, per-queue counts, **in-flight jobs** table (job id, type, state, age, stale flag), **active batches** (`job_batches`), ready vs reserved job-type breakdown, failed job hotspots.
 - **Data Quality**: GIS layer freshness (parcels, cities, counties, zips) and source status.
 - **Infrastructure**: scheduler advisory-lock leadership probe and infra health.
 - **Integrations**: crypto/dependency freshness.
@@ -76,8 +76,10 @@ Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sess
 | **GIS ops (admin)** | Data Quality tab: Probe / Sync / Probe all | Requires `is_admin`; see [gis-sources.md](gis-sources.md) |
 | **Crypto** | BTC/ETH/SOL USD + age | Stale if snapshot &gt;1h |
 | **Cache** | 15m hit rate from `mls_proxy_audit_logs` | `cache_hit` stored as `HIT`/`MISS`; status `no_data` when no audits in window |
-| **Queues** | pending/reserved/failed by queue + `total_failed` + stale_reserved | Merges configured `WORKER_QUEUES` and sync queue names with zero rows when `jobs`/`failed_jobs` are empty; reads primary pool |
-| **Queues (empty)** | per-queue tiles show `0` pending | No **UNKNOWN** placeholder when rollup status is healthy |
+| **Queues** | `pending` (ready now), `scheduled` (delayed), `reserved`, `stale_reserved`, failed | Merges configured `WORKER_QUEUES` with zero rows when empty; reads primary pool |
+| **In-flight jobs** | up to 25 rows from `jobs` | States: `ready`, `scheduled`, `reserved`; **stale** when reserved longer than half of `DB_QUEUE_RESERVATION_TIMEOUT` (min 10m) |
+| **Active batches** | open `job_batches` with `pending_jobs` or `failed_jobs` | Shows persist batch drain (e.g. `spark-replica-persist:beaches`) |
+| **Queues (empty)** | empty-state copy on in-flight / batches | Completed jobs are **deleted** from `jobs` on success — an empty table means idle workers, not “broken monitoring” |
 | **Queue failures** | top failed job types + latest exception preview | Grouped from `failed_jobs` via `payload::jsonb->>'type'` |
 | **Sync pipeline** | `replica_pages` counts by dataset/status | Empty table returns `by_status: []` and UI “sync idle”; stale when failed or pending &gt; 500 |
 | **Infrastructure** | scheduler advisory lock probe (`SCHEDULER_LEADER_LOCK_ID`) | `leader_active: false` = no session holds the lock; infra status `critical` |
