@@ -9,7 +9,7 @@ docs/scripts/.env.backfill.local
 /.nova
 /.zed
 Thumbs.db
-temp/
+
 
 # Go
 /bin/
