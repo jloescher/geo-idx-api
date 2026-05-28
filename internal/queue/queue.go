@@ -195,7 +195,7 @@ func (c *Client) reserveFromQueues(ctx context.Context, queues []string) (*Reser
 		return nil, nil
 	}
 	now := time.Now().Unix()
-	staleBefore := now - int64(c.reservationTimeout.Seconds())
+	staleBefore := c.reservationStaleBefore(now)
 
 	tx, err := c.pool.Begin(ctx)
 	if err != nil {
@@ -256,6 +256,15 @@ func (c *Client) reserveFromQueues(ctx context.Context, queues []string) (*Reser
 		Raw:      []byte(payloadStr),
 		attempts: attempts + 1,
 	}, nil
+}
+
+// reservationStaleBefore matches monitoring stale_reserved (half of reservation timeout, min 10m).
+func (c *Client) reservationStaleBefore(now int64) int64 {
+	sec := int64(c.reservationTimeout.Seconds()) / 2
+	if sec < 600 {
+		sec = 600
+	}
+	return now - sec
 }
 
 // Delete removes a successfully processed job.

@@ -3,8 +3,10 @@ package queue
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 )
 
@@ -27,6 +29,8 @@ type Worker struct {
 	fairPersistCursor int
 	fairOtherCursor   int
 	fairPoolCursor    int
+	mu                sync.Mutex
+	current           *ReservedJob
 }
 
 // WorkerRetryPolicy configures soft retries for MLS upstream failures.
@@ -145,6 +149,7 @@ func (w *Worker) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
+			w.releaseInFlight(ctx)
 			return ctx.Err()
 		default:
 		}
@@ -160,6 +165,7 @@ func (w *Worker) Run(ctx context.Context) error {
 			continue
 		}
 
+		w.setCurrent(job)
 		if err := w.process(ctx, job); err != nil {
 			w.logger.Error("job failed", "id", job.ID, "type", job.Payload.Type, "error", err)
 			_ = w.releaseFailed(ctx, job, err)
@@ -167,7 +173,31 @@ func (w *Worker) Run(ctx context.Context) error {
 			_ = w.client.Delete(ctx, job.ID)
 			w.handleBatchComplete(ctx, job)
 		}
+		w.clearCurrent()
 	}
+}
+
+func (w *Worker) setCurrent(job *ReservedJob) {
+	w.mu.Lock()
+	w.current = job
+	w.mu.Unlock()
+}
+
+func (w *Worker) clearCurrent() {
+	w.mu.Lock()
+	w.current = nil
+	w.mu.Unlock()
+}
+
+func (w *Worker) releaseInFlight(ctx context.Context) {
+	w.mu.Lock()
+	job := w.current
+	w.mu.Unlock()
+	if job == nil {
+		return
+	}
+	w.logger.Warn("releasing in-flight job on worker shutdown", "id", job.ID, "type", job.Payload.Type, "queue", job.Queue)
+	_ = w.client.ReleaseAt(context.WithoutCancel(ctx), job, 0, false)
 }
 
 func (w *Worker) process(ctx context.Context, job *ReservedJob) error {
@@ -213,6 +243,12 @@ func (w *Worker) wait(ctx context.Context, ticker *time.Ticker, notify <-chan st
 func (w *Worker) releaseFailed(ctx context.Context, job *ReservedJob, jobErr error) error {
 	if IsReconcileBusy(jobErr) {
 		return w.client.ReleaseAt(ctx, job, 2*time.Minute, true)
+	}
+	if errors.Is(jobErr, context.DeadlineExceeded) || errors.Is(jobErr, context.Canceled) {
+		if job.Attempts() >= w.maxAttempts {
+			return w.client.Fail(ctx, job, jobErr)
+		}
+		return w.client.ReleaseAt(ctx, job, w.timeoutRetry, false)
 	}
 	if IsRateLimited(jobErr) {
 		if job.Attempts() >= w.rateLimitMax {
