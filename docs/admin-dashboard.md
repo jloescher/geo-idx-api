@@ -88,7 +88,7 @@ Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sess
 
 ### Scheduler leadership verification (ops)
 
-The monitoring API probes the Patroni **primary** RW pool: if `pg_try_advisory_lock` succeeds, no scheduler holds `SCHEDULER_LEADER_LOCK_ID` (default `913374211`).
+The monitoring API observes `pg_locks` on the Patroni **primary** RW pool (it does **not** call `pg_try_advisory_lock` on the pool — that pattern leaked session locks and blocked real schedulers). `leader_active: true` means a granted advisory lock exists for `SCHEDULER_LEADER_LOCK_ID` (default `913374211`).
 
 1. **Coolify:** `idx-api-scheduler` NYC + ATL apps **Running**; one log stream shows `scheduler leader acquired`, the other `scheduler standby`.
 2. **Env:** Same `DB_RW_DSN` and `SCHEDULER_LEADER_LOCK_ID` on web and scheduler (see repo-root `temp/` paste templates — do not commit secrets).

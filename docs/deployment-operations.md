@@ -117,6 +117,44 @@ Enqueues periodic work: replication kickoff, **`mls.proxy_cache_purge`**, CoinGe
 | `scheduler leader acquired` | This instance holds the lock and runs cron |
 | `scheduler standby, waiting for leader lock` | Peer instance; safe to leave running for failover |
 
+### Scheduler incident troubleshooting (NYC + ATL)
+
+If the monitoring dashboard shows **Scheduler leader not detected** while API and workers are healthy:
+
+1. **Confirm both scheduler apps exist and are Running** — not stopped, not built with target `worker` or `api`:
+   - `idx-scheduler-nyc` on **re-db** (NYC)
+   - `idx-scheduler-atl` on **re-node-02** (ATL)
+2. **Shared env on both** (same Patroni primary): `DB_RW_DSN`, `DB_HOST`/`DB_PORT`, `SCHEDULER_LEADER_LOCK_ID=913374211`, `MLS_SYNC_KICKOFF_QUEUE=sync-kickoff`.
+3. **Tailscale from ATL** — scheduler on re-node-02 must reach the Patroni primary (same DSN as NYC web).
+4. **Logs** — one container: `scheduler leader acquired`; the other: `scheduler standby`. If neither appears, the process is not connected or is crash-looping (check `database` / `config` errors on startup).
+5. **Read-only SQL on primary** (expect one granted advisory lock while leader is up):
+
+```sql
+SELECT pid, granted, classid, objid FROM pg_locks
+WHERE locktype = 'advisory' AND classid = 0 AND objid = 913374211;
+```
+
+6. **Workers before schedulers on fresh deploy** — kickoff jobs need a worker with `sync-kickoff` in `WORKER_QUEUES` (worker 1 on each DC).
+
+**Monitoring probe bug (fixed):** Older API builds called `pg_try_advisory_lock` on one pool connection and `pg_advisory_unlock` on another. Session locks leaked onto idle API pool connections and **prevented schedulers from acquiring leadership** (both stuck in standby). After deploying the fix, **restart NYC + ATL API containers** once to drop leaked locks on existing pool sessions. Schedulers use a dedicated acquired connection for lock + unlock ([`internal/scheduler/leader.go`](../internal/scheduler/leader.go)) — that path was always correct.
+
+### Failed jobs incident (historical vs active)
+
+The dashboard warns on **`failed_jobs` rows from the last 7 days**. After cutover, rows such as `mls.replication_resume` (unknown handler at failure time) or Spark HTTP 400 are often **historical**. Once workers register all job types, purge resolved rows on the primary:
+
+```sql
+-- Review first
+SELECT queue, payload::jsonb->>'type' AS type, COUNT(*), MAX(failed_at) AS last_failed
+FROM failed_jobs GROUP BY 1, 2 ORDER BY COUNT(*) DESC;
+
+-- Example: remove pre-cutover replication_resume failures (run only after confirming handler is deployed)
+DELETE FROM failed_jobs
+WHERE queue = 'sync-kickoff'
+  AND payload::jsonb->>'type' = 'mls.replication_resume';
+```
+
+Do not purge production queue data without an explicit ops decision.
+
 ---
 
 ## idx-images

@@ -107,6 +107,7 @@ type QueueCount struct {
 	Pending       int64  `json:"pending"`
 	Reserved      int64  `json:"reserved"`
 	Failed        int64  `json:"failed"`
+	FailedRecent  int64  `json:"failed_recent"`
 	StaleReserved int64  `json:"stale_reserved"`
 }
 
@@ -125,6 +126,7 @@ func (r *MonitoringRepo) ListQueueCounts(ctx context.Context, staleReservedAfter
 		       COALESCE(j.pending, 0) AS pending,
 		       COALESCE(j.reserved, 0) AS reserved,
 		       COALESCE(f.failed, 0) AS failed,
+		       COALESCE(fr.failed_recent, 0) AS failed_recent,
 		       COALESCE(j.stale_reserved, 0) AS stale_reserved
 		FROM (
 			SELECT DISTINCT queue FROM jobs
@@ -145,6 +147,12 @@ func (r *MonitoringRepo) ListQueueCounts(ctx context.Context, staleReservedAfter
 		LEFT JOIN (
 			SELECT queue, COUNT(*) AS failed FROM failed_jobs GROUP BY queue
 		) f ON f.queue = q.queue
+		LEFT JOIN (
+			SELECT queue, COUNT(*) AS failed_recent
+			FROM failed_jobs
+			WHERE failed_at >= NOW() - INTERVAL '7 days'
+			GROUP BY queue
+		) fr ON fr.queue = q.queue
 		ORDER BY q.queue
 	`, staleReservedAfterSec)
 	if err != nil {
@@ -154,7 +162,7 @@ func (r *MonitoringRepo) ListQueueCounts(ctx context.Context, staleReservedAfter
 	out := make([]QueueCount, 0)
 	for rows.Next() {
 		var row QueueCount
-		if err := rows.Scan(&row.Queue, &row.Pending, &row.Reserved, &row.Failed, &row.StaleReserved); err != nil {
+		if err := rows.Scan(&row.Queue, &row.Pending, &row.Reserved, &row.Failed, &row.FailedRecent, &row.StaleReserved); err != nil {
 			return nil, err
 		}
 		out = append(out, row)
@@ -257,33 +265,79 @@ func (r *MonitoringRepo) ReplicaPageStatuses(ctx context.Context) ([]ReplicaPage
 	return out, rows.Err()
 }
 
-// SchedulerLockHealth reports whether another process currently holds the scheduler advisory lock.
+// SchedulerLockHealth reports whether a scheduler leader holds the cluster advisory lock.
 type SchedulerLockHealth struct {
-	LockID       int64 `json:"lock_id"`
-	LeaderActive bool  `json:"leader_active"`
+	LockID       int64  `json:"lock_id"`
+	LeaderActive bool   `json:"leader_active"`
+	HolderPID    *int32 `json:"holder_pid,omitempty"`
+	LastEnqueue  string `json:"last_enqueue_at,omitempty"`
 }
 
-// SchedulerLockHealth checks advisory lock ownership by attempting lock acquisition.
-func (r *MonitoringRepo) SchedulerLockHealth(ctx context.Context, lockID int64) (SchedulerLockHealth, error) {
-	var acquired bool
-	err := r.db.Pool.QueryRow(ctx, `
-		WITH probe AS (
-			SELECT pg_try_advisory_lock($1) AS acquired
+// SchedulerLastEnqueue returns the newest created_at among scheduler-owned job types (UTC ISO).
+func (r *MonitoringRepo) SchedulerLastEnqueue(ctx context.Context) (string, error) {
+	pool, err := r.db.ReadPool(ctx)
+	if err != nil {
+		return "", err
+	}
+	var ts *time.Time
+	err = pool.QueryRow(ctx, `
+		SELECT MAX(to_timestamp(created_at)) AT TIME ZONE 'UTC'
+		FROM jobs
+		WHERE payload::jsonb->>'type' IN (
+			'mls.replication_kickoff',
+			'mls.replication_resume',
+			'mls.proxy_cache_purge',
+			'crypto.refresh_pricing'
 		)
-		SELECT probe.acquired FROM probe
-	`, lockID).Scan(&acquired)
+	`).Scan(&ts)
+	if err != nil {
+		return "", err
+	}
+	if ts == nil {
+		return "", nil
+	}
+	return ts.UTC().Format(time.RFC3339), nil
+}
+
+// SchedulerLockHealth observes advisory lock ownership via pg_locks (read-only).
+// Do not use pg_try_advisory_lock on a connection pool: the lock is session-scoped, so
+// acquiring on one pooled connection and unlocking on another leaks the lock and can
+// block the real scheduler leader from starting.
+func (r *MonitoringRepo) SchedulerLockHealth(ctx context.Context, lockID int64) (SchedulerLockHealth, error) {
+	var leaderActive bool
+	var holderPID *int32
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT
+			EXISTS (
+				SELECT 1
+				FROM pg_locks
+				WHERE locktype = 'advisory'
+				  AND classid = 0
+				  AND objid = $1::bigint
+				  AND granted
+			) AS leader_active,
+			(
+				SELECT pid
+				FROM pg_locks
+				WHERE locktype = 'advisory'
+				  AND classid = 0
+				  AND objid = $1::bigint
+				  AND granted
+				LIMIT 1
+			) AS holder_pid
+	`, lockID).Scan(&leaderActive, &holderPID)
 	if err != nil {
 		return SchedulerLockHealth{}, err
 	}
-	if acquired {
-		// Release immediately if we acquired the lock during probing.
-		if _, err := r.db.Pool.Exec(ctx, `SELECT pg_advisory_unlock($1)`, lockID); err != nil {
-			return SchedulerLockHealth{}, err
-		}
+	lastEnqueue, err := r.SchedulerLastEnqueue(ctx)
+	if err != nil {
+		return SchedulerLockHealth{}, err
 	}
 	return SchedulerLockHealth{
 		LockID:       lockID,
-		LeaderActive: !acquired,
+		LeaderActive: leaderActive,
+		HolderPID:    holderPID,
+		LastEnqueue:  lastEnqueue,
 	}, nil
 }
 

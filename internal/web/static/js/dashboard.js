@@ -237,12 +237,13 @@ ${statusChip}
       const pending = q.pending ?? 0;
       const reserved = q.reserved ?? 0;
       const failed = q.failed ?? 0;
+      const failedRecent = q.failed_recent ?? 0;
       return tile(
         name,
         fmtNum(pending),
-        `${fmtNum(reserved)} reserved · ${fmtNum(failed)} failed`,
+        `${fmtNum(reserved)} reserved · ${fmtNum(failed)} failed (${fmtNum(failedRecent)} in 7d)`,
         monitoringTabHref("queues"),
-        failed > 0 || pending > QUEUE_PENDING_STALE ? "stale" : "healthy",
+        failedRecent > 0 || pending > QUEUE_PENDING_STALE ? "stale" : "healthy",
         `Queue ${name}`
       );
     });
@@ -278,7 +279,7 @@ ${statusChip}
       tile(
         "Scheduler lock",
         scheduler.leader_active ? "Leader active" : "No leader",
-        `lock_id ${scheduler.lock_id || "—"}`,
+        `lock ${scheduler.lock_id || "—"} · pid ${scheduler.holder_pid ?? "—"} · enqueue ${scheduler.last_enqueue_at || "never"}`,
         null,
         scheduler.leader_active ? "healthy" : "critical",
         "Scheduler leadership"

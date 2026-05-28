@@ -122,6 +122,7 @@ type QueuesMetric struct {
 	TotalPending       int64                        `json:"total_pending"`
 	TotalStaleReserved int64                        `json:"total_stale_reserved"`
 	TotalFailed        int64                        `json:"total_failed"`
+	TotalFailedRecent  int64                        `json:"total_failed_recent"`
 	Status             string                       `json:"status"`
 }
 
@@ -327,10 +328,12 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 	var pending int64
 	var staleReserved int64
 	var totalFailed int64
+	var totalFailedRecent int64
 	for _, q := range queues {
 		pending += q.Pending
 		staleReserved += q.StaleReserved
 		totalFailed += q.Failed
+		totalFailedRecent += q.FailedRecent
 	}
 	snap.Queues = QueuesMetric{
 		ByQueue:            queues,
@@ -339,7 +342,8 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 		TotalPending:       pending,
 		TotalStaleReserved: staleReserved,
 		TotalFailed:        totalFailed,
-		Status:             QueueStatus(pending, staleReserved, totalFailed),
+		TotalFailedRecent:  totalFailedRecent,
+		Status:             QueueStatus(pending, staleReserved, totalFailedRecent),
 	}
 
 	pipeline, err := s.repo.ReplicaPageStatuses(ctx)
@@ -381,7 +385,7 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 		SchedulerLeaderActive:  scheduler.LeaderActive,
 		TotalStaleReserved:     snap.Queues.TotalStaleReserved,
 		StaleReservedAfterSecs: staleReservedAfter,
-		TotalFailed:            snap.Queues.TotalFailed,
+		TotalFailed:            snap.Queues.TotalFailedRecent,
 		SyncPipelineStatus:     snap.SyncPipeline.Status,
 	})
 

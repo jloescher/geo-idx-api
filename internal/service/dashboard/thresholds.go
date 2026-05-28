@@ -113,7 +113,7 @@ func BuildIncidents(in IncidentInput) []IncidentMetric {
 			Severity: "critical",
 			Source:   "infrastructure",
 			Title:    "Scheduler leader not detected",
-			Detail:   "No process currently holds the scheduler advisory lock.",
+			Detail:   "No granted advisory lock on the Patroni primary (classid=0). Confirm schedulers on re-db and re-node-02 log leader acquired; after deploying the pg_locks monitoring fix, restart API containers once to clear any leaked locks from the old probe.",
 		})
 	}
 	if in.TotalStaleReserved > 0 {
@@ -128,8 +128,8 @@ func BuildIncidents(in IncidentInput) []IncidentMetric {
 		out = append(out, IncidentMetric{
 			Severity: "warning",
 			Source:   "queues",
-			Title:    "Failed jobs present",
-			Detail:   "One or more queues have rows in failed_jobs; review the Queues tab for types and exceptions.",
+			Title:    "Failed jobs present (7d)",
+			Detail:   "failed_jobs has rows from the last 7 days. After workers handle sync-kickoff, purge resolved historical rows on the primary or fix recurring failures (see Queues tab).",
 		})
 	}
 	if in.SyncPipelineStatus == "stale" {
