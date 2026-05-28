@@ -30,3 +30,18 @@ func TestMergeGeographyLikePatterns_empty(t *testing.T) {
 		t.Fatal("expected no patterns")
 	}
 }
+
+// TestGeographyFilter_reusesSingleArg documents appendGeographyFilter SQL: $n appears
+// twice (city and county LIKE ANY) but must bind only one pattern array — duplicate
+// args caused pgx "expected N arguments, got N+1" and HTTP 502 on city search.
+func TestGeographyFilter_reusesSingleArg(t *testing.T) {
+	patterns := mergeGeographyLikePatterns("Largo", "", nil, nil, nil)
+	if len(patterns) != 1 || patterns[0] != "%largo%" {
+		t.Fatalf("patterns: %v", patterns)
+	}
+	args := []any{"stellar"}
+	args = append(args, patterns)
+	if len(args) != 2 {
+		t.Fatalf("want 2 args (dataset + patterns), got %d", len(args))
+	}
+}

@@ -29,12 +29,13 @@ func appendGeographyFilter(
 		return q, args, n, nil
 	}
 
+	// Reuse one pattern array for both city and county OR legs (same $n twice is valid in PostgreSQL).
 	q += fmt.Sprintf(`
 		AND (
 			LOWER(TRIM(COALESCE(city, ''))) LIKE ANY($%d)
 			OR LOWER(TRIM(COALESCE(county_or_parish, ''))) LIKE ANY($%d)
 		)`, n, n)
-	args = append(args, patterns, patterns)
+	args = append(args, patterns)
 	n++
 	return q, args, n, nil
 }

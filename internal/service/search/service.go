@@ -2,6 +2,7 @@ package search
 
 import (
 	"encoding/json"
+	"log/slog"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/quantyralabs/idx-api/internal/api/ctxkeys"
@@ -53,6 +54,7 @@ func (s *Service) Handle(c *fiber.Ctx) error {
 		result, err = s.postgis.Search(c.Context(), feed, req, s.cfg.MLS.LocalMirrorRollingMonths)
 	}
 	if err != nil {
+		slog.Error("search failed", "feed", feed, "mode", mode, "err", err)
 		return fiber.NewError(fiber.StatusBadGateway, err.Error())
 	}
 	datasetSlug := mls.DatasetSlugFromFeedCode(feed)
