@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/quantyralabs/idx-api/internal/debug"
 )
 
 // DefaultLeaderLockKey is the PostgreSQL advisory lock id for cluster-wide scheduler leadership.
@@ -44,22 +43,8 @@ func TryAcquireLeader(ctx context.Context, dsn string, key int64) (*LeaderSessio
 	}
 	if !ok || !held {
 		conn.Close(ctx)
-		// #region agent log
-		debug.Log("F", "leader.go:TryAcquireLeader", "lock not held after try", map[string]any{
-			"key": key, "tryOk": ok, "held": held,
-		})
-		// #endregion
 		return nil, false, nil
 	}
-	// #region agent log
-	var holderPID int32
-	_ = conn.QueryRow(ctx, `
-		SELECT pid FROM pg_locks
-		WHERE locktype = 'advisory' AND classid = 0 AND objid = $1::bigint AND granted
-		LIMIT 1
-	`, key).Scan(&holderPID)
-	debug.Log("A", "leader.go:TryAcquireLeader", "lock acquired", map[string]any{"key": key, "holderPID": holderPID})
-	// #endregion
 	sess := &LeaderSession{conn: conn, key: key}
 	sess.startKeepalive(ctx)
 	return sess, true, nil
@@ -98,9 +83,6 @@ func (l *LeaderSession) startKeepalive(parent context.Context) {
 					return
 				}
 				if _, err := l.conn.Exec(pingCtx, `SELECT 1`); err != nil {
-					// #region agent log
-					debug.Log("D", "leader.go:keepalive", "ping failed", map[string]any{"error": err.Error()})
-					// #endregion
 					return
 				}
 			}

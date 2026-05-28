@@ -61,6 +61,18 @@ func SyncPipelineStatus(rows []repository.ReplicaPageStatusCount) string {
 	return "healthy"
 }
 
+// ListingDatasetStatus labels listing mirror health for the ingest tab.
+// Active replica_pages work (pending/processing) is catch-up, not a stale mirror.
+func ListingDatasetStatus(isCurrent, hasActiveReplica bool) string {
+	if isCurrent {
+		return "healthy"
+	}
+	if hasActiveReplica {
+		return "catching_up"
+	}
+	return "stale"
+}
+
 // InfraStatus maps scheduler lock probe to infrastructure rollup.
 func InfraStatus(leaderActive bool) string {
 	if leaderActive {

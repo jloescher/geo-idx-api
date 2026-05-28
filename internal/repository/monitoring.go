@@ -3,8 +3,6 @@ package repository
 import (
 	"context"
 	"time"
-
-	"github.com/quantyralabs/idx-api/internal/debug"
 )
 
 // MonitoringRepo aggregates ops metrics for the admin dashboard.
@@ -331,15 +329,6 @@ func (r *MonitoringRepo) SchedulerLockHealth(ctx context.Context, lockID int64) 
 		  AND pid <> pg_backend_pid()
 		  AND COALESCE(application_name, '') LIKE 'idx-scheduler%'
 	`).Scan(&schedulerBackends)
-	// #region agent log
-	debug.Log("B", "monitoring.go:SchedulerLockHealth", "scheduler lock probe", map[string]any{
-		"lockID":             lockID,
-		"leaderActive":       leaderActive,
-		"holderPID":          holderPID,
-		"lastEnqueue":        lastEnqueue,
-		"schedulerBackends":  schedulerBackends,
-	})
-	// #endregion
 	return SchedulerLockHealth{
 		LockID:            lockID,
 		LeaderActive:      leaderActive,

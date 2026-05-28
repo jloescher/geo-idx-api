@@ -41,8 +41,14 @@
   function badgeClass(status) {
     if (status === "critical") return "badge badge-critical";
     if (status === "healthy") return "badge badge-healthy";
+    if (status === "catching_up") return "badge badge-stale";
     if (status === "stale") return "badge badge-stale";
     return "badge badge-unknown";
+  }
+
+  function statusLabel(status) {
+    if (status === "catching_up") return "catching up";
+    return status || "unknown";
   }
 
   /** In-dashboard tab drill-down (not the domain-token API). */
@@ -54,7 +60,7 @@
     const tag = href ? "a" : "div";
     const hrefAttr = href ? ` href="${href}"` : "";
     const statusChip = status
-      ? `<span class="${badgeClass(status)}">${status}</span>`
+      ? `<span class="${badgeClass(status)}">${statusLabel(status)}</span>`
       : "";
     return `<${tag} class="metric-tile"${hrefAttr} aria-label="${aria || label}">
 <span class="metric-label">${label}</span>

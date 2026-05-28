@@ -109,6 +109,8 @@ WHERE locktype = 'advisory' AND objid = 913374211;
 
 Expect one granted row while the leader process is up. If empty and monitoring shows critical, restart scheduler apps or fix DB connectivity before changing application code.
 
+**Beaches `STALE` while replica pipeline is active:** Listing tiles use `catching_up` when `replica_pages` has `pending`/`processing` rows or `replication_in_progress` is true, even if `last_sync_finished_at` is older than `MLS_REPLICATION_FRESHNESS_MINUTES` (default 15). Lag seconds still reflect time since last finished sync. True `stale` means no active pipeline work and the mirror is outside the freshness window.
+
 **`enqueue never` on the Infrastructure tile:** `last_enqueue_at` is `MAX(created_at)` from `jobs` for scheduler-owned types (`mls.replication_kickoff`, `mls.replication_resume`, `mls.proxy_cache_purge`, `crypto.refresh_pricing`). Successful jobs are **removed from `jobs` immediately** after workers finish them, so an empty or fast-draining queue shows no timestamp even while the scheduler is healthy and listings continue to update. Prefer `leader_active` + scheduler logs (`enqueued scheduled job`) over this field; the UI labels an empty queue as “none pending” when a leader is active.
 
 ### Optional failed_jobs hygiene

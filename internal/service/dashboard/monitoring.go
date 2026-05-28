@@ -161,6 +161,17 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 	if err != nil {
 		return nil, err
 	}
+	pipeline, err := s.repo.ReplicaPageStatuses(ctx)
+	if err != nil {
+		return nil, err
+	}
+	activeReplica := make(map[string]bool)
+	for _, row := range pipeline {
+		if row.Status == "pending" || row.Status == "processing" {
+			activeReplica[row.DatasetSlug] = true
+		}
+	}
+
 	resolver := mls.NewResolver(s.cfg)
 	for _, row := range listRows {
 		m := ListingMetric{
@@ -182,21 +193,20 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 			m.LagSeconds = &lag
 		}
 		provider := providerForDataset(resolver, row.DatasetSlug)
+		isCurrent := false
 		if provider != "" {
 			current, err := s.fresh.IsCurrent(ctx, row.DatasetSlug, provider)
 			if err == nil {
+				isCurrent = current
 				if current {
 					m.FreshnessMode = sync.ModeSteady
-					m.Status = "healthy"
 				} else {
 					m.FreshnessMode = sync.ModeCatchUp
-					m.Status = "stale"
 				}
 			}
 		}
-		if row.ReplicationInProgress {
-			m.Status = "stale"
-		}
+		hasActiveReplica := row.ReplicationInProgress || activeReplica[row.DatasetSlug]
+		m.Status = ListingDatasetStatus(isCurrent, hasActiveReplica)
 		snap.Listings = append(snap.Listings, m)
 	}
 
@@ -353,10 +363,6 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 		Status:             QueueStatus(pending, staleReserved, totalFailedRecent),
 	}
 
-	pipeline, err := s.repo.ReplicaPageStatuses(ctx)
-	if err != nil {
-		return nil, err
-	}
 	snap.SyncPipeline = SyncPipelineMetric{
 		ByStatus: pipeline,
 		Status:   SyncPipelineStatus(pipeline),
