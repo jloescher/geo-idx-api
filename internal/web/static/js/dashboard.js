@@ -344,7 +344,7 @@ ${statusChip}
       tile(
         "Scheduler lock",
         scheduler.leader_active ? "Leader active" : "No leader",
-        `lock ${scheduler.lock_id || "—"} · pid ${scheduler.holder_pid ?? "—"} · enqueue ${scheduler.last_enqueue_at || "never"}`,
+        `lock ${scheduler.lock_id || "—"} · pid ${scheduler.holder_pid ?? "—"} · backends ${scheduler.scheduler_backends ?? 0} · enqueue ${scheduler.last_enqueue_at || "never"}`,
         null,
         scheduler.leader_active ? "healthy" : "critical",
         "Scheduler leadership"

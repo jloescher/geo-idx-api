@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/quantyralabs/idx-api/internal/debug"
 )
 
 // DefaultLeaderLockKey is the PostgreSQL advisory lock id for cluster-wide scheduler leadership.
@@ -38,8 +39,20 @@ func TryAcquireLeader(ctx context.Context, pool *pgxpool.Pool, key int64) (*Lead
 	}
 	if !ok {
 		conn.Release()
+		// #region agent log
+		debug.Log("A", "leader.go:TryAcquireLeader", "lock not acquired", map[string]any{"key": key})
+		// #endregion
 		return nil, false, nil
 	}
+	// #region agent log
+	var holderPID int32
+	_ = conn.QueryRow(ctx, `
+		SELECT pid FROM pg_locks
+		WHERE locktype = 'advisory' AND classid = 0 AND objid = $1::bigint AND granted
+		LIMIT 1
+	`, key).Scan(&holderPID)
+	debug.Log("A", "leader.go:TryAcquireLeader", "lock acquired", map[string]any{"key": key, "holderPID": holderPID})
+	// #endregion
 	sess := &LeaderSession{conn: conn, key: key}
 	sess.startKeepalive(ctx)
 	return sess, true, nil

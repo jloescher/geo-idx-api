@@ -27,7 +27,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	db, err := repository.New(ctx, cfg.DB)
+	db, err := repository.NewFromDSN(ctx, cfg.DB.RWDSNWithApplicationName("idx-scheduler"))
 	if err != nil {
 		logger.Error("database", "error", err)
 		os.Exit(1)

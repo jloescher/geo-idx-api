@@ -86,6 +86,20 @@ func (d DBConfig) RWDSNOrDefault() string {
 	return d.DSN()
 }
 
+// RWDSNWithApplicationName appends libpq application_name when not already set.
+func (d DBConfig) RWDSNWithApplicationName(appName string) string {
+	dsn := d.RWDSNOrDefault()
+	appName = strings.TrimSpace(appName)
+	if appName == "" || strings.Contains(dsn, "application_name=") {
+		return dsn
+	}
+	sep := "?"
+	if strings.Contains(dsn, "?") {
+		sep = "&"
+	}
+	return dsn + sep + "application_name=" + appName
+}
+
 type QueueConfig struct {
 	Table               string
 	PollInterval        time.Duration

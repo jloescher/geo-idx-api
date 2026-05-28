@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"time"
+
+	"github.com/quantyralabs/idx-api/internal/debug"
 )
 
 // MonitoringRepo aggregates ops metrics for the admin dashboard.
@@ -259,10 +261,11 @@ func (r *MonitoringRepo) ReplicaPageStatuses(ctx context.Context) ([]ReplicaPage
 
 // SchedulerLockHealth reports whether a scheduler leader holds the cluster advisory lock.
 type SchedulerLockHealth struct {
-	LockID       int64  `json:"lock_id"`
-	LeaderActive bool   `json:"leader_active"`
-	HolderPID    *int32 `json:"holder_pid,omitempty"`
-	LastEnqueue  string `json:"last_enqueue_at,omitempty"`
+	LockID              int64  `json:"lock_id"`
+	LeaderActive        bool   `json:"leader_active"`
+	HolderPID           *int32 `json:"holder_pid,omitempty"`
+	LastEnqueue         string `json:"last_enqueue_at,omitempty"`
+	SchedulerBackends   int64  `json:"scheduler_backends,omitempty"`
 }
 
 // SchedulerLastEnqueue returns the newest created_at among scheduler-owned job types (UTC ISO).
@@ -321,11 +324,28 @@ func (r *MonitoringRepo) SchedulerLockHealth(ctx context.Context, lockID int64) 
 	if err != nil {
 		return SchedulerLockHealth{}, err
 	}
+	var schedulerBackends int64
+	_ = r.db.Pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM pg_stat_activity
+		WHERE datname = current_database()
+		  AND pid <> pg_backend_pid()
+		  AND COALESCE(application_name, '') LIKE 'idx-scheduler%'
+	`).Scan(&schedulerBackends)
+	// #region agent log
+	debug.Log("B", "monitoring.go:SchedulerLockHealth", "scheduler lock probe", map[string]any{
+		"lockID":             lockID,
+		"leaderActive":       leaderActive,
+		"holderPID":          holderPID,
+		"lastEnqueue":        lastEnqueue,
+		"schedulerBackends":  schedulerBackends,
+	})
+	// #endregion
 	return SchedulerLockHealth{
-		LockID:       lockID,
-		LeaderActive: leaderActive,
-		HolderPID:    holderPID,
-		LastEnqueue:  lastEnqueue,
+		LockID:            lockID,
+		LeaderActive:      leaderActive,
+		HolderPID:         holderPID,
+		LastEnqueue:       lastEnqueue,
+		SchedulerBackends: schedulerBackends,
 	}, nil
 }
 

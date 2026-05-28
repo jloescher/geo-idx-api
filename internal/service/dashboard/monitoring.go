@@ -392,6 +392,7 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 		SchedulerLeaderActive:  scheduler.LeaderActive,
 		SchedulerHolderPID:     scheduler.HolderPID,
 		SchedulerLastEnqueue:   scheduler.LastEnqueue,
+		SchedulerBackendCount:  scheduler.SchedulerBackends,
 		TotalStaleReserved:     snap.Queues.TotalStaleReserved,
 		StaleReservedAfterSecs: staleReservedAfter,
 		TotalFailed:            snap.Queues.TotalFailedRecent,

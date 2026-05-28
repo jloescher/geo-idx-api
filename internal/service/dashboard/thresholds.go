@@ -101,6 +101,7 @@ type IncidentInput struct {
 	SchedulerLeaderActive  bool
 	SchedulerHolderPID     *int32
 	SchedulerLastEnqueue   string
+	SchedulerBackendCount  int64
 	TotalStaleReserved     int64
 	StaleReservedAfterSecs int
 	TotalFailed            int64
@@ -110,6 +111,9 @@ type IncidentInput struct {
 func schedulerLeaderIncidentDetail(in IncidentInput) string {
 	if in.SchedulerLeaderActive {
 		return ""
+	}
+	if in.SchedulerBackendCount > 0 {
+		return "Scheduler processes are connected (pg_stat_activity application_name idx-scheduler) but no advisory lock is held on the primary. Restart both scheduler containers; confirm DB_RW_DSN reaches the Patroni primary (prefer :5432 or keepalives on :5000)."
 	}
 	if in.SchedulerLastEnqueue != "" {
 		return "No advisory lock on the Patroni primary, but scheduler-owned jobs were enqueued recently (" + in.SchedulerLastEnqueue + "). The leader session may have lost its lock (HAProxy idle on :5000). Restart schedulers or use Patroni :5432 / keepalives on DB_RW_DSN."
