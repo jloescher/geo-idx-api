@@ -110,16 +110,16 @@
 -- SET statement_timeout = 0;
 -- SET lock_timeout = '30s';
 --
--- Usage:
---   \i docs/scripts/listings_field_promote_backfill.sql
+-- Usage (DataGrip JDBC drops after ~30–90s; each batch COMMITs — safe to re-run CALL):
 --
---   Or call with a custom batch size:
---   CALL run_listings_field_promote_backfill(1000);
---   DROP PROCEDURE IF EXISTS run_listings_field_promote_backfill(bigint);
+--   docs/scripts/run_listings_field_promote_backfill.sh 2000
+--   (DSN from docs/scripts/.env.backfill.local, gitignored)
 --
--- Default batch size: 2500 rows per id slice.
--- With ~190k rows and batch=2500 expect ~77 batches.
--- Lower to 1000 if you see I/O pressure; raise only when idle I/O is ample.
+-- Or psql until fast-verify is all false:
+--   psql "$GOOSE_DBSTRING" -f docs/scripts/listings_field_promote_backfill.sql
+--   psql "$GOOSE_DBSTRING" -c "SET statement_timeout=0; CALL run_listings_field_promote_backfill(2000);"
+--
+-- Batches only rows that still need work. Re-run CALL after disconnect; already-done rows are skipped.
 -- ─────────────────────────────────────────────────────────────────────────────────────────────
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -147,9 +147,24 @@
 -- FROM listings;
 --
 -- ─────────────────────────────────────────────────────────────────────────────────────────────
--- POST-VERIFY CHECKS (run after backfill; cf and raw_idx counts should be 0)
+-- POST-VERIFY (fast — safe in DataGrip; stops at first match per key)
 -- ─────────────────────────────────────────────────────────────────────────────────────────────
 --
+-- SELECT
+--   EXISTS (SELECT 1 FROM listings WHERE custom_fields ? 'GarageSpaces' LIMIT 1) AS cf_garage_left,
+--   EXISTS (SELECT 1 FROM listings WHERE custom_fields ? 'InternetEntireListingDisplayYN' LIMIT 1) AS cf_ield_left,
+--   EXISTS (SELECT 1 FROM listings WHERE custom_fields ? 'IDXParticipationYN' LIMIT 1) AS cf_idx_left,
+--   EXISTS (SELECT 1 FROM listings WHERE raw_data ? 'InternetEntireListingDisplayYN' LIMIT 1) AS raw_ield_left,
+--   EXISTS (SELECT 1 FROM listings WHERE raw_data ? 'IDXParticipationYN' LIMIT 1) AS raw_idx_left;
+-- -- All five should be false when strip is complete.
+--
+-- Pending (must be false / 0 before you are done):
+--   SELECT COUNT(*) FROM listings l WHERE listings_row_needs_field_promote_row(l);
+--
+-- Coverage (run one at a time in IDE, or use psql with statement_timeout=0):
+--   SELECT COUNT(*) FROM listings WHERE internet_entire_listing_display_yn IS NOT NULL;
+--
+-- Heavy full-table verify (psql only — one scan, three JSONB filters; JDBC often times out at ~30s):
 -- SELECT
 --   -- custom_fields strip (expect 0 for all)
 --   COUNT(*) FILTER (WHERE custom_fields ?| ARRAY[
@@ -182,7 +197,55 @@
 --   WHERE (custom_fields->>'GarageSpaces') ~ '^-?[0-9]+(\.[0-9]+)?$'
 --     AND (custom_fields->>'GarageSpaces')::numeric > 999.99;
 --
+-- Do NOT run full pending COUNT(*) in DataGrip — it scans ~190k rows and JDBC drops ~30s.
+-- Use fast EXISTS verify instead (below). Run CALL via psql when possible.
+--
+-- Completion spot-check:
+--   SELECT COUNT(*) FILTER (WHERE internet_entire_listing_display_yn IS NOT NULL) AS ield_ok,
+--          COUNT(*) FILTER (WHERE custom_fields ?| ARRAY['GarageSpaces','InternetEntireListingDisplayYN']) AS cf_keys_left,
+--          COUNT(*) FILTER (WHERE raw_data ?| ARRAY['InternetEntireListingDisplayYN','IDXParticipationYN']) AS raw_idx_left
+--   FROM listings;
+--
+-- NOTE: GarageSpaces etc. stay in raw_data on purpose — they must NOT count as pending.
+--
 -- ─────────────────────────────────────────────────────────────────────────────────────────────
+
+DROP FUNCTION IF EXISTS listings_row_needs_field_promote(jsonb, jsonb);
+
+-- Phase 1: keys still in custom_fields or strippable keys in raw_data (main backfill driver).
+CREATE OR REPLACE FUNCTION listings_row_needs_field_promote_primary(l listings)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT
+    COALESCE(l.custom_fields, '{}'::jsonb) ?| ARRAY[
+      'GarageSpaces', 'MLSAreaMajor', 'DaysOnMarket', 'TaxAnnualAmount',
+      'HeatingYN', 'CoolingYN', 'CarportYN', 'AttachedGarageYN',
+      'InternetConsumerCommentYN', 'InternetAddressDisplayYN',
+      'InternetEntireListingDisplayYN', 'InternetAutomatedValuationDisplayYN',
+      'IDXParticipationYN', 'IDXOfficeParticipationYN',
+      'UnparsedAddress', 'PublicRemarks'
+    ]::text[]
+    OR COALESCE(l.raw_data, '{}'::jsonb) ?| ARRAY[
+      'InternetConsumerCommentYN', 'InternetAddressDisplayYN',
+      'InternetEntireListingDisplayYN', 'InternetAutomatedValuationDisplayYN',
+      'IDXParticipationYN', 'IDXOfficeParticipationYN',
+      'UnparsedAddress', 'PublicRemarks'
+    ]::text[];
+$$;
+
+CREATE OR REPLACE FUNCTION backfill_promote_boolean(p_cf jsonb, p_rd jsonb, p_key text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT CASE lower(trim(COALESCE(p_cf->>p_key, p_rd->>p_key, '')))
+    WHEN 'true' THEN true
+    WHEN 'false' THEN false
+    ELSE NULL
+  END;
+$$;
 
 -- Safe parsers: mirror Go clamp rules (listing_row.go garageSpacesPtr, normalize.go).
 CREATE OR REPLACE FUNCTION backfill_promote_garage_spaces(p_cf jsonb, p_rd jsonb)
@@ -245,27 +308,64 @@ AS $$
   );
 $$;
 
-CREATE OR REPLACE PROCEDURE run_listings_field_promote_backfill(p_batch_size bigint DEFAULT 2500)
+-- Phase 2: typed column null AND a promotable value exists in cf/raw_data.
+-- Do not match key-present/unparseable rows (would loop forever updating 500 rows/batch).
+CREATE OR REPLACE FUNCTION listings_row_needs_field_promote_scalars(l listings)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT
+    (l.garage_spaces IS NULL AND backfill_promote_garage_spaces(l.custom_fields, l.raw_data) IS NOT NULL)
+    OR (l.mls_area_major IS NULL AND backfill_promote_mls_area_major(l.custom_fields, l.raw_data) IS NOT NULL)
+    OR (l.days_on_market IS NULL AND backfill_promote_days_on_market(l.custom_fields, l.raw_data) IS NOT NULL)
+    OR (l.tax_annual_amount IS NULL AND backfill_promote_tax_annual_amount(l.custom_fields, l.raw_data) IS NOT NULL)
+    OR (l.heating_yn IS NULL AND backfill_promote_boolean(l.custom_fields, l.raw_data, 'HeatingYN') IS NOT NULL)
+    OR (l.cooling_yn IS NULL AND backfill_promote_boolean(l.custom_fields, l.raw_data, 'CoolingYN') IS NOT NULL)
+    OR (l.carport_yn IS NULL AND backfill_promote_boolean(l.custom_fields, l.raw_data, 'CarportYN') IS NOT NULL)
+    OR (l.attached_garage_yn IS NULL AND backfill_promote_boolean(l.custom_fields, l.raw_data, 'AttachedGarageYN') IS NOT NULL)
+    OR (l.internet_consumer_comment_yn IS NULL AND backfill_promote_boolean(l.custom_fields, l.raw_data, 'InternetConsumerCommentYN') IS NOT NULL)
+    OR (l.internet_address_display_yn IS NULL AND backfill_promote_boolean(l.custom_fields, l.raw_data, 'InternetAddressDisplayYN') IS NOT NULL)
+    OR (l.internet_entire_listing_display_yn IS NULL AND backfill_promote_boolean(l.custom_fields, l.raw_data, 'InternetEntireListingDisplayYN') IS NOT NULL)
+    OR (l.internet_automated_valuation_display_yn IS NULL AND backfill_promote_boolean(l.custom_fields, l.raw_data, 'InternetAutomatedValuationDisplayYN') IS NOT NULL)
+    OR (l.idx_participation_yn IS NULL AND backfill_promote_boolean(l.custom_fields, l.raw_data, 'IDXParticipationYN') IS NOT NULL)
+    OR (l.idx_office_participation_yn IS NULL AND backfill_promote_boolean(l.custom_fields, l.raw_data, 'IDXOfficeParticipationYN') IS NOT NULL)
+    OR (l.unparsed_address IS NULL AND NULLIF(trim(COALESCE(l.custom_fields->>'UnparsedAddress', l.raw_data->>'UnparsedAddress')), '') IS NOT NULL)
+    OR (l.public_remarks IS NULL AND NULLIF(trim(COALESCE(l.custom_fields->>'PublicRemarks', l.raw_data->>'PublicRemarks')), '') IS NOT NULL);
+$$;
+
+CREATE OR REPLACE FUNCTION listings_row_needs_field_promote_row(l listings)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT listings_row_needs_field_promote_primary(l)
+      OR listings_row_needs_field_promote_scalars(l);
+$$;
+
+-- One batch per call. No COMMIT here: psql reconnect mode commits on disconnect;
+-- apply_batch commits after each step when run as top-level CALL.
+CREATE OR REPLACE PROCEDURE listings_field_promote_step(
+  p_batch_size bigint,
+  p_phase text,
+  OUT p_updated int
+)
 LANGUAGE plpgsql
 AS $$
-DECLARE
-  v_lo    bigint := 0;
-  v_hi    bigint;
-  v_max   bigint;
-  v_batch int;
-  v_total bigint := 0;
 BEGIN
-  IF p_batch_size IS NULL OR p_batch_size < 1 THEN
-    RAISE EXCEPTION 'p_batch_size must be >= 1';
-  END IF;
+  p_updated := 0;
 
-  SELECT COALESCE(MAX(id), 0) INTO v_max FROM listings;
-  RAISE NOTICE 'listings_field_promote_backfill: max(id)=%, batch_size=%', v_max, p_batch_size;
-
-  WHILE v_lo < v_max LOOP
-    v_hi := v_lo + p_batch_size;
-
-    UPDATE listings SET
+  WITH batch AS (
+    SELECT l.id
+    FROM listings l
+    WHERE (
+      (p_phase = 'primary' AND listings_row_needs_field_promote_primary(l))
+      OR (p_phase = 'scalars' AND listings_row_needs_field_promote_scalars(l))
+    )
+    ORDER BY l.id
+    LIMIT p_batch_size
+  )
+  UPDATE listings SET
 
       -- ────────────────────────────────────────────────────────────────────
       -- NUMERIC / TEXT SCALAR FIELDS
@@ -305,26 +405,22 @@ BEGIN
 
       heating_yn = COALESCE(
         heating_yn,
-        (custom_fields->>'HeatingYN')::boolean,
-        (raw_data->>'HeatingYN')::boolean
+        backfill_promote_boolean(custom_fields, raw_data, 'HeatingYN')
       ),
 
       cooling_yn = COALESCE(
         cooling_yn,
-        (custom_fields->>'CoolingYN')::boolean,
-        (raw_data->>'CoolingYN')::boolean
+        backfill_promote_boolean(custom_fields, raw_data, 'CoolingYN')
       ),
 
       carport_yn = COALESCE(
         carport_yn,
-        (custom_fields->>'CarportYN')::boolean,
-        (raw_data->>'CarportYN')::boolean
+        backfill_promote_boolean(custom_fields, raw_data, 'CarportYN')
       ),
 
       attached_garage_yn = COALESCE(
         attached_garage_yn,
-        (custom_fields->>'AttachedGarageYN')::boolean,
-        (raw_data->>'AttachedGarageYN')::boolean
+        backfill_promote_boolean(custom_fields, raw_data, 'AttachedGarageYN')
       ),
 
       -- ────────────────────────────────────────────────────────────────────
@@ -336,38 +432,32 @@ BEGIN
 
       internet_consumer_comment_yn = COALESCE(
         internet_consumer_comment_yn,
-        (custom_fields->>'InternetConsumerCommentYN')::boolean,
-        (raw_data->>'InternetConsumerCommentYN')::boolean
+        backfill_promote_boolean(custom_fields, raw_data, 'InternetConsumerCommentYN')
       ),
 
       internet_address_display_yn = COALESCE(
         internet_address_display_yn,
-        (custom_fields->>'InternetAddressDisplayYN')::boolean,
-        (raw_data->>'InternetAddressDisplayYN')::boolean
+        backfill_promote_boolean(custom_fields, raw_data, 'InternetAddressDisplayYN')
       ),
 
       internet_entire_listing_display_yn = COALESCE(
         internet_entire_listing_display_yn,
-        (custom_fields->>'InternetEntireListingDisplayYN')::boolean,
-        (raw_data->>'InternetEntireListingDisplayYN')::boolean
+        backfill_promote_boolean(custom_fields, raw_data, 'InternetEntireListingDisplayYN')
       ),
 
       internet_automated_valuation_display_yn = COALESCE(
         internet_automated_valuation_display_yn,
-        (custom_fields->>'InternetAutomatedValuationDisplayYN')::boolean,
-        (raw_data->>'InternetAutomatedValuationDisplayYN')::boolean
+        backfill_promote_boolean(custom_fields, raw_data, 'InternetAutomatedValuationDisplayYN')
       ),
 
       idx_participation_yn = COALESCE(
         idx_participation_yn,
-        (custom_fields->>'IDXParticipationYN')::boolean,
-        (raw_data->>'IDXParticipationYN')::boolean
+        backfill_promote_boolean(custom_fields, raw_data, 'IDXParticipationYN')
       ),
 
       idx_office_participation_yn = COALESCE(
         idx_office_participation_yn,
-        (custom_fields->>'IDXOfficeParticipationYN')::boolean,
-        (raw_data->>'IDXOfficeParticipationYN')::boolean
+        backfill_promote_boolean(custom_fields, raw_data, 'IDXOfficeParticipationYN')
       ),
 
       unparsed_address = COALESCE(
@@ -437,42 +527,92 @@ BEGIN
       ),
 
       updated_at = NOW()
+    FROM batch
+    WHERE listings.id = batch.id;
 
-    WHERE id > v_lo AND id <= v_hi
-      AND (
-        custom_fields ?| ARRAY[
-          'GarageSpaces', 'MLSAreaMajor', 'DaysOnMarket', 'TaxAnnualAmount',
-          'HeatingYN', 'CoolingYN', 'CarportYN', 'AttachedGarageYN',
-          'InternetConsumerCommentYN', 'InternetAddressDisplayYN',
-          'InternetEntireListingDisplayYN', 'InternetAutomatedValuationDisplayYN',
-          'IDXParticipationYN', 'IDXOfficeParticipationYN',
-          'UnparsedAddress', 'PublicRemarks'
-        ]
-        OR raw_data ?| ARRAY[
-          'InternetConsumerCommentYN', 'InternetAddressDisplayYN',
-          'InternetEntireListingDisplayYN', 'InternetAutomatedValuationDisplayYN',
-          'IDXParticipationYN', 'IDXOfficeParticipationYN',
-          'UnparsedAddress', 'PublicRemarks'
-        ]
-      );
-
-    GET DIAGNOSTICS v_batch = ROW_COUNT;
-    v_total := v_total + v_batch;
-    RAISE NOTICE 'id (% , %]: updated % rows (running total %)', v_lo, v_hi, v_batch, v_total;
-
-    COMMIT;
-    v_lo := v_hi;
-  END LOOP;
-
-  RAISE NOTICE 'listings_field_promote_backfill: finished, % rows updated across % batches',
-    v_total, CEIL(v_max::numeric / NULLIF(p_batch_size, 0));
+  GET DIAGNOSTICS p_updated = ROW_COUNT;
+  RAISE NOTICE 'phase % step: updated % rows', p_phase, p_updated;
 END;
 $$;
 
--- Run with default batch size (2500). Do not wrap in BEGIN; procedure commits each batch.
-CALL run_listings_field_promote_backfill(2500);
+-- psql-friendly entry (plain CALL cannot omit OUT args on listings_field_promote_step).
+CREATE OR REPLACE PROCEDURE listings_field_promote_step_call(p_batch_size bigint, p_phase text)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_updated int;
+BEGIN
+  CALL listings_field_promote_step(p_batch_size, p_phase, v_updated);
+END;
+$$;
 
-DROP PROCEDURE IF EXISTS run_listings_field_promote_backfill(bigint);
+-- Shared UPDATE body for primary and scalar phases (single long-lived connection).
+CREATE OR REPLACE PROCEDURE listings_field_promote_apply_batch(p_batch_size bigint, p_phase text)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_batch int;
+  v_total bigint := 0;
+  v_iter  int := 0;
+BEGIN
+  LOOP
+    v_iter := v_iter + 1;
+    CALL listings_field_promote_step(p_batch_size, p_phase, v_batch);
+    v_total := v_total + v_batch;
+    RAISE NOTICE 'phase % batch %: updated % rows (phase total %)', p_phase, v_iter, v_batch, v_total;
+    COMMIT;
+    EXIT WHEN v_batch = 0;
+  END LOOP;
+
+  RAISE NOTICE 'phase % finished: % rows in % batches', p_phase, v_total, v_iter;
+END;
+$$;
+
+CREATE OR REPLACE PROCEDURE run_listings_field_promote_backfill(p_batch_size bigint DEFAULT 2500)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_has_primary boolean;
+  v_has_scalars boolean;
+BEGIN
+  IF p_batch_size IS NULL OR p_batch_size < 1 THEN
+    RAISE EXCEPTION 'p_batch_size must be >= 1';
+  END IF;
+
+  -- Fast EXISTS checks only (do not COUNT(*) — full scan times out in DataGrip JDBC).
+  SELECT EXISTS (
+    SELECT 1 FROM listings l WHERE listings_row_needs_field_promote_primary(l) LIMIT 1
+  ) INTO v_has_primary;
+
+  SELECT EXISTS (
+    SELECT 1 FROM listings l WHERE listings_row_needs_field_promote_scalars(l) LIMIT 1
+  ) INTO v_has_scalars;
+
+  RAISE NOTICE 'listings_field_promote_backfill: primary=%, scalars=%, batch_size=%',
+    v_has_primary, v_has_scalars, p_batch_size;
+
+  IF NOT v_has_primary AND NOT v_has_scalars THEN
+    RAISE NOTICE 'No rows need backfill. Re-run fast EXISTS verify; deploy Go sync if typed cols are still NULL.';
+    RETURN;
+  END IF;
+
+  IF v_has_primary THEN
+    RAISE NOTICE 'starting phase primary (promote + strip custom_fields and raw_data IDX keys)';
+    CALL listings_field_promote_apply_batch(p_batch_size, 'primary');
+  END IF;
+
+  IF v_has_scalars THEN
+    RAISE NOTICE 'starting phase scalars (null typed columns with values still in raw_data)';
+    CALL listings_field_promote_apply_batch(p_batch_size, 'scalars');
+  END IF;
+
+  RAISE NOTICE 'listings_field_promote_backfill: all phases complete';
+END;
+$$;
+
+-- After installing functions/procedures above, run manually (prefer psql over DataGrip for CALL):
+--   SET statement_timeout = 0;
+--   CALL run_listings_field_promote_backfill(500);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────
 -- GO SYNC CODE FOLLOW-UP REQUIRED
