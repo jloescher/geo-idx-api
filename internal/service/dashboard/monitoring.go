@@ -317,13 +317,20 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 	if err != nil {
 		return nil, err
 	}
+	queues = MergeKnownQueues(s.cfg, queues)
 	topTypes, err := s.repo.TopPendingJobTypes(ctx, 10)
 	if err != nil {
 		return nil, err
 	}
+	if topTypes == nil {
+		topTypes = make([]repository.JobTypeCount, 0)
+	}
 	failedTop, err := s.repo.TopFailedJobDetails(ctx, 10)
 	if err != nil {
 		return nil, err
+	}
+	if failedTop == nil {
+		failedTop = make([]repository.FailedJobDetail, 0)
 	}
 	var pending int64
 	var staleReserved int64
@@ -383,11 +390,30 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 	snap.Incidents = BuildIncidents(IncidentInput{
 		InfraStatus:            snap.Infrastructure.Status,
 		SchedulerLeaderActive:  scheduler.LeaderActive,
+		SchedulerHolderPID:     scheduler.HolderPID,
+		SchedulerLastEnqueue:   scheduler.LastEnqueue,
 		TotalStaleReserved:     snap.Queues.TotalStaleReserved,
 		StaleReservedAfterSecs: staleReservedAfter,
 		TotalFailed:            snap.Queues.TotalFailedRecent,
 		SyncPipelineStatus:     snap.SyncPipeline.Status,
 	})
+	for _, src := range snap.GIS.Sources {
+		if !src.Enabled {
+			continue
+		}
+		if src.APIStatus == "unreachable" {
+			detail := src.LastProbeError
+			if detail == "" {
+				detail = "ArcGIS metadata probe failed; use GIS Sources panel to re-probe or start sync."
+			}
+			snap.Incidents = append(snap.Incidents, IncidentMetric{
+				Severity: "warning",
+				Source:   "gis",
+				Title:    "GIS source unreachable: " + src.SourceKey,
+				Detail:   detail,
+			})
+		}
+	}
 
 	return snap, nil
 }

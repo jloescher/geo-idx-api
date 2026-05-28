@@ -14,7 +14,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/api ./cmd/api && 
 
 FROM alpine:3.21 AS api
 RUN apk add --no-cache ca-certificates tzdata && \
-    mkdir -p /var/cache/geoidx/images && chown -R nobody:nobody /var/cache/geoidx
+    mkdir -p /var/cache/geoidx/images /var/cache/geoidx/gis-imports && \
+    chown -R nobody:nobody /var/cache/geoidx
 COPY --from=build /out/api /usr/local/bin/api
 COPY migrations /migrations
 USER nobody
@@ -24,8 +25,8 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
 CMD ["/usr/local/bin/api"]
 
 FROM alpine:3.21 AS worker
-RUN apk add --no-cache ca-certificates tzdata && \
-    mkdir -p /var/cache/geoidx/images
+RUN apk add --no-cache ca-certificates tzdata gdal-tools && \
+    mkdir -p /var/cache/geoidx/images /var/cache/geoidx/gis-imports
 COPY --from=build /out/worker /usr/local/bin/worker
 USER nobody
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

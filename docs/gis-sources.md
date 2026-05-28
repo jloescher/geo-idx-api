@@ -272,7 +272,25 @@ arcgis error: Unable to perform query. Please check your parameters.
 
 ### Monitoring API
 
-Dashboard GIS tile uses `parcels_last_synced_at`, `zips_last_synced_at`, and per-source generation — see [Admin dashboard § GIS freshness](admin-dashboard.md#gis-freshness).
+Dashboard GIS tile uses `parcels_last_synced_at`, `zips_last_synced_at`, per-source generation, and `api_status` from stored probes — see [Admin dashboard](admin-dashboard.md).
+
+### Operator API (admin session)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/api/v1/admin/gis/probe` | Probe one source (`source_key`) or all |
+| `POST` | `/api/v1/admin/gis/sync` | Enqueue `gis.parcel_sync_page` chain (`source_key`, `force`) |
+| `GET` | `/api/v1/admin/gis/sources` | List catalog + `gis_source_states` health |
+| `POST` | `/api/v1/admin/gis/sources` | Upsert catalog row |
+| `PUT` | `/api/v1/admin/gis/sources/:source_key` | Update row |
+| `DELETE` | `/api/v1/admin/gis/sources/:source_key` | Soft-disable (`enabled=false`) or `?hard=true` |
+| `POST` | `/api/v1/admin/gis/sources/:source_key/upload` | Multipart `.zip`/`.shp` → `gis.shapefile_import` worker job |
+
+**Dashboard:** Monitoring → **Data Quality** → GIS Sources table (**Probe**, **Sync**, **Probe all**) when logged in as admin.
+
+**Shapefile ingest:** Set `sync_mode=shapefile` on the catalog row, upload via admin API or dashboard. Worker image includes `gdal-tools` (`ogr2ogr`). Set `GIS_IMPORT_PATH` (default `/var/cache/geoidx/gis-imports`) on **API and worker** with a **shared volume** in multi-DC so workers can read uploads.
+
+**Env:** `GIS_SYNC_QUEUE`, `GIS_IMPORT_PATH`, `GIS_IMPORT_MAX_BYTES` (default 512MB).
 
 ---
 

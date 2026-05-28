@@ -108,9 +108,12 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 	dashH.Register(app)
 
 	floodH := admin.NewFloodHandler(cfg, db, logger)
-	admin := api.Group("/v1/admin", dashH.SessionAuthMiddleware)
-	admin.Get("/monitoring", dashH.MonitoringJSON)
-	admin.Post("/flood-enrich", floodH.Enrich)
+	gisAdminH := admin.NewGISHandler(cfg, db, logger)
+	adminAPI := api.Group("/v1/admin", dashH.SessionAuthMiddleware)
+	adminAPI.Get("/monitoring", dashH.MonitoringJSON)
+	adminAPI.Post("/flood-enrich", floodH.Enrich)
+	adminGIS := adminAPI.Group("/gis", dashH.RequireAdmin)
+	admin.RegisterGISRoutes(adminGIS, gisAdminH)
 }
 
 func healthz(c *fiber.Ctx) error {

@@ -48,7 +48,13 @@ func (s *Scheduler) Run(ctx context.Context) error {
 
 		leader, ok, err := TryAcquireLeader(ctx, s.db.Pool, lockKey)
 		if err != nil {
-			return err
+			s.logger.Warn("scheduler leader acquire failed, retrying", "lock_key", lockKey, "error", err)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(poll):
+				continue
+			}
 		}
 		if !ok {
 			s.logger.Info("scheduler standby, waiting for leader lock", "lock_key", lockKey)

@@ -168,8 +168,37 @@ ${statusChip}
     );
   }
 
+  function renderGISOpsTable(sources, isAdmin) {
+    const rows = (sources || []).map((src) => {
+      const api = src.api_status || "unknown";
+      const probe = src.last_probe_at ? fmtSyncAge(src.last_probe_at) : "—";
+      const actions = isAdmin
+        ? `<button type="button" class="btn btn-secondary btn-sm" data-gis-action="probe" data-source-key="${src.source_key}">Probe</button>
+           <button type="button" class="btn btn-secondary btn-sm" data-gis-action="sync" data-source-key="${src.source_key}">Sync</button>`
+        : "—";
+      return `<tr>
+        <td>${src.source_key || "—"}</td>
+        <td>${src.county_slug || "—"}</td>
+        <td>${src.sync_mode || "—"}</td>
+        <td><span class="${badgeClass(api === "reachable" ? "healthy" : api === "unreachable" ? "critical" : "unknown")}">${api}</span></td>
+        <td>${probe}</td>
+        <td>${fmtNum(src.parcel_count)}</td>
+        <td>${src.active_sync_job ? "yes" : "no"}</td>
+        <td>${actions}</td>
+      </tr>`;
+    });
+    const toolbar = isAdmin
+      ? `<div class="monitoring-toolbar"><button type="button" class="btn btn-secondary btn-sm" data-gis-action="probe-all">Probe all</button>
+         <span id="gis-ops-status" class="monitoring-meta" role="status"></span></div>`
+      : "";
+    return `${toolbar}<table class="monitoring-table"><thead><tr>
+      <th>Source</th><th>County</th><th>Mode</th><th>API</th><th>Last probe</th><th>Parcels</th><th>Sync active</th><th>Actions</th>
+    </tr></thead><tbody>${rows.join("") || '<tr><td colspan="8">No GIS sources in snapshot</td></tr>'}</tbody></table>`;
+  }
+
   function renderDataPanel(data) {
     const gis = data.gis || {};
+    const isAdmin = document.getElementById("monitoring")?.dataset?.isAdmin === "true";
     const gisTiles = [
       tile("Parcels", fmtNum(gis.parcels_total), fmtSyncAge(gis.parcels_last_synced_at), null, gis.parcels_status || "unknown", "GIS parcels"),
       tile("Cities", fmtNum(gis.cities_total), fmtSyncAge(gis.cities_last_synced_at), null, gis.cities_status || "unknown", "GIS cities"),
@@ -180,15 +209,10 @@ ${statusChip}
       .sort((a, b) => Number(b[1]) - Number(a[1]))
       .slice(0, 8)
       .map(([county, total]) => [county, fmtNum(total)]);
-    const sourceRows = (gis.sources || []).slice(0, 8).map((src) => [
-      src.source_key || "source",
-      src.status || "unknown",
-      src.max_synced_at ? fmtSyncAge(src.max_synced_at) : "Never synced",
-    ]);
     return (
       renderGroup("GIS Data Health", gisTiles) +
       renderStatList("Top Counties by Parcel Count", byCounty, ["County", "Parcels"]) +
-      renderStatList("GIS Source States", sourceRows, ["Source", "Status", "Freshness"])
+      `<div class="monitoring-group"><h3 class="monitoring-group-title">GIS Sources</h3>${renderGISOpsTable(gis.sources, isAdmin)}</div>`
     );
   }
 
@@ -218,6 +242,34 @@ ${statusChip}
   }
 
   function renderQueuePanel(data) {
+    const queues = data.queues || {};
+    const queueRows = queues.by_queue || [];
+    const rollupTiles = [
+      tile(
+        "Pending",
+        fmtNum(queues.total_pending),
+        `${fmtNum(queues.total_stale_reserved || 0)} stale reserved`,
+        null,
+        queues.status === "healthy" ? "healthy" : queues.status || "unknown",
+        "Total pending jobs"
+      ),
+      tile(
+        "Failed (7d)",
+        fmtNum(queues.total_failed_recent ?? queues.total_failed),
+        `${fmtNum(queues.total_failed || 0)} all-time in failed_jobs`,
+        null,
+        (queues.total_failed_recent || 0) > 0 ? "stale" : "healthy",
+        "Recent failed jobs"
+      ),
+      tile(
+        "Queues tracked",
+        fmtNum(queueRows.length),
+        queues.status === "healthy" && queueRows.length ? "Configured workers listening" : "From WORKER_QUEUES + sync queues",
+        null,
+        queueRows.length ? "healthy" : "unknown",
+        "Known queue roll-up"
+      ),
+    ];
     const cache = data.cache || {};
     const cacheTiles = [
       tile(
@@ -230,9 +282,7 @@ ${statusChip}
       ),
       tile("Audit requests", fmtNum(cache.total), `${fmtNum(cache.hits)} hits`, null, null, "Cache audit volume"),
     ];
-    const queues = data.queues || {};
-    const queueRows = queues.by_queue || [];
-    const queueTiles = queueRows.slice(0, 4).map((q) => {
+    const queueTiles = queueRows.map((q) => {
       const name = q.queue || "unknown";
       const pending = q.pending ?? 0;
       const reserved = q.reserved ?? 0;
@@ -247,8 +297,22 @@ ${statusChip}
         `Queue ${name}`
       );
     });
+    const allQueuesHealthy =
+      queues.status === "healthy" &&
+      (queues.total_pending || 0) === 0 &&
+      (queues.total_failed_recent || 0) === 0 &&
+      (queues.total_stale_reserved || 0) === 0;
     if (!queueTiles.length) {
-      queueTiles.push(tile("Queues", "0", "PostgreSQL jobs", monitoringTabHref("queues"), "unknown", "Queue depth"));
+      queueTiles.push(
+        tile(
+          "Queues",
+          "0",
+          allQueuesHealthy ? "No jobs in queue tables — workers idle" : "No queue rows",
+          monitoringTabHref("queues"),
+          allQueuesHealthy ? "healthy" : "unknown",
+          "Queue depth"
+        )
+      );
     }
     const failedTiles = (queues.failed_top || []).slice(0, 4).map((row) =>
       tile(
@@ -261,6 +325,7 @@ ${statusChip}
       )
     );
     return (
+      renderGroup("Queue Roll-up", rollupTiles) +
       renderGroup("Queue Health", queueTiles) +
       renderGroup("Queue Performance", cacheTiles) +
       renderGroup("Failed Jobs", failedTiles) +
@@ -555,11 +620,55 @@ ${statusChip}
     update();
   }
 
+  async function gisAdminPost(path, body) {
+    const res = await fetch(`/api/v1/admin/gis${path}`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    return data;
+  }
+
+  function bindGISOps() {
+    const panel = $("panel-data");
+    if (!panel || document.getElementById("monitoring")?.dataset?.isAdmin !== "true") return;
+    panel.addEventListener("click", async (event) => {
+      const btn = event.target.closest("[data-gis-action]");
+      if (!btn) return;
+      const status = $("gis-ops-status");
+      const action = btn.getAttribute("data-gis-action");
+      const sourceKey = btn.getAttribute("data-source-key");
+      try {
+        btn.disabled = true;
+        if (status) status.textContent = "Working…";
+        if (action === "probe-all") {
+          await gisAdminPost("/probe", {});
+        } else if (action === "probe" && sourceKey) {
+          await gisAdminPost("/probe", { source_key: sourceKey });
+        } else if (action === "sync" && sourceKey) {
+          const force = window.confirm(`Start parcel sync for ${sourceKey}?`);
+          if (!force) return;
+          await gisAdminPost("/sync", { source_key: sourceKey, force: true });
+        }
+        if (status) status.textContent = "Done";
+        fetchMonitoring({ silent: true });
+      } catch (err) {
+        if (status) status.textContent = err.message || "Failed";
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     bindHostnamePreview();
     if (!$("monitoring")) return;
     setupTabs();
     bindTabDrillLinks();
+    bindGISOps();
     $("monitoring-refresh")?.addEventListener("click", () => fetchMonitoring());
     $("monitoring-retry")?.addEventListener("click", () => fetchMonitoring());
     const booted = loadBootstrap();

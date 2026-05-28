@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/quantyralabs/idx-api/internal/queue"
+	gisrepo "github.com/quantyralabs/idx-api/internal/repository/gis"
 	"github.com/quantyralabs/idx-api/internal/service/fema"
 	"github.com/quantyralabs/idx-api/internal/service/geocode"
 	"github.com/quantyralabs/idx-api/internal/service/gis"
@@ -95,6 +96,16 @@ func (r *Registry) handleGISParcelSyncPage(ctx context.Context, job *queue.Reser
 		return err
 	}
 	return r.gisPersistent.SyncParcelPage(ctx, args)
+}
+
+func (r *Registry) handleGISShapefileImport(ctx context.Context, job *queue.ReservedJob) error {
+	args, err := gis.UnmarshalShapefileImportArgs(job.Payload.Args)
+	if err != nil {
+		return err
+	}
+	repo := gisrepo.New(r.db)
+	svc := gis.NewShapefileImportService(r.cfg, repo, r.logger)
+	return svc.Import(ctx, args)
 }
 
 func (r *Registry) handleCryptoRefresh(ctx context.Context, job *queue.ReservedJob) error {

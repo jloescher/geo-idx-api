@@ -177,6 +177,8 @@ The Go scheduler uses a **PostgreSQL session advisory lock** on a dedicated conn
 
 Deploy **two** scheduler apps (NYC + ATL); normally **one** holds the lock. The other stays standby for failover when the leader disconnects (lock released).
 
+For schedulers, prefer **`DB_RW_DSN` to Patroni :5432** (Tailscale leader IP) instead of HAProxy `:5000`, or add libpq keepalives on `:5000` — the leader connection is idle between cron ticks and HAProxy can drop it. See [Deployment & operations § Scheduler](deployment-operations.md#scheduler-incident-troubleshooting-nyc--atl).
+
 **Warning:** Do not run two schedulers on Patroni without this lock — even on a single host.
 
 ---

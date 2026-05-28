@@ -117,11 +117,7 @@ func (r *MonitoringRepo) ListQueueCounts(ctx context.Context, staleReservedAfter
 	if staleReservedAfterSec < 60 {
 		staleReservedAfterSec = 600
 	}
-	pool, err := r.db.ReadPool(ctx)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := pool.Query(ctx, `
+	rows, err := r.db.Pool.Query(ctx, `
 		SELECT q.queue,
 		       COALESCE(j.pending, 0) AS pending,
 		       COALESCE(j.reserved, 0) AS reserved,
@@ -184,11 +180,7 @@ func (r *MonitoringRepo) TopFailedJobDetails(ctx context.Context, limit int) ([]
 	if limit < 1 {
 		limit = 10
 	}
-	pool, err := r.db.ReadPool(ctx)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := pool.Query(ctx, `
+	rows, err := r.db.Pool.Query(ctx, `
 		WITH grouped AS (
 			SELECT
 				queue,
@@ -275,12 +267,8 @@ type SchedulerLockHealth struct {
 
 // SchedulerLastEnqueue returns the newest created_at among scheduler-owned job types (UTC ISO).
 func (r *MonitoringRepo) SchedulerLastEnqueue(ctx context.Context) (string, error) {
-	pool, err := r.db.ReadPool(ctx)
-	if err != nil {
-		return "", err
-	}
 	var ts *time.Time
-	err = pool.QueryRow(ctx, `
+	err := r.db.Pool.QueryRow(ctx, `
 		SELECT MAX(to_timestamp(created_at)) AT TIME ZONE 'UTC'
 		FROM jobs
 		WHERE payload::jsonb->>'type' IN (
@@ -353,11 +341,7 @@ func (r *MonitoringRepo) TopPendingJobTypes(ctx context.Context, limit int) ([]J
 	if limit < 1 {
 		limit = 10
 	}
-	pool, err := r.db.ReadPool(ctx)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := pool.Query(ctx, `
+	rows, err := r.db.Pool.Query(ctx, `
 		SELECT queue,
 		       COALESCE(NULLIF(substring(payload from '"type"\s*:\s*"([^"]+)"'), ''), 'unknown') AS job_type,
 		       COUNT(*) AS pending
@@ -371,7 +355,7 @@ func (r *MonitoringRepo) TopPendingJobTypes(ctx context.Context, limit int) ([]J
 		return nil, err
 	}
 	defer rows.Close()
-	var out []JobTypeCount
+	out := make([]JobTypeCount, 0)
 	for rows.Next() {
 		var row JobTypeCount
 		if err := rows.Scan(&row.Queue, &row.JobType, &row.Count); err != nil {

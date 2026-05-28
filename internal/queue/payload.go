@@ -31,6 +31,7 @@ const (
 	TypeGISInitialSync             = "gis.initial_sync"
 	TypeGISZipSync                 = "gis.zip_sync"
 	TypeGISParcelSyncPage          = "gis.parcel_sync_page"
+	TypeGISShapefileImport         = "gis.shapefile_import"
 	TypeCryptoRefreshPricing       = "crypto.refresh_pricing"
 	TypeFEMAFloodEnrichKickoff     = "fema.flood_enrich_kickoff"
 	TypeFEMAFloodEnrichBatch       = "fema.flood_enrich_batch"

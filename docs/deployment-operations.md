@@ -138,6 +138,10 @@ WHERE locktype = 'advisory' AND classid = 0 AND objid = 913374211;
 
 **Monitoring probe bug (fixed):** Older API builds called `pg_try_advisory_lock` on one pool connection and `pg_advisory_unlock` on another. Session locks leaked onto idle API pool connections and **prevented schedulers from acquiring leadership** (both stuck in standby). After deploying the fix, **restart NYC + ATL API containers** once to drop leaked locks on existing pool sessions. Schedulers use a dedicated acquired connection for lock + unlock ([`internal/scheduler/leader.go`](../internal/scheduler/leader.go)) — that path was always correct.
 
+**Scheduler `DB_RW_DSN` and HAProxy :5000:** The leader holds a long-lived session advisory lock on a dedicated connection. HAProxy idle timeouts (~60–120s) can drop that TCP session and release the lock while cron still runs. Prefer **Patroni primary :5432** on Tailscale for `DB_RW_DSN` on scheduler apps, or append libpq keepalives (`keepalives=1&keepalives_idle=30&keepalives_interval=10&keepalives_count=5`). The scheduler binary also pings the leader connection every 30s.
+
+**Post-deploy verification (read-only):** After restarting APIs and schedulers, confirm one row in `pg_locks` for `objid = 913374211`, Infrastructure tab shows `holder_pid` and recent `last_enqueue_at`, and Incidents clears the scheduler critical.
+
 ### Failed jobs incident (historical vs active)
 
 The dashboard warns on **`failed_jobs` rows from the last 7 days**. After cutover, rows such as `mls.replication_resume` (unknown handler at failure time) or Spark HTTP 400 are often **historical**. Once workers register all job types, purge resolved rows on the primary:

@@ -49,6 +49,11 @@ Catalog codes come from `mls.Resolver.Catalog()` (e.g. `bridge_stellar`, `spark_
 | `GET /dashboard/monitoring/data` | Dashboard session (JSON snapshot) |
 | `GET /api/v1/admin/monitoring` | Same session middleware (JSON) |
 | `POST /api/v1/admin/flood-enrich` | Enqueue FEMA NFHL flood enrichment ([fema-flood-enrichment.md](fema-flood-enrichment.md)) |
+| `POST /api/v1/admin/gis/probe` | Admin: probe ArcGIS metadata (`{ "source_key": "optional" }`) |
+| `POST /api/v1/admin/gis/sync` | Admin: enqueue parcel sync (`source_key`, `force`) |
+| `GET /api/v1/admin/gis/sources` | Admin: list `gis_parcel_sources` + health |
+| `POST/PUT/DELETE /api/v1/admin/gis/sources` | Admin: CRUD catalog rows |
+| `POST /api/v1/admin/gis/sources/:source_key/upload` | Admin: shapefile/zip upload → `gis.shapefile_import` job |
 
 Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sessions persist in PostgreSQL (`dashboard_sessions`); re-login after migration or cookie invalidation.
 
@@ -67,10 +72,12 @@ Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sess
 | Section | Fields | Notes |
 |---------|--------|-------|
 | **Listings** | total, active/pending, lag, freshness mode | Per `dataset_slug`; dashboard drill-down → **Ingest & Sync** tab (not `/api/v1/bridge/stats`, which requires API domain token auth) |
-| **GIS** | parcels, cities, counties, zips, source states, layer freshness | Stale if parcel/zip sync &gt;35d or generation mismatch |
+| **GIS** | parcels, cities, counties, zips, source states, layer freshness | Stale if parcel/zip sync &gt;35d or generation mismatch; `api_status` from `last_probe_ok` |
+| **GIS ops (admin)** | Data Quality tab: Probe / Sync / Probe all | Requires `is_admin`; see [gis-sources.md](gis-sources.md) |
 | **Crypto** | BTC/ETH/SOL USD + age | Stale if snapshot &gt;1h |
 | **Cache** | 15m hit rate from `mls_proxy_audit_logs` | `cache_hit` stored as `HIT`/`MISS`; status `no_data` when no audits in window |
-| **Queues** | pending/reserved/failed by queue + `total_failed` + stale_reserved | Queue status `stale` when `total_failed` &gt; 0, pending &gt; 500, or stale_reserved &gt; 0 |
+| **Queues** | pending/reserved/failed by queue + `total_failed` + stale_reserved | Merges configured `WORKER_QUEUES` and sync queue names with zero rows when `jobs`/`failed_jobs` are empty; reads primary pool |
+| **Queues (empty)** | per-queue tiles show `0` pending | No **UNKNOWN** placeholder when rollup status is healthy |
 | **Queue failures** | top failed job types + latest exception preview | Grouped from `failed_jobs` via `payload::jsonb->>'type'` |
 | **Sync pipeline** | `replica_pages` counts by dataset/status | Empty table returns `by_status: []` and UI “sync idle”; stale when failed or pending &gt; 500 |
 | **Infrastructure** | scheduler advisory lock probe (`SCHEDULER_LEADER_LOCK_ID`) | `leader_active: false` = no session holds the lock; infra status `critical` |

@@ -93,6 +93,11 @@ func (h *Handler) requireAuth(c *fiber.Ctx) error {
 	return c.Next()
 }
 
+// RequireAdmin restricts routes to dashboard users with is_admin.
+func (h *Handler) RequireAdmin(c *fiber.Ctx) error {
+	return h.requireAdmin(c)
+}
+
 func (h *Handler) requireAdmin(c *fiber.Ctx) error {
 	uid, _ := c.Locals("user_id").(int64)
 	pool, err := h.db.ReadPool(c.Context())

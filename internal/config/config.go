@@ -189,6 +189,8 @@ type GISConfig struct {
 	FloridaMLSCodes         []string
 	Queue                   string
 	BoundaryStaleDays       int
+	ImportPath              string
+	ImportMaxBytes          int64
 }
 
 type ImageCacheConfig struct {
@@ -350,6 +352,8 @@ func Load() (Config, error) {
 			FloridaMLSCodes:        splitCSV(env("GIS_FLORIDA_MLS_CODES", "stellar")),
 			Queue:                  env("GIS_QUEUE", "default"),
 			BoundaryStaleDays:      envInt("GIS_BOUNDARY_STALE_DAYS", 90),
+			ImportPath:             env("GIS_IMPORT_PATH", "/var/cache/geoidx/gis-imports"),
+			ImportMaxBytes:         envInt64("GIS_IMPORT_MAX_BYTES", 512*1024*1024),
 		},
 		Images: ImageCacheConfig{
 			Path: env("IMAGE_CACHE_PATH", "/var/cache/geoidx/images"),
@@ -445,6 +449,18 @@ func envInt(key string, def int) int {
 		return def
 	}
 	n, err := strconv.Atoi(v)
+	if err != nil {
+		return def
+	}
+	return n
+}
+
+func envInt64(key string, def int64) int64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
 	if err != nil {
 		return def
 	}

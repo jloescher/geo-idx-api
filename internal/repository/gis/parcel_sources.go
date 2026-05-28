@@ -101,3 +101,68 @@ func (r *Repository) LoadParcelSources(ctx context.Context) ([]ParcelSourceRow, 
 	}
 	return out, rows.Err()
 }
+
+// ListAllParcelSources returns all catalog rows including disabled sources.
+func (r *Repository) ListAllParcelSources(ctx context.Context) ([]ParcelSourceRow, error) {
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT source_key, county_slug, query_url, sync_mode, arcgis_where,
+		       bbox_west, bbox_south, bbox_east, bbox_north,
+		       http_timeout_sec, page_size, mls_feed, enabled, priority, notes
+		FROM gis_parcel_sources
+		ORDER BY priority, county_slug, source_key
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanParcelSourceRows(rows)
+}
+
+// GetParcelSourceByKey loads one catalog row.
+func (r *Repository) GetParcelSourceByKey(ctx context.Context, sourceKey string) (ParcelSourceRow, error) {
+	var row ParcelSourceRow
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT source_key, county_slug, query_url, sync_mode, arcgis_where,
+		       bbox_west, bbox_south, bbox_east, bbox_north,
+		       http_timeout_sec, page_size, mls_feed, enabled, priority, notes
+		FROM gis_parcel_sources
+		WHERE source_key = $1
+	`, sourceKey).Scan(
+		&row.SourceKey, &row.CountySlug, &row.QueryURL, &row.SyncMode, &row.ArcGISWhere,
+		&row.BBoxWest, &row.BBoxSouth, &row.BBoxEast, &row.BBoxNorth,
+		&row.HTTPTimeoutSec, &row.PageSize, &row.MLSFeed, &row.Enabled, &row.Priority, &row.Notes,
+	)
+	return row, err
+}
+
+// SetParcelSourceEnabled soft-disables a source.
+func (r *Repository) SetParcelSourceEnabled(ctx context.Context, sourceKey string, enabled bool) error {
+	_, err := r.db.Pool.Exec(ctx, `
+		UPDATE gis_parcel_sources SET enabled = $2, updated_at = NOW() WHERE source_key = $1
+	`, sourceKey, enabled)
+	return err
+}
+
+// DeleteParcelSource removes a catalog row (does not delete gis_parcels).
+func (r *Repository) DeleteParcelSource(ctx context.Context, sourceKey string) error {
+	_, err := r.db.Pool.Exec(ctx, `DELETE FROM gis_parcel_sources WHERE source_key = $1`, sourceKey)
+	return err
+}
+
+func scanParcelSourceRows(rows interface {
+	Next() bool
+	Scan(dest ...any) error
+	Err() error
+}) ([]ParcelSourceRow, error) {
+	var out []ParcelSourceRow
+	for rows.Next() {
+		var row ParcelSourceRow
+		if err := rows.Scan(&row.SourceKey, &row.CountySlug, &row.QueryURL, &row.SyncMode, &row.ArcGISWhere,
+			&row.BBoxWest, &row.BBoxSouth, &row.BBoxEast, &row.BBoxNorth,
+			&row.HTTPTimeoutSec, &row.PageSize, &row.MLSFeed, &row.Enabled, &row.Priority, &row.Notes); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}

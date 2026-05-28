@@ -72,7 +72,11 @@ func renderMonitoringBody(data PageData) string {
 			bootstrapJSON = string(raw)
 		}
 	}
-	return `<section class="card" id="monitoring" aria-labelledby="monitoring-heading">
+	isAdmin := "false"
+	if data.IsAdmin {
+		isAdmin = "true"
+	}
+	return `<section class="card" id="monitoring" data-is-admin="` + isAdmin + `" aria-labelledby="monitoring-heading">
 <script type="application/json" id="monitoring-bootstrap">` + bootstrapJSON + `</script>
 <h1 id="monitoring-heading">Monitoring</h1>
 <div class="monitoring-header">

@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -14,8 +15,10 @@ const DefaultLeaderLockKey int64 = 913374211
 // LeaderSession holds a dedicated pool connection with an acquired advisory lock.
 // The lock is session-scoped; release via Release before returning the connection to the pool.
 type LeaderSession struct {
-	conn *pgxpool.Conn
-	key  int64
+	conn      *pgxpool.Conn
+	key       int64
+	stopPing  context.CancelFunc
+	pingDone  sync.WaitGroup
 }
 
 // TryAcquireLeader attempts pg_try_advisory_lock on a dedicated connection.
@@ -37,13 +40,42 @@ func TryAcquireLeader(ctx context.Context, pool *pgxpool.Pool, key int64) (*Lead
 		conn.Release()
 		return nil, false, nil
 	}
-	return &LeaderSession{conn: conn, key: key}, true, nil
+	sess := &LeaderSession{conn: conn, key: key}
+	sess.startKeepalive(ctx)
+	return sess, true, nil
+}
+
+func (l *LeaderSession) startKeepalive(parent context.Context) {
+	pingCtx, cancel := context.WithCancel(parent)
+	l.stopPing = cancel
+	l.pingDone.Add(1)
+	go func() {
+		defer l.pingDone.Done()
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-pingCtx.Done():
+				return
+			case <-ticker.C:
+				if l.conn == nil {
+					return
+				}
+				_, _ = l.conn.Exec(pingCtx, `SELECT 1`)
+			}
+		}
+	}()
 }
 
 // Release unlocks the advisory lock and returns the connection to the pool.
 func (l *LeaderSession) Release(ctx context.Context) {
 	if l == nil || l.conn == nil {
 		return
+	}
+	if l.stopPing != nil {
+		l.stopPing()
+		l.pingDone.Wait()
+		l.stopPing = nil
 	}
 	_, _ = l.conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, l.key)
 	l.conn.Release()

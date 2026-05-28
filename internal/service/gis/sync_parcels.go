@@ -77,6 +77,95 @@ func (s *ParcelSyncService) Kickoff(ctx context.Context) error {
 	return s.kickoff(ctx, "")
 }
 
+// KickoffSource enqueues parcel sync for one source_key (code catalog or gis_parcel_sources).
+func (s *ParcelSyncService) KickoffSource(ctx context.Context, sourceKey string, force bool) error {
+	if sourceKey == "" {
+		return fmt.Errorf("source_key required")
+	}
+	spec, err := s.resolveParcelSource(ctx, sourceKey)
+	if err != nil {
+		return err
+	}
+	if !spec.Enabled {
+		return fmt.Errorf("source %s is disabled", sourceKey)
+	}
+	if spec.SyncMode == SyncModeShapefile {
+		return fmt.Errorf("source %s uses shapefile sync; upload a file instead", sourceKey)
+	}
+	queueName := s.cfg.GIS.SyncQueue
+	if queueName == "" {
+		queueName = "default"
+	}
+	if err := s.db.EnsureParcelSourceCatalog(ctx, parcelSourceRowsFromSpecs([]ParcelSourceSpec{spec})); err != nil {
+		return fmt.Errorf("ensure parcel source catalog: %w", err)
+	}
+	if !force {
+		active, err := s.db.HasActiveParcelSyncJob(ctx, queueName, spec.SourceKey)
+		if err != nil {
+			return err
+		}
+		if active {
+			return fmt.Errorf("parcel sync already active for %s", sourceKey)
+		}
+	}
+	if err := s.db.EnsureSourceState(ctx, spec.SourceKey); err != nil {
+		return err
+	}
+	gen, err := s.db.BumpSourceGeneration(ctx, spec.SourceKey)
+	if err != nil {
+		return err
+	}
+	return s.enqueuePage(ctx, argsFromSpec(spec, int(gen), 0))
+}
+
+func (s *ParcelSyncService) resolveParcelSource(ctx context.Context, sourceKey string) (ParcelSourceSpec, error) {
+	if spec, ok := ParcelSourceSpecByKey(sourceKey); ok {
+		return spec, nil
+	}
+	row, err := s.db.GetParcelSourceByKey(ctx, sourceKey)
+	if err != nil {
+		return ParcelSourceSpec{}, fmt.Errorf("unknown source %s: %w", sourceKey, err)
+	}
+	return specFromParcelRow(row), nil
+}
+
+func specFromParcelRow(row gisrepo.ParcelSourceRow) ParcelSourceSpec {
+	spec := ParcelSourceSpec{
+		SourceKey:  row.SourceKey,
+		CountySlug: row.CountySlug,
+		QueryURL:   row.QueryURL,
+		SyncMode:   row.SyncMode,
+		MLSFeed:    row.MLSFeed,
+		Enabled:    row.Enabled,
+		Priority:   row.Priority,
+	}
+	if row.ArcGISWhere != nil {
+		spec.ArcGISWhere = *row.ArcGISWhere
+	}
+	if row.BBoxWest != nil {
+		spec.SyncBBox.West = *row.BBoxWest
+	}
+	if row.BBoxSouth != nil {
+		spec.SyncBBox.South = *row.BBoxSouth
+	}
+	if row.BBoxEast != nil {
+		spec.SyncBBox.East = *row.BBoxEast
+	}
+	if row.BBoxNorth != nil {
+		spec.SyncBBox.North = *row.BBoxNorth
+	}
+	if row.HTTPTimeoutSec != nil {
+		spec.HTTPTimeoutSec = *row.HTTPTimeoutSec
+	}
+	if row.Notes != nil {
+		spec.Notes = *row.Notes
+	}
+	if spec.SyncMode == "" {
+		spec.SyncMode = SyncModeBBox
+	}
+	return spec
+}
+
 // KickoffCounty enqueues parcel sync jobs for a single county slug.
 func (s *ParcelSyncService) KickoffCounty(ctx context.Context, countySlug string) error {
 	if countySlug == "" {

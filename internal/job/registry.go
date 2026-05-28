@@ -62,6 +62,7 @@ func (r *Registry) RegisterAll(w *queue.Worker) {
 	w.Register(queue.TypeGISInitialSync, r.handleGISInitialSync)
 	w.Register(queue.TypeGISZipSync, r.handleGISZipSync)
 	w.Register(queue.TypeGISParcelSyncPage, r.handleGISParcelSyncPage)
+	w.Register(queue.TypeGISShapefileImport, r.handleGISShapefileImport)
 	w.Register(queue.TypeCryptoRefreshPricing, r.handleCryptoRefresh)
 	w.Register(queue.TypeFEMAFloodEnrichKickoff, r.handleFEMAFloodEnrichKickoff)
 	w.Register(queue.TypeFEMAFloodEnrichBatch, r.handleFEMAFloodEnrichBatch)

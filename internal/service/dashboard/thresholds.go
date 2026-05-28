@@ -99,10 +99,25 @@ func QueueTileChipStatus(pending, failed int64) string {
 type IncidentInput struct {
 	InfraStatus            string
 	SchedulerLeaderActive  bool
+	SchedulerHolderPID     *int32
+	SchedulerLastEnqueue   string
 	TotalStaleReserved     int64
 	StaleReservedAfterSecs int
 	TotalFailed            int64
 	SyncPipelineStatus     string
+}
+
+func schedulerLeaderIncidentDetail(in IncidentInput) string {
+	if in.SchedulerLeaderActive {
+		return ""
+	}
+	if in.SchedulerLastEnqueue != "" {
+		return "No advisory lock on the Patroni primary, but scheduler-owned jobs were enqueued recently (" + in.SchedulerLastEnqueue + "). The leader session may have lost its lock (HAProxy idle on :5000). Restart schedulers or use Patroni :5432 / keepalives on DB_RW_DSN."
+	}
+	if in.SchedulerHolderPID != nil && *in.SchedulerHolderPID > 0 {
+		return "Unexpected: holder PID present without leader_active. Check pg_locks on the primary and restart API containers if an old pool probe leaked a lock."
+	}
+	return "No granted advisory lock on the Patroni primary (classid=0). Confirm schedulers on re-db and re-node-02 log leader acquired; restart API containers once after the pg_locks monitoring fix to clear leaked locks."
 }
 
 // BuildIncidents returns warning/critical incidents from monitoring health signals.
@@ -113,7 +128,7 @@ func BuildIncidents(in IncidentInput) []IncidentMetric {
 			Severity: "critical",
 			Source:   "infrastructure",
 			Title:    "Scheduler leader not detected",
-			Detail:   "No granted advisory lock on the Patroni primary (classid=0). Confirm schedulers on re-db and re-node-02 log leader acquired; after deploying the pg_locks monitoring fix, restart API containers once to clear any leaked locks from the old probe.",
+			Detail:   schedulerLeaderIncidentDetail(in),
 		})
 	}
 	if in.TotalStaleReserved > 0 {

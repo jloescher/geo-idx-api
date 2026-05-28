@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -35,6 +36,31 @@ func NewMetadataService(cfg config.Config, db *repository.DB, logger *slog.Logge
 		logger: logger,
 		http:   &http.Client{Timeout: timeout},
 	}
+}
+
+// ProbeSource probes one catalog source by key.
+func (m *MetadataService) ProbeSource(ctx context.Context, sourceKey string) error {
+	if sourceKey == "" {
+		return m.ProbeAll(ctx)
+	}
+	endpoint := ""
+	switch sourceKey {
+	case FDOTAdminBoundariesKey:
+		endpoint = "https://gis.fdot.gov/arcgis/rest/services/Admin_Boundaries/FeatureServer/6?f=json"
+	case FloridaStatewideCadastralKey:
+		endpoint = queryMetaURL(FloridaStatewideCadastralURL)
+	default:
+		if spec, ok := ParcelSourceSpecByKey(sourceKey); ok {
+			endpoint = queryMetaURL(spec.QueryURL)
+		} else {
+			row, err := m.gis.GetParcelSourceByKey(ctx, sourceKey)
+			if err != nil {
+				return err
+			}
+			endpoint = queryMetaURL(row.QueryURL)
+		}
+	}
+	return m.probeOne(ctx, sourceKey, endpoint)
 }
 
 func (m *MetadataService) ProbeAll(ctx context.Context) error {
@@ -71,13 +97,24 @@ func (m *MetadataService) probeOne(ctx context.Context, sourceKey, endpoint stri
 	}
 	resp, err := m.http.Do(req)
 	if err != nil {
+		_ = m.gis.UpdateProbeResult(ctx, sourceKey, false, 0, err.Error())
 		return err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		_ = m.gis.UpdateProbeResult(ctx, sourceKey, false, resp.StatusCode, err.Error())
 		return err
 	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		msg := string(body)
+		if len(msg) > 200 {
+			msg = msg[:200]
+		}
+		_ = m.gis.UpdateProbeResult(ctx, sourceKey, false, resp.StatusCode, msg)
+		return fmt.Errorf("gis probe http %d source=%s", resp.StatusCode, sourceKey)
+	}
+	_ = m.gis.UpdateProbeResult(ctx, sourceKey, true, resp.StatusCode, "")
 	fp := metadataFingerprint(body)
 	var prev sql.NullString
 	err = m.db.Pool.QueryRow(ctx, `SELECT fingerprint FROM gis_source_states WHERE source_key = $1`, sourceKey).Scan(&prev)
