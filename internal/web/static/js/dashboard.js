@@ -18,6 +18,13 @@
     return Number(n).toLocaleString();
   }
 
+  /** last_enqueue_at is MAX(created_at) on pending jobs only — completed rows are deleted. */
+  function formatSchedulerEnqueue(scheduler) {
+    if (scheduler.last_enqueue_at) return scheduler.last_enqueue_at;
+    if (scheduler.leader_active) return "none pending (queue drains on success)";
+    return "none in jobs table";
+  }
+
   function fmtPct(n) {
     if (n === null || n === undefined) return "—";
     return `${Number(n).toFixed(1)}%`;
@@ -344,7 +351,7 @@ ${statusChip}
       tile(
         "Scheduler lock",
         scheduler.leader_active ? "Leader active" : "No leader",
-        `lock ${scheduler.lock_id || "—"} · pid ${scheduler.holder_pid ?? "—"} · backends ${scheduler.scheduler_backends ?? 0} · enqueue ${scheduler.last_enqueue_at || "never"}`,
+        `lock ${scheduler.lock_id || "—"} · pid ${scheduler.holder_pid ?? "—"} · backends ${scheduler.scheduler_backends ?? 0} · enqueue ${formatSchedulerEnqueue(scheduler)}`,
         null,
         scheduler.leader_active ? "healthy" : "critical",
         "Scheduler leadership"

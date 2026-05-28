@@ -109,6 +109,8 @@ WHERE locktype = 'advisory' AND objid = 913374211;
 
 Expect one granted row while the leader process is up. If empty and monitoring shows critical, restart scheduler apps or fix DB connectivity before changing application code.
 
+**`enqueue never` on the Infrastructure tile:** `last_enqueue_at` is `MAX(created_at)` from `jobs` for scheduler-owned types (`mls.replication_kickoff`, `mls.replication_resume`, `mls.proxy_cache_purge`, `crypto.refresh_pricing`). Successful jobs are **removed from `jobs` immediately** after workers finish them, so an empty or fast-draining queue shows no timestamp even while the scheduler is healthy and listings continue to update. Prefer `leader_active` + scheduler logs (`enqueued scheduled job`) over this field; the UI labels an empty queue as “none pending” when a leader is active.
+
 ### Optional failed_jobs hygiene
 
 Historical rows (e.g. `mls.replication_resume` before workers registered the handler, Spark HTTP 400) remain in `failed_jobs` until manually removed. After confirming workers consume `sync-kickoff` and handlers are deployed, operators may delete or archive stale rows **only with explicit approval** — the dashboard will continue to report `total_failed` &gt; 0 until then.
