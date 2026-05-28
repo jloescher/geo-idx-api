@@ -29,6 +29,7 @@ const swaggerUIHTML = `<!DOCTYPE html>
       url: '/openapi.json',
       dom_id: '#swagger-ui',
       deepLinking: true,
+      persistAuthorization: true,
       presets: [
         SwaggerUIBundle.presets.apis,
         SwaggerUIStandalonePreset

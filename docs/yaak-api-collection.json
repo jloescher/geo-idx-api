@@ -39,7 +39,13 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Bearer PAT on routes guarded by `DomainToken` middleware (`/api/v1/*`, `/images/*`). Abilities: **`idx:full`** (issued by `POST /api/auth/token`) or **`idx:access`**. Pair with **`X-Domain-Slug`** or **`?domain=`** for a TXT-verified domain on the token owner's account."
+        "description": "Bearer PAT on routes guarded by `DomainToken` middleware (`/api/v1/*`, `/images/*`). Abilities: **`idx:full`** (issued by `POST /api/auth/token`) or **`idx:access`**. Always pair with `domainSlugAuth` (`X-Domain-Slug` header) or the `?domain=` query parameter."
+      },
+      "domainSlugAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Domain-Slug",
+        "description": "TXT-verified domain slug required alongside `bearerAuth` for all DomainToken-protected routes (`/api/v1/*`, `/images/*`). Must match a verified domain on the token owner's account. The `?domain=` query parameter is an equivalent alternative accepted by the same middleware. Not required for `/api/auth/user` (token-only) or admin session endpoints."
       }
     },
     "schemas": {
@@ -333,7 +339,7 @@
       "get": {
         "tags": ["Authentication"],
         "summary": "Get Current User",
-        "description": "Returns the authenticated user's `id`, `name`, and `email`. Validates the `Authorization: Bearer <token>` header directly (not through the DomainToken middleware).",
+        "description": "Returns the authenticated user's `id`, `name`, and `email`. Validates the `Authorization: Bearer <token>` header directly — **not** through DomainToken middleware, so no domain slug is required.",
         "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
@@ -360,7 +366,7 @@
         "tags": ["MLS Data - Listings"],
         "summary": "Get Listings",
         "description": "Get MLS listings for the resolved MLS feed (Bridge web collection when `filters` is set; merged Active/Pending Bridge RESO slice when `filters` is absent). Responses include top-level `pricing` and per-row `pricing_converted` when `ListPrice` is present and `include_pricing=1` is passed. **Collection cache:** 15-minute TTL applies per domain when **`filters` is absent**; any `filters` query parameter bypasses the cache and forwards to the upstream MLS. Standard Bridge/Spark query parameters are passed through. Responds with `X-IDX-Cache: HIT|MISS`.",
-        "security": [{ "bearerAuth": [] }],
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           {
             "name": "X-Domain-Slug",
@@ -418,7 +424,7 @@
         "tags": ["MLS Data - Listings"],
         "summary": "Get Listing by ID",
         "description": "Get a specific MLS listing by its web ID. Listing payload includes `pricing_converted` when `include_pricing=1` is passed and `ListPrice` is available. Response body is sanitized (expanded collections normalized).",
-        "security": [{ "bearerAuth": [] }],
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           {
             "name": "listingId",
@@ -447,7 +453,7 @@
         "tags": ["MLS Data - Listings"],
         "summary": "Search Properties (RESO OData)",
         "description": "Proxy to RESO `/Property` collection. All OData query parameters (`$filter`, `$top`, `$select`, `$expand`, etc.) are passed through to Bridge or Spark.",
-        "security": [{ "bearerAuth": [] }],
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           {
             "name": "dataset",
@@ -483,7 +489,7 @@
         "tags": ["MLS Data - Listings"],
         "summary": "Search Properties (JSON body convenience)",
         "description": "Compatibility endpoint that accepts a JSON body and translates convenience fields (`city`, `limit`) to RESO OData, then proxies to the upstream MLS.",
-        "security": [{ "bearerAuth": [] }],
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "requestBody": {
           "required": false,
           "content": {
@@ -516,7 +522,7 @@
         "tags": ["MLS Data - Listings"],
         "summary": "Get Property by Key (RESO OData)",
         "description": "Proxy to RESO `Property('<listingKey>')`. Supports `$expand` and `$select`.",
-        "security": [{ "bearerAuth": [] }],
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           {
             "name": "listingKey",
@@ -536,14 +542,16 @@
       "get": {
         "tags": ["MLS Data - Agents & Offices"],
         "summary": "Get Agents",
-        "description": "Proxy to Bridge/Spark web agents collection.",
-        "security": [{ "bearerAuth": [] }],
+        "description": "Proxy to Bridge/Spark web agents collection. Standard query parameters (`limit`, OData `$filter`, etc.) are passed through. Auth: `Authorization: Bearer <token>` + `X-Domain-Slug` or `?domain=`.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
-          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } },
+          { "name": "dataset", "in": "query", "required": false, "schema": { "type": "string", "enum": ["stellar", "beaches"] } }
         ],
         "responses": {
           "200": { "description": "Agent list" },
-          "401": { "description": "Unauthenticated" }
+          "401": { "description": "Unauthenticated" },
+          "502": { "description": "Upstream MLS error" }
         }
       }
     },
@@ -551,13 +559,15 @@
       "get": {
         "tags": ["MLS Data - Agents & Offices"],
         "summary": "Get Agent by ID",
-        "security": [{ "bearerAuth": [] }],
+        "description": "Proxy to Bridge/Spark web agent by numeric ID.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           { "name": "agentId", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
         "responses": {
           "200": { "description": "Agent details" },
-          "404": { "description": "Not found" }
+          "404": { "description": "Not found" },
+          "502": { "description": "Upstream MLS error" }
         }
       }
     },
@@ -565,12 +575,16 @@
       "get": {
         "tags": ["MLS Data - Agents & Offices"],
         "summary": "Get Offices",
-        "security": [{ "bearerAuth": [] }],
+        "description": "Proxy to Bridge/Spark web offices collection. Auth: `Authorization: Bearer <token>` + `X-Domain-Slug` or `?domain=`.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
-          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } },
+          { "name": "dataset", "in": "query", "required": false, "schema": { "type": "string", "enum": ["stellar", "beaches"] } }
         ],
         "responses": {
-          "200": { "description": "Office list" }
+          "200": { "description": "Office list" },
+          "401": { "description": "Unauthenticated" },
+          "502": { "description": "Upstream MLS error" }
         }
       }
     },
@@ -578,170 +592,256 @@
       "get": {
         "tags": ["MLS Data - Agents & Offices"],
         "summary": "Get Office by ID",
-        "security": [{ "bearerAuth": [] }],
+        "description": "Proxy to Bridge/Spark web office by numeric ID.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           { "name": "officeId", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "responses": { "200": { "description": "Office details" } }
+        "responses": {
+          "200": { "description": "Office details" },
+          "404": { "description": "Not found" },
+          "502": { "description": "Upstream MLS error" }
+        }
       }
     },
     "/api/v1/reso-offices": {
       "get": {
         "tags": ["MLS Data - Agents & Offices"],
         "summary": "Get RESO Offices",
-        "description": "Proxy to RESO `Office` collection.",
-        "security": [{ "bearerAuth": [] }],
+        "description": "Proxy to RESO `Office` collection via Bridge or Spark OData endpoint. Standard OData parameters (`$filter`, `$top`, `$select`) are passed through.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
-          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } },
+          { "name": "dataset", "in": "query", "required": false, "schema": { "type": "string", "enum": ["stellar", "beaches"] } }
         ],
-        "responses": { "200": { "description": "RESO office list" } }
+        "responses": {
+          "200": { "description": "RESO office list" },
+          "401": { "description": "Unauthenticated" },
+          "502": { "description": "Upstream MLS error" }
+        }
       }
     },
     "/api/v1/reso-offices/{officeKey}": {
       "get": {
         "tags": ["MLS Data - Agents & Offices"],
         "summary": "Get RESO Office by Key",
-        "security": [{ "bearerAuth": [] }],
+        "description": "Proxy to RESO `Office('<officeKey>')` entity by RESO OfficeKey.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           { "name": "officeKey", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "responses": { "200": { "description": "RESO office details" } }
+        "responses": {
+          "200": { "description": "RESO office details" },
+          "404": { "description": "Not found" },
+          "502": { "description": "Upstream MLS error" }
+        }
       }
     },
     "/api/v1/openhouses": {
       "get": {
         "tags": ["MLS Data - Open Houses"],
         "summary": "Get Open Houses",
-        "security": [{ "bearerAuth": [] }],
+        "description": "Proxy to Bridge/Spark web open houses collection. Auth: `Authorization: Bearer <token>` + `X-Domain-Slug` or `?domain=`.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
-          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } },
+          { "name": "dataset", "in": "query", "required": false, "schema": { "type": "string", "enum": ["stellar", "beaches"] } }
         ],
-        "responses": { "200": { "description": "Open house list" } }
+        "responses": {
+          "200": { "description": "Open house list" },
+          "401": { "description": "Unauthenticated" },
+          "502": { "description": "Upstream MLS error" }
+        }
       }
     },
     "/api/v1/openhouses/{openhouseId}": {
       "get": {
         "tags": ["MLS Data - Open Houses"],
         "summary": "Get Open House by ID",
-        "security": [{ "bearerAuth": [] }],
+        "description": "Proxy to Bridge/Spark web open house by numeric ID.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           { "name": "openhouseId", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "responses": { "200": { "description": "Open house details" } }
+        "responses": {
+          "200": { "description": "Open house details" },
+          "404": { "description": "Not found" },
+          "502": { "description": "Upstream MLS error" }
+        }
       }
     },
     "/api/v1/reso-openhouses": {
       "get": {
         "tags": ["MLS Data - Open Houses"],
         "summary": "Get RESO Open Houses",
-        "description": "Proxy to RESO `OpenHouse` collection.",
-        "security": [{ "bearerAuth": [] }],
+        "description": "Proxy to RESO `OpenHouse` collection via Bridge or Spark OData endpoint. Standard OData parameters (`$filter`, `$top`, `$select`) are passed through.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
-          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } },
+          { "name": "dataset", "in": "query", "required": false, "schema": { "type": "string", "enum": ["stellar", "beaches"] } }
         ],
-        "responses": { "200": { "description": "RESO open house list" } }
+        "responses": {
+          "200": { "description": "RESO open house list" },
+          "401": { "description": "Unauthenticated" },
+          "502": { "description": "Upstream MLS error" }
+        }
       }
     },
     "/api/v1/reso-openhouses/{openHouseKey}": {
       "get": {
         "tags": ["MLS Data - Open Houses"],
         "summary": "Get RESO Open House by Key",
-        "security": [{ "bearerAuth": [] }],
+        "description": "Proxy to RESO `OpenHouse('<openHouseKey>')` entity by RESO OpenHouseKey.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           { "name": "openHouseKey", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "responses": { "200": { "description": "RESO open house details" } }
+        "responses": {
+          "200": { "description": "RESO open house details" },
+          "404": { "description": "Not found" },
+          "502": { "description": "Upstream MLS error" }
+        }
       }
     },
     "/api/v1/members": {
       "get": {
         "tags": ["MLS Data - Members & Lookup"],
         "summary": "Get Members",
-        "description": "Proxy to RESO `Member` collection.",
-        "security": [{ "bearerAuth": [] }],
+        "description": "Proxy to RESO `Member` collection (agent/member roster). Standard OData parameters are passed through. Auth: `Authorization: Bearer <token>` + `X-Domain-Slug` or `?domain=`.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
-          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } },
+          { "name": "dataset", "in": "query", "required": false, "schema": { "type": "string", "enum": ["stellar", "beaches"] } }
         ],
-        "responses": { "200": { "description": "Member list" } }
+        "responses": {
+          "200": { "description": "Member list" },
+          "401": { "description": "Unauthenticated" },
+          "502": { "description": "Upstream MLS error" }
+        }
       }
     },
     "/api/v1/members/{memberKey}": {
       "get": {
         "tags": ["MLS Data - Members & Lookup"],
         "summary": "Get Member by Key",
-        "description": "Proxy to RESO `Member('<memberKey>')`.",
-        "security": [{ "bearerAuth": [] }],
+        "description": "Proxy to RESO `Member('<memberKey>')` entity by RESO MemberKey.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           { "name": "memberKey", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "responses": { "200": { "description": "Member details" } }
+        "responses": {
+          "200": { "description": "Member details" },
+          "404": { "description": "Not found" },
+          "502": { "description": "Upstream MLS error" }
+        }
       }
     },
     "/api/v1/lookup": {
       "get": {
         "tags": ["MLS Data - Members & Lookup"],
-        "summary": "Lookup",
-        "description": "Proxy to RESO `Lookup` collection. Bridge and Spark both support a lookup/metadata endpoint. Results are cached per domain using the lookup cache partition.",
-        "security": [{ "bearerAuth": [] }],
-        "responses": { "200": { "description": "Lookup results" } }
+        "summary": "RESO Lookup (enum metadata)",
+        "description": "Proxy to the RESO `Lookup` collection — retrieves enum/picklist values (field names, accepted values, display labels) for the active MLS dataset. Both Bridge and Spark expose this endpoint. Responses are cached per domain using the MLS lookup cache partition (`MLS_LOOKUP_CACHE_TTL`). Auth: `Authorization: Bearer <token>` + `X-Domain-Slug` or `?domain=`.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
+        "parameters": [
+          {
+            "name": "dataset",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["stellar", "beaches"] },
+            "description": "MLS dataset override."
+          }
+        ],
+        "responses": {
+          "200": { "description": "RESO Lookup enum/picklist collection" },
+          "401": { "description": "Unauthenticated" },
+          "403": { "description": "Forbidden — domain/token mismatch or dataset not allowed" },
+          "502": { "description": "Upstream MLS error" }
+        }
       }
     },
     "/api/v1/pub/parcels": {
       "get": {
         "tags": ["MLS Data - Public Records"],
         "summary": "Get Public Parcels",
-        "description": "Bridge public parcels collection proxy.",
-        "security": [{ "bearerAuth": [] }],
-        "responses": { "200": { "description": "Parcel list" } }
+        "description": "Proxy to the Bridge Public Records `/pub/parcels` collection. Returns parcel records with property identifiers, county data, and assessment linkage. Auth: `Authorization: Bearer <token>` + `X-Domain-Slug` or `?domain=`.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
+        "responses": {
+          "200": { "description": "Parcel list" },
+          "401": { "description": "Unauthenticated" },
+          "502": { "description": "Upstream Bridge error" }
+        }
       }
     },
     "/api/v1/pub/parcels/{parcelId}": {
       "get": {
         "tags": ["MLS Data - Public Records"],
         "summary": "Get Parcel by ID",
-        "security": [{ "bearerAuth": [] }],
+        "description": "Proxy to Bridge `PublicRecord/Property('<parcelId>')`. Returns a single parcel with assessments and transaction linkage.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           { "name": "parcelId", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "responses": { "200": { "description": "Parcel details" } }
+        "responses": {
+          "200": { "description": "Parcel details" },
+          "404": { "description": "Parcel not found" },
+          "502": { "description": "Upstream Bridge error" }
+        }
       }
     },
     "/api/v1/pub/parcels/{parcelId}/assessments": {
       "get": {
         "tags": ["MLS Data - Public Records"],
         "summary": "Get Parcel Assessments",
-        "security": [{ "bearerAuth": [] }],
+        "description": "Proxy to Bridge public records assessments for a specific parcel. Returns year-by-year assessment values.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           { "name": "parcelId", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "responses": { "200": { "description": "Parcel assessment records" } }
+        "responses": {
+          "200": { "description": "Parcel assessment records" },
+          "502": { "description": "Upstream Bridge error" }
+        }
       }
     },
     "/api/v1/pub/parcels/{parcelId}/transactions": {
       "get": {
         "tags": ["MLS Data - Public Records"],
         "summary": "Get Parcel Transactions",
-        "security": [{ "bearerAuth": [] }],
+        "description": "Proxy to Bridge public records sale/transfer transactions for a specific parcel.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           { "name": "parcelId", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "responses": { "200": { "description": "Parcel transaction records" } }
+        "responses": {
+          "200": { "description": "Parcel transaction records" },
+          "502": { "description": "Upstream Bridge error" }
+        }
       }
     },
     "/api/v1/pub/assessments": {
       "get": {
         "tags": ["MLS Data - Public Records"],
         "summary": "Get Public Assessments",
-        "security": [{ "bearerAuth": [] }],
-        "responses": { "200": { "description": "Assessment list" } }
+        "description": "Proxy to Bridge public records assessment collection (all parcels). Standard OData parameters are passed through.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
+        "responses": {
+          "200": { "description": "Assessment list" },
+          "401": { "description": "Unauthenticated" },
+          "502": { "description": "Upstream Bridge error" }
+        }
       }
     },
     "/api/v1/pub/transactions": {
       "get": {
         "tags": ["MLS Data - Public Records"],
         "summary": "Get Public Transactions",
-        "security": [{ "bearerAuth": [] }],
-        "responses": { "200": { "description": "Transaction list" } }
+        "description": "Proxy to Bridge public records transaction collection (all parcels). Standard OData parameters are passed through.",
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
+        "responses": {
+          "200": { "description": "Transaction list" },
+          "401": { "description": "Unauthenticated" },
+          "502": { "description": "Upstream Bridge error" }
+        }
       }
     },
     "/api/v1/search": {
@@ -749,7 +849,7 @@
         "tags": ["MLS Data - Search"],
         "summary": "Structured MLS Search",
         "description": "Hybrid MLS search: Active/Pending from PostGIS `listings` mirror when possible; Closed and special filters from live Bridge/Spark OData.\n\n**Dataset:** `?dataset=stellar|beaches` (query param, not JSON body).\n\n**Parsing:** Prefer JSON numbers/booleans. String numbers (`\"250000\"`) and booleans (`\"true\"`) are accepted. Empty strings omit a filter. Blank `statuses` entries are stripped. Aliases: `min_beds`↔`beds_min`, `max_beds`↔`beds_max`, `min_baths`↔`baths_min`, `min_sqft`↔`living_area_min`, `max_sqft`↔`living_area_max`. Pagination: `limit`/`skip` or `page.limit`/`page.skip`.\n\n**Mirror filters:** `low_risk_floodzone` → `low_risk_flood_zone_yn`; `min_monthly_fees`/`max_monthly_fees` → `estimated_total_monthly_fees`. Geography: `city` / `county_or_parish` (GIS autocomplete + LIKE).\n\n**Ignored (reserved):** `focus_areas`, `sort`, `sort_dir`, `geo`, `property_types` (array), and other legacy example fields.\n\n**Response:** `{ results, hasMore, nextSkip }`. Mirror leg sorts by `modification_timestamp` desc.\n\nSee `docs/idx-api-bridge-proxy.md#search-endpoint-post-apiv1search`.",
-        "security": [{ "bearerAuth": [] }],
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           {
             "name": "dataset",
@@ -1012,7 +1112,7 @@
         "tags": ["GIS Parcel Proxy"],
         "summary": "Get GIS Data (General)",
         "description": "Get GIS parcel geometry data for a bounding box. Returns GeoJSON FeatureCollection. Auth via `DomainToken` + `MLSAccess` (GIS access bypasses the feed check inside middleware).\n\n**Example bbox (Tampa Bay):** `-82.8,27.9,-82.6,28.0`",
-        "security": [{ "bearerAuth": [] }],
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           {
             "name": "bbox",
@@ -1041,7 +1141,7 @@
         "tags": ["GIS Parcel Proxy"],
         "summary": "Get GIS Data (MLS-scoped)",
         "description": "Get GIS parcel data scoped to a specific MLS dataset code. Passes the `mlsCode` to `gissvc.Fetch` for provider-specific county/data-source selection.",
-        "security": [{ "bearerAuth": [] }],
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           {
             "name": "mlsCode",
@@ -1068,7 +1168,7 @@
         "tags": ["GIS Parcel Proxy"],
         "summary": "Autocomplete cities (city | county)",
         "description": "Fuzzy-match `gis_cities` rows (one row per city|county pair after county expansion). Used by search geography and typeahead UIs. Requires `pg_trgm` (Goose migration 00007). Auth: `DomainToken` + `MLSAccess` (GIS paths bypass feed check).",
-        "security": [{ "bearerAuth": [] }],
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           {
             "name": "q",
@@ -1124,7 +1224,7 @@
         "tags": ["GIS Parcel Proxy"],
         "summary": "Autocomplete counties",
         "description": "Fuzzy-match `gis_counties` by display name or slug. Requires `pg_trgm` (migration 00007).",
-        "security": [{ "bearerAuth": [] }],
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           {
             "name": "q",
@@ -1177,7 +1277,7 @@
         "tags": ["Operations"],
         "summary": "Mirror / replication statistics",
         "description": "Per-dataset listing counts and `listing_sync_cursors` metadata for the local mirror. Includes all configured MLS datasets (e.g. `stellar`, `beaches`). Uses `domain.token` + `mls.access` middleware.",
-        "security": [{ "bearerAuth": [] }],
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "responses": {
           "200": { "description": "JSON stats payload per configured MLS dataset slug" },
           "401": { "description": "Unauthenticated" },
@@ -1190,7 +1290,7 @@
         "tags": ["Comps Engine"],
         "summary": "Run comparables, investor analysis, BPO, or home value",
         "description": "MLS comps engine (`internal/service/comps`). Modes **A–E**: sold + optional competition comps with adjustment grid. Premium modes: **`rent_hold_cashflow`**, **`flip_vs_hold`**, **`appraiser_simulation`**, **`bpo`** (14-line URAR grid + market-derived rates + renovation credits), **`home_value`** (BPO-style estimate + optional Google geocoding). Closed comps: live Bridge/Spark RESO; Active/Pending: PostGIS `listings` mirror. See [comps-api.md](comps-api.md). Optional `bpo_params`, `home_value_params`.",
-        "security": [{ "bearerAuth": [] }],
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -1356,6 +1456,42 @@
         }
       }
     },
+    "/dashboard/monitoring/data": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Dashboard monitoring data feed [DEPRECATED]",
+        "description": "HTML-dashboard JSON feed consumed by the operator monitoring page (`/dashboard/monitoring`). Returns the same live monitoring snapshot as `GET /api/v1/admin/monitoring`. Guarded by dashboard session cookie (`session_id`). **Deprecated:** use `GET /api/v1/admin/monitoring` for scripted or external access — it is equivalent and will be kept stable.",
+        "deprecated": true,
+        "security": [],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "cookie",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Dashboard session cookie set by `POST /login`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Live monitoring snapshot",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MonitoringSnapshot" }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/monitoring": {
       "get": {
         "tags": ["Admin"],
@@ -1443,7 +1579,7 @@
         "tags": ["Images"],
         "summary": "Stream a listing photo",
         "description": "Streams listing photos through idx-api (`internal/handler/images`). Backed by a local NVMe disk cache (keyed by SHA-256 of `listingKey/photoId`); cache miss proxies to Bridge or Spark `MediaURL`. Sets `Cache-Control: public, max-age=31536000, immutable` and `X-IDX-Proxied-Public-Url` on both cache hit and miss.\n\n**Path prefix is `/images/` — not `/api/images/`.** Clients typically route through the `idx-images` edge host; this documents the API-host path directly.\n\nAuth via `DomainToken` middleware (same as `/api/v1/*`).",
-        "security": [{ "bearerAuth": [] }],
+        "security": [{ "bearerAuth": [], "domainSlugAuth": [] }],
         "parameters": [
           {
             "name": "listingKey",

@@ -62,19 +62,29 @@ Production example: `https://idx.quantyralabs.cc/swagger` (replace host with `AP
 
 ## Authorize protected routes
 
-Most `/api/v1/*` operations use **`bearerAuth`** in the spec.
+Most `/api/v1/*` and `/images/*` operations require **two** security schemes: `bearerAuth` (PAT) and `domainSlugAuth` (`X-Domain-Slug` header). The Authorize dialog shows both.
 
-1. Click **Authorize** (lock icon).
-2. Enter the PAT **without** the `Bearer ` prefix (Swagger adds it):  
-   `abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890`
-3. Click **Authorize**, then **Close**.
+**Step-by-step:**
 
-**Domain context** (required for token mode):
+1. Click **Authorize** (lock icon, top-right).
+2. Under **bearerAuth (http, Bearer)**: enter the PAT **without** the `Bearer ` prefix (Swagger adds it):  
+   `abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890`  
+   Click **Authorize**.
+3. Under **domainSlugAuth (apiKey, header: X-Domain-Slug)**: enter your verified domain slug:  
+   `your-verified-domain.com`  
+   Click **Authorize**.
+4. Click **Close**.
 
-- Add header **`X-Domain-Slug`**: `your-verified-domain.com`, **or**
-- Add query parameter **`domain`**: `your-verified-domain.com`
+With **`persistAuthorization: true`** (enabled in this build), credentials are saved to `localStorage` and survive page refreshes — no need to re-enter each session.
 
-In Swagger UI, use each operation’s **Parameters** section for `domain`, or use **Try it out** → add a custom header if your browser extension allows; otherwise prefer `?domain=` on the request (documented on GIS autocomplete operations).
+**Exceptions:**
+- `POST /api/auth/token` — no auth required (issues the PAT)
+- `GET /api/auth/user` — `bearerAuth` only, no domain slug needed
+- Admin endpoints (`/api/v1/admin/*`, `/dashboard/monitoring/data`) — session cookie flow, not PAT
+
+**Alternative: `?domain=` query parameter**
+
+If setting the `X-Domain-Slug` header is inconvenient, pass the domain as `?domain=your-verified-domain.com` instead. Both are accepted by the DomainToken middleware.
 
 **Dataset selection** (MLS routes):
 
@@ -165,6 +175,7 @@ Mirror search results are **scalar-only** (no `Media` / navigation JSONB). Use `
 | `400` … `dataset` on web listings | Param forwarded before strip fix | Upgrade API; omit `dataset` on web routes |
 | `502` on search + `city` | Geography SQL bug (pre-`a9cd351`) | Deploy current API |
 | Autocomplete `502` | Missing `pg_trgm` or DB error | Run migration 00007; check API logs |
+| Comps/home_value geocoding `REQUEST_DENIED` | Google Maps API key has referer restriction | The geocode key (`GOOGLE_MAPS_GEOCODING_API_KEY`) must allow server-side requests with no HTTP Referer header. Referer-restricted keys (browser keys) return `REQUEST_DENIED` when called from the Go backend. Use an **IP-restricted** or unrestricted server key instead, or add the API host IP to the key's allowed IPs in Google Cloud Console. |
 | CORS errors from browser app | Swagger host ≠ API host | Call API from same origin or configure CORS separately |
 
 ## Automated alternative
