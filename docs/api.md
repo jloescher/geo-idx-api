@@ -4,12 +4,13 @@ This document summarizes the currently registered HTTP surface in the Go Fiber a
 
 ## Canonical machine-readable API doc
 
-- OpenAPI source file: `docs/yaak-api-collection.json`
-- This repository does **not** currently register `/openapi.json` or `/swagger` routes in `internal/api/routes.go`.
+- OpenAPI source file: `docs/yaak-api-collection.json` (synced into the API embed via `make openapi-sync`)
+- Live spec: [`GET /openapi.json`](/openapi.json) (public, no auth)
+- Interactive explorer: [`GET /swagger`](/swagger) (Swagger UI; loads `/openapi.json`)
 
 ## Route groups
 
-- Infrastructure (public): `/healthz`, `/readyz`, `/health/replicas`, `/metrics`
+- Infrastructure (public): `/healthz`, `/readyz`, `/health/replicas`, `/metrics`, `/openapi.json`, `/swagger`
 - Marketing/static (public): `/`, `/static/*`
 - API auth: `/api/auth/token`, `/api/auth/user`
 - Versioned API: `/api/v1/*` (MLS proxy, GIS, search, comps, operations)

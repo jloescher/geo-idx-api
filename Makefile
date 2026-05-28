@@ -1,9 +1,14 @@
-.PHONY: build test fmt lint run-api run-worker run-scheduler migrate migrate-install seed-admin gis-enqueue-parcels gis-enqueue-zips
+.PHONY: build test fmt lint run-api run-worker run-scheduler migrate migrate-install seed-admin gis-enqueue-parcels gis-enqueue-zips openapi-sync
+
+# Copy OpenAPI source into the API binary embed path (after editing docs/yaak-api-collection.json).
+openapi-sync:
+	@mkdir -p internal/openapi/spec
+	cp docs/yaak-api-collection.json internal/openapi/spec/openapi.json
 
 GOFLAGS ?= -mod=mod
 GOOSE_PKG := github.com/pressly/goose/v3/cmd/goose@v3.24.3
 
-build:
+build: openapi-sync
 	GOFLAGS=$(GOFLAGS) go build -o bin/api ./cmd/api
 	GOFLAGS=$(GOFLAGS) go build -o bin/worker ./cmd/worker
 	GOFLAGS=$(GOFLAGS) go build -o bin/scheduler ./cmd/scheduler

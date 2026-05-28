@@ -180,7 +180,8 @@ make lint           # Run golangci-lint
 | `make run-scheduler` | Start scheduler process |
 | `make migrate` | Run database migrations (**not** against production `.env` unless explicitly requested) |
 | `make seed-admin` | Create admin user from env vars (**not** against production `.env` unless explicitly requested) |
-| `make build` | Build all binaries to bin/ |
+| `make build` | Build all binaries to bin/ (runs `openapi-sync` first) |
+| `make openapi-sync` | Copy `docs/yaak-api-collection.json` → embedded `internal/openapi/spec/openapi.json` |
 | `make test` | Run all tests with coverage |
 
 ## Database Schema

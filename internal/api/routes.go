@@ -18,6 +18,7 @@ import (
 	"github.com/quantyralabs/idx-api/internal/handler/gis"
 	"github.com/quantyralabs/idx-api/internal/handler/images"
 	"github.com/quantyralabs/idx-api/internal/handler/marketing"
+	"github.com/quantyralabs/idx-api/internal/openapi"
 	"github.com/quantyralabs/idx-api/internal/repository"
 	"github.com/quantyralabs/idx-api/internal/service/audit"
 )
@@ -27,6 +28,8 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 	if err := mountStatic(app); err != nil {
 		logger.Error("static assets", "error", err)
 	}
+
+	openapi.Register(app)
 
 	app.Get("/healthz", healthz)
 	app.Get("/readyz", readyz(db))

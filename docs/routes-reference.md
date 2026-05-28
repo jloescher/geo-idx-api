@@ -16,6 +16,8 @@ These endpoints are represented in `docs/yaak-api-collection.json`.
 | GET | `/readyz` | None | `readyz` | Readiness check (DB ping + PostGIS version). |
 | GET | `/health/replicas` | None | `healthReplicas` | Read-replica selector health snapshot. |
 | GET | `/metrics` | None | Prometheus handler | Prometheus metrics scrape endpoint. |
+| GET | `/openapi.json` | None | `openapi.serveSpec` | OpenAPI 3.1 spec (embedded from `docs/yaak-api-collection.json`). |
+| GET | `/swagger` | None | `openapi.serveUI` | Swagger UI (loads `/openapi.json`). |
 | POST | `/api/auth/token` | None | `auth.Handler.Token` | Email/password login for PAT issuance (`idx:full`). |
 | GET | `/api/auth/user` | Bearer PAT | `auth.Handler.User` | Return current user profile from bearer token. |
 | GET | `/images/:listingKey/:photoId` | `DomainToken` | `images.Handler.Show` | Stream listing photo via proxy/cache. |
@@ -86,4 +88,4 @@ These routes are part of the application surface but are intentionally not in th
 ## Coverage summary
 
 - Registered routes in code: 61 route registrations (including static middleware `USE /static/*` and both JSON + HTML flows).
-- OpenAPI collection coverage: 38 API operations (all JSON endpoints, excluding HTML/static/session pages by design).
+- OpenAPI collection coverage: 40 API operations (all JSON endpoints, excluding HTML/static/session pages by design).
