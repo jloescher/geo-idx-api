@@ -180,7 +180,7 @@ func (r *MonitoringRepo) TopFailedJobDetails(ctx context.Context, limit int) ([]
 		WITH grouped AS (
 			SELECT
 				queue,
-				COALESCE(NULLIF(payload::json->>'type', ''), 'unknown') AS job_type,
+				COALESCE(NULLIF(substring(payload from '"type"\s*:\s*"([^"]+)"'), ''), 'unknown') AS job_type,
 				COUNT(*) AS failed,
 				MAX(failed_at) AS last_failed_at
 			FROM failed_jobs
@@ -197,7 +197,7 @@ func (r *MonitoringRepo) TopFailedJobDetails(ctx context.Context, limit int) ([]
 			SELECT exception
 			FROM failed_jobs
 			WHERE queue = g.queue
-			  AND COALESCE(NULLIF(payload::json->>'type', ''), 'unknown') = g.job_type
+			  AND COALESCE(NULLIF(substring(payload from '"type"\s*:\s*"([^"]+)"'), ''), 'unknown') = g.job_type
 			ORDER BY failed_at DESC
 			LIMIT 1
 		) f ON true
@@ -301,7 +301,7 @@ func (r *MonitoringRepo) TopPendingJobTypes(ctx context.Context, limit int) ([]J
 	}
 	rows, err := pool.Query(ctx, `
 		SELECT queue,
-		       COALESCE(NULLIF(payload::json->>'type', ''), 'unknown') AS job_type,
+		       COALESCE(NULLIF(substring(payload from '"type"\s*:\s*"([^"]+)"'), ''), 'unknown') AS job_type,
 		       COUNT(*) AS pending
 		FROM jobs
 		WHERE reserved_at IS NULL AND available_at <= EXTRACT(EPOCH FROM NOW())::bigint

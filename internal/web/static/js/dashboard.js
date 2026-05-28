@@ -36,6 +36,11 @@
     return "badge badge-unknown";
   }
 
+  /** In-dashboard tab drill-down (not the domain-token API). */
+  function monitoringTabHref(tab) {
+    return `/dashboard/monitoring?tab=${encodeURIComponent(tab)}`;
+  }
+
   function tile(label, value, sub, href, status, aria) {
     const tag = href ? "a" : "div";
     const hrefAttr = href ? ` href="${href}"` : "";
@@ -57,6 +62,15 @@ ${statusChip}
       ];
     }
     return `<div class="metric-group"><h3 class="metric-group-title">${title}</h3><div class="monitoring-grid">${tiles.join("")}</div></div>`;
+  }
+
+  function renderStatList(title, rows, headers) {
+    if (!rows.length) {
+      return `<div class="metric-group"><h3 class="metric-group-title">${title}</h3><div class="empty-state"><p>No entries yet</p></div></div>`;
+    }
+    const head = headers.map((h) => `<th>${h}</th>`).join("");
+    const body = rows.map((row) => `<tr>${row.map((col) => `<td>${col}</td>`).join("")}</tr>`).join("");
+    return `<div class="metric-group"><h3 class="metric-group-title">${title}</h3><div class="monitoring-table-wrap"><table class="monitoring-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div></div>`;
   }
 
   function fmtSyncAge(iso) {
@@ -99,7 +113,7 @@ ${statusChip}
         row.dataset_slug || "dataset",
         fmtNum(row.total),
         sub,
-        "/api/v1/bridge/stats",
+        monitoringTabHref("ingest"),
         row.status,
         `Listings ${row.dataset_slug}`
       );
@@ -115,7 +129,17 @@ ${statusChip}
         `Replica pages ${row.dataset_slug} ${row.status}`
       )
     );
-    return renderGroup("Listings Replication", listings) + renderGroup("Replica Pipeline", pipelineTiles);
+    const lagRows = (data.listings || []).map((row) => [
+      row.dataset_slug || "—",
+      row.lag_seconds !== null && row.lag_seconds !== undefined ? `${fmtNum(row.lag_seconds)}s` : "—",
+      row.freshness_mode || "—",
+      row.status || "unknown",
+    ]);
+    return (
+      renderGroup("Listings Replication", listings) +
+      renderGroup("Replica Pipeline", pipelineTiles) +
+      renderStatList("Sync Lag by Dataset", lagRows, ["Dataset", "Lag", "Mode", "Status"])
+    );
   }
 
   function renderDataPanel(data) {
@@ -126,7 +150,20 @@ ${statusChip}
       tile("Counties", fmtNum(gis.counties_total), fmtSyncAge(gis.counties_last_synced_at), null, gis.counties_status || "unknown", "GIS counties"),
       tile("ZIPs", fmtNum(gis.zips_total), fmtSyncAge(gis.zips_last_synced_at), null, gis.zips_status || "unknown", "GIS zips"),
     ];
-    return renderGroup("GIS Data Health", gisTiles);
+    const byCounty = Object.entries(gis.by_county || {})
+      .sort((a, b) => Number(b[1]) - Number(a[1]))
+      .slice(0, 8)
+      .map(([county, total]) => [county, fmtNum(total)]);
+    const sourceRows = (gis.sources || []).slice(0, 8).map((src) => [
+      src.source_key || "source",
+      src.status || "unknown",
+      src.max_synced_at ? fmtSyncAge(src.max_synced_at) : "Never synced",
+    ]);
+    return (
+      renderGroup("GIS Data Health", gisTiles) +
+      renderStatList("Top Counties by Parcel Count", byCounty, ["County", "Parcels"]) +
+      renderStatList("GIS Source States", sourceRows, ["Source", "Status", "Freshness"])
+    );
   }
 
   function renderIntegrationsPanel(data) {
@@ -143,7 +180,15 @@ ${statusChip}
           )
         )
       : [tile("Crypto", "—", "No snapshot", null, data.crypto?.status || "unknown", "Crypto prices")];
-    return renderGroup("Integrations", cryptoTiles);
+    const ageRows = cryptoAssets
+      .slice()
+      .sort((a, b) => Number(b.age_seconds || 0) - Number(a.age_seconds || 0))
+      .map((asset) => [
+        (asset.asset_key || "").toUpperCase(),
+        `${fmtNum(asset.age_seconds)}s`,
+        asset.stale ? "stale" : "healthy",
+      ]);
+    return renderGroup("Integrations", cryptoTiles) + renderStatList("Asset Freshness", ageRows, ["Asset", "Age", "Status"]);
   }
 
   function renderQueuePanel(data) {
@@ -170,13 +215,13 @@ ${statusChip}
         name,
         fmtNum(pending),
         `${fmtNum(reserved)} reserved · ${fmtNum(failed)} failed`,
-        "#monitoring-queues",
+        monitoringTabHref("queues"),
         pending > 50 ? "stale" : "healthy",
         `Queue ${name}`
       );
     });
     if (!queueTiles.length) {
-      queueTiles.push(tile("Queues", "0", "PostgreSQL jobs", "#monitoring-queues", "unknown", "Queue depth"));
+      queueTiles.push(tile("Queues", "0", "PostgreSQL jobs", monitoringTabHref("queues"), "unknown", "Queue depth"));
     }
     const failedTiles = (queues.failed_top || []).slice(0, 4).map((row) =>
       tile(
@@ -191,7 +236,12 @@ ${statusChip}
     return (
       renderGroup("Queue Health", queueTiles) +
       renderGroup("Queue Performance", cacheTiles) +
-      renderGroup("Failed Jobs", failedTiles)
+      renderGroup("Failed Jobs", failedTiles) +
+      renderStatList(
+        "Pending Job Types",
+        (queues.top_job_types || []).slice(0, 10).map((row) => [row.queue || "—", row.job_type || "unknown", fmtNum(row.count)]),
+        ["Queue", "Type", "Pending"]
+      )
     );
   }
 
@@ -209,7 +259,13 @@ ${statusChip}
       ),
       tile("Infrastructure status", infra.status || "unknown", "Advisory lock probe", null, infra.status || "unknown", "Infrastructure health"),
     ];
-    return renderGroup("Infrastructure", infraTiles);
+    const deps = [
+      ["Scheduler lock", scheduler.leader_active ? "healthy" : "critical", scheduler.lock_id || "—"],
+      ["Queue subsystem", data.queues?.status || "unknown", fmtNum(data.queues?.total_pending || 0)],
+      ["Sync pipeline", data.sync_pipeline?.status || "unknown", fmtNum((data.sync_pipeline?.by_status || []).reduce((sum, r) => sum + (r.count || 0), 0))],
+      ["GIS freshness", data.gis?.status || "unknown", `${fmtNum(data.gis?.parcels_total || 0)} parcels`],
+    ];
+    return renderGroup("Infrastructure", infraTiles) + renderStatList("Dependency Health", deps, ["Dependency", "Status", "Signal"]);
   }
 
   function renderIncidentsPanel(data) {
@@ -226,6 +282,14 @@ ${statusChip}
 </article>`
       )
       .join("")}</div>`;
+  }
+
+  function renderFirstLoadError(err) {
+    const panel = $(`panel-${activeTab}`) || $("panel-overview");
+    if (!panel) return;
+    panel.innerHTML = `<div class="empty-state"><p>Monitoring data is unavailable</p><p class="empty-hint">${err || "Retry after re-authenticating or refreshing the page."}</p></div>`;
+    $("monitoring-content")?.removeAttribute("hidden");
+    $("monitoring-skeleton")?.setAttribute("hidden", "hidden");
   }
 
   function renderCriticalStrip(data) {
@@ -311,6 +375,7 @@ ${statusChip}
         markRefreshStale();
       } else {
         showError(err.message || "Failed to load monitoring data.");
+        renderFirstLoadError(err.message);
       }
     } finally {
       setLoading(false);
@@ -376,9 +441,31 @@ ${statusChip}
     }
   }
 
+  function bindTabDrillLinks() {
+    const root = $("monitoring");
+    if (!root) return;
+    root.addEventListener("click", (event) => {
+      const link = event.target.closest("a.metric-tile[href*='tab=']");
+      if (!link) return;
+      try {
+        const url = new URL(link.href, window.location.origin);
+        if (url.pathname !== "/dashboard/monitoring") return;
+        const tab = url.searchParams.get("tab");
+        if (!tab || !TABS.includes(tab)) return;
+        event.preventDefault();
+        activateTab(tab, false);
+      } catch {
+        /* ignore malformed href */
+      }
+    });
+  }
+
   function setupTabs() {
     const tabList = document.querySelector(".monitoring-tabs");
     if (!tabList) return;
+    if (!$("panel-overview")) {
+      console.warn("monitoring: tab panels missing — hard-refresh to load latest dashboard.js");
+    }
     const requested = new URL(window.location.href).searchParams.get("tab");
     activateTab(requested || "overview", false);
     tabList.addEventListener("click", (event) => {
@@ -414,7 +501,8 @@ ${statusChip}
       hideError();
       setLoading(false);
       return true;
-    } catch {
+    } catch (err) {
+      console.warn("monitoring bootstrap parse failed", err);
       return false;
     }
   }
@@ -444,6 +532,7 @@ ${statusChip}
     bindHostnamePreview();
     if (!$("monitoring")) return;
     setupTabs();
+    bindTabDrillLinks();
     $("monitoring-refresh")?.addEventListener("click", () => fetchMonitoring());
     $("monitoring-retry")?.addEventListener("click", () => fetchMonitoring());
     const booted = loadBootstrap();

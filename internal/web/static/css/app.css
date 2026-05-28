@@ -526,6 +526,37 @@ input:focus {
   color: var(--muted);
 }
 
+.monitoring-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.monitoring-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.monitoring-table th,
+.monitoring-table td {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.monitoring-table th {
+  color: var(--muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.monitoring-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 .setup-progress {
   display: flex;
   flex-wrap: wrap;

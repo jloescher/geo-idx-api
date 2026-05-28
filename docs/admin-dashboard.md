@@ -66,7 +66,7 @@ Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sess
 
 | Section | Fields | Notes |
 |---------|--------|-------|
-| **Listings** | total, active/pending, lag, freshness mode | Per `dataset_slug`; drill-down → `/api/v1/bridge/stats` |
+| **Listings** | total, active/pending, lag, freshness mode | Per `dataset_slug`; dashboard drill-down → **Ingest & Sync** tab (not `/api/v1/bridge/stats`, which requires API domain token auth) |
 | **GIS** | parcels, cities, counties, zips, source states, layer freshness | Stale if parcel/zip sync &gt;35d or generation mismatch |
 | **Crypto** | BTC/ETH/SOL USD + age | Stale if snapshot &gt;1h |
 | **Cache** | 15m hit rate from `mls_proxy_audit_logs` | |
