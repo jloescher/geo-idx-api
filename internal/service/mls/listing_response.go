@@ -28,6 +28,27 @@ const MirrorListingColumns = `
 	unparsed_address, public_remarks,
 	media, unit, room, open_house, custom_fields`
 
+// MirrorListingSearchColumns is a lean SELECT for POST /search (skips heavy navigation JSONB).
+const MirrorListingSearchColumns = `
+	dataset_slug, listing_key, mls_listing_id, standard_status, list_price,
+	bedrooms_total, bathrooms_total_decimal, living_area, lot_size_acres,
+	year_built, stories_total, city, county_or_parish, postal_code, state_or_province,
+	property_type, property_sub_type, on_market_date, close_date,
+	modification_timestamp, price_change_timestamp, previous_list_price,
+	flood_zone_code, estimated_total_monthly_fees,
+	latitude, longitude,
+	waterfront_yn, pool_private_yn, dock_yn, new_construction_yn, garage_yn,
+	association_yn, spa_yn, fireplace_yn, senior_community_yn,
+	subdivision_name, elementary_school, middle_or_junior_school, high_school,
+	special_listing_conditions,
+	street_number, street_name, list_agent_mls_id, list_office_mls_id,
+	garage_spaces, mls_area_major, days_on_market, tax_annual_amount,
+	heating_yn, cooling_yn, carport_yn, attached_garage_yn,
+	internet_consumer_comment_yn, internet_address_display_yn,
+	internet_entire_listing_display_yn, internet_automated_valuation_display_yn,
+	idx_participation_yn, idx_office_participation_yn,
+	unparsed_address, public_remarks`
+
 // MirrorListingRow is a listings mirror row for public API assembly (no raw_data).
 type MirrorListingRow struct {
 	DatasetSlug                         string
@@ -134,8 +155,54 @@ func ScanMirrorListingRow(scan func(dest ...any) error) (MirrorListingRow, error
 	return row, nil
 }
 
+// ScanMirrorListingSearchRow reads lean search columns (order matches MirrorListingSearchColumns).
+func ScanMirrorListingSearchRow(scan func(dest ...any) error) (MirrorListingRow, error) {
+	var row MirrorListingRow
+	var special []byte
+	err := scan(
+		&row.DatasetSlug, &row.ListingKey, &row.MlsListingID, &row.StandardStatus, &row.ListPrice,
+		&row.BedroomsTotal, &row.BathroomsTotalDecimal, &row.LivingArea, &row.LotSizeAcres,
+		&row.YearBuilt, &row.StoriesTotal, &row.City, &row.CountyOrParish, &row.PostalCode, &row.StateOrProvince,
+		&row.PropertyType, &row.PropertySubType, &row.OnMarketDate, &row.CloseDate,
+		&row.ModificationTimestamp, &row.PriceChangeTimestamp, &row.PreviousListPrice,
+		&row.FloodZoneCode, &row.EstimatedTotalMonthlyFees,
+		&row.Latitude, &row.Longitude,
+		&row.WaterfrontYN, &row.PoolPrivateYN, &row.DockYN, &row.NewConstructionYN, &row.GarageYN,
+		&row.AssociationYN, &row.SpaYN, &row.FireplaceYN, &row.SeniorCommunityYN,
+		&row.SubdivisionName, &row.ElementarySchool, &row.MiddleOrJuniorSchool, &row.HighSchool,
+		&special,
+		&row.StreetNumber, &row.StreetName, &row.ListAgentMlsID, &row.ListOfficeMlsID,
+		&row.GarageSpaces, &row.MLSAreaMajor, &row.DaysOnMarket, &row.TaxAnnualAmount,
+		&row.HeatingYN, &row.CoolingYN, &row.CarportYN, &row.AttachedGarageYN,
+		&row.InternetConsumerCommentYN, &row.InternetAddressDisplayYN,
+		&row.InternetEntireListingDisplayYN, &row.InternetAutomatedValuationDisplayYN,
+		&row.IDXParticipationYN, &row.IDXOfficeParticipationYN,
+		&row.UnparsedAddress, &row.PublicRemarks,
+	)
+	if err != nil {
+		return MirrorListingRow{}, err
+	}
+	row.SpecialListingConditions = json.RawMessage(special)
+	return row, nil
+}
+
+type listingJSONOpts struct {
+	includeExpanded bool
+}
+
 // BuildPublicListingJSON assembles a flat RESO Property from typed columns, navigation JSONB, and custom_fields.
 func BuildPublicListingJSON(row MirrorListingRow) json.RawMessage {
+	root := buildPublicListingMap(row, listingJSONOpts{includeExpanded: true})
+	SanitizePublicListingMap(root)
+	omitNullTopLevel(root)
+	out, err := json.Marshal(root)
+	if err != nil {
+		return json.RawMessage("{}")
+	}
+	return out
+}
+
+func buildPublicListingMap(row MirrorListingRow, opts listingJSONOpts) map[string]any {
 	root := map[string]any{}
 
 	putString(root, "ListingKey", row.ListingKey)
@@ -198,46 +265,38 @@ func BuildPublicListingJSON(row MirrorListingRow) json.RawMessage {
 	putStringPtr(root, "PublicRemarks", row.PublicRemarks)
 	attachRawJSON(root, "SpecialListingConditions", row.SpecialListingConditions)
 
-	payloads := ExpandedPayload{
-		Media:        row.Media,
-		Unit:         row.Unit,
-		Room:         row.Room,
-		OpenHouse:    row.OpenHouse,
-		HasMedia:     len(row.Media) > 0,
-		HasUnit:      len(row.Unit) > 0,
-		HasRoom:      len(row.Room) > 0,
-		HasOpenHouse: len(row.OpenHouse) > 0,
+	if opts.includeExpanded {
+		payloads := ExpandedPayload{
+			Media:        row.Media,
+			Unit:         row.Unit,
+			Room:         row.Room,
+			OpenHouse:    row.OpenHouse,
+			HasMedia:     len(row.Media) > 0,
+			HasUnit:      len(row.Unit) > 0,
+			HasRoom:      len(row.Room) > 0,
+			HasOpenHouse: len(row.OpenHouse) > 0,
+		}
+		attachJSONB(root, "Media", payloads.Media, payloads.HasMedia)
+		attachJSONB(root, "Unit", payloads.Unit, payloads.HasUnit)
+		attachJSONB(root, "Room", payloads.Room, payloads.HasRoom)
+		attachJSONB(root, "OpenHouse", payloads.OpenHouse, payloads.HasOpenHouse)
+		flatMergeCustomFieldsPublic(root, row.CustomFields)
 	}
-	attachJSONB(root, "Media", payloads.Media, payloads.HasMedia)
-	attachJSONB(root, "Unit", payloads.Unit, payloads.HasUnit)
-	attachJSONB(root, "Room", payloads.Room, payloads.HasRoom)
-	attachJSONB(root, "OpenHouse", payloads.OpenHouse, payloads.HasOpenHouse)
-	flatMergeCustomFieldsPublic(root, row.CustomFields)
-
-	SanitizePublicListingMap(root)
-	omitNullTopLevel(root)
-	out, err := json.Marshal(root)
-	if err != nil {
-		return json.RawMessage("{}")
-	}
-	return out
+	return root
 }
 
 // BuildPublicListingJSONForSearch builds JSON and applies public search visibility rules.
 func BuildPublicListingJSONForSearch(row MirrorListingRow) (json.RawMessage, bool) {
-	body := BuildPublicListingJSON(row)
-	var root map[string]any
-	if err := json.Unmarshal(body, &root); err != nil {
-		return body, true
-	}
+	root := buildPublicListingMap(row, listingJSONOpts{includeExpanded: false})
 	flags := IDXFlagsFromMirrorRow(row)
 	if !ApplyPublicListingVisibility(root, flags, VisibilityPublicSearch) {
 		return nil, false
 	}
+	SanitizePublicListingMap(root)
 	omitNullTopLevel(root)
 	out, err := json.Marshal(root)
 	if err != nil {
-		return body, true
+		return json.RawMessage("{}"), true
 	}
 	return out, true
 }

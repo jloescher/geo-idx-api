@@ -11,6 +11,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/quantyralabs/idx-api/internal/config"
+	"github.com/quantyralabs/idx-api/internal/mlspoxy/querymerge"
 )
 
 // RateLimiter coordinates outbound Spark HTTP across API and worker processes.
@@ -68,9 +69,7 @@ func (c *Client) proxy(fc *fiber.Ctx, upstream string, mergeQuery bool) (int, []
 	}
 	if mergeQuery {
 		q := u.Query()
-		for k, v := range fc.Queries() {
-			q.Set(k, v)
-		}
+		querymerge.IntoUpstream(q, fc.Queries())
 		u.RawQuery = q.Encode()
 	}
 

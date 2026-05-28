@@ -7,6 +7,31 @@ import (
 	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
 
+func TestBuildPublicListingJSONForSearchOmitsExpandedJSONB(t *testing.T) {
+	status := "Active"
+	row := mls.MirrorListingRow{
+		ListingKey:     "stellar:abc",
+		StandardStatus: &status,
+		ListPrice:      450000,
+		Media:          mustJSON(t, []any{map[string]any{"MediaURL": "https://example/1.jpg"}}),
+		CustomFields:   mustJSON(t, map[string]any{"STELLAR_Foo": "bar"}),
+	}
+	out, ok := mls.BuildPublicListingJSONForSearch(row)
+	if !ok {
+		t.Fatal("expected visible listing")
+	}
+	var m map[string]any
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatal(err)
+	}
+	if _, has := m["Media"]; has {
+		t.Fatal("search JSON must not include Media")
+	}
+	if _, has := m["STELLAR_Foo"]; has {
+		t.Fatal("search JSON must not merge custom_fields")
+	}
+}
+
 func TestBuildPublicListingJSONShape(t *testing.T) {
 	status := "Active"
 	city := "Tampa"

@@ -49,7 +49,9 @@ Hybrid mirror + upstream search. Active/Pending defaults to PostGIS; Closed uses
 
 **Pagination:** `limit` / `skip` or `page.limit` / `page.skip`. Response: `{ "results", "hasMore", "nextSkip" }`.
 
-**Dataset:** `?dataset=stellar|beaches` query param (not JSON body).
+**Dataset:** `?dataset=stellar|beaches` query param (not JSON body). On Bridge/Spark **web/RESO proxy** routes, `dataset` is used for IDX routing only and is **not** forwarded to the upstream MLS API.
+
+**Results shape:** PostGIS search returns typed scalar RESO fields (no `Media`, `Room`, `Unit`, `OpenHouse`, or merged custom fields). Use property/detail proxy routes for full navigation payloads.
 
 | JSON field | Description |
 |------------|-------------|

@@ -34,7 +34,7 @@ func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchR
 	}
 
 	q := `
-		SELECT ` + mls.MirrorListingColumns + ` FROM listings
+		SELECT ` + mls.MirrorListingSearchColumns + ` FROM listings
 		WHERE dataset_slug = $1
 	`
 	if len(req.Statuses) == 0 {
@@ -177,7 +177,7 @@ func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchR
 
 	var results []json.RawMessage
 	for rows.Next() {
-		mirrorRow, err := mls.ScanMirrorListingRow(rows.Scan)
+		mirrorRow, err := mls.ScanMirrorListingSearchRow(rows.Scan)
 		if err != nil {
 			return SearchResult{}, err
 		}

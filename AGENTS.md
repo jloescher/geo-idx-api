@@ -41,6 +41,22 @@ make run-worker
 make run-scheduler
 ```
 
+## Production database (workspace `.env`)
+
+**The checked-in workspace `.env` is configured for the production PostgreSQL database** (`DB_*` / `GOOSE_DBSTRING`). Treat every local `make run-api`, `make run-worker`, `make run-scheduler`, `psql`, Goose, and integration test that loads `.env` as operating against **live production data**.
+
+**Agents and developers MUST NOT add, update, or delete production data** unless the user explicitly requests a specific production change in that turn. That includes:
+
+- No `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, or destructive DDL
+- No `make migrate`, `make seed-admin`, replication kickoffs, queue workers, schedulers, or `docs/scripts/*` backfill runners unless the user clearly asks to run them on production
+- No ad hoc SQL that mutates rows or schema
+
+**Allowed without explicit approval:** read-only investigation (`SELECT`, `EXPLAIN`, schema/catalog queries), code changes, and tests that do not connect to production (unit tests, mocks). Prefer a local or staging DSN when you need to run migrations, seeds, or write tests.
+
+**Do not edit `.env`** to repoint the database unless the user asks you to.
+
+For Patroni backfills and Goose `00006`–`00008`, use a dedicated DSN file (e.g. `docs/scripts/.env.backfill.local`) and the runbooks in `docs/production-data-backfill.md` — not the workspace `.env` — unless the user explicitly directs otherwise.
+
 ## Project Structure
 
 ```
@@ -121,6 +137,10 @@ For frontend, mobile, desktop, CLI, form, dashboard, onboarding, account/setting
 
 ## Development Guidelines
 
+### Database safety
+
+When `.env` points at production (see [Production database](#production-database-workspace-env) above), default to **read-only** database access. Do not run mutating commands or scripts against that DSN.
+
 ### Code Style
 - **File naming**: kebab-case for Go files (`bridge/handler.go`)
 - **Code naming**:
@@ -158,8 +178,8 @@ make lint           # Run golangci-lint
 | `make run-api` | Start HTTP server on port 8000 |
 | `make run-worker` | Start queue worker |
 | `make run-scheduler` | Start scheduler process |
-| `make migrate` | Run database migrations |
-| `make seed-admin` | Create admin user from env vars |
+| `make migrate` | Run database migrations (**not** against production `.env` unless explicitly requested) |
+| `make seed-admin` | Create admin user from env vars (**not** against production `.env` unless explicitly requested) |
 | `make build` | Build all binaries to bin/ |
 | `make test` | Run all tests with coverage |
 

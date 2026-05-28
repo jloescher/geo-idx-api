@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/quantyralabs/idx-api/internal/config"
 	dom "github.com/quantyralabs/idx-api/internal/domain"
+	"github.com/quantyralabs/idx-api/internal/mlspoxy/querymerge"
 )
 
 // Client proxies Bridge Data Output web + RESO APIs.
@@ -73,9 +74,7 @@ func (c *Client) proxy(fc *fiber.Ctx, upstream string, mergeQuery bool) (int, []
 	}
 	if mergeQuery {
 		q := u.Query()
-		for k, v := range fc.Queries() {
-			q.Set(k, v)
-		}
+		querymerge.IntoUpstream(q, fc.Queries())
 		u.RawQuery = q.Encode()
 	}
 
