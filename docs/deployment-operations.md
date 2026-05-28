@@ -1,6 +1,6 @@
 # Deployment & operations
 
-**Go idx-api** — Docker, Coolify/Dokploy, PostgreSQL queue, goose migrations. See also **[Coolify deployment](coolify-deployment.md)** (including [multi-DC NYC + ATL](coolify-deployment.md#8-multi-dc-production-nyc--atl)) and **[go-cutover.md](go-cutover.md)**.
+**Go idx-api** — Docker, Coolify/Dokploy, PostgreSQL queue, goose migrations. **Ops UI:** [Admin dashboard](admin-dashboard.md) (`/dashboard/monitoring`). See also **[Coolify deployment](coolify-deployment.md)** (including [multi-DC NYC + ATL](coolify-deployment.md#8-multi-dc-production-nyc--atl)) and **[go-cutover.md](go-cutover.md)**.
 
 ---
 
@@ -37,6 +37,8 @@ docker build -f Dockerfile.idx-images -t quantyra/idx-images:latest .
 | `BRIDGE_API_KEY`, `SPARK_ACCESS_TOKEN` | MLS upstream credentials |
 | `SPARK_REPLICATION_HOST`, `SPARK_REPLICATION_RESO_ROOT` | Spark replication OData base (not live API host) |
 | `WORKER_QUEUES` | Comma-separated queue names for `cmd/worker` — **per worker app** in production |
+| `DB_QUEUE_RESERVATION_TIMEOUT`, `DB_QUEUE_RETRY_AFTER` | Job reservation TTL and retry backoff; stale release at half timeout — see [Worker § Orphaned reservations](#orphaned-job-reservations-persist--fetch) |
+| `MLS_PERSIST_CHUNK_TIMEOUT_SECONDS` | Wall clock per `*.persist_chunk` job (default 900) |
 | `SCHEDULER_LEADER_LOCK_ID`, `SCHEDULER_STANDBY_POLL_SECONDS` | Cluster scheduler leadership (multi-DC) |
 | `IDX_PLATFORM_URL`, `IDX_API_PUBLIC_URL`, `IDX_IMAGES_PUBLIC_URL` | Public URLs |
 | `FEMA_ENRICH_QUEUE`, `FEMA_*` | NFHL flood enrichment — **default worker** — [fema-flood-enrichment.md](fema-flood-enrichment.md) |
@@ -100,6 +102,19 @@ Process: `cmd/worker` (or `make run-worker` locally).
 
 Scale: four workers across two DCs share the same queues, or split fetch vs persist during replication catch-up.
 
+### Orphaned job reservations (persist / fetch)
+
+Workers reserve a row with `FOR UPDATE SKIP LOCKED` and set `reserved_at`. If the process dies (deploy restart, OOM, kill) **before** `releaseSucceeded` / `releaseFailed`, the job stays `reserved` and **no other worker** picks it until stale release.
+
+| Mechanism | Behavior |
+|-----------|----------|
+| **Stale release on reserve** | Before each poll, `releaseStaleReservations` clears rows where `reserved_at` is older than **`max(600s, DB_QUEUE_RESERVATION_TIMEOUT / 2)`** (same threshold as dashboard “stale reserved”) |
+| **Graceful shutdown** | Worker releases in-flight job back to `ready` (or failed) with a short deadline so redeploy does not leave hour-long orphans |
+| **Chunk wall clock** | `MLS_PERSIST_CHUNK_TIMEOUT_SECONDS` (default **900**) fails `bridge.persist_chunk` / `spark.persist_chunk` that run too long; job retries via queue |
+| **Persist I/O** | `RowsForChunk` loads one gzip part from `replica_pages` via JSONB path, not full page decode — see [listings-mirror § Persist pipeline](listings-mirror.md#replica-pages-and-persist-pipeline) |
+
+**Ops:** After persist-worker deploy, watch **Queue & Jobs** → in-flight + active batches on [admin dashboard](admin-dashboard.md). A batch duration near `DB_QUEUE_RESERVATION_TIMEOUT` (e.g. 3600s) usually means an orphaned reservation from a prior worker generation.
+
 ---
 
 ## Scheduler
@@ -136,9 +151,11 @@ WHERE locktype = 'advisory' AND classid = 0 AND objid = 913374211;
 
 6. **Workers before schedulers on fresh deploy** — kickoff jobs need a worker with `sync-kickoff` in `WORKER_QUEUES` (worker 1 on each DC).
 
-**Monitoring probe bug (fixed):** Older API builds called `pg_try_advisory_lock` on one pool connection and `pg_advisory_unlock` on another. Session locks leaked onto idle API pool connections and **prevented schedulers from acquiring leadership** (both stuck in standby). After deploying the fix, **restart NYC + ATL API containers** once to drop leaked locks on existing pool sessions. Schedulers use a dedicated acquired connection for lock + unlock ([`internal/scheduler/leader.go`](../internal/scheduler/leader.go)) — that path was always correct.
+**Monitoring probe bug (fixed):** Older API builds called `pg_try_advisory_lock` on one pool connection and `pg_advisory_unlock` on another. Session locks leaked onto idle API pool connections and **prevented schedulers from acquiring leadership** (both stuck in standby). After deploying the fix, **restart NYC + ATL API containers** once to drop leaked locks on existing pool sessions. Monitoring now **observes** `pg_locks` only (no `pg_try_advisory_lock` on the API pool).
 
-**Scheduler `DB_RW_DSN` and HAProxy :5000:** The leader holds a long-lived session advisory lock on a dedicated connection. HAProxy idle timeouts (~60–120s) can drop that TCP session and release the lock while cron still runs. Prefer **Patroni primary :5432** on Tailscale for `DB_RW_DSN` on scheduler apps, or append libpq keepalives (`keepalives=1&keepalives_idle=30&keepalives_interval=10&keepalives_count=5`). The scheduler binary also pings the leader connection every 30s.
+**Leader connection (`pgx.Connect`, not pool):** `TryAcquireLeader` opens a dedicated DSN (`DB_RW_DSN` with `application_name=idx-scheduler-leader`) via **`pgx.Connect`**, acquires `pg_try_advisory_lock`, verifies the lock on `pg_backend_pid()`, and runs a **20s** keepalive (`SELECT 1`) on that same connection ([`internal/scheduler/leader.go`](../internal/scheduler/leader.go)). Pool connections through HAProxy `:5000` must not hold the lock — they can be recycled and drop leadership.
+
+**Scheduler `DB_RW_DSN` and HAProxy :5000:** Prefer **Patroni primary :5432** on Tailscale for scheduler `DB_RW_DSN`, or append libpq keepalives on `:5000` (`keepalives=1&keepalives_idle=30&keepalives_interval=10&keepalives_count=5`).
 
 **Post-deploy verification (read-only):** After restarting APIs and schedulers, confirm one row in `pg_locks` for `objid = 913374211`, Infrastructure tab shows `holder_pid` and recent `last_enqueue_at`, and Incidents clears the scheduler critical.
 
@@ -250,6 +267,9 @@ docker compose -f docker-compose.dev.yml up --build
 | `/swagger` shows “No layout defined for StandaloneLayout” | Blocked or missing `swagger-ui-standalone-preset.js` from unpkg; redeploy API; see [swagger-ui-testing.md](swagger-ui-testing.md) |
 | Listings missing `fema_flood_zone_code` after “enrichment” | See [fema-flood-enrichment.md § Interpreting gaps](fema-flood-enrichment.md#interpreting-missing-fema_flood_zone_code); confirm worker 1 has `FEMA_*` and `default` in `WORKER_QUEUES` |
 | Geocode never runs | `GOOGLE_MAPS_GEOCODING_API_KEY` on default worker; `GEOCODE_QUEUE` in `WORKER_QUEUES` |
+| Scheduler critical, both apps “standby” | Leaked API pool advisory lock (restart APIs); or leader DSN via HAProxy — use :5432; see [admin dashboard § Scheduler](admin-dashboard.md#scheduler-leadership-verification-ops) |
+| One dataset stuck, batch `1/N` for ~30–60 min | Orphaned `reserved` persist job after worker restart; redeploy persist workers; confirm stale release; see [listings-mirror § Persist pipeline](listings-mirror.md#replica-pages-and-persist-pipeline) |
+| Infrastructure “enqueue never” but mirror updating | Ephemeral `jobs` table — success deletes rows; use `leader_active` + logs ([admin dashboard](admin-dashboard.md#infrastructure-enqueue-never)) |
 
 ---
 
@@ -259,4 +279,5 @@ docker compose -f docker-compose.dev.yml up --build
 - [AGENTS.md](../AGENTS.md)
 - [coolify-deployment.md](coolify-deployment.md)
 - [coolify-env-by-app.md](coolify-env-by-app.md)
+- [admin-dashboard.md](admin-dashboard.md)
 - [database-migrations.md](database-migrations.md)

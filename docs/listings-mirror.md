@@ -17,6 +17,38 @@ Replication flow: scheduler kickoff → `bridge.fetch_page` / `spark.fetch_page`
 
 ---
 
+## Replica pages and persist pipeline
+
+After fetch, one OData page is stored in **`replica_pages.compressed_payload`** (v2 JSON: base64 gzip **parts**, one part per persist chunk). Finalize enqueues the next fetch page when all chunks succeed.
+
+| Stage | Table / job | Notes |
+|-------|-------------|-------|
+| Fetch complete | `replica_pages` status `pending` → `processing` | At most one active page per provider+dataset during chain |
+| Batch dispatch | `job_batches` + N × `*.persist_chunk` | Batch name e.g. `spark-replica-persist:beaches`; `OnComplete` → `persist_finalize` |
+| Chunk read | `RowsForChunk` | Single part: `(compressed_payload::jsonb->'parts')->>(chunk_index-1)` — avoids full ~6MB page decode per chunk |
+| Chunk wall clock | `MLS_PERSIST_CHUNK_TIMEOUT_SECONDS` | Default **900**; worker fails slow chunks for retry |
+| Success | `listings` upsert + batch `pending_jobs` decrement | Last chunk runs finalize → next fetch or incremental |
+| Worker reserve | `jobs.reserved_at` | `FOR UPDATE SKIP LOCKED`; orphaned reservations released at **`max(600s, DB_QUEUE_RESERVATION_TIMEOUT/2)`** and on graceful worker shutdown |
+
+**Dashboard:** [Admin dashboard](admin-dashboard.md) **Queue & Jobs** tab — in-flight persist jobs, open `job_batches`, stale reserved flag. **Ingest & Sync** — `replica_pages` by status; listing tiles show **`catching_up`** while pipeline rows exist.
+
+**Ops SQL (read-only):**
+
+```sql
+SELECT id, queue, payload::jsonb->>'type' AS type, reserved_at, attempts
+FROM jobs
+WHERE reserved_at IS NOT NULL
+ORDER BY reserved_at;
+
+SELECT id, name, pending_jobs, failed_jobs, created_at
+FROM job_batches
+WHERE pending_jobs > 0 OR failed_jobs > 0;
+```
+
+Chunk sizes: `MLS_STELLAR_PERSIST_CHUNK_SIZE` (default 75), `MLS_BEACHES_PERSIST_CHUNK_SIZE` (default 50). Upsert batching inside a chunk: `BRIDGE_SYNC_UPSERT_CHUNK`, `SPARK_SYNC_UPSERT_CHUNK`.
+
+---
+
 ## Storage layout (`listings`)
 
 | Column | Contents |

@@ -149,7 +149,7 @@ StandardStatus eq 'Active' or StandardStatus eq 'Pending'
 
 **Staging:** gzip JSON in `replica_pages` with `provider = spark` (multi-part payload when rows exceed persist chunk size).
 
-**Persist:** `ListingMirrorWriter` with Spark provider — see [Listings mirror](../listings-mirror.md). **`MLS_SYNC_EXPAND`** collections land in `media`, `unit`, `room`, `open_house` JSONB (stripped from `raw_data`). Overflow keys in `custom_fields`. Canonical **`modification_timestamp`** from `ModificationTimestamp`; cursor **`last_modification_timestamp`**. Fixture: [beaches_50_listings.json](beaches_50_listings.json).
+**Persist:** `ListingMirrorWriter` with Spark provider — see [Listings mirror](../listings-mirror.md) and [§ Replica pages and persist pipeline](../listings-mirror.md#replica-pages-and-persist-pipeline) (`RowsForChunk`, `job_batches`, `MLS_PERSIST_CHUNK_TIMEOUT_SECONDS`). **`MLS_SYNC_EXPAND`** collections land in `media`, `unit`, `room`, `open_house` JSONB (stripped from `raw_data`). Overflow keys in `custom_fields`. Canonical **`modification_timestamp`** from `ModificationTimestamp`; cursor **`last_modification_timestamp`**. Fixture: [beaches_50_listings.json](beaches_50_listings.json).
 
 **Bridge (Stellar)** uses different OData expand names (`OpenHouses`, `Rooms`, `UnitTypes`) and omits `$expand` when `BRIDGE_SYNC_FULL_PROPERTY=true` — same JSONB column layout after persist.
 

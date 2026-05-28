@@ -24,7 +24,7 @@
    ```
    Or truncate `jobs` on a disposable staging DB after cutover. The scheduler now enqueues **`mls.proxy_cache_purge`** (renamed from `mls.listings_cache_refresh`).
 2. Verify `/healthz`, `/readyz`, `POST /api/v1/search`, `/images/*`.
-3. Monitor replication lag via `GET /api/v1/bridge/stats`.
+3. Monitor replication and queues via **`/dashboard/monitoring`** ([admin dashboard](admin-dashboard.md)) — listing freshness, in-flight jobs, scheduler lock — or `GET /api/v1/bridge/stats` (API token auth).
 4. After migration `00006` on an existing DB, run Patroni backfills per [production-data-backfill.md](production-data-backfill.md) (listings field promote, then GIS city/county expand before `00008`).
 
 ## Rollback

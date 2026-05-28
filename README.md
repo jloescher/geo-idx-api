@@ -118,6 +118,7 @@ Environment variables match [`.env.example`](.env.example).
 - [docs/gis-sources.md](docs/gis-sources.md) — county parcel REST catalog, upstream findings
 - [docs/comps-api.md](docs/comps-api.md)
 - [docs/database-migrations.md](docs/database-migrations.md)
+- [docs/admin-dashboard.md](docs/admin-dashboard.md) — ops monitoring, queue in-flight/batches, scheduler lock, GIS admin actions
 
 With the API running: **http://localhost:8000/swagger** (interactive) and **http://localhost:8000/openapi.json** (machine-readable).
 

@@ -24,7 +24,8 @@ Central index for **idx-api** (Go 1.25+). Implementation lives in `cmd/` and `in
 | [Production data backfill](production-data-backfill.md) | Patroni scripts: listings field promote + GIS city/county expand |
 | [Listings mirror](listings-mirror.md) | Payload split, `$expand`, replication kickoff gating, hybrid search merge |
 | [FEMA flood enrichment](fema-flood-enrichment.md) | NFHL Layer 28 jobs, `fema_flood_zone_code`, FEMA-backed `low_risk_flood_zone_yn` |
-| [Deployment & operations](deployment-operations.md) | Docker, queues, scheduler leader lock, migrations |
+| [Deployment & operations](deployment-operations.md) | Docker, queues, scheduler leader lock, worker reservations, migrations |
+| [Admin dashboard](admin-dashboard.md) | Invite-only ops UI: domains, monitoring tabs, GIS probe/sync, incidents |
 | [Coolify deployment](coolify-deployment.md) | Single-host and **multi-DC (NYC + ATL)** runbooks |
 | [Coolify env by app](coolify-env-by-app.md) | Production worker split, shared vs role-specific variables |
 | [README](../README.md) | Local dev, `make` targets, build & test |

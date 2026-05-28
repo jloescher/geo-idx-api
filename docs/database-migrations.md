@@ -140,7 +140,7 @@ DROP TABLE IF EXISTS cache;
 
 If `listings_cache` exists with the old shape, prefer **`dropdb` + `make migrate`** per cutover runbook, or `ALTER TABLE listings_cache` to add `close_date`, `latitude`, `longitude`, `close_price`, and convert timestamp columns to `TIMESTAMPTZ`.
 
-**Multi-DC schedulers:** use the same primary DSN; leadership via `pg_try_advisory_lock` (`SCHEDULER_LEADER_LOCK_ID`) — not a migration concern, but both scheduler containers must reach the primary.
+**Multi-DC schedulers:** use the same primary DSN; leadership via `pg_try_advisory_lock` on a dedicated **`pgx.Connect`** session (`SCHEDULER_LEADER_LOCK_ID`) — see [Coolify §7](coolify-deployment.md#7-scheduler-cluster-leadership-required-for-2-schedulers). Not a migration concern, but both scheduler containers must reach the primary.
 
 ---
 

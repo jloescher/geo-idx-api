@@ -431,7 +431,7 @@ curl -H "X-Domain-Slug: example.com" \
 | **Replication observability** | Structured **`slog`** on scheduler/worker (`enqueued scheduled job`, fetch/persist handlers). Inspect `replica_pages`, `listing_sync_cursors`, and `GET /api/v1/bridge/stats`. |
 | **Lookups cache** | `GET /api/v1/lookup` uses the same `mls_search_cache` lookup partition; TTL **`MLS_LOOKUP_CACHE_TTL`** (default 30 days). Purge expired rows via the proxy-cache purge job or `DELETE` on `mls_search_cache` by partition. |
 | **Image edge cache** | `/images/*` responses are streamed from Bridge with immutable cache headers so Cloudflare/browser edges cache aggressively. |
-| **Scheduled jobs (Go)** | `cmd/scheduler` enqueues replication kickoff (every minute), **`mls.proxy_cache_purge`** (every 15 min), **`crypto.refresh_pricing`**, **`mls.purge_replica_pages`**, **`mls.purge_closed_listings`**, weekly **`gis.probe_sources`**. Multi-DC: one scheduler holds **`pg_try_advisory_lock`** (`SCHEDULER_LEADER_LOCK_ID`). Run **`make run-worker`** (or worker image) for consumption. |
+| **Scheduled jobs (Go)** | `cmd/scheduler` enqueues replication kickoff (every minute), **`mls.proxy_cache_purge`** (every 15 min), **`crypto.refresh_pricing`**, **`mls.purge_replica_pages`**, **`mls.purge_closed_listings`**, weekly **`gis.probe_sources`**. Multi-DC: one scheduler holds **`pg_try_advisory_lock`** on a dedicated **`pgx.Connect`** session (`SCHEDULER_LEADER_LOCK_ID`). Run **`make run-worker`** (or worker image) for consumption. Monitor queues on [admin dashboard](admin-dashboard.md). |
 
 ---
 
