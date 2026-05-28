@@ -112,6 +112,7 @@ type CacheMetric struct {
 	Hits          int64   `json:"hits"`
 	Misses        int64   `json:"misses"`
 	HitRatePct    float64 `json:"hit_rate_pct"`
+	Status        string  `json:"status"`
 }
 
 type QueuesMetric struct {
@@ -120,6 +121,7 @@ type QueuesMetric struct {
 	FailedTop          []repository.FailedJobDetail `json:"failed_top"`
 	TotalPending       int64                        `json:"total_pending"`
 	TotalStaleReserved int64                        `json:"total_stale_reserved"`
+	TotalFailed        int64                        `json:"total_failed"`
 	Status             string                       `json:"status"`
 }
 
@@ -306,9 +308,11 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 		Hits:          cache.Hits,
 		Misses:        cache.Misses,
 		HitRatePct:    cache.HitRatePct,
+		Status:        CacheStatus(cache.Total, cache.HitRatePct),
 	}
 
-	queues, err := s.repo.ListQueueCounts(ctx)
+	staleReservedAfter := StaleReservedAfter(int(s.cfg.Queue.ReservationTimeout.Seconds()))
+	queues, err := s.repo.ListQueueCounts(ctx, staleReservedAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -322,13 +326,11 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 	}
 	var pending int64
 	var staleReserved int64
+	var totalFailed int64
 	for _, q := range queues {
 		pending += q.Pending
 		staleReserved += q.StaleReserved
-	}
-	queueStatus := "healthy"
-	if pending > 500 || staleReserved > 0 {
-		queueStatus = "stale"
+		totalFailed += q.Failed
 	}
 	snap.Queues = QueuesMetric{
 		ByQueue:            queues,
@@ -336,27 +338,17 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 		FailedTop:          failedTop,
 		TotalPending:       pending,
 		TotalStaleReserved: staleReserved,
-		Status:             queueStatus,
+		TotalFailed:        totalFailed,
+		Status:             QueueStatus(pending, staleReserved, totalFailed),
 	}
 
 	pipeline, err := s.repo.ReplicaPageStatuses(ctx)
 	if err != nil {
 		return nil, err
 	}
-	pipelineStatus := "healthy"
-	for _, row := range pipeline {
-		switch row.Status {
-		case "failed":
-			pipelineStatus = "stale"
-		case "pending":
-			if row.Count > 500 {
-				pipelineStatus = "stale"
-			}
-		}
-	}
 	snap.SyncPipeline = SyncPipelineMetric{
 		ByStatus: pipeline,
-		Status:   pipelineStatus,
+		Status:   SyncPipelineStatus(pipeline),
 	}
 
 	lockID := s.cfg.Scheduler.LeaderLockKey
@@ -367,13 +359,9 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 	if err != nil {
 		return nil, err
 	}
-	infraStatus := "healthy"
-	if !scheduler.LeaderActive {
-		infraStatus = "stale"
-	}
 	snap.Infrastructure = InfraMetric{
 		Scheduler: scheduler,
-		Status:    infraStatus,
+		Status:    InfraStatus(scheduler.LeaderActive),
 	}
 
 	act, err := s.repo.Activation(ctx)
@@ -388,30 +376,14 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 		DomainsWithTraffic30d: act.DomainsWithTraffic30d,
 	}
 
-	if snap.Infrastructure.Status == "stale" {
-		snap.Incidents = append(snap.Incidents, IncidentMetric{
-			Severity: "critical",
-			Source:   "infrastructure",
-			Title:    "Scheduler leader not detected",
-			Detail:   "No process currently holds the scheduler advisory lock.",
-		})
-	}
-	if snap.Queues.TotalStaleReserved > 0 {
-		snap.Incidents = append(snap.Incidents, IncidentMetric{
-			Severity: "warning",
-			Source:   "queues",
-			Title:    "Stale reserved jobs detected",
-			Detail:   "At least one queue has jobs reserved for over 10 minutes.",
-		})
-	}
-	if snap.SyncPipeline.Status == "stale" {
-		snap.Incidents = append(snap.Incidents, IncidentMetric{
-			Severity: "warning",
-			Source:   "sync",
-			Title:    "Replica page backlog is degraded",
-			Detail:   "Replica pages include failed statuses or unusually high pending volume.",
-		})
-	}
+	snap.Incidents = BuildIncidents(IncidentInput{
+		InfraStatus:            snap.Infrastructure.Status,
+		SchedulerLeaderActive:  scheduler.LeaderActive,
+		TotalStaleReserved:     snap.Queues.TotalStaleReserved,
+		StaleReservedAfterSecs: staleReservedAfter,
+		TotalFailed:            snap.Queues.TotalFailed,
+		SyncPipelineStatus:     snap.SyncPipeline.Status,
+	})
 
 	return snap, nil
 }

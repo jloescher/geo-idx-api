@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/quantyralabs/idx-api/internal/repository"
 	"github.com/quantyralabs/idx-api/internal/service/dashboard"
 )
 
@@ -75,13 +76,19 @@ func TestBoundaryLayerStatus(t *testing.T) {
 
 func TestSnapshotJSONIncludesTabbedMonitoringSections(t *testing.T) {
 	s := dashboard.Snapshot{
+		Cache: dashboard.CacheMetric{
+			WindowMinutes: 15,
+			Status:        "no_data",
+		},
 		Queues: dashboard.QueuesMetric{
 			Status:             "stale",
 			TotalPending:       42,
 			TotalStaleReserved: 3,
+			TotalFailed:        33,
 		},
 		SyncPipeline: dashboard.SyncPipelineMetric{
-			Status: "healthy",
+			Status:   "healthy",
+			ByStatus: []repository.ReplicaPageStatusCount{},
 		},
 		Infrastructure: dashboard.InfraMetric{
 			Status: "critical",
@@ -108,10 +115,19 @@ func TestSnapshotJSONIncludesTabbedMonitoringSections(t *testing.T) {
 		"sync_pipeline",
 		"infrastructure",
 		"incidents",
+		"cache",
 	} {
 		if _, ok := decoded[key]; !ok {
 			t.Fatalf("missing %s", key)
 		}
+	}
+	queues, _ := decoded["queues"].(map[string]any)
+	if queues["total_failed"] == nil {
+		t.Fatal("queues.total_failed missing")
+	}
+	sp, _ := decoded["sync_pipeline"].(map[string]any)
+	if sp["by_status"] == nil {
+		t.Fatal("sync_pipeline.by_status should serialize as array not null")
 	}
 }
 

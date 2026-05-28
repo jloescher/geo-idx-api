@@ -2,6 +2,8 @@
   const REFRESH_MS = 30000;
   const MONITORING_URL = "/dashboard/monitoring/data";
   const TABS = ["overview", "ingest", "queues", "data", "infra", "integrations", "incidents"];
+  const QUEUE_PENDING_STALE = 500;
+  const REPLICA_PENDING_STALE = 500;
   let lastFetchAt = 0;
   let timer = null;
   let hasLiveData = false;
@@ -91,7 +93,14 @@ ${statusChip}
       tile("Datasets", fmtNum(listings.length), `${fmtNum(staleListings)} stale`, null, staleListings > 0 ? "stale" : "healthy", "Listing datasets"),
       tile("Open incidents", fmtNum(incidents.length), "Across monitoring tabs", null, incidents.some((i) => i.severity === "critical") ? "critical" : incidents.length > 0 ? "stale" : "healthy", "Open incidents"),
       tile("Queue pending", fmtNum(queues.total_pending), `${fmtNum(queues.total_stale_reserved)} stale reserved`, null, queues.status || "unknown", "Queue pending jobs"),
-      tile("Cache hit rate", fmtPct(cache.hit_rate_pct), `${cache.window_minutes || 15}m window`, null, cache.total > 0 ? "healthy" : "unknown", "Cache hit rate"),
+      tile(
+        "Cache hit rate",
+        fmtPct(cache.hit_rate_pct),
+        `${cache.window_minutes || 15}m window`,
+        null,
+        cache.status === "healthy" ? "healthy" : cache.status === "no_data" ? "unknown" : cache.status || "unknown",
+        "Cache hit rate"
+      ),
     ];
   }
 
@@ -119,16 +128,33 @@ ${statusChip}
       );
     });
     const pipelineRows = data.sync_pipeline?.by_status || [];
-    const pipelineTiles = pipelineRows.map((row) =>
-      tile(
-        `${row.dataset_slug} · ${row.status}`,
-        fmtNum(row.count),
-        "replica_pages",
-        null,
-        row.status === "failed" ? "critical" : row.status === "pending" ? "stale" : "healthy",
-        `Replica pages ${row.dataset_slug} ${row.status}`
-      )
-    );
+    const replicationActive = (data.listings || []).some((l) => l.replication_in_progress);
+    const pipelineChip = (row) => {
+      if (row.status === "failed") return "critical";
+      if (row.status === "pending" && (row.count || 0) > REPLICA_PENDING_STALE) return "stale";
+      return "healthy";
+    };
+    const pipelineTiles = pipelineRows.length
+      ? pipelineRows.map((row) =>
+          tile(
+            `${row.dataset_slug} · ${row.status}`,
+            fmtNum(row.count),
+            "replica_pages",
+            null,
+            pipelineChip(row),
+            `Replica pages ${row.dataset_slug} ${row.status}`
+          )
+        )
+      : [
+          tile(
+            "Replica pages",
+            "0",
+            replicationActive ? "Replication in progress" : "No active replica pages (sync idle)",
+            null,
+            replicationActive ? "stale" : "healthy",
+            "Replica pipeline idle"
+          ),
+        ];
     const lagRows = (data.listings || []).map((row) => [
       row.dataset_slug || "—",
       row.lag_seconds !== null && row.lag_seconds !== undefined ? `${fmtNum(row.lag_seconds)}s` : "—",
@@ -199,7 +225,7 @@ ${statusChip}
         fmtPct(cache.hit_rate_pct),
         `${cache.window_minutes || 15}m window`,
         null,
-        cache.total > 0 ? "healthy" : "unknown",
+        cache.status === "healthy" ? "healthy" : cache.status === "no_data" ? "unknown" : cache.status || "unknown",
         "Cache hit rate"
       ),
       tile("Audit requests", fmtNum(cache.total), `${fmtNum(cache.hits)} hits`, null, null, "Cache audit volume"),
@@ -216,7 +242,7 @@ ${statusChip}
         fmtNum(pending),
         `${fmtNum(reserved)} reserved · ${fmtNum(failed)} failed`,
         monitoringTabHref("queues"),
-        pending > 50 ? "stale" : "healthy",
+        failed > 0 || pending > QUEUE_PENDING_STALE ? "stale" : "healthy",
         `Queue ${name}`
       );
     });

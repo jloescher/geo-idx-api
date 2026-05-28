@@ -87,8 +87,8 @@ func (r *MonitoringRepo) CacheHitRate15m(ctx context.Context) (CacheHitStats, er
 	var s CacheHitStats
 	err = pool.QueryRow(ctx, `
 		SELECT COUNT(*) AS total,
-		       COUNT(*) FILTER (WHERE cache_hit = 'hit') AS hits,
-		       COUNT(*) FILTER (WHERE cache_hit = 'miss') AS misses
+		       COUNT(*) FILTER (WHERE UPPER(cache_hit) = 'HIT') AS hits,
+		       COUNT(*) FILTER (WHERE UPPER(cache_hit) = 'MISS') AS misses
 		FROM mls_proxy_audit_logs
 		WHERE logged_at >= NOW() - INTERVAL '15 minutes'
 	`).Scan(&s.Total, &s.Hits, &s.Misses)
@@ -111,7 +111,11 @@ type QueueCount struct {
 }
 
 // ListQueueCounts returns job counts grouped by queue.
-func (r *MonitoringRepo) ListQueueCounts(ctx context.Context) ([]QueueCount, error) {
+// staleReservedAfterSec is how long a reserved job must sit before counting as stale (typically half of DB_QUEUE_RESERVATION_TIMEOUT).
+func (r *MonitoringRepo) ListQueueCounts(ctx context.Context, staleReservedAfterSec int) ([]QueueCount, error) {
+	if staleReservedAfterSec < 60 {
+		staleReservedAfterSec = 600
+	}
 	pool, err := r.db.ReadPool(ctx)
 	if err != nil {
 		return nil, err
@@ -133,7 +137,7 @@ func (r *MonitoringRepo) ListQueueCounts(ctx context.Context) ([]QueueCount, err
 			       COUNT(*) FILTER (WHERE reserved_at IS NOT NULL) AS reserved,
 			       COUNT(*) FILTER (
 			       	WHERE reserved_at IS NOT NULL
-			       	  AND reserved_at < EXTRACT(EPOCH FROM NOW() - INTERVAL '10 minutes')::bigint
+			       	  AND reserved_at < EXTRACT(EPOCH FROM NOW())::bigint - $1::bigint
 			       ) AS stale_reserved
 			FROM jobs
 			GROUP BY queue
@@ -142,12 +146,12 @@ func (r *MonitoringRepo) ListQueueCounts(ctx context.Context) ([]QueueCount, err
 			SELECT queue, COUNT(*) AS failed FROM failed_jobs GROUP BY queue
 		) f ON f.queue = q.queue
 		ORDER BY q.queue
-	`)
+	`, staleReservedAfterSec)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []QueueCount
+	out := make([]QueueCount, 0)
 	for rows.Next() {
 		var row QueueCount
 		if err := rows.Scan(&row.Queue, &row.Pending, &row.Reserved, &row.Failed, &row.StaleReserved); err != nil {
@@ -180,7 +184,7 @@ func (r *MonitoringRepo) TopFailedJobDetails(ctx context.Context, limit int) ([]
 		WITH grouped AS (
 			SELECT
 				queue,
-				COALESCE(NULLIF(substring(payload from '"type"\s*:\s*"([^"]+)"'), ''), 'unknown') AS job_type,
+				COALESCE(NULLIF(payload::jsonb->>'type', ''), 'unknown') AS job_type,
 				COUNT(*) AS failed,
 				MAX(failed_at) AS last_failed_at
 			FROM failed_jobs
@@ -197,7 +201,7 @@ func (r *MonitoringRepo) TopFailedJobDetails(ctx context.Context, limit int) ([]
 			SELECT exception
 			FROM failed_jobs
 			WHERE queue = g.queue
-			  AND COALESCE(NULLIF(substring(payload from '"type"\s*:\s*"([^"]+)"'), ''), 'unknown') = g.job_type
+			  AND COALESCE(NULLIF(payload::jsonb->>'type', ''), 'unknown') = g.job_type
 			ORDER BY failed_at DESC
 			LIMIT 1
 		) f ON true
@@ -208,7 +212,7 @@ func (r *MonitoringRepo) TopFailedJobDetails(ctx context.Context, limit int) ([]
 		return nil, err
 	}
 	defer rows.Close()
-	var out []FailedJobDetail
+	out := make([]FailedJobDetail, 0)
 	for rows.Next() {
 		var row FailedJobDetail
 		if err := rows.Scan(&row.Queue, &row.JobType, &row.Count, &row.LastFailedAt, &row.LastException); err != nil {
@@ -242,7 +246,7 @@ func (r *MonitoringRepo) ReplicaPageStatuses(ctx context.Context) ([]ReplicaPage
 		return nil, err
 	}
 	defer rows.Close()
-	var out []ReplicaPageStatusCount
+	out := make([]ReplicaPageStatusCount, 0)
 	for rows.Next() {
 		var row ReplicaPageStatusCount
 		if err := rows.Scan(&row.DatasetSlug, &row.Status, &row.Count); err != nil {

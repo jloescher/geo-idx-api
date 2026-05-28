@@ -56,7 +56,7 @@ Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sess
 
 - **Overview**: system rollup, queue pressure, cache efficiency, activation counters.
 - **Ingest & Sync**: listing freshness + lag by dataset and `replica_pages` pipeline state.
-- **Queue & Jobs**: queue depth, stale reservations (>10m), failed job hotspots.
+- **Queue & Jobs**: queue depth, stale reservations (derived from `DB_QUEUE_RESERVATION_TIMEOUT`), failed job hotspots.
 - **Data Quality**: GIS layer freshness (parcels, cities, counties, zips) and source status.
 - **Infrastructure**: scheduler advisory-lock leadership probe and infra health.
 - **Integrations**: crypto/dependency freshness.
@@ -69,12 +69,42 @@ Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sess
 | **Listings** | total, active/pending, lag, freshness mode | Per `dataset_slug`; dashboard drill-down → **Ingest & Sync** tab (not `/api/v1/bridge/stats`, which requires API domain token auth) |
 | **GIS** | parcels, cities, counties, zips, source states, layer freshness | Stale if parcel/zip sync &gt;35d or generation mismatch |
 | **Crypto** | BTC/ETH/SOL USD + age | Stale if snapshot &gt;1h |
-| **Cache** | 15m hit rate from `mls_proxy_audit_logs` | |
-| **Queues** | pending/reserved/failed by queue + stale_reserved | `stale_reserved` means reserved &gt;10m |
-| **Queue failures** | top failed job types + latest exception preview | Grouped from `failed_jobs` |
-| **Sync pipeline** | `replica_pages` counts by dataset/status | Flags stale on failed rows or large pending backlog |
-| **Infrastructure** | scheduler advisory lock probe (`SCHEDULER_LEADER_LOCK_ID`) | Critical when no leader holds the lock |
+| **Cache** | 15m hit rate from `mls_proxy_audit_logs` | `cache_hit` stored as `HIT`/`MISS`; status `no_data` when no audits in window |
+| **Queues** | pending/reserved/failed by queue + `total_failed` + stale_reserved | Queue status `stale` when `total_failed` &gt; 0, pending &gt; 500, or stale_reserved &gt; 0 |
+| **Queue failures** | top failed job types + latest exception preview | Grouped from `failed_jobs` via `payload::jsonb->>'type'` |
+| **Sync pipeline** | `replica_pages` counts by dataset/status | Empty table returns `by_status: []` and UI “sync idle”; stale when failed or pending &gt; 500 |
+| **Infrastructure** | scheduler advisory lock probe (`SCHEDULER_LEADER_LOCK_ID`) | `leader_active: false` = no session holds the lock; infra status `critical` |
 | **Activation** | domains, keys, verified, 30d audit traffic | Traffic proxies “first API call” setup step |
+
+### Monitoring thresholds
+
+| Signal | Threshold | Notes |
+|--------|-----------|-------|
+| Queue pending stale | &gt; 500 total pending | Matches dashboard.js `QUEUE_PENDING_STALE` |
+| Replica pending stale | &gt; 500 per dataset/status row | Pending rows below threshold stay **healthy** |
+| Stale reserved | `max(600s, DB_QUEUE_RESERVATION_TIMEOUT / 2)` | Aligns with worker reservation, not a fixed 10m |
+| Failed jobs | any `failed_jobs` row | Opens warning incident; queue rollup status `stale` |
+| Cache | 15m audit window | `UPPER(cache_hit)` for hit/miss counts |
+
+### Scheduler leadership verification (ops)
+
+The monitoring API probes the Patroni **primary** RW pool: if `pg_try_advisory_lock` succeeds, no scheduler holds `SCHEDULER_LEADER_LOCK_ID` (default `913374211`).
+
+1. **Coolify:** `idx-api-scheduler` NYC + ATL apps **Running**; one log stream shows `scheduler leader acquired`, the other `scheduler standby`.
+2. **Env:** Same `DB_RW_DSN` and `SCHEDULER_LEADER_LOCK_ID` on web and scheduler (see repo-root `temp/` paste templates — do not commit secrets).
+3. **SQL (read-only on primary):**
+
+```sql
+SELECT pid, granted, objid
+FROM pg_locks
+WHERE locktype = 'advisory' AND objid = 913374211;
+```
+
+Expect one granted row while the leader process is up. If empty and monitoring shows critical, restart scheduler apps or fix DB connectivity before changing application code.
+
+### Optional failed_jobs hygiene
+
+Historical rows (e.g. `mls.replication_resume` before workers registered the handler, Spark HTTP 400) remain in `failed_jobs` until manually removed. After confirming workers consume `sync-kickoff` and handlers are deployed, operators may delete or archive stale rows **only with explicit approval** — the dashboard will continue to report `total_failed` &gt; 0 until then.
 
 ### GIS freshness {#gis-freshness}
 
