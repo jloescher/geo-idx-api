@@ -117,6 +117,9 @@ func buildODataFilter(req SearchRequest, datasetSlug string) string {
 	if req.BedsMin != nil {
 		parts = append(parts, fmt.Sprintf("BedroomsTotal ge %d", *req.BedsMin))
 	}
+	if req.BedsMax != nil {
+		parts = append(parts, fmt.Sprintf("BedroomsTotal le %d", *req.BedsMax))
+	}
 	if req.PriceReducedWithinDays != nil && *req.PriceReducedWithinDays > 0 {
 		parts = append(parts, fmt.Sprintf("DaysOnMarket le %d", *req.PriceReducedWithinDays))
 	}

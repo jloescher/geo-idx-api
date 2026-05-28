@@ -58,6 +58,11 @@ func (p *PostgisSearch) Search(ctx context.Context, feedCode string, req SearchR
 		args = append(args, *req.BedsMin)
 		n++
 	}
+	if req.BedsMax != nil {
+		q += fmt.Sprintf(" AND bedrooms_total <= $%d", n)
+		args = append(args, *req.BedsMax)
+		n++
+	}
 	if req.BathsMin != nil {
 		q += fmt.Sprintf(" AND bathrooms_total_decimal >= $%d", n)
 		args = append(args, *req.BathsMin)

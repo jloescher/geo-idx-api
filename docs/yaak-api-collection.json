@@ -23,7 +23,7 @@
     { "name": "MLS Data - Open Houses", "description": "Open house collections and RESO open house resources." },
     { "name": "MLS Data - Members & Lookup", "description": "Members and lookup helpers." },
     { "name": "MLS Data - Public Records", "description": "Public parcels, assessments, and transactions under `/api/v1/pub/*`." },
-    { "name": "MLS Data - Search", "description": "`POST /api/v1/search` structured RESO search with caching." },
+    { "name": "MLS Data - Search", "description": "`POST /api/v1/search` hybrid PostGIS + live RESO search. See `docs/idx-api-bridge-proxy.md#search-endpoint-post-apiv1search` for field list, aliases, and parsing rules." },
     { "name": "Comps Engine", "description": "`POST /api/v1/comps/run` comparables, investor modes, BPO, and home value." },
     { "name": "GIS Parcel Proxy", "description": "`GET /api/v1/gis` and MLS-scoped GIS routes." },
     { "name": "Operations", "description": "Replication / mirror statistics for operators." },
@@ -727,7 +727,7 @@
       "post": {
         "tags": ["MLS Data - Search"],
         "summary": "Structured MLS Search",
-        "description": "Hybrid MLS search: Active/Pending from PostGIS `listings` mirror when possible; Closed and special filters from live Bridge/Spark OData. Mirror leg: `low_risk_floodzone` filters `listings.flood_zone_code`; `min_monthly_fees`/`max_monthly_fees` filter `listings.estimated_total_monthly_fees`. Request-level caching (15 minute TTL), teaser gating when not `idx:full`, domain dataset restrictions.\n\nUse `?dataset=` to select a dataset when enabled for the domain/site.",
+        "description": "Hybrid MLS search: Active/Pending from PostGIS `listings` mirror when possible; Closed and special filters from live Bridge/Spark OData.\n\n**Dataset:** `?dataset=stellar|beaches` (query param, not JSON body).\n\n**Parsing:** Prefer JSON numbers/booleans. String numbers (`\"250000\"`) and booleans (`\"true\"`) are accepted. Empty strings omit a filter. Blank `statuses` entries are stripped. Aliases: `min_beds`↔`beds_min`, `max_beds`↔`beds_max`, `min_baths`↔`baths_min`, `min_sqft`↔`living_area_min`, `max_sqft`↔`living_area_max`. Pagination: `limit`/`skip` or `page.limit`/`page.skip`.\n\n**Mirror filters:** `low_risk_floodzone` → `low_risk_flood_zone_yn`; `min_monthly_fees`/`max_monthly_fees` → `estimated_total_monthly_fees`. Geography: `city` / `county_or_parish` (GIS autocomplete + LIKE).\n\n**Ignored (reserved):** `focus_areas`, `sort`, `sort_dir`, `geo`, `property_types` (array), and other legacy example fields.\n\n**Response:** `{ results, hasMore, nextSkip }`. Mirror leg sorts by `modification_timestamp` desc.\n\nSee `docs/idx-api-bridge-proxy.md#search-endpoint-post-apiv1search`.",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           {
@@ -744,24 +744,46 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "description": "Implemented filters for POST /api/v1/search (Go SearchRequest). Reserved fields may appear in older examples but are ignored.",
                 "properties": {
-                  "min_price": { "type": "number", "example": 250000 },
-                  "max_price": { "type": "number", "example": 600000 },
-                  "min_beds": { "type": "integer", "example": 3 },
-                  "max_beds": { "type": "integer", "example": 5 },
-                  "city": { "type": "string", "example": "Tampa" },
                   "statuses": {
                     "type": "array",
                     "items": { "type": "string" },
-                    "example": ["Active"]
+                    "example": ["Active"],
+                    "description": "StandardStatus values. Empty strings in the array are stripped."
                   },
-                  "low_risk_floodzone": { "type": "boolean", "example": true, "description": "PostGIS leg: flood_zone_code contains x (case-insensitive)." },
-                  "min_monthly_fees": { "type": "number", "example": 100, "description": "PostGIS leg: estimated_total_monthly_fees >= value." },
-                  "max_monthly_fees": { "type": "number", "example": 700, "description": "PostGIS leg: estimated_total_monthly_fees <= value." },
-                  "sort": { "type": "string", "example": "list_price" },
-                  "sort_dir": { "type": "string", "example": "desc" },
+                  "active_only": { "type": "boolean", "example": true },
+                  "min_price": { "type": "number", "example": 250000 },
+                  "max_price": { "type": "number", "example": 600000 },
+                  "min_beds": { "type": "integer", "example": 2, "description": "Alias: beds_min" },
+                  "max_beds": { "type": "integer", "example": 5, "description": "Alias: beds_max" },
+                  "beds_min": { "type": "integer", "example": 2, "description": "Alias: min_beds" },
+                  "beds_max": { "type": "integer", "example": 5, "description": "Alias: max_beds" },
+                  "min_baths": { "type": "number", "example": 2, "description": "Alias: baths_min" },
+                  "min_sqft": { "type": "integer", "example": 1500, "description": "Alias: living_area_min" },
+                  "max_sqft": { "type": "integer", "example": 4200, "description": "Alias: living_area_max" },
+                  "min_lot_size_acres": { "type": "number", "example": 0.25 },
+                  "min_year_built": { "type": "integer", "example": 1990 },
+                  "property_type": { "type": "string", "example": "Residential" },
+                  "property_sub_type": { "type": "string", "example": "Single Family Residence" },
+                  "city": { "type": "string", "example": "Largo", "description": "GIS autocomplete expansion + LIKE on city/county." },
+                  "county_or_parish": { "type": "string", "example": "Pinellas" },
+                  "postal_code": { "type": "string", "example": "33770" },
+                  "remarks_query": { "type": "string", "example": "pool spa", "description": "Full-text on public_remarks (mirror leg)." },
+                  "pool_private": { "type": "boolean", "example": true },
+                  "waterfront": { "type": "boolean", "example": true },
+                  "lat": { "type": "number", "example": 27.916 },
+                  "lng": { "type": "number", "example": -82.769 },
+                  "radius_miles": { "type": "number", "example": 8 },
+                  "price_reduced_within_days": { "type": "integer", "example": 30, "description": "Forces live upstream leg when set." },
+                  "low_risk_floodzone": { "type": "boolean", "example": true, "description": "Mirror leg: low_risk_flood_zone_yn = true (FEMA-enriched)." },
+                  "min_monthly_fees": { "type": "number", "example": 100 },
+                  "max_monthly_fees": { "type": "number", "example": 500 },
+                  "limit": { "type": "integer", "example": 24, "description": "Default 50, max 200." },
+                  "skip": { "type": "integer", "example": 0 },
                   "page": {
                     "type": "object",
+                    "description": "Alternative to top-level limit/skip.",
                     "properties": {
                       "limit": { "type": "integer", "example": 24 },
                       "skip": { "type": "integer", "example": 0 }
@@ -769,72 +791,66 @@
                   },
                   "focus_areas": {
                     "type": "array",
+                    "deprecated": true,
+                    "description": "RESERVED — not implemented; use city or county_or_parish.",
                     "items": {
                       "type": "object",
                       "properties": {
-                        "type": {
-                          "type": "string",
-                          "enum": ["city", "county", "state", "postal_code", "elementary_school", "middle_school", "high_school", "subdivision"]
-                        },
+                        "type": { "type": "string" },
                         "name": { "type": "string" }
-                      },
-                      "required": ["type", "name"]
+                      }
                     }
-                  }
+                  },
+                  "sort": { "type": "string", "deprecated": true, "description": "RESERVED — ignored; mirror sorts by modification_timestamp desc." },
+                  "sort_dir": { "type": "string", "deprecated": true, "description": "RESERVED — ignored." }
                 }
               },
               "examples": {
                 "baseline_active": {
-                  "summary": "Baseline active listings (no geo)",
+                  "summary": "Baseline active listings",
                   "value": {
                     "active_only": true,
                     "statuses": ["Active"],
                     "page": { "limit": 24, "skip": 0 }
                   }
                 },
-                "multiple_cities": {
-                  "summary": "Multiple city OR search",
+                "largo_price_beds_fees": {
+                  "summary": "Largo — price, beds, flood, HOA cap",
                   "value": {
-                    "focus_areas": [
-                      { "type": "city", "name": "Largo" },
-                      { "type": "city", "name": "Clearwater" },
-                      { "type": "city", "name": "St. Petersburg" }
-                    ],
+                    "min_price": 250000,
+                    "min_beds": 2,
+                    "city": "Largo",
+                    "statuses": ["Active"],
+                    "low_risk_floodzone": true,
+                    "max_monthly_fees": 500,
                     "page": { "limit": 24, "skip": 0 }
                   }
                 },
-                "county_or_city_outside_county": {
-                  "summary": "County OR city outside county",
+                "string_typed_filters": {
+                  "summary": "String-encoded numbers (client compatibility)",
                   "value": {
-                    "focus_areas": [
-                      { "type": "county", "name": "Pinellas" },
-                      { "type": "city", "name": "Tampa" }
-                    ],
+                    "min_price": "250000",
+                    "min_beds": "2",
+                    "max_monthly_fees": "500",
+                    "low_risk_floodzone": "true",
+                    "city": "Largo",
+                    "statuses": ["Active", ""],
+                    "page": { "limit": "24", "skip": "0" }
+                  }
+                },
+                "city_and_county": {
+                  "summary": "City + county geography (implemented)",
+                  "value": {
+                    "city": "Tampa",
+                    "county_or_parish": "Hillsborough",
                     "statuses": ["Active"],
                     "page": { "limit": 24, "skip": 0 }
                   }
                 },
-                "mixed_state_county_city": {
-                  "summary": "State/county/city combined OR",
+                "postal_code_filter": {
+                  "summary": "Postal code exact match",
                   "value": {
-                    "focus_areas": [
-                      { "type": "state", "name": "FL" },
-                      { "type": "county", "name": "Hillsborough" },
-                      { "type": "city", "name": "Orlando" }
-                    ],
-                    "min_price": 250000,
-                    "max_price": 750000,
-                    "page": { "limit": 24, "skip": 0 }
-                  }
-                },
-                "county_state_postal_mix": {
-                  "summary": "County + state + postal code mix",
-                  "value": {
-                    "focus_areas": [
-                      { "type": "county", "name": "Pinellas" },
-                      { "type": "state", "name": "FL" },
-                      { "type": "postal_code", "name": "33701" }
-                    ],
+                    "postal_code": "33701",
                     "statuses": ["Active", "Pending"],
                     "page": { "limit": 24, "skip": 0 }
                   }
@@ -853,42 +869,31 @@
                     "page": { "limit": 24, "skip": 0 }
                   }
                 },
-                "property_types_and_statuses": {
-                  "summary": "Property types/subtypes with multiple statuses",
+                "property_type_and_statuses": {
+                  "summary": "Single property type/subtype + statuses",
                   "value": {
-                    "property_types": ["Residential"],
-                    "property_sub_types": ["Single Family Residence", "Townhouse"],
-                    "statuses": ["Active", "Pending", "Coming Soon"],
+                    "property_type": "Residential",
+                    "property_sub_type": "Single Family Residence",
+                    "statuses": ["Active", "Pending"],
                     "page": { "limit": 24, "skip": 0 }
                   }
                 },
                 "boolean_features": {
-                  "summary": "Boolean feature toggles",
+                  "summary": "Pool + waterfront (implemented booleans)",
                   "value": {
                     "waterfront": true,
                     "pool_private": true,
-                    "dock": true,
-                    "new_construction": true,
-                    "has_photos": true,
-                    "garage": true,
-                    "association": true,
-                    "spa": false,
-                    "fireplace": true,
-                    "active_adult_community": false,
+                    "statuses": ["Active"],
                     "page": { "limit": 24, "skip": 0 }
                   }
                 },
-                "monthly_fees_stories_year_dom": {
-                  "summary": "HOA fees + stories + year built + DOM",
+                "monthly_fees_and_year_built": {
+                  "summary": "HOA fees + year built",
                   "value": {
                     "min_monthly_fees": 100,
                     "max_monthly_fees": 700,
-                    "min_stories": 1,
-                    "max_stories": 2,
                     "min_year_built": 1990,
-                    "max_year_built": 2025,
-                    "min_days_on_market": 1,
-                    "max_days_on_market": 45,
+                    "statuses": ["Active"],
                     "page": { "limit": 24, "skip": 0 }
                   }
                 },
@@ -901,91 +906,57 @@
                     "page": { "limit": 24, "skip": 0 }
                   }
                 },
-                "for_lease_with_special_conditions": {
-                  "summary": "For lease + special listing conditions",
+                "remarks_fulltext": {
+                  "summary": "Public remarks full-text (mirror leg)",
                   "value": {
-                    "for_lease": true,
-                    "special_listing_conditions": ["Short Sale", "REO"],
+                    "remarks_query": "heated pool",
+                    "city": "Largo",
                     "statuses": ["Active"],
                     "page": { "limit": 24, "skip": 0 }
                   }
                 },
                 "geo_distance_radius": {
-                  "summary": "Distance search around a point",
+                  "summary": "Radius search (lat/lng/radius_miles)",
                   "value": {
-                    "geo": {
-                      "distance": {
-                        "lat": 27.9506,
-                        "lng": -82.4572,
-                        "radius_miles": 8
-                      }
-                    },
-                    "sort": "distance",
-                    "sort_dir": "asc",
-                    "page": { "limit": 24, "skip": 0 }
-                  }
-                },
-                "geo_bounding_box": {
-                  "summary": "Bounding box search",
-                  "value": {
-                    "geo": {
-                      "bbox": {
-                        "west": -82.60,
-                        "south": 27.86,
-                        "east": -82.32,
-                        "north": 28.05
-                      }
-                    },
+                    "lat": 27.9506,
+                    "lng": -82.4572,
+                    "radius_miles": 8,
                     "statuses": ["Active"],
-                    "page": { "limit": 24, "skip": 0 }
-                  }
-                },
-                "sorting_variants": {
-                  "summary": "Sort by list price descending",
-                  "value": {
-                    "statuses": ["Active"],
-                    "sort": "list_price",
-                    "sort_dir": "desc",
                     "page": { "limit": 24, "skip": 0 }
                   }
                 },
                 "pagination_followup": {
-                  "summary": "Second page request",
+                  "summary": "Second page (skip)",
                   "value": {
+                    "city": "Largo",
                     "statuses": ["Active"],
-                    "sort": "on_market_date",
-                    "sort_dir": "desc",
-                    "page": { "limit": 24, "skip": 24 }
+                    "limit": 24,
+                    "skip": 24
                   }
                 },
                 "dataset_override": {
-                  "summary": "Use query dataset with focused payload",
-                  "description": "Send request as POST /api/v1/search?dataset=stellar",
+                  "summary": "Dataset query param + city filter",
+                  "description": "Send as POST /api/v1/search?dataset=stellar",
                   "value": {
-                    "focus_areas": [
-                      { "type": "city", "name": "Largo" }
-                    ],
+                    "city": "Largo",
                     "statuses": ["Active"],
                     "page": { "limit": 24, "skip": 0 }
                   }
                 },
                 "combined_real_world": {
-                  "summary": "Real-world combined search",
+                  "summary": "Combined filters (implemented fields only)",
                   "value": {
-                    "focus_areas": [
-                      { "type": "county", "name": "Pinellas" },
-                      { "type": "city", "name": "Tampa" }
-                    ],
+                    "county_or_parish": "Pinellas",
+                    "city": "Largo",
                     "min_price": 350000,
                     "max_price": 1200000,
                     "min_beds": 3,
                     "min_baths": 2,
-                    "property_types": ["Residential"],
+                    "property_type": "Residential",
                     "waterfront": true,
-                    "has_photos": true,
                     "low_risk_floodzone": true,
-                    "sort": "list_price",
-                    "sort_dir": "desc",
+                    "max_monthly_fees": 600,
+                    "statuses": ["Active"],
                     "page": { "limit": 24, "skip": 0 }
                   }
                 }
@@ -994,8 +965,22 @@
           }
         },
         "responses": {
-          "200": { "description": "Search results" },
-          "400": { "description": "Invalid request or unavailable dataset" },
+          "200": {
+            "description": "Search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": { "type": "array", "items": { "type": "object" } },
+                    "hasMore": { "type": "boolean" },
+                    "nextSkip": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Invalid JSON body (`invalid search body: …`) or bad filter values" },
           "401": { "description": "Unauthenticated" },
           "403": { "description": "Dataset not enabled for site or token/domain not permitted" }
         }

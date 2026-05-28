@@ -266,70 +266,109 @@ The structured search endpoint accepts JSON payloads with filter criteria and re
 
 **Mirror-backed response shape:** each result is a **flat RESO Property** object — `BuildPublicListingJSON` maps typed columns, attaches JSONB navigation (`Media`, `Unit`, `Room`, `OpenHouse`), and **flat-merges** `custom_fields` extensions (no `raw_data`, no nested `custom_fields` property). See [Listings mirror](listings-mirror.md#api-responses-mirror-backed).
 
-**PostGIS mirror filters:** `low_risk_floodzone` reads `listings.flood_zone_code`; `min_monthly_fees` / `max_monthly_fees` read `listings.estimated_total_monthly_fees` (Beaches: sum of association fees normalized to monthly at persist time).
+**PostGIS mirror filters:** `low_risk_floodzone` filters `listings.low_risk_flood_zone_yn` (FEMA NFHL enrichment — [fema-flood-enrichment.md](fema-flood-enrichment.md)); `min_monthly_fees` / `max_monthly_fees` filter `listings.estimated_total_monthly_fees` (Beaches: sum of association fees normalized to monthly at persist time).
 
-### Request body (SearchRequest)
+### Request body (`SearchRequest`)
+
+Implementation: `internal/service/search` (`SearchRequest`, custom `UnmarshalJSON` in `request_parse.go`). Dataset selection uses the **`?dataset=`** query parameter (not a JSON body field).
+
+**JSON parsing (400 `invalid search body: …` on failure):**
+
+- Prefer JSON **numbers** and **booleans** (`250000`, `true`). For client compatibility, numeric and boolean filters also accept **strings** (`"250000"`, `"true"` / `"false"`).
+- **Empty strings** (`""`) and JSON `null` on optional filters are treated as *omitted*.
+- **`statuses`**: blank entries are stripped (e.g. `["Active", ""]` → `["Active"]`).
+- **Pagination**: either top-level `limit` / `skip`, or nested `page.limit` / `page.skip` (nested values win when present).
+- **Field aliases** (same semantics): `min_beds` ↔ `beds_min`, `max_beds` ↔ `beds_max`, `min_baths` ↔ `baths_min`, `min_sqft` ↔ `living_area_min`, `max_sqft` ↔ `living_area_max`.
+
+**Reserved / ignored today** (safe to send but not applied): `focus_areas`, `sort`, `sort_dir`, `geo`, `property_types` (array), and other Laravel-era fields in older examples. Use `city` / `county_or_parish` for geography until `focus_areas` is implemented.
+
+**Example (mirror leg — Active in Largo):**
 
 ```json
 {
-  "mls_dataset": "stellar",
-  "focus_areas": [
-    {"cities": ["Tampa", "St. Petersburg"], "state_or_province": "FL"},
-    {"counties_or_parishes": ["Hillsborough"], "state_or_province": "FL"}
-  ],
-  "price_min": 300000,
-  "price_max": 750000,
-  "bedrooms_min": 3,
-  "bathrooms_min": 2,
-  "property_types": ["Residential"],
-  "status": ["Active", "Pending"],
-  "waterfront": true,
-  "pool": true,
-  "garage_spaces_min": 2,
-  "year_built_min": 2010,
-  "sqft_min": 1500,
-  "lot_size_min": 5000,
-  "sort_by": "price_desc",
-  "limit": 20,
-  "page": 1
+  "min_price": 250000,
+  "min_beds": 2,
+  "city": "Largo",
+  "statuses": ["Active"],
+  "low_risk_floodzone": true,
+  "max_monthly_fees": 500,
+  "page": { "limit": 24, "skip": 0 }
 }
 ```
 
-### Filter mapping (`SearchRequest`)
+**Response shape:**
 
-**PostGIS mirror leg** (Active/Pending local query — see `PostgisSearchService`):
+```json
+{
+  "results": [ /* flat RESO Property objects */ ],
+  "hasMore": true,
+  "nextSkip": 24
+}
+```
+
+Mirror leg orders by `modification_timestamp DESC` (no client `sort` yet). Default `limit` is **50** (max **200**) when omitted or invalid.
+
+### Implemented request fields
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `statuses` | string[] | e.g. `Active`, `Pending`, `Closed`. Omitted + default routing → Active/Pending mirror. |
+| `active_only` | bool | Influences hybrid routing when statuses omitted. |
+| `min_price`, `max_price` | number | `list_price` |
+| `min_beds`, `max_beds` | integer | Aliases: `beds_min`, `beds_max` → `bedrooms_total` |
+| `min_baths` | number | Alias: `baths_min` → `bathrooms_total_decimal` |
+| `min_sqft`, `max_sqft` | integer | Aliases: `living_area_min`, `living_area_max` → `living_area` |
+| `min_lot_size_acres` | number | `lot_size_acres` |
+| `min_year_built` | integer | `year_built` |
+| `property_type`, `property_sub_type` | string | Single value each (not arrays) |
+| `city`, `county_or_parish` | string | GIS autocomplete expansion + `LIKE` on city/county columns |
+| `postal_code` | string | Exact match |
+| `remarks_query` | string | Full-text on `public_remarks` (mirror leg) |
+| `pool_private`, `waterfront` | bool | `*_yn` columns |
+| `lat`, `lng`, `radius_miles` | number | PostGIS `ST_DWithin` on `coordinates` |
+| `price_reduced_within_days` | integer | Forces live upstream leg when set |
+| `low_risk_floodzone` | bool | `low_risk_flood_zone_yn = true` |
+| `min_monthly_fees`, `max_monthly_fees` | number | `estimated_total_monthly_fees` |
+| `limit`, `skip` | integer | Pagination (see `page` alias above) |
+
+### Filter mapping by leg
+
+**PostGIS mirror leg** (`PostgisSearch` — Active/Pending):
 
 | Request field | Mirror column / behavior |
 |---------------|-------------------------|
 | `min_price` / `max_price` | `list_price` |
-| `min_beds` / `max_beds` | `bedrooms_total` |
-| `min_baths` / `max_baths` | `bathrooms_total_decimal` |
+| `min_beds` / `max_beds` (or `beds_min` / `beds_max`) | `bedrooms_total` |
+| `min_baths` (or `baths_min`) | `bathrooms_total_decimal` |
 | `min_sqft` / `max_sqft` | `living_area` |
-| `min_lot_size_acres` / `max_lot_size_acres` | `lot_size_acres` |
-| `min_year_built` / `max_year_built` | `year_built` |
+| `min_lot_size_acres` | `lot_size_acres` |
+| `min_year_built` | `year_built` |
 | `min_monthly_fees` / `max_monthly_fees` | `estimated_total_monthly_fees` |
-| `low_risk_floodzone` | `low_risk_flood_zone_yn = true` (from `fema_flood_zone_code` via FEMA enrichment — [fema-flood-enrichment.md](fema-flood-enrichment.md)) |
-| `waterfront`, `pool_private`, `dock`, etc. | matching `*_yn` boolean columns |
-| `city`, `state`, `county`, `postal_code` | address columns |
-| `property_types`, `property_sub_types`, `statuses` | `property_type`, `property_sub_type`, `standard_status` |
+| `low_risk_floodzone` | `low_risk_flood_zone_yn = TRUE` |
+| `waterfront`, `pool_private` | `waterfront_yn`, `pool_private_yn` |
+| `city`, `county_or_parish`, `postal_code` | geography / postal filters |
+| `property_type`, `property_sub_type`, `statuses` | typed columns |
+| `remarks_query` | `to_tsvector` on `public_remarks` |
+| `lat` + `lng` + `radius_miles` | `ST_DWithin` on `coordinates` |
 
-**Live Bridge OData leg** (Closed-only, special filters, or Bridge fallback — see `BridgeSearchTranslator`):
+**Live Bridge/Spark OData leg** (`LiveSearch` — Closed / fallback):
 
-| Request field | Bridge OData / post-filter |
-|---------------|---------------------------|
-| Price, beds, baths, property type, status, geo, etc. | Standard RESO fields on `Property` |
-| `low_risk_floodzone` | `{DATASET}_FloodZoneCode` OData filter + post-filter when needed (e.g. `STELLAR_FloodZoneCode` for Stellar) |
+| Request field | OData |
+|---------------|--------|
+| `min_price` / `max_price` | `ListPrice ge/le` |
+| `min_beds` / `max_beds` | `BedroomsTotal ge/le` |
+| `statuses` | `StandardStatus in (...)` |
+| Other mirror fields | Partial — expand as needed |
 
-Normalized mirror columns (`flood_zone_code`, `estimated_total_monthly_fees`) are populated at replication persist by `ListingMirrorWriter` + `ListingResoFieldResolver` for **both** Stellar and Beaches. Stellar flood source: `STELLAR_FloodZoneCode` (fallback `FloodZoneCode`). Beaches flood: `Location_sp_and_sp_Legal_co_Flood_sp_Zone2`. Monthly fees: Stellar `{DATASET}_TotalMonthlyFees` when present; Beaches sum of `AssociationFee` / `AssociationFee2` converted by frequency — [Spark integration](spark/idx-api-integration.md#normalized-mirror-columns-persist--replication-updates).
+Normalized mirror columns (`flood_zone_code`, `estimated_total_monthly_fees`) are populated at replication persist by `ListingMirrorWriter` + `ListingResoFieldResolver` for **both** Stellar and Beaches. See [Spark integration](spark/idx-api-integration.md#normalized-mirror-columns-persist--replication-updates).
 
 ### Dataset restrictions
 
-The `MlsDatasetResolver` service validates dataset access:
+Dataset is selected via **`?dataset=stellar|beaches`** (or domain default), not the JSON body:
 
-1. If `mls_dataset` is provided in the request, it must be in the domain's `allowed_mls_datasets` array
+1. Query `dataset` must be globally configured and enabled for the requesting domain/site
 2. If omitted, the domain's `mls_dataset` default is used
-3. If the default is not allowed, the first allowed dataset is used as fallback
-4. Returns **403** if no valid dataset can be resolved
+3. Returns **403** when no valid dataset can be resolved
 
 ---
 
@@ -537,8 +576,8 @@ Response headers should include **`Cache-Control`** with **`public`**, **`max-ag
 curl -sS -X POST \
   -H 'X-Domain-Slug: searchtampabayhouses.com' \
   -H 'Content-Type: application/json' \
-  -d '{"cities": ["Tampa", "St. Petersburg"], "price_min": 300000, "limit": 20}' \
-  'https://idx-api.quantyralabs.cc/api/v1/search'
+  -d '{"city":"Largo","min_price":250000,"min_beds":2,"statuses":["Active"],"low_risk_floodzone":true,"max_monthly_fees":500,"limit":24}' \
+  'https://idx-api.quantyralabs.cc/api/v1/search?dataset=stellar'
 ```
 
 ### Properties with JSON body (POST)

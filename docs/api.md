@@ -43,10 +43,21 @@ For a full route-by-route table (methods, auth, handlers, and behavior notes), s
 
 ### Search (`POST /api/v1/search`)
 
-Hybrid mirror + upstream search. Active/Pending defaults to PostGIS; Closed uses live RESO. Public results exclude non-IDX / non-display listings (see `docs/listings-mirror.md`).
+Hybrid mirror + upstream search. Active/Pending defaults to PostGIS; Closed uses live RESO. Public results exclude non-IDX / non-display listings (see `docs/listings-mirror.md`). Full field list, aliases, and routing: [idx-api-bridge-proxy.md — Search endpoint](idx-api-bridge-proxy.md#search-endpoint-post-apiv1search).
+
+**Parsing:** JSON numbers/booleans are preferred; string-encoded numbers (`"250000"`) and booleans (`"true"`) are accepted. Empty strings omit a filter. Invalid types return `400` with `invalid search body: <detail>`.
+
+**Pagination:** `limit` / `skip` or `page.limit` / `page.skip`. Response: `{ "results", "hasMore", "nextSkip" }`.
+
+**Dataset:** `?dataset=stellar|beaches` query param (not JSON body).
 
 | JSON field | Description |
 |------------|-------------|
+| `min_price`, `max_price`, `min_beds`, `max_beds`, `min_baths`, `min_sqft`, `max_sqft` | Price, beds, baths, living area filters (aliases: `beds_min`, `living_area_min`, …). |
 | `city` | Geography filter: expands via GIS autocomplete, then `LIKE` on `listings.city` / `county_or_parish` (not exact equality). |
 | `county_or_parish` | County display name or slug from autocomplete; same OR-LIKE geography expansion. |
+| `statuses` | e.g. `Active`, `Pending`, `Closed`. Blank array entries are ignored. |
+| `low_risk_floodzone` | When true, mirror leg requires `low_risk_flood_zone_yn` (FEMA-enriched). |
+| `min_monthly_fees`, `max_monthly_fees` | Filter `estimated_total_monthly_fees`. |
 | `remarks_query` | Optional full-text search on typed `public_remarks` (`plainto_tsquery`, English). |
+| `focus_areas`, `sort`, `sort_dir`, `geo` | **Not implemented** — ignored if sent; use `city` / `county_or_parish` for geography. |

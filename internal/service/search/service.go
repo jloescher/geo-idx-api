@@ -35,8 +35,8 @@ func NewService(cfg config.Config, db *repository.DB, proxyCache *cache.ProxyCac
 
 func (s *Service) Handle(c *fiber.Ctx) error {
 	var req SearchRequest
-	if err := c.BodyParser(&req); err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid search body")
+	if err := json.Unmarshal(c.Body(), &req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid search body: "+err.Error())
 	}
 	feed, _ := c.Locals(ctxkeys.MLSFeedCode).(string)
 	mode := DecideRoute(req)
@@ -89,6 +89,7 @@ type SearchRequest struct {
 	MinPrice               *float64 `json:"min_price"`
 	MaxPrice               *float64 `json:"max_price"`
 	BedsMin                *int     `json:"beds_min"`
+	BedsMax                *int     `json:"beds_max"`
 	BathsMin               *float64 `json:"baths_min"`
 	LivingAreaMin          *int     `json:"living_area_min"`
 	LivingAreaMax          *int     `json:"living_area_max"`
