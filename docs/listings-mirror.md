@@ -251,7 +251,7 @@ Expect row counts to grow for `stellar` and `beaches`, `replication_in_progress`
 
 ## Schema
 
-Migrations: [`00001_initial.sql`](../migrations/00001_initial.sql) (base mirror), [`00006_geocode_failure_flags.sql`](../migrations/00006_geocode_failure_flags.sql) (geocode attempt/failure metadata, bad-address flag, retry/bad-address indexes).
+Migrations: [`00001_initial.sql`](../migrations/00001_initial.sql) (base mirror), [`00009_geocode_failure_flags.sql`](../migrations/00009_geocode_failure_flags.sql) (geocode attempt/failure metadata, bad-address flag, retry/bad-address indexes).
 
 **Geocode backfill:** worker job `mls.geocode_listings_*` uses `GOOGLE_MAPS_GEOCODING_API_KEY` and `BuildGeocodeQuery` (Beaches full `UnparsedAddress` vs Stellar street + city/state/ZIP). Scheduler cron `0 15 5 * * *` UTC on `GEOCODE_QUEUE` (default `default`). Post-sync kickoff dedupes via `HasActiveGeocodeJob` on the `jobs` table (`reserved_at` / pending rows — **not** `finished_at`, which exists only on `job_batches`; completed jobs are deleted from `jobs`).
 
