@@ -251,9 +251,19 @@ Expect row counts to grow for `stellar` and `beaches`, `replication_in_progress`
 
 ## Schema
 
-Migrations: [`00001_initial.sql`](../migrations/00001_initial.sql) (base mirror), [`00006_listings_search_columns.sql`](../migrations/00006_listings_search_columns.sql) (14 IDX/facet columns, `unparsed_address`, `public_remarks`, geocode audit columns, AP indexes + FTS), [`00007_gis_trgm_autocomplete.sql`](../migrations/00007_gis_trgm_autocomplete.sql), [`00008_gis_cities_county_not_null.sql`](../migrations/00008_gis_cities_county_not_null.sql) (after `docs/scripts/gis_cities_county_expand.sql`).
+Migrations: [`00001_initial.sql`](../migrations/00001_initial.sql) (base mirror), [`00006_geocode_failure_flags.sql`](../migrations/00006_geocode_failure_flags.sql) (geocode attempt/failure metadata, bad-address flag, retry/bad-address indexes).
 
 **Geocode backfill:** worker job `mls.geocode_listings_*` uses `GOOGLE_MAPS_GEOCODING_API_KEY` and `BuildGeocodeQuery` (Beaches full `UnparsedAddress` vs Stellar street + city/state/ZIP). Scheduler cron `0 15 5 * * *` UTC on `GEOCODE_QUEUE` (default `default`). Post-sync kickoff dedupes via `HasActiveGeocodeJob` on the `jobs` table (`reserved_at` / pending rows — **not** `finished_at`, which exists only on `job_batches`; completed jobs are deleted from `jobs`).
+
+Rows that fail geocoding now persist review metadata directly on `listings`:
+
+- `geocode_attempted_at`: last attempt timestamp (success or failure)
+- `geocode_failed_at`: last failed-at timestamp
+- `geocode_failure_reason`: `insufficient_address`, `zero_results`, or `request_error`
+- `geocode_bad_address_yn`: durable flag that excludes the listing from future geocode pending selection
+- `geocode_attempt_count`: total attempts recorded by the enrich worker
+
+The enrich worker sets `geocode_bad_address_yn = TRUE` for `insufficient_address` and `zero_results` outcomes so these listings stop receiving blind retries until source address data is corrected. A successful geocode clears failure metadata and resets `geocode_bad_address_yn = FALSE`.
 
 | Variable | Default | Notes |
 |----------|---------|--------|
@@ -265,7 +275,9 @@ Migrations: [`00001_initial.sql`](../migrations/00001_initial.sql) (base mirror)
 
 Production: set on **default worker** (`WORKER_QUEUES=default,sync-kickoff`) — [coolify-env-by-app.md](coolify-env-by-app.md). Comps `home_value` also uses the same Google key — [comps-api.md](comps-api.md).
 
-**Backfill (existing DBs):** After migration `00006`, run on Patroni primary:
+**Bad-address backfill (manual):** For existing known-problem IDs, use [`docs/scripts/geocode_bad_address_backfill.sql`](scripts/geocode_bad_address_backfill.sql). The script is review-first and defaults to `ROLLBACK`; operators populate candidate IDs, inspect affected rows, then run the commented `UPDATE` block explicitly.
+
+**Listings field promotion backfill (existing DBs):** Run on Patroni primary:
 
 - Runner: [`docs/scripts/run_listings_field_promote_backfill.sh`](../docs/scripts/run_listings_field_promote_backfill.sh)
 - SQL: [`docs/scripts/listings_field_promote_backfill.sql`](../docs/scripts/listings_field_promote_backfill.sql)

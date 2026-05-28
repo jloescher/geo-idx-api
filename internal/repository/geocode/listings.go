@@ -25,6 +25,64 @@ type Repository struct {
 	pool *pgxpool.Pool
 }
 
+const selectPendingBaseSQL = `
+		SELECT id, dataset_slug, unparsed_address, city, state_or_province, postal_code,
+		       street_number, street_name
+		FROM listings
+		WHERE id > $1
+		  AND LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
+		  AND internet_address_display_yn IS TRUE
+		  AND geocode_bad_address_yn IS FALSE
+		  AND (latitude IS NULL OR longitude IS NULL)
+		  AND (
+		    (unparsed_address IS NOT NULL AND trim(unparsed_address) <> '')
+		    OR (street_number IS NOT NULL AND city IS NOT NULL)
+		  )
+	`
+
+const countPendingBaseSQL = `
+		SELECT COUNT(*)
+		FROM listings
+		WHERE LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
+		  AND internet_address_display_yn IS TRUE
+		  AND geocode_bad_address_yn IS FALSE
+		  AND (latitude IS NULL OR longitude IS NULL)
+		  AND (
+		    (unparsed_address IS NOT NULL AND trim(unparsed_address) <> '')
+		    OR (street_number IS NOT NULL AND city IS NOT NULL)
+		  )
+	`
+
+const applyCoordsSQL = `
+		UPDATE listings SET
+			latitude = $2,
+			longitude = $3,
+			coordinates = ST_SetSRID(ST_MakePoint($3, $2), 4326),
+			geocoded_at = NOW(),
+			geocode_attempted_at = NOW(),
+			geocode_query = $4,
+			geocode_bad_address_yn = FALSE,
+			geocode_failed_at = NULL,
+			geocode_failure_reason = NULL,
+			geocode_attempt_count = COALESCE(geocode_attempt_count, 0) + 1,
+			updated_at = NOW()
+		WHERE id = $1
+		  AND (latitude IS NULL OR longitude IS NULL)
+	`
+
+const markFailedAttemptSQL = `
+		UPDATE listings SET
+			geocode_attempted_at = NOW(),
+			geocode_failed_at = NOW(),
+			geocode_failure_reason = $2,
+			geocode_query = NULLIF($3, ''),
+			geocode_bad_address_yn = $4,
+			geocode_attempt_count = COALESCE(geocode_attempt_count, 0) + 1,
+			updated_at = NOW()
+		WHERE id = $1
+		  AND (latitude IS NULL OR longitude IS NULL)
+	`
+
 // NewRepository creates a geocode listings repository.
 func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
@@ -35,19 +93,7 @@ func (r *Repository) SelectPending(ctx context.Context, cursorID int64, limit in
 	if limit <= 0 {
 		limit = 200
 	}
-	query := `
-		SELECT id, dataset_slug, unparsed_address, city, state_or_province, postal_code,
-		       street_number, street_name
-		FROM listings
-		WHERE id > $1
-		  AND LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
-		  AND internet_address_display_yn IS TRUE
-		  AND (latitude IS NULL OR longitude IS NULL)
-		  AND (
-		    (unparsed_address IS NOT NULL AND trim(unparsed_address) <> '')
-		    OR (street_number IS NOT NULL AND city IS NOT NULL)
-		  )
-	`
+	query := selectPendingBaseSQL
 	args := []any{cursorID}
 	if datasetSlug != "" {
 		query += ` AND dataset_slug = $2`
@@ -77,17 +123,7 @@ func (r *Repository) SelectPending(ctx context.Context, cursorID int64, limit in
 
 // CountPending returns how many listings match the geocode job selection.
 func (r *Repository) CountPending(ctx context.Context, datasetSlug string) (int64, error) {
-	query := `
-		SELECT COUNT(*)
-		FROM listings
-		WHERE LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
-		  AND internet_address_display_yn IS TRUE
-		  AND (latitude IS NULL OR longitude IS NULL)
-		  AND (
-		    (unparsed_address IS NOT NULL AND trim(unparsed_address) <> '')
-		    OR (street_number IS NOT NULL AND city IS NOT NULL)
-		  )
-	`
+	query := countPendingBaseSQL
 	args := []any{}
 	if datasetSlug != "" {
 		query += ` AND dataset_slug = $1`
@@ -100,17 +136,13 @@ func (r *Repository) CountPending(ctx context.Context, datasetSlug string) (int6
 
 // ApplyCoords updates latitude, longitude, coordinates, geocoded_at, and geocode_query.
 func (r *Repository) ApplyCoords(ctx context.Context, id int64, lat, lng float64, query string) error {
-	_, err := r.pool.Exec(ctx, `
-		UPDATE listings SET
-			latitude = $2,
-			longitude = $3,
-			coordinates = ST_SetSRID(ST_MakePoint($3, $2), 4326),
-			geocoded_at = NOW(),
-			geocode_query = $4,
-			updated_at = NOW()
-		WHERE id = $1
-		  AND (latitude IS NULL OR longitude IS NULL)
-	`, id, lat, lng, query)
+	_, err := r.pool.Exec(ctx, applyCoordsSQL, id, lat, lng, query)
+	return err
+}
+
+// MarkFailedAttempt records a failed geocode attempt and optional bad-address flag.
+func (r *Repository) MarkFailedAttempt(ctx context.Context, id int64, reason string, query string, badAddress bool) error {
+	_, err := r.pool.Exec(ctx, markFailedAttemptSQL, id, reason, query, badAddress)
 	return err
 }
 

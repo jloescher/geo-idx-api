@@ -25,6 +25,12 @@ type GeocodeBatchArgs struct {
 	DatasetSlug string `json:"dataset_slug,omitempty"`
 }
 
+const (
+	geocodeFailureInsufficientAddress = "insufficient_address"
+	geocodeFailureZeroResults         = "zero_results"
+	geocodeFailureRequestError        = "request_error"
+)
+
 // EnrichmentService runs Google Geocoding backfill for mirror listings.
 type EnrichmentService struct {
 	cfg    config.Config
@@ -134,6 +140,9 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args GeocodeBatchArgs)
 		if !ok {
 			s.logger.Debug("geocode skip insufficient_address",
 				"listing_id", row.ID, "dataset", row.DatasetSlug)
+			if err := s.repo.MarkFailedAttempt(ctx, row.ID, geocodeFailureInsufficientAddress, query, true); err != nil {
+				s.logger.Warn("geocode failure mark failed", "listing_id", row.ID, "error", err)
+			}
 			continue
 		}
 
@@ -141,8 +150,14 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args GeocodeBatchArgs)
 		if err != nil {
 			if strings.Contains(err.Error(), "ZERO_RESULTS") {
 				s.logger.Debug("geocode zero results", "listing_id", row.ID, "query", query)
+				if markErr := s.repo.MarkFailedAttempt(ctx, row.ID, geocodeFailureZeroResults, query, true); markErr != nil {
+					s.logger.Warn("geocode zero results mark failed", "listing_id", row.ID, "error", markErr)
+				}
 			} else {
 				s.logger.Warn("geocode failed", "listing_id", row.ID, "error", err)
+				if markErr := s.repo.MarkFailedAttempt(ctx, row.ID, geocodeFailureRequestError, query, false); markErr != nil {
+					s.logger.Warn("geocode request error mark failed", "listing_id", row.ID, "error", markErr)
+				}
 			}
 			time.Sleep(interval)
 			continue
