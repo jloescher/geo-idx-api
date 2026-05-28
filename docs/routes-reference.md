@@ -17,7 +17,7 @@ These endpoints are represented in `docs/yaak-api-collection.json`.
 | GET | `/health/replicas` | None | `healthReplicas` | Read-replica selector health snapshot. |
 | GET | `/metrics` | None | Prometheus handler | Prometheus metrics scrape endpoint. |
 | GET | `/openapi.json` | None | `openapi.serveSpec` | OpenAPI 3.1 spec (embedded from `docs/yaak-api-collection.json`). |
-| GET | `/swagger` | None | `openapi.serveUI` | Swagger UI (loads `/openapi.json`). |
+| GET | `/swagger` | None | `openapi.serveUI` | Swagger UI (loads `/openapi.json`). See [swagger-ui-testing.md](swagger-ui-testing.md). |
 | POST | `/api/auth/token` | None | `auth.Handler.Token` | Email/password login for PAT issuance (`idx:full`). |
 | GET | `/api/auth/user` | Bearer PAT | `auth.Handler.User` | Return current user profile from bearer token. |
 | GET | `/images/:listingKey/:photoId` | `DomainToken` | `images.Handler.Show` | Stream listing photo via proxy/cache. |

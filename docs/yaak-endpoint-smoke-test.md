@@ -2,6 +2,8 @@
 
 Automated checks for every path in [`yaak-api-collection.json`](yaak-api-collection.json).
 
+For **manual** exploration in the browser (authorize PAT, try autocomplete + search), see [swagger-ui-testing.md](swagger-ui-testing.md).
+
 ## Run
 
 ```bash

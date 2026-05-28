@@ -29,7 +29,46 @@ Same as other `/api/v1/*` Bridge proxy routes:
 | GET | `/api/v1/gis/autocomplete/cities` | City \| county suggestions (`q`, optional `limit`, default 10). One row per `(city_name, county)` after county expansion. |
 | GET | `/api/v1/gis/autocomplete/counties` | County name/slug suggestions (`q`, optional `limit`). |
 
-## Query parameters
+## Autocomplete
+
+Fuzzy typeahead over the `gis_cities` and `gis_counties` catalogs (`pg_trgm`, migration **00007**). One city row per **(city_name, county)** after [city–county expansion](gis-sources.md#citycounty-pairs-gis_citiescounty).
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `q` | yes | Search string (prefix/substring; case-insensitive). |
+| `limit` | no | Max results (default **10**, cap 50 in handler). |
+| `domain` | no* | Verified domain slug (*required for token auth via `?domain=` or `X-Domain-Slug`). |
+
+**Example — cities**
+
+```http
+GET /api/v1/gis/autocomplete/cities?q=tam&limit=5
+Authorization: Bearer <pat>
+X-Domain-Slug: your-verified-domain.com
+```
+
+```json
+[
+  {
+    "city": "Tampa",
+    "county": "Hillsborough",
+    "county_slug": "hillsborough",
+    "label": "Tampa | Hillsborough"
+  }
+]
+```
+
+**Example — counties**
+
+```http
+GET /api/v1/gis/autocomplete/counties?q=pin&limit=5
+Authorization: Bearer <pat>
+X-Domain-Slug: your-verified-domain.com
+```
+
+**OpenAPI / Swagger:** Documented in [`yaak-api-collection.json`](yaak-api-collection.json). Interactive testing: [swagger-ui-testing.md](swagger-ui-testing.md).
+
+## Query parameters (parcel proxy)
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|

@@ -109,11 +109,15 @@ Environment variables match [`.env.example`](.env.example).
 ## API documentation
 
 - [docs/INDEX.md](docs/INDEX.md) — full doc index
+- [docs/yaak-api-collection.json](docs/yaak-api-collection.json) — OpenAPI 3.1 source (`make openapi-sync` embeds into the API)
+- [docs/swagger-ui-testing.md](docs/swagger-ui-testing.md) — test `/swagger` and `/openapi.json` locally or on deploy
 - [docs/idx-api-bridge-proxy.md](docs/idx-api-bridge-proxy.md)
 - [docs/gis-api.md](docs/gis-api.md)
 - [docs/gis-sources.md](docs/gis-sources.md) — county parcel REST catalog, upstream findings
 - [docs/comps-api.md](docs/comps-api.md)
 - [docs/database-migrations.md](docs/database-migrations.md)
+
+With the API running: **http://localhost:8000/swagger** (interactive) and **http://localhost:8000/openapi.json** (machine-readable).
 
 ## Health
 

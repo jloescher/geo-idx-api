@@ -7,6 +7,9 @@ This document summarizes the currently registered HTTP surface in the Go Fiber a
 - OpenAPI source file: `docs/yaak-api-collection.json` (synced into the API embed via `make openapi-sync`)
 - Live spec: [`GET /openapi.json`](/openapi.json) (public, no auth)
 - Interactive explorer: [`GET /swagger`](/swagger) (Swagger UI; loads `/openapi.json`)
+- **Testing guide:** [swagger-ui-testing.md](swagger-ui-testing.md) — authorize PAT, GIS autocomplete, search, and troubleshooting
+
+**Maintaining the spec:** Edit `docs/yaak-api-collection.json`, run `make openapi-sync`, rebuild or restart the API. `make build` runs `openapi-sync` automatically.
 
 ## Route groups
 
@@ -37,6 +40,15 @@ It returns a token payload:
 
 - `token` (plaintext PAT)
 - `abilities` (currently includes `idx:full`)
+
+## GIS autocomplete
+
+| Method | Path | Query |
+|--------|------|-------|
+| GET | `/api/v1/gis/autocomplete/cities` | `q` (required), `limit` (default 10) |
+| GET | `/api/v1/gis/autocomplete/counties` | `q` (required), `limit` (default 10) |
+
+Returns JSON arrays of `{ city, county, county_slug, label }` or `{ county, county_slug, label }`. Requires `pg_trgm` (migration 00007). Used by search geography expansion and typeahead UIs. Details: [gis-api.md](gis-api.md#autocomplete).
 
 ## Detailed endpoint reference
 

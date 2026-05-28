@@ -12,6 +12,7 @@ Central index for **idx-api** (Go 1.25+). Implementation lives in `cmd/` and `in
 | [Route reference (code-aligned)](routes-reference.md) | Full method/path/auth map from Fiber route registration |
 | [Go cutover runbook](go-cutover.md) | Laravel → Go migration, queue purge, API key re-issue |
 | [OpenAPI spec](yaak-api-collection.json) | OpenAPI 3.1 source for JSON/API endpoints; served at `/openapi.json`, explorer at `/swagger` |
+| [Swagger UI testing](swagger-ui-testing.md) | Manual test steps for `/swagger`, auth, GIS autocomplete, and search |
 | [Bridge / MLS API](bridge-api-documentation.md) | Bridge Data Output upstream reference |
 | [Spark Platform (Beaches MLS)](spark/README.md) | Integration, RESO, compliance, fixtures |
 | [Spark — idx-api integration](spark/idx-api-integration.md) | Replication, dual hosts, queues, hybrid search |
@@ -70,7 +71,8 @@ cp .env.example .env
 export GOOSE_DBSTRING="postgres://..."
 make migrate
 make seed-admin
-make run-api          # :8000
+make run-api          # :8000 — Swagger UI at /swagger
+make openapi-sync     # after editing docs/yaak-api-collection.json
 make run-worker       # WORKER_QUEUES (include sync-kickoff + fetch/persist queues)
 make run-scheduler
 go test ./...
