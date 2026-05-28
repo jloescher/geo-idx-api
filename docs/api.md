@@ -6,10 +6,10 @@ This document summarizes the currently registered HTTP surface in the Go Fiber a
 
 - OpenAPI source file: `docs/yaak-api-collection.json` (synced into the API embed via `make openapi-sync`)
 - Live spec: [`GET /openapi.json`](/openapi.json) (public, no auth)
-- Interactive explorer: [`GET /swagger`](/swagger) (Swagger UI; loads `/openapi.json`)
+- Interactive explorer: [`GET /swagger`](/swagger) (Swagger UI; loads `/openapi.json` plus unpkg `swagger-ui-bundle.js` and `swagger-ui-standalone-preset.js`)
 - **Testing guide:** [swagger-ui-testing.md](swagger-ui-testing.md) — authorize PAT, GIS autocomplete, search, and troubleshooting
 
-**Maintaining the spec:** Edit `docs/yaak-api-collection.json`, run `make openapi-sync`, rebuild or restart the API. `make build` runs `openapi-sync` automatically.
+**Maintaining the spec:** Edit `docs/yaak-api-collection.json`, run `make openapi-sync`, rebuild or restart the API. `make build` runs `openapi-sync` automatically. After changing `/swagger` HTML in `internal/openapi/doc.go`, redeploy **idx-api-web** only (workers unchanged).
 
 ## Route groups
 

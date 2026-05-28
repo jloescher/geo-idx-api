@@ -79,7 +79,7 @@ Process: `cmd/worker` (or `make run-worker` locally).
 
 - Polls `jobs` with `FOR UPDATE SKIP LOCKED`; **fair queue rotation** when `WORKER_QUEUES` lists multiple names (Bridge vs Spark fetch parity). When both fetch and persist queues are configured, workers **alternate pools** (fetch vs persist) so one pool cannot starve the other.
 - `mls.replication_kickoff` runs on **`MLS_SYNC_KICKOFF_QUEUE`** (default `sync-kickoff`) — include that queue on the default/kickoff worker, not only `default`.
-- Job types: `internal/queue/payload.go` (`bridge.fetch_page`, `spark.persist_chunk`, `mls.replication_kickoff`, `mls.proxy_cache_purge`, …)
+- Job types: `internal/queue/payload.go` (`bridge.fetch_page`, `spark.persist_chunk`, `mls.replication_kickoff`, `mls.proxy_cache_purge`, `mls.geocode_listings_kickoff`, `mls.geocode_listings_batch`, …)
 - Unknown/legacy payloads are discarded; purge old rows (see go-cutover)
 
 **Topology:** one combined worker is fine for dev. Production catch-up: split **fetch** (`bridge-sync-fetch,spark-sync-fetch`) from **persist** (`bridge-sync-persist,spark-sync-persist`) and keep **`default`** on a small worker for kickoff/GIS/crypto. See [Coolify §2](coolify-deployment.md#2-worker-configuration).
@@ -192,6 +192,8 @@ docker compose -f docker-compose.dev.yml up --build
 | API tokens rejected | Re-issue PATs from dashboard (SHA-256 storage; not legacy `id\|secret`) |
 | 502 on `/images/*` | idx-images → `idx-api` network alias, port 8000 |
 | `readyz` fails from ATL | Patroni/Tailscale latency or PostGIS extension on DB |
+| `geocode enrich kickoff` … `column "finished_at" does not exist` | Old worker binary; redeploy worker with fix that dedupes geocode jobs via `jobs.reserved_at` (see [listings-mirror.md](listings-mirror.md#schema)) |
+| `/swagger` shows “No layout defined for StandaloneLayout” | Blocked or missing `swagger-ui-standalone-preset.js` from unpkg; redeploy API; see [swagger-ui-testing.md](swagger-ui-testing.md) |
 
 ---
 

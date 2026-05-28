@@ -7,7 +7,7 @@ Manual and smoke-test directions for the interactive API explorer served by the 
 | Requirement | Notes |
 |-------------|--------|
 | Running API | `make run-api` or deployed `idx-api-web` (default port **8000**) |
-| Network (browser) | Swagger UI loads CSS/JS from **unpkg.com**; offline or blocked CDN = blank page |
+| Network (browser) | Swagger UI loads CSS/JS from **unpkg.com** (`swagger-ui-bundle.js` + `swagger-ui-standalone-preset.js`); offline or blocked CDN = blank page or “No layout defined for StandaloneLayout” |
 | Verified domain | Active row in `domains` with TXT verification (or local seed domain) |
 | API token (most routes) | Dashboard-issued PAT with `idx:access` or `idx:full`, or `POST /api/auth/token` for `idx:full` |
 | PostGIS + migrations | GIS autocomplete needs Goose **00007** (`pg_trgm`) and populated `gis_cities` / `gis_counties` |
@@ -49,6 +49,12 @@ Expected paths (among others):
 | `http://localhost:8000/swagger/` | None | Redirects to `/swagger` |
 
 Production example: `https://idx.quantyralabs.cc/swagger` (replace host with `APP_URL` / `IDX_API_PUBLIC_URL`).
+
+**Verify assets loaded:** In browser DevTools → Network, confirm **200** for:
+
+- `swagger-ui.css`
+- `swagger-ui-bundle.js`
+- `swagger-ui-standalone-preset.js` (required for `StandaloneLayout`)
 
 **Server dropdown:** The spec lists **Development** and **Local** server URLs. Pick the host that matches where you are testing before **Execute**.
 
@@ -150,6 +156,7 @@ Mirror search results are **scalar-only** (no `Media` / navigation JSONB). Use `
 | Symptom | Likely cause | Action |
 |---------|--------------|--------|
 | Blank `/swagger` page | CDN blocked | Allow `unpkg.com` or test `/openapi.json` with curl/Yaak |
+| “No layout defined for StandaloneLayout” | `swagger-ui-standalone-preset.js` blocked or missing | Allow unpkg; hard-refresh; redeploy API with current `/swagger` HTML |
 | Stale operations in UI | Old binary | `make openapi-sync && make build`, redeploy |
 | `401` on `/api/v1/*` | Missing/invalid PAT or domain | Authorize; set `X-Domain-Slug` or `?domain=` |
 | `403` | Dataset not on domain allowlist | Use allowed `?dataset=` or update `domains.allowed_mls_datasets` |

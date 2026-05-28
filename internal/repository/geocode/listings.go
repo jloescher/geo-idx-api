@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -113,19 +114,30 @@ func (r *Repository) ApplyCoords(ctx context.Context, id int64, lat, lng float64
 	return err
 }
 
-// HasActiveGeocodeJob reports whether a geocode enrich job is already queued.
+// activeGeocodeJobExistsSQL checks pending/in-flight geocode jobs (jobs table has no finished_at).
+const activeGeocodeJobExistsSQL = `
+		SELECT EXISTS (
+			SELECT 1 FROM %s
+			WHERE queue NOT LIKE '%%:failed'
+			  AND payload::jsonb->>'type' IN ('mls.geocode_listings_kickoff', 'mls.geocode_listings_batch')
+			  AND (
+			    reserved_at IS NULL
+			    OR reserved_at > EXTRACT(EPOCH FROM NOW())::bigint - 7200
+			  )
+		)`
+
+// HasActiveGeocodeJob reports whether a geocode enrich job is already queued or in-flight.
 func HasActiveGeocodeJob(ctx context.Context, pool *pgxpool.Pool, table string) (bool, error) {
 	if table == "" {
 		table = "jobs"
 	}
 	var exists bool
-	err := pool.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1 FROM `+table+`
-			WHERE queue NOT LIKE '%:failed'
-			  AND finished_at IS NULL
-			  AND payload::jsonb->>'type' IN ('mls.geocode_listings_kickoff', 'mls.geocode_listings_batch')
-		)
-	`).Scan(&exists)
-	return exists, err
+	err := pool.QueryRow(ctx, fmt.Sprintf(activeGeocodeJobExistsSQL, table)).Scan(&exists)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return exists, nil
 }
