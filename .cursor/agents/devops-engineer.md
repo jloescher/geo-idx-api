@@ -90,7 +90,7 @@ SCHEDULER_STANDBY_POLL_SECONDS=15
 
 BRIDGE_API_KEY=...
 SPARK_ACCESS_TOKEN=...
-IDX_API_PUBLIC_URL=https://idx-api.quantyralabs.cc
+IDX_API_PUBLIC_URL=https://idx.quantyralabs.cc
 IDX_IMAGES_PUBLIC_URL=https://idx-images.quantyralabs.cc
 IDX_PLATFORM_URL=https://idx.quantyralabs.cc
 ```

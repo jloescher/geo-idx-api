@@ -8,11 +8,7 @@
   "servers": [
     {
       "url": "https://idx.quantyralabs.cc",
-      "description": "Production (`IDX_PLATFORM_URL` / `IDX_API_PUBLIC_URL` when API is served on the platform host)"
-    },
-    {
-      "url": "https://idx-api.quantyralabs.cc",
-      "description": "Production API host (`IDX_API_PUBLIC_URL` when split from platform)"
+      "description": "Production (`IDX_PLATFORM_URL` / `IDX_API_PUBLIC_URL` — API and dashboard on the platform host)"
     },
     {
       "url": "http://localhost:8000",

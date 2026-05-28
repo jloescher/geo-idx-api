@@ -9,7 +9,7 @@ This document describes the **Quantyra idx-api** integration that proxies [Bridg
 - Bridge (Stellar, etc.): [bridge-api-documentation.md](bridge-api-documentation.md)
 - Spark (BeachesMLS): [spark/README.md](spark/README.md)
 
-**Production base URL** (typical): `https://idx-api.quantyralabs.cc` — or your `APP_URL` / `IDX_API_PUBLIC_URL`.
+**Production base URL** (typical): `https://idx.quantyralabs.cc` — set `IDX_PLATFORM_URL` / `IDX_API_PUBLIC_URL` to the same platform host when API and dashboard share one origin.
 
 ---
 
@@ -217,7 +217,7 @@ Registered in **`internal/api/routes.go`** with **`DomainToken`** (same auth as 
 |--------|------|----------|
 | GET | `/images/{listingKey}/{photoId}` | Proxies listing photos: Bridge via **`BRIDGE_LISTING_PHOTO_PATH`**; Spark via live Property `$expand=Media` and `MediaURL`. Immutable cache headers. |
 
-**Host `idx-images.quantyralabs.cc` (Docker `idx-images` service):** **`Dockerfile.idx-images`** builds **nginx only** and **reverse-proxies** `GET /images/*` to **`http://idx-api:8000`** with the same forwarded headers (**`Referer`**, **`Authorization`**, **`X-Domain-Slug`**) so **idx-api enforces the identical domain / PAT gate** as on **`idx-api.quantyralabs.cc`**. There is **no** `?url=` bypass — unauthorized requests are rejected by idx-api (**401 / 403**) before any MLS bytes are returned.
+**Host `idx-images.quantyralabs.cc` (Docker `idx-images` service):** **`Dockerfile.idx-images`** builds **nginx only** and **reverse-proxies** `GET /images/*` to **`http://idx-api:8000`** with the same forwarded headers (**`Referer`**, **`Authorization`**, **`X-Domain-Slug`**) so **idx-api enforces the identical domain / PAT gate** as on **`idx.quantyralabs.cc`**. There is **no** `?url=` bypass — unauthorized requests are rejected by idx-api (**401 / 403**) before any MLS bytes are returned.
 
 **Response headers**
 
@@ -381,7 +381,7 @@ RESO collection endpoints (`/api/v1/properties`, search results) support OData c
 **Using query params (GET):**
 ```bash
 curl -H "X-Domain-Slug: example.com" \
-  'https://idx-api.quantyralabs.cc/api/v1/properties?city=largo&limit=10'
+  'https://idx.quantyralabs.cc/api/v1/properties?city=largo&limit=10'
 ```
 
 **Using JSON body (POST):**
@@ -389,7 +389,7 @@ curl -H "X-Domain-Slug: example.com" \
 curl -X POST -H "X-Domain-Slug: example.com" \
   -H "Content-Type: application/json" \
   -d '{"city": "Largo", "limit": 10}' \
-  'https://idx-api.quantyralabs.cc/api/v1/properties'
+  'https://idx.quantyralabs.cc/api/v1/properties'
 ```
 
 ### Following cursors
@@ -400,14 +400,14 @@ Responses include `@odata.nextLink` when more results are available:
 {
   "@odata.context": "...",
   "value": [...],
-  "@odata.nextLink": "https://idx-api.quantyralabs.cc/api/v1/properties?cursor=eyJ0b3AiOjEwLCJza2lwIjoxMH0"
+  "@odata.nextLink": "https://idx.quantyralabs.cc/api/v1/properties?cursor=eyJ0b3AiOjEwLCJza2lwIjoxMH0"
 }
 ```
 
 Follow the cursor to retrieve the next page:
 ```bash
 curl -H "X-Domain-Slug: example.com" \
-  'https://idx-api.quantyralabs.cc/api/v1/properties?cursor=eyJ0b3AiOjEwLCJza2lwIjoxMH0'
+  'https://idx.quantyralabs.cc/api/v1/properties?cursor=eyJ0b3AiOjEwLCJza2lwIjoxMH0'
 ```
 
 **Features:**
@@ -513,7 +513,7 @@ Delete stale rows from **`mls_search_cache`** where `partition_key` matches the 
 ```bash
 curl -sS \
   -H 'X-Domain-Slug: searchtampabayhouses.com' \
-  'https://idx-api.quantyralabs.cc/api/v1/listings?limit=50&offset=0'
+  'https://idx.quantyralabs.cc/api/v1/listings?limit=50&offset=0'
 ```
 
 ### Listings — PAT (requires domain binding)
@@ -522,7 +522,7 @@ curl -sS \
 curl -sS \
   -H "Authorization: Bearer ${IDX_API_INTERNAL_TOKEN}" \
   -H 'X-Domain-Slug: searchtampabayhouses.com' \
-  'https://idx-api.quantyralabs.cc/api/v1/listings?limit=50'
+  'https://idx.quantyralabs.cc/api/v1/listings?limit=50'
 ```
 
 ### Listings — using Referer instead of header
@@ -530,14 +530,14 @@ curl -sS \
 ```bash
 curl -sS \
   -H 'Referer: https://searchtampabayhouses.com/some-page' \
-  'https://idx-api.quantyralabs.cc/api/v1/listings'
+  'https://idx.quantyralabs.cc/api/v1/listings'
 ```
 
 ### Listings — `?domain=` query (no custom header)
 
 ```bash
 curl -sS \
-  'https://idx-api.quantyralabs.cc/api/v1/listings?domain=searchtampabayhouses.com&limit=50&offset=0'
+  'https://idx.quantyralabs.cc/api/v1/listings?domain=searchtampabayhouses.com&limit=50&offset=0'
 ```
 
 ### Inspect rewritten photo URL (requires `jq`)
@@ -545,14 +545,14 @@ curl -sS \
 ```bash
 curl -sS \
   -H 'X-Domain-Slug: searchtampabayhouses.com' \
-  'https://idx-api.quantyralabs.cc/api/v1/listings?limit=1' | jq -r '.value[0].Media[0].MediaUrl // .value[0].Media[0].MediaURL // empty'
+  'https://idx.quantyralabs.cc/api/v1/listings?limit=1' | jq -r '.value[0].Media[0].MediaUrl // .value[0].Media[0].MediaURL // empty'
 # Expect a URL starting with https://idx-images.quantyralabs.cc/images/…
 ```
 
 ### No authentication (expect 401)
 
 ```bash
-curl -sS -i 'https://idx-api.quantyralabs.cc/api/v1/listings'
+curl -sS -i 'https://idx.quantyralabs.cc/api/v1/listings'
 ```
 
 ### Unknown domain (expect 403)
@@ -560,7 +560,7 @@ curl -sS -i 'https://idx-api.quantyralabs.cc/api/v1/listings'
 ```bash
 curl -sS -i \
   -H 'X-Domain-Slug: not-registered.example' \
-  'https://idx-api.quantyralabs.cc/api/v1/listings'
+  'https://idx.quantyralabs.cc/api/v1/listings'
 ```
 
 ### Image proxy
@@ -568,7 +568,7 @@ curl -sS -i \
 ```bash
 curl -sS -D - -o /tmp/photo.jpg \
   -H 'X-Domain-Slug: searchtampabayhouses.com' \
-  'https://idx-api.quantyralabs.cc/images/LISTING_KEY/PHOTO_ID'
+  'https://idx.quantyralabs.cc/images/LISTING_KEY/PHOTO_ID'
 ```
 
 Response headers should include **`Cache-Control`** with **`public`**, **`max-age=31536000`**, and **`immutable`** (directive order may vary by Symfony).
@@ -580,7 +580,7 @@ curl -sS -X POST \
   -H 'X-Domain-Slug: searchtampabayhouses.com' \
   -H 'Content-Type: application/json' \
   -d '{"city":"Largo","min_price":250000,"min_beds":2,"statuses":["Active"],"low_risk_floodzone":true,"max_monthly_fees":500,"limit":24}' \
-  'https://idx-api.quantyralabs.cc/api/v1/search?dataset=stellar'
+  'https://idx.quantyralabs.cc/api/v1/search?dataset=stellar'
 ```
 
 ### Properties with JSON body (POST)
@@ -590,7 +590,7 @@ curl -sS -X POST \
   -H 'X-Domain-Slug: searchtampabayhouses.com' \
   -H 'Content-Type: application/json' \
   -d '{"city": "Largo", "limit": 10}' \
-  'https://idx-api.quantyralabs.cc/api/v1/properties'
+  'https://idx.quantyralabs.cc/api/v1/properties'
 ```
 
 ### Follow OData cursor pagination
@@ -599,12 +599,12 @@ curl -sS -X POST \
 # Initial request
 curl -sS \
   -H 'X-Domain-Slug: searchtampabayhouses.com' \
-  'https://idx-api.quantyralabs.cc/api/v1/properties?city=largo&limit=10' | jq '.["@odata.nextLink"]'
+  'https://idx.quantyralabs.cc/api/v1/properties?city=largo&limit=10' | jq '.["@odata.nextLink"]'
 
 # Follow cursor
 curl -sS \
   -H 'X-Domain-Slug: searchtampabayhouses.com' \
-  'https://idx-api.quantyralabs.cc/api/v1/properties?cursor=eyJ0b3AiOjEwLCJza2lwIjoxMH0'
+  'https://idx.quantyralabs.cc/api/v1/properties?cursor=eyJ0b3AiOjEwLCJza2lwIjoxMH0'
 ```
 
 ---

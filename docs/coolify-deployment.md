@@ -242,7 +242,7 @@ BRIDGE_API_KEY=...
 SPARK_ACCESS_TOKEN=...
 SPARK_REPLICATION_HOST=https://replication.sparkapi.com
 SPARK_REPLICATION_RESO_ROOT=Version/3/Reso/OData
-IDX_API_PUBLIC_URL=https://idx-api.quantyralabs.cc
+IDX_API_PUBLIC_URL=https://idx.quantyralabs.cc
 IDX_IMAGES_PUBLIC_URL=https://idx-images.quantyralabs.cc
 IDX_PLATFORM_URL=https://idx.quantyralabs.cc
 
@@ -287,7 +287,7 @@ Use **Cloudflare Load Balancer** or **Geo Steering** on public hostnames:
 
 | Hostname | Pool NYC | Pool ATL | Health check |
 |----------|----------|----------|--------------|
-| `idx-api.quantyralabs.cc` | re-db → `idx-api-nyc` :8000 | re-node-02 → `idx-api-atl` :8000 | `GET /healthz` |
+| `idx.quantyralabs.cc` | re-db → `idx-api-nyc` :8000 | re-node-02 → `idx-api-atl` :8000 | `GET /healthz` |
 | `idx-images.quantyralabs.cc` | re-db → `idx-images-nyc` :8080 | re-node-02 → `idx-images-atl` :8080 | `GET /health` |
 
 Terminate TLS at Cloudflare or Coolify/Traefik; health checks must reach the app port through the proxy.
