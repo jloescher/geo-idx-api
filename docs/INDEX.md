@@ -20,6 +20,7 @@ Central index for **idx-api** (Go 1.25+). Implementation lives in `cmd/` and `in
 | [GIS API](gis-api.md) | Parcel/geometry proxy, teaser for `idx:access`-only PATs |
 | [GIS sources](gis-sources.md) | County parcel REST catalog, FDOR/FDOT findings, MLS coverage, probes |
 | [Database migrations](database-migrations.md) | Goose SQL, PostGIS, schema inventory |
+| [Production data backfill](production-data-backfill.md) | Patroni scripts: listings field promote + GIS city/county expand |
 | [Listings mirror](listings-mirror.md) | Payload split, `$expand`, replication kickoff gating, hybrid search merge |
 | [FEMA flood enrichment](fema-flood-enrichment.md) | NFHL Layer 28 jobs, `fema_flood_zone_code`, FEMA-backed `low_risk_flood_zone_yn` |
 | [Deployment & operations](deployment-operations.md) | Docker, queues, scheduler leader lock, migrations |
@@ -40,6 +41,8 @@ Central index for **idx-api** (Go 1.25+). Implementation lives in `cmd/` and `in
 | `Dockerfile` | Targets: `api`, `worker`, `scheduler` |
 | `Dockerfile.idx-images` | Nginx edge for `/images/*` |
 | `scripts/verify-patroni-connectivity.sh` | Multi-DC DB smoke (`psql` + optional `/readyz`) |
+| `docs/scripts/run_listings_field_promote_backfill.sh` | Listings IDX/facet column backfill (Patroni `:5432`) |
+| `docs/scripts/run_gis_cities_county_expand.sh` | GIS multi-county `gis_cities` expand before migration 00008 |
 
 ---
 

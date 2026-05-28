@@ -110,14 +110,16 @@
 -- SET statement_timeout = 0;
 -- SET lock_timeout = '30s';
 --
--- Usage (DataGrip JDBC drops after ~30–90s; each batch COMMITs — safe to re-run CALL):
+-- Usage (prefer shell runner on Patroni :5432 — see docs/production-data-backfill.md):
 --
---   docs/scripts/run_listings_field_promote_backfill.sh 2000
---   (DSN from docs/scripts/.env.backfill.local, gitignored)
+--   docs/scripts/run_listings_field_promote_backfill.sh check
+--   docs/scripts/run_listings_field_promote_backfill.sh 500 reconnect
+--   (BACKFILL_DSN in docs/scripts/.env.backfill.local, gitignored)
 --
--- Or psql until fast-verify is all false:
---   psql "$GOOSE_DBSTRING" -f docs/scripts/listings_field_promote_backfill.sql
---   psql "$GOOSE_DBSTRING" -c "SET statement_timeout=0; CALL run_listings_field_promote_backfill(2000);"
+-- Or psql on primary (install SQL, then reconnect batches or monolithic CALL):
+--   psql "$BACKFILL_DSN" -f docs/scripts/listings_field_promote_backfill.sql
+--   CALL listings_field_promote_step_call(500, 'primary');
+--   CALL listings_field_promote_step_call(500, 'scalars');
 --
 -- Batches only rows that still need work. Re-run CALL after disconnect; already-done rows are skipped.
 -- ─────────────────────────────────────────────────────────────────────────────────────────────

@@ -72,8 +72,10 @@ FDOT layer 7 (Census places) has **no county attribute** in ArcGIS properties (`
 
 1. **`ExpandCityCountyPairs`** (`internal/repository/gis/boundaries.go`) — one row per `(city_name, county_slug)` for each county polygon that intersects the city geometry; **nearest county** fallback when no intersection (Florida Keys / island gaps).
 2. Wired from **`sync_boundaries.go`** after each FDOT city import.
-3. One-time prod script: [`docs/scripts/gis_cities_county_expand.sql`](../docs/scripts/gis_cities_county_expand.sql).
+3. One-time prod backfill: [`docs/scripts/run_gis_cities_county_expand.sh`](../docs/scripts/run_gis_cities_county_expand.sh) (SQL: [`gis_cities_county_expand.sql`](../docs/scripts/gis_cities_county_expand.sql)).
 4. Migration **`00008_gis_cities_county_not_null.sql`** sets `gis_cities.county NOT NULL` after expand validation passes.
+
+Full deploy order and DSN setup: [production-data-backfill.md](production-data-backfill.md).
 
 **Verify before NOT NULL migration:**
 

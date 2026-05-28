@@ -255,6 +255,12 @@ Migrations: [`00001_initial.sql`](../migrations/00001_initial.sql) (base mirror)
 
 **Geocode backfill:** worker job `mls.geocode_listings_*` uses `GOOGLE_MAPS_GEOCODING_API_KEY` and `BuildGeocodeQuery` (Beaches full `UnparsedAddress` vs Stellar street + city/state/ZIP). Scheduler cron `0 15 5 * * *` on `GEOCODE_QUEUE` (default `default`).
 
-**Backfill script:** [`docs/scripts/listings_field_promote_backfill.sql`](../docs/scripts/listings_field_promote_backfill.sql) promotes the 14 RESO keys + `UnparsedAddress` / `PublicRemarks` from JSONB, then strips promoted keys.
+**Backfill (existing DBs):** After migration `00006`, run on Patroni primary:
 
-Fresh databases: `make migrate` then full re-replication to populate typed columns; run promote backfill on primary when upgrading existing data.
+- Runner: [`docs/scripts/run_listings_field_promote_backfill.sh`](../docs/scripts/run_listings_field_promote_backfill.sh)
+- SQL: [`docs/scripts/listings_field_promote_backfill.sql`](../docs/scripts/listings_field_promote_backfill.sql)
+- Runbook: [production-data-backfill.md](production-data-backfill.md)
+
+Promotes 14 RESO keys + `UnparsedAddress` / `PublicRemarks` into typed columns; strips promoted keys from `custom_fields` and IDX keys from `raw_data` (scalars stay in `raw_data` for API merge).
+
+Fresh databases: `make migrate` then full re-replication; **skip** promote backfill unless upgrading legacy JSONB-only rows.

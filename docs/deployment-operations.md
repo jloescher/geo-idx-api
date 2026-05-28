@@ -62,6 +62,8 @@ make seed-admin
 
 Run **once** per schema change against the shared database (Patroni primary in multi-DC). Do not run migrations from every replica on every deploy unless `migrations/` changed.
 
+**One-time data backfills** (after `00006`, before `00008`): use Patroni leader **:5432**, not HAProxy `:5000`. See [production-data-backfill.md](production-data-backfill.md) for listings field promote and GIS city/county expand runners under `docs/scripts/`.
+
 **Legacy queue purge** (after Laravel cutover):
 
 ```sql

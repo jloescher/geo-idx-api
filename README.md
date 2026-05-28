@@ -104,6 +104,7 @@ Environment variables match [`.env.example`](.env.example).
 - **[docs/coolify-deployment.md](docs/coolify-deployment.md)** — single-host and **multi-DC (NYC + ATL)** with Patroni over Tailscale
 - **[docs/go-cutover.md](docs/go-cutover.md)** — Laravel → Go migration and API key re-issue
 - **[docs/deployment-operations.md](docs/deployment-operations.md)** — queues, scheduler lock, troubleshooting
+- **[docs/production-data-backfill.md](docs/production-data-backfill.md)** — Patroni backfill runners (listings promote, GIS city/county expand)
 
 ## API documentation
 

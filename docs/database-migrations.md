@@ -144,8 +144,25 @@ If `listings_cache` exists with the old shape, prefer **`dropdb` + `make migrate
 
 ---
 
+## Incremental migrations (00006–00008) + backfill order
+
+When upgrading an **existing** production database (not greenfield `00001` only):
+
+| Migration | Purpose | Backfill before next step |
+|-----------|---------|---------------------------|
+| `00006_listings_search_columns.sql` | Typed IDX/facet columns, `unparsed_address`, `public_remarks`, geocode audit cols, search indexes | → [listings field promote](production-data-backfill.md) |
+| — | Deploy Go (persist + API use new columns) | |
+| — | [GIS city/county expand](production-data-backfill.md) | `COUNT(*) … WHERE county IS NULL` → 0 |
+| `00008_gis_cities_county_not_null.sql` | `gis_cities.county NOT NULL` | After expand verify |
+| `00007_gis_trgm_autocomplete.sql` | `pg_trgm` indexes for GIS autocomplete | After 00008 |
+
+Scripts: `docs/scripts/run_listings_field_promote_backfill.sh`, `docs/scripts/run_gis_cities_county_expand.sh`. DSN: `docs/scripts/.env.backfill.local` (gitignored; see `.env.backfill.local.example`).
+
+---
+
 ## Related docs
 
+- [Production data backfill](production-data-backfill.md)
 - [Listings mirror](listings-mirror.md)
 - [Deployment & operations](deployment-operations.md)
 - [Coolify deployment](coolify-deployment.md)

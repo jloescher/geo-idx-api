@@ -48,6 +48,8 @@ WORKER_QUEUES=default,sync-kickoff,bridge-sync-fetch,bridge-sync-persist,spark-s
 
 **GIS multi-county fresh DB cutover (staging):** On Patroni primary, drop/recreate the staging database (or provision a new DB name), run `make migrate` against it **before** starting worker/scheduler, then `make seed-admin`. Do not `goose up` incrementally from an old schema with `00002` — see [database-migrations.md](database-migrations.md). Expect 24–48h for initial 22-county parcel load; boundaries and city `county` backfill complete within ~15 minutes.
 
+**Existing production DB (typed columns + multi-county cities):** After `00006`, run SQL backfills on Patroni **:5432** via [production-data-backfill.md](production-data-backfill.md) before `00008` NOT NULL on `gis_cities.county`. Use `BACKFILL_DSN` to the leader Tailscale IP, not HAProxy port 5000.
+
 ```env
 GIS_SYNC_PAGE_SIZE=500
 GIS_SYNC_UPSERT_CHUNK=500
