@@ -481,11 +481,14 @@ Set in **`idx-api/.env`** and/or root **`.env`** for Docker Compose. See root **
 | `IDX_API_INTERNAL_TOKEN` | Ops / geo-web | Plaintext PAT for server-to-server calls; **issue from dashboard** (below). Not read automatically by idx-api logic—store where geo-web or scripts need it. |
 | `COINGECKO_API_KEY` | Recommended | CoinGecko API key used by scheduled pricing refresh job. |
 | `COINGECKO_BASE_URL` | No | CoinGecko API base URL (`https://api.coingecko.com/api/v3` by default). |
-| `COINGECKO_ASSET_IDS` | No | Comma-separated tracked assets (default `btc,eth,sol,xrp,ada`). |
-| `COINGECKO_VS_CURRENCIES` | No | Comma-separated target fiats (default `usd,cad,eur,gbp,mxn`). |
+| `COINGECKO_ASSET_IDS` | No | Documented for ops; **Go uses hardcoded** ids in `internal/service/crypto/assets.go` (`bitcoin`, `ethereum`, …). |
+| `COINGECKO_VS_CURRENCIES` | No | Documented for ops; refresh job requests **USD** only in code. |
 | `COINGECKO_CACHE_KEY` | No | Cache key for quote matrix (default `coingecko.pricing.matrix`). |
 | `COINGECKO_CACHE_TTL_SECONDS` | No | Quote matrix cache TTL in seconds (default `1200`). |
 | `COINGECKO_QUEUE` | No | Queue name for scheduled pricing refresh job (default `default`). |
+| `FEMA_ENRICH_QUEUE` | Production | Queue for `fema.flood_enrich_*` jobs (default `default`). Required on default worker — [fema-flood-enrichment.md](fema-flood-enrichment.md), [coolify-env-by-app.md](coolify-env-by-app.md). |
+| `GEOCODE_QUEUE` | Production | Queue for `mls.geocode_listings_*` (default `default`). Requires `GOOGLE_MAPS_GEOCODING_API_KEY` on the same worker — [listings-mirror.md](listings-mirror.md). |
+| `QUEUE_NOTIFY_CHANNEL` | No | PostgreSQL `NOTIFY` channel for worker wakeup (default `idx_jobs_wakeup`). |
 
 **Dokploy defaults** in root `docker-compose.yml` set `BRIDGE_HOST`, `BRIDGE_PATH_PREFIX`, and `BRIDGE_RESO_ROOT` for common Bridge routing; override if Bridge returns 404.
 

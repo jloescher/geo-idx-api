@@ -253,7 +253,17 @@ Expect row counts to grow for `stellar` and `beaches`, `replication_in_progress`
 
 Migrations: [`00001_initial.sql`](../migrations/00001_initial.sql) (base mirror), [`00006_listings_search_columns.sql`](../migrations/00006_listings_search_columns.sql) (14 IDX/facet columns, `unparsed_address`, `public_remarks`, geocode audit columns, AP indexes + FTS), [`00007_gis_trgm_autocomplete.sql`](../migrations/00007_gis_trgm_autocomplete.sql), [`00008_gis_cities_county_not_null.sql`](../migrations/00008_gis_cities_county_not_null.sql) (after `docs/scripts/gis_cities_county_expand.sql`).
 
-**Geocode backfill:** worker job `mls.geocode_listings_*` uses `GOOGLE_MAPS_GEOCODING_API_KEY` and `BuildGeocodeQuery` (Beaches full `UnparsedAddress` vs Stellar street + city/state/ZIP). Scheduler cron `0 15 5 * * *` on `GEOCODE_QUEUE` (default `default`). Post-sync kickoff dedupes via `HasActiveGeocodeJob` on the `jobs` table (`reserved_at` / pending rows — **not** `finished_at`, which exists only on `job_batches`; completed jobs are deleted from `jobs`).
+**Geocode backfill:** worker job `mls.geocode_listings_*` uses `GOOGLE_MAPS_GEOCODING_API_KEY` and `BuildGeocodeQuery` (Beaches full `UnparsedAddress` vs Stellar street + city/state/ZIP). Scheduler cron `0 15 5 * * *` UTC on `GEOCODE_QUEUE` (default `default`). Post-sync kickoff dedupes via `HasActiveGeocodeJob` on the `jobs` table (`reserved_at` / pending rows — **not** `finished_at`, which exists only on `job_batches`; completed jobs are deleted from `jobs`).
+
+| Variable | Default | Notes |
+|----------|---------|--------|
+| `GOOGLE_MAPS_GEOCODING_API_KEY` | — | Required on the worker that consumes `GEOCODE_QUEUE` |
+| `GEOCODE_QUEUE` | `default` | Must appear in that worker’s `WORKER_QUEUES` |
+| `GEOCODE_BATCH_SIZE` | `200` | Listings per batch job |
+| `GEOCODE_MAX_REQUESTS_PER_SECOND` | `5` | Google Geocoding API rate limit |
+| `GEOCODING_TIMEOUT` | `12s` | HTTP client timeout |
+
+Production: set on **default worker** (`WORKER_QUEUES=default,sync-kickoff`) — [coolify-env-by-app.md](coolify-env-by-app.md). Comps `home_value` also uses the same Google key — [comps-api.md](comps-api.md).
 
 **Backfill (existing DBs):** After migration `00006`, run on Patroni primary:
 

@@ -175,3 +175,4 @@ Ongoing sync: new cities get county pairs from **`ExpandCityCountyPairs`** in Go
 - [Database migrations](database-migrations.md) — Goose commands
 - [Deployment & operations](deployment-operations.md) — migrations on primary
 - [Coolify deployment](coolify-deployment.md) — multi-DC Patroni
+- [Coolify env by app](coolify-env-by-app.md) — worker split and enrichment vars after backfill

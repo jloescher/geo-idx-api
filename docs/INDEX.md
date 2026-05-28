@@ -26,6 +26,7 @@ Central index for **idx-api** (Go 1.25+). Implementation lives in `cmd/` and `in
 | [FEMA flood enrichment](fema-flood-enrichment.md) | NFHL Layer 28 jobs, `fema_flood_zone_code`, FEMA-backed `low_risk_flood_zone_yn` |
 | [Deployment & operations](deployment-operations.md) | Docker, queues, scheduler leader lock, migrations |
 | [Coolify deployment](coolify-deployment.md) | Single-host and **multi-DC (NYC + ATL)** runbooks |
+| [Coolify env by app](coolify-env-by-app.md) | Production worker split, shared vs role-specific variables |
 | [README](../README.md) | Local dev, `make` targets, build & test |
 
 ---
@@ -49,16 +50,23 @@ Central index for **idx-api** (Go 1.25+). Implementation lives in `cmd/` and `in
 
 ## Scheduled jobs (Go)
 
-`cmd/scheduler` enqueues (workers in `cmd/worker` execute):
+`cmd/scheduler` enqueues (workers in `cmd/worker` execute). Cron uses **seconds** (`robfig/cron/v3`). Leader-only when two schedulers run — see [Coolify §7](coolify-deployment.md#7-scheduler-cluster-leadership-required-for-2-schedulers).
 
-| Cron (approx.) | Queue job type | Purpose |
-|----------------|----------------|---------|
-| Every minute | `mls.replication_kickoff` on `sync-kickoff` | Bridge/Spark replication kickoff (deduped; see [listings-mirror](listings-mirror.md)) |
-| Every 15 min | `mls.proxy_cache_purge` | Purge expired `mls_search_cache` rows |
-| Every 10 min | `crypto.refresh_pricing` | CoinGecko snapshot refresh |
-| Daily 03:05 | `mls.purge_closed_listings` | Closed + rolling-window trim on `listings` |
-| Daily 04:15 | `mls.purge_replica_pages` | Stale `replica_pages` staging |
-| Monday 06:30 | `gis.probe_sources` | ArcGIS metadata probe |
+| Cron (UTC) | Job type | Queue (typical) | Purpose |
+|------------|----------|-----------------|---------|
+| Every minute `:00` | `mls.replication_kickoff` | `sync-kickoff` | Bridge/Spark replication kickoff (deduped; [listings-mirror](listings-mirror.md)) |
+| `MLS_REPLICATION_RESUME_CRON` (default `0 */2 * * * *`) | `mls.replication_resume` | `sync-kickoff` | Stalled replication resume |
+| Every 10 min | `crypto.refresh_pricing` | `COINGECKO_QUEUE` (`default`) | CoinGecko snapshot |
+| Every 15 min | `mls.proxy_cache_purge` | `default` | Purge expired `mls_search_cache` |
+| Daily 03:05 | `mls.purge_closed_listings` | `default` | Closed + rolling-window trim |
+| Daily 04:00 | `mls.mirror_key_reconcile` | `sync-kickoff` | Mirror key reconciliation |
+| Daily 04:15 | `mls.purge_replica_pages` | `default` | Stale `replica_pages` staging |
+| Daily 04:30 | `fema.flood_enrich_kickoff` | `FEMA_ENRICH_QUEUE` (`default`) | FEMA NFHL flood zone backfill ([fema-flood-enrichment](fema-flood-enrichment.md)) |
+| Daily 05:15 | `mls.geocode_listings_kickoff` | `GEOCODE_QUEUE` (`default`) | Listings geocode backfill ([listings-mirror](listings-mirror.md)) |
+| Monday 06:30 | `gis.probe_sources` | `GIS_QUEUE` | ArcGIS metadata probe |
+| 1st of month 02:00 | `gis.monthly_parcel_refresh` | `GIS_SYNC_QUEUE` | Parcel layer refresh |
+| Jan 1 03:00 | `gis.annual_boundaries_refresh` | `GIS_SYNC_QUEUE` | Boundary layer refresh |
+| Every 6 h at `:15` | GIS bootstrap actions | `GIS_SYNC_QUEUE` | Enqueue missing parcel/boundary sync when layers empty |
 
 **Multi-DC:** deploy two schedulers only with PostgreSQL advisory lock (`SCHEDULER_LEADER_LOCK_ID`) — see [Coolify deployment §7](coolify-deployment.md#7-scheduler-cluster-leadership-required-for-2-schedulers).
 
@@ -73,7 +81,7 @@ make migrate
 make seed-admin
 make run-api          # :8000 — Swagger UI at /swagger
 make openapi-sync     # after editing docs/yaak-api-collection.json
-make run-worker       # WORKER_QUEUES (include sync-kickoff + fetch/persist queues)
+make run-worker       # WORKER_QUEUES — see coolify-env-by-app.md for production split
 make run-scheduler
 go test ./...
 ```

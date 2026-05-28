@@ -33,7 +33,7 @@ Mark `APP_ENV`, `APP_DEBUG`, and other runtime-only vars as **Runtime only** in 
 
 **Build context:** repository root (`.`).
 
-**Runtime env:** Same `DB_*`, `BRIDGE_*`, `SPARK_*`, `WORKER_QUEUES`, and public URLs on web, worker, and scheduler.
+**Runtime env:** Same `DB_*`, `BRIDGE_*`, `SPARK_*`, and public URLs on web, worker, and scheduler. `WORKER_QUEUES` differs per worker app in production — see **[coolify-env-by-app.md](coolify-env-by-app.md)** and paste templates in repo-root `temp/` (secrets; do not commit).
 
 ---
 
@@ -70,9 +70,17 @@ Optional split during heavy replication (recommended at scale):
 
 | Deployment | `WORKER_QUEUES` | Role |
 |------------|-----------------|------|
-| **default-worker** (×1) | `default,sync-kickoff` | kickoff, purge, crypto, GIS |
+| **default-worker** (×1) | `default,sync-kickoff` | kickoff, purge, crypto, GIS, **FEMA flood enrich**, **geocode backfill** |
 | **fetch-worker** (×2) | `bridge-sync-fetch,spark-sync-fetch` | MLS HTTP only |
 | **persist-worker** (×2–4) | `bridge-sync-persist,spark-sync-persist` | Postgres upsert |
+
+The **default worker** must include enrichment env vars or those jobs never run:
+
+- **FEMA:** `FEMA_ENRICH_QUEUE=default` plus `FEMA_FLOOD_ENRICH_BATCH_SIZE`, `FEMA_MAX_REQUESTS_PER_SECOND`, etc. — [fema-flood-enrichment.md](fema-flood-enrichment.md)
+- **Geocode:** `GOOGLE_MAPS_GEOCODING_API_KEY`, `GEOCODE_QUEUE=default`, `GEOCODE_BATCH_SIZE`, `GEOCODE_MAX_REQUESTS_PER_SECOND` — [listings-mirror.md](listings-mirror.md)
+- **Spark replication hosts:** `SPARK_REPLICATION_HOST`, `SPARK_REPLICATION_RESO_ROOT` (e.g. `Version/3/Reso/OData`) on **all** apps that touch MLS config
+
+Full per-app checklist: **[coolify-env-by-app.md](coolify-env-by-app.md)**.
 
 Multi-DC: same split across NYC/ATL workers; all poll the shared `jobs` table on the Patroni primary.
 
@@ -215,6 +223,8 @@ Attach the **same shared environment** (Coolify project/team env) to all ten app
 
 ### Shared environment (Patroni primary via Tailscale)
 
+Minimal shared block (expand per [coolify-env-by-app.md](coolify-env-by-app.md)):
+
 ```env
 DB_HOST=<patroni-primary-hostname-on-tailscale>
 DB_PORT=5432
@@ -222,16 +232,24 @@ DB_DATABASE=idx_api
 DB_USERNAME=...
 DB_PASSWORD=...
 DB_SSLMODE=require
+DB_RW_DSN=postgres://...@<primary>:5432/idx_api?sslmode=require
+QUEUE_NOTIFY_CHANNEL=idx_jobs_wakeup
 
-WORKER_QUEUES=default,sync-kickoff,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist
 SCHEDULER_LEADER_LOCK_ID=913374211
 SCHEDULER_STANDBY_POLL_SECONDS=15
 
 BRIDGE_API_KEY=...
 SPARK_ACCESS_TOKEN=...
+SPARK_REPLICATION_HOST=https://replication.sparkapi.com
+SPARK_REPLICATION_RESO_ROOT=Version/3/Reso/OData
 IDX_API_PUBLIC_URL=https://idx-api.quantyralabs.cc
 IDX_IMAGES_PUBLIC_URL=https://idx-images.quantyralabs.cc
 IDX_PLATFORM_URL=https://idx.quantyralabs.cc
+
+# Per worker app — not one combined list in production:
+# WORKER_QUEUES=default,sync-kickoff          # worker 1
+# WORKER_QUEUES=bridge-sync-fetch,spark-sync-fetch
+# WORKER_QUEUES=bridge-sync-persist,spark-sync-persist
 ```
 
 **Image cache:** Each API has local disk at `IMAGE_CACHE_PATH` (default `/var/cache/geoidx/images`). Geo-routed APIs do **not** share cache; extra MLS origin fetches on miss are acceptable.

@@ -51,7 +51,7 @@ flowchart LR
 | `FEMA_ENRICH_QUEUE` | `default` | Worker queue name |
 | `FEMA_CIRCUIT_FAIL_THRESHOLD` | `5` | Consecutive failures before circuit open |
 
-Include `FEMA_ENRICH_QUEUE` in `WORKER_QUEUES` on the worker process.
+Include `FEMA_ENRICH_QUEUE` in `WORKER_QUEUES` on the worker that consumes the **`default`** queue (production: **worker 1** in the split topology — [coolify-env-by-app.md](coolify-env-by-app.md)).
 
 ## Operations
 
@@ -70,10 +70,39 @@ Content-Type: application/json
 **Verification SQL:**
 
 ```sql
-SELECT COUNT(*) FILTER (WHERE flood_zone_updated_at IS NOT NULL),
-       COUNT(*) FILTER (WHERE fema_flood_zone_code IS NOT NULL)
-FROM listings WHERE latitude IS NOT NULL;
+SELECT COUNT(*) FILTER (WHERE flood_zone_updated_at IS NOT NULL) AS fema_attempted,
+       COUNT(*) FILTER (WHERE fema_flood_zone_code IS NOT NULL) AS with_fema_code
+FROM listings WHERE latitude IS NOT NULL AND longitude IS NOT NULL;
 ```
+
+### Interpreting missing `fema_flood_zone_code`
+
+A NULL `fema_flood_zone_code` does **not** always mean enrichment failed. Use `flood_zone_updated_at` and coordinates:
+
+```sql
+SELECT
+  CASE
+    WHEN latitude IS NULL OR longitude IS NULL THEN 'no_coords'
+    WHEN flood_zone_updated_at IS NULL THEN 'never_attempted'
+    WHEN fema_flood_zone_code IS NULL AND flood_zone_updated_at IS NOT NULL THEN 'nfhl_no_zone_at_point'
+    ELSE 'has_fema_code'
+  END AS bucket,
+  COUNT(*) AS n
+FROM listings
+WHERE fema_flood_zone_code IS NULL
+GROUP BY 1
+ORDER BY n DESC;
+```
+
+| Bucket | Meaning | Action |
+|--------|---------|--------|
+| `no_coords` | No lat/lng for NFHL point query | Run [geocode backfill](listings-mirror.md) (`mls.geocode_listings_*`) first |
+| `never_attempted` | Valid coords but `flood_zone_updated_at` NULL | Confirm `FEMA_*` on default worker; kickoff via cron or `POST /api/v1/admin/flood-enrich` |
+| `nfhl_no_zone_at_point` | FEMA queried; no Layer 28 intersect (or empty `FLD_ZONE`) | Expected outside mapped flood polygons; MLS `flood_zone_code` may still be set — use `EffectiveFloodZoneCode` in API |
+
+Listings with coordinates outside WGS-84 ranges are **skipped** by `SelectStaleForEnrichment` until coords are corrected.
+
+**Worker logs:** `fema flood enrich batch` with `processed` vs `updated`; `fema point query failed` on NFHL errors (those rows are **not** marked attempted and remain stale).
 
 **Metrics:** Prometheus on `/metrics` — `fema_nfhl_requests_total`, `fema_enrich_listings_updated_total`, `fema_circuit_breaker_open`, etc.
 

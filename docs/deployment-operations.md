@@ -32,17 +32,28 @@ docker build -f Dockerfile.idx-images -t quantyra/idx-images:latest .
 
 | Variable | Purpose |
 |----------|---------|
-| `DB_*` | PostgreSQL (`DB_SSLMODE=require` for remote hosts) |
+| `DB_*`, `DB_RW_DSN` | PostgreSQL primary (`DB_SSLMODE=require` for remote hosts) |
+| `QUEUE_NOTIFY_CHANNEL` | `pg_notify` channel for worker wakeup (default `idx_jobs_wakeup`) |
 | `BRIDGE_API_KEY`, `SPARK_ACCESS_TOKEN` | MLS upstream credentials |
-| `WORKER_QUEUES` | Comma-separated queue names for `cmd/worker` |
+| `SPARK_REPLICATION_HOST`, `SPARK_REPLICATION_RESO_ROOT` | Spark replication OData base (not live API host) |
+| `WORKER_QUEUES` | Comma-separated queue names for `cmd/worker` — **per worker app** in production |
 | `SCHEDULER_LEADER_LOCK_ID`, `SCHEDULER_STANDBY_POLL_SECONDS` | Cluster scheduler leadership (multi-DC) |
 | `IDX_PLATFORM_URL`, `IDX_API_PUBLIC_URL`, `IDX_IMAGES_PUBLIC_URL` | Public URLs |
+| `FEMA_ENRICH_QUEUE`, `FEMA_*` | NFHL flood enrichment — **default worker** — [fema-flood-enrichment.md](fema-flood-enrichment.md) |
+| `GEOCODE_QUEUE`, `GOOGLE_MAPS_GEOCODING_API_KEY`, `GEOCODE_*` | Listings geocode backfill — **default worker** |
+| `GIS_SYNC_QUEUE`, `GIS_QUEUE` | GIS parcel/boundary jobs (default `default`) |
 | `ADMIN_SEED_*` | `make seed-admin` only (not read at runtime by API) |
 
-**Worker queues (typical):**
+**Worker queues:**
+
+| Topology | `WORKER_QUEUES` |
+|----------|-----------------|
+| **Local / dev** (single worker) | `default,sync-kickoff,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist` |
+| **Production split** | See [coolify-env-by-app.md](coolify-env-by-app.md) |
 
 ```env
 MLS_SYNC_KICKOFF_QUEUE=sync-kickoff
+# Dev only — production uses split workers:
 WORKER_QUEUES=default,sync-kickoff,bridge-sync-fetch,bridge-sync-persist,spark-sync-fetch,spark-sync-persist
 ```
 
@@ -79,7 +90,8 @@ Process: `cmd/worker` (or `make run-worker` locally).
 
 - Polls `jobs` with `FOR UPDATE SKIP LOCKED`; **fair queue rotation** when `WORKER_QUEUES` lists multiple names (Bridge vs Spark fetch parity). When both fetch and persist queues are configured, workers **alternate pools** (fetch vs persist) so one pool cannot starve the other.
 - `mls.replication_kickoff` runs on **`MLS_SYNC_KICKOFF_QUEUE`** (default `sync-kickoff`) — include that queue on the default/kickoff worker, not only `default`.
-- Job types: `internal/queue/payload.go` (`bridge.fetch_page`, `spark.persist_chunk`, `mls.replication_kickoff`, `mls.proxy_cache_purge`, `mls.geocode_listings_kickoff`, `mls.geocode_listings_batch`, …)
+- Job types: `internal/queue/payload.go` (`bridge.fetch_page`, `spark.persist_chunk`, `mls.replication_kickoff`, `mls.proxy_cache_purge`, `fema.flood_enrich_kickoff`, `fema.flood_enrich_batch`, `mls.geocode_listings_kickoff`, `mls.geocode_listings_batch`, …)
+- **Default-queue worker** must list `FEMA_ENRICH_QUEUE` and `GEOCODE_QUEUE` (usually `default`) in `WORKER_QUEUES` and supply the matching API keys — see [coolify-env-by-app.md](coolify-env-by-app.md).
 - Unknown/legacy payloads are discarded; purge old rows (see go-cutover)
 
 **Topology:** one combined worker is fine for dev. Production catch-up: split **fetch** (`bridge-sync-fetch,spark-sync-fetch`) from **persist** (`bridge-sync-persist,spark-sync-persist`) and keep **`default`** on a small worker for kickoff/GIS/crypto. See [Coolify §2](coolify-deployment.md#2-worker-configuration).
@@ -94,7 +106,7 @@ Scale: four workers across two DCs share the same queues, or split fetch vs pers
 
 Process: `cmd/scheduler` (or `make run-scheduler` locally).
 
-Enqueues periodic work: replication kickoff, **`mls.proxy_cache_purge`**, CoinGecko pricing, GIS probe, replica/closed purges. **Requires workers** to execute jobs.
+Enqueues periodic work: replication kickoff, **`mls.proxy_cache_purge`**, CoinGecko pricing, FEMA flood enrich, geocode backfill, GIS probe/refresh, replica/closed purges. **Requires workers** to execute jobs. Full cron table: [INDEX.md § Scheduled jobs](INDEX.md#scheduled-jobs-go).
 
 **Single host:** one scheduler process is enough.
 
@@ -194,6 +206,8 @@ docker compose -f docker-compose.dev.yml up --build
 | `readyz` fails from ATL | Patroni/Tailscale latency or PostGIS extension on DB |
 | `geocode enrich kickoff` … `column "finished_at" does not exist` | Old worker binary; redeploy worker with fix that dedupes geocode jobs via `jobs.reserved_at` (see [listings-mirror.md](listings-mirror.md#schema)) |
 | `/swagger` shows “No layout defined for StandaloneLayout” | Blocked or missing `swagger-ui-standalone-preset.js` from unpkg; redeploy API; see [swagger-ui-testing.md](swagger-ui-testing.md) |
+| Listings missing `fema_flood_zone_code` after “enrichment” | See [fema-flood-enrichment.md § Interpreting gaps](fema-flood-enrichment.md#interpreting-missing-fema_flood_zone_code); confirm worker 1 has `FEMA_*` and `default` in `WORKER_QUEUES` |
+| Geocode never runs | `GOOGLE_MAPS_GEOCODING_API_KEY` on default worker; `GEOCODE_QUEUE` in `WORKER_QUEUES` |
 
 ---
 
@@ -202,4 +216,5 @@ docker compose -f docker-compose.dev.yml up --build
 - [README.md](../README.md)
 - [AGENTS.md](../AGENTS.md)
 - [coolify-deployment.md](coolify-deployment.md)
+- [coolify-env-by-app.md](coolify-env-by-app.md)
 - [database-migrations.md](database-migrations.md)

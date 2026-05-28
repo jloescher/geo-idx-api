@@ -3,6 +3,7 @@
 .env
 .env.backup
 .env.production
+temp/
 docs/scripts/.env.backfill.local
 /.idea
 /.nova
