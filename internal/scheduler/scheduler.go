@@ -40,13 +40,14 @@ func (s *Scheduler) Run(ctx context.Context) error {
 		lockKey = DefaultLeaderLockKey
 	}
 	poll := s.cfg.Scheduler.StandbyPollInterval
+	leaderDSN := s.cfg.DB.RWDSNWithApplicationName("idx-scheduler-leader")
 
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 
-		leader, ok, err := TryAcquireLeader(ctx, s.db.Pool, lockKey)
+		leader, ok, err := TryAcquireLeader(ctx, leaderDSN, lockKey)
 		if err != nil {
 			s.logger.Warn("scheduler leader acquire failed, retrying", "lock_key", lockKey, "error", err)
 			select {

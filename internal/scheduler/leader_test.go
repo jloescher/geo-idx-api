@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/quantyralabs/idx-api/internal/scheduler"
 )
 
@@ -18,20 +17,14 @@ func TestAdvisoryLockSingleHolder(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-
 	key := int64(913374211)
-	leader1, ok, err := scheduler.TryAcquireLeader(ctx, pool, key)
+	leader1, ok, err := scheduler.TryAcquireLeader(ctx, dsn, key)
 	if err != nil || !ok {
 		t.Fatalf("first acquire ok=%v err=%v", ok, err)
 	}
 	defer leader1.Release(ctx)
 
-	leader2, ok2, err := scheduler.TryAcquireLeader(ctx, pool, key)
+	leader2, ok2, err := scheduler.TryAcquireLeader(ctx, dsn, key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,20 +41,14 @@ func TestAdvisoryLockHandoff(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-
 	key := int64(913374212)
-	leader1, ok, err := scheduler.TryAcquireLeader(ctx, pool, key)
+	leader1, ok, err := scheduler.TryAcquireLeader(ctx, dsn, key)
 	if err != nil || !ok {
 		t.Fatalf("acquire: ok=%v err=%v", ok, err)
 	}
 	leader1.Release(ctx)
 
-	leader2, ok2, err := scheduler.TryAcquireLeader(ctx, pool, key)
+	leader2, ok2, err := scheduler.TryAcquireLeader(ctx, dsn, key)
 	if err != nil || !ok2 {
 		t.Fatalf("re-acquire after release: ok=%v err=%v", ok2, err)
 	}
@@ -75,12 +62,6 @@ func TestAdvisoryLockConcurrentAcquire(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-
 	key := int64(913374213)
 	var wg sync.WaitGroup
 	holders := make(chan bool, 2)
@@ -88,7 +69,7 @@ func TestAdvisoryLockConcurrentAcquire(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			leader, ok, err := scheduler.TryAcquireLeader(ctx, pool, key)
+			leader, ok, err := scheduler.TryAcquireLeader(ctx, dsn, key)
 			if err != nil {
 				holders <- false
 				return

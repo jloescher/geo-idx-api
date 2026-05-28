@@ -40,7 +40,7 @@ func TestSchedulerLockHealthPoolProbeLeak(t *testing.T) {
 	}
 
 	// Lock remains on the first pooled connection; scheduler cannot lead.
-	leader, ok, err := scheduler.TryAcquireLeader(ctx, pool, lockID)
+	leader, ok, err := scheduler.TryAcquireLeader(ctx, dsn, lockID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestSchedulerLockHealthPoolProbeLeak(t *testing.T) {
 	// Release leaked lock by terminating the backend that still holds it on the pooled connection.
 	_, _ = pool.Exec(ctx, `SELECT pg_terminate_backend($1)`, holderPID)
 
-	leader2, ok2, err := scheduler.TryAcquireLeader(ctx, pool, lockID)
+	leader2, ok2, err := scheduler.TryAcquireLeader(ctx, dsn, lockID)
 	if err != nil || !ok2 {
 		t.Fatalf("after cleanup acquire ok=%v err=%v", ok2, err)
 	}
@@ -94,7 +94,7 @@ func TestSchedulerLockHealthObservesHolder(t *testing.T) {
 		t.Fatal("expected no leader before acquire")
 	}
 
-	leader, ok, err := scheduler.TryAcquireLeader(ctx, db.Pool, lockID)
+	leader, ok, err := scheduler.TryAcquireLeader(ctx, dsn, lockID)
 	if err != nil || !ok {
 		t.Fatalf("acquire ok=%v err=%v", ok, err)
 	}

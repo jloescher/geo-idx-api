@@ -6,41 +6,48 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 	"github.com/quantyralabs/idx-api/internal/debug"
 )
 
 // DefaultLeaderLockKey is the PostgreSQL advisory lock id for cluster-wide scheduler leadership.
 const DefaultLeaderLockKey int64 = 913374211
 
-// LeaderSession holds a dedicated pool connection with an acquired advisory lock.
-// The lock is session-scoped; release via Release before returning the connection to the pool.
+// LeaderSession holds a dedicated PostgreSQL connection with a session advisory lock.
+// Uses pgx.Connect (not pgxpool) so HAProxy/pooler paths cannot drop the lock between statements.
 type LeaderSession struct {
-	conn      *pgxpool.Conn
-	key       int64
-	stopPing  context.CancelFunc
-	pingDone  sync.WaitGroup
+	conn     *pgx.Conn
+	key      int64
+	stopPing context.CancelFunc
+	pingDone sync.WaitGroup
 }
 
-// TryAcquireLeader attempts pg_try_advisory_lock on a dedicated connection.
-func TryAcquireLeader(ctx context.Context, pool *pgxpool.Pool, key int64) (*LeaderSession, bool, error) {
-	if pool == nil {
-		return nil, false, fmt.Errorf("nil pool")
+// TryAcquireLeader opens a dedicated connection and attempts pg_try_advisory_lock.
+func TryAcquireLeader(ctx context.Context, dsn string, key int64) (*LeaderSession, bool, error) {
+	if dsn == "" {
+		return nil, false, fmt.Errorf("empty dsn")
 	}
-	conn, err := pool.Acquire(ctx)
+	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		return nil, false, err
 	}
 	var ok bool
 	err = conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, key).Scan(&ok)
 	if err != nil {
-		conn.Release()
+		conn.Close(ctx)
 		return nil, false, err
 	}
-	if !ok {
-		conn.Release()
+	held, err := lockHeldBySession(ctx, conn, key)
+	if err != nil {
+		conn.Close(ctx)
+		return nil, false, err
+	}
+	if !ok || !held {
+		conn.Close(ctx)
 		// #region agent log
-		debug.Log("A", "leader.go:TryAcquireLeader", "lock not acquired", map[string]any{"key": key})
+		debug.Log("F", "leader.go:TryAcquireLeader", "lock not held after try", map[string]any{
+			"key": key, "tryOk": ok, "held": held,
+		})
 		// #endregion
 		return nil, false, nil
 	}
@@ -58,13 +65,29 @@ func TryAcquireLeader(ctx context.Context, pool *pgxpool.Pool, key int64) (*Lead
 	return sess, true, nil
 }
 
+func lockHeldBySession(ctx context.Context, conn *pgx.Conn, key int64) (bool, error) {
+	var held bool
+	err := conn.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM pg_locks
+			WHERE locktype = 'advisory'
+			  AND classid = 0
+			  AND objid = $1::bigint
+			  AND granted
+			  AND pid = pg_backend_pid()
+		)
+	`, key).Scan(&held)
+	return held, err
+}
+
 func (l *LeaderSession) startKeepalive(parent context.Context) {
 	pingCtx, cancel := context.WithCancel(parent)
 	l.stopPing = cancel
 	l.pingDone.Add(1)
 	go func() {
 		defer l.pingDone.Done()
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(20 * time.Second)
 		defer ticker.Stop()
 		for {
 			select {
@@ -74,13 +97,18 @@ func (l *LeaderSession) startKeepalive(parent context.Context) {
 				if l.conn == nil {
 					return
 				}
-				_, _ = l.conn.Exec(pingCtx, `SELECT 1`)
+				if _, err := l.conn.Exec(pingCtx, `SELECT 1`); err != nil {
+					// #region agent log
+					debug.Log("D", "leader.go:keepalive", "ping failed", map[string]any{"error": err.Error()})
+					// #endregion
+					return
+				}
 			}
 		}
 	}()
 }
 
-// Release unlocks the advisory lock and returns the connection to the pool.
+// Release unlocks the advisory lock and closes the dedicated connection.
 func (l *LeaderSession) Release(ctx context.Context) {
 	if l == nil || l.conn == nil {
 		return
@@ -91,17 +119,17 @@ func (l *LeaderSession) Release(ctx context.Context) {
 		l.stopPing = nil
 	}
 	_, _ = l.conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, l.key)
-	l.conn.Release()
+	_ = l.conn.Close(ctx)
 	l.conn = nil
 }
 
 // WaitForLeader polls until the advisory lock is acquired or ctx is cancelled.
-func WaitForLeader(ctx context.Context, pool *pgxpool.Pool, key int64, poll time.Duration) (*LeaderSession, error) {
+func WaitForLeader(ctx context.Context, dsn string, key int64, poll time.Duration) (*LeaderSession, error) {
 	if poll <= 0 {
 		poll = 15 * time.Second
 	}
 	for {
-		leader, ok, err := TryAcquireLeader(ctx, pool, key)
+		leader, ok, err := TryAcquireLeader(ctx, dsn, key)
 		if err != nil {
 			return nil, err
 		}
