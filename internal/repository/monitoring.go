@@ -114,13 +114,17 @@ type QueueCount struct {
 
 // InFlightJob is a row in jobs that is ready, scheduled, or reserved.
 type InFlightJob struct {
-	JobID      int64  `json:"job_id"`
-	Queue      string `json:"queue"`
-	JobType    string `json:"job_type"`
-	State      string `json:"state"` // ready, scheduled, reserved
-	AgeSeconds int64  `json:"age_seconds"`
-	Attempts   int    `json:"attempts"`
-	Stale      bool   `json:"stale"`
+	JobID         int64  `json:"job_id"`
+	Queue         string `json:"queue"`
+	JobType       string `json:"job_type"`
+	State         string `json:"state"` // ready, scheduled, reserved
+	AgeSeconds    int64  `json:"age_seconds"`
+	Attempts      int    `json:"attempts"`
+	Stale         bool   `json:"stale"`
+	BatchID       string `json:"batch_id,omitempty"`
+	ReplicaPageID *int64 `json:"replica_page_id,omitempty"`
+	ChunkIndex    *int   `json:"chunk_index,omitempty"`
+	ChunkTotal    *int   `json:"chunk_total,omitempty"`
 }
 
 // ActiveJobBatch is an open job_batches row still draining child jobs.
@@ -393,7 +397,11 @@ func (r *MonitoringRepo) ListInFlightJobs(ctx context.Context, staleReservedAfte
 		       (
 		           j.reserved_at IS NOT NULL
 		           AND j.reserved_at < EXTRACT(EPOCH FROM NOW())::bigint - $1::bigint
-		       ) AS stale
+		       ) AS stale,
+		       COALESCE(j.payload::jsonb->'args'->>'batch_id', '') AS batch_id,
+		       NULLIF(j.payload::jsonb->'args'->'job'->>'replica_page_id', '')::bigint AS replica_page_id,
+		       NULLIF(j.payload::jsonb->'args'->'job'->>'chunk_index', '')::int AS chunk_index,
+		       NULLIF(j.payload::jsonb->'args'->'job'->>'chunk_total', '')::int AS chunk_total
 		FROM jobs j
 		ORDER BY
 		    CASE WHEN j.reserved_at IS NOT NULL THEN 0 ELSE 1 END,
@@ -408,7 +416,8 @@ func (r *MonitoringRepo) ListInFlightJobs(ctx context.Context, staleReservedAfte
 	out := make([]InFlightJob, 0)
 	for rows.Next() {
 		var row InFlightJob
-		if err := rows.Scan(&row.JobID, &row.Queue, &row.JobType, &row.State, &row.AgeSeconds, &row.Attempts, &row.Stale); err != nil {
+		if err := rows.Scan(&row.JobID, &row.Queue, &row.JobType, &row.State, &row.AgeSeconds, &row.Attempts, &row.Stale,
+			&row.BatchID, &row.ReplicaPageID, &row.ChunkIndex, &row.ChunkTotal); err != nil {
 			return nil, err
 		}
 		out = append(out, row)

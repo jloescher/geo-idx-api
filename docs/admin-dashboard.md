@@ -91,7 +91,8 @@ Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sess
 |--------|-----------|-------|
 | Queue pending stale | &gt; 500 total pending | Matches dashboard.js `QUEUE_PENDING_STALE` |
 | Replica pending stale | &gt; 500 per dataset/status row | Pending rows below threshold stay **healthy** |
-| Stale reserved | `max(600s, DB_QUEUE_RESERVATION_TIMEOUT / 2)` | Aligns with worker reservation, not a fixed 10m |
+| Stale reserved | `max(600s, DB_QUEUE_RESERVATION_TIMEOUT / 2)` | Monitoring warning; reservation auto-releases at full timeout (default 3600s) on next worker reserve |
+| Persist chunk timeout | `MLS_PERSIST_CHUNK_TIMEOUT_SECONDS` (default 900) | Worker fails and retries persist chunks that exceed this wall clock |
 | Failed jobs | any `failed_jobs` row | Opens warning incident; queue rollup status `stale` |
 | Cache | 15m audit window | `UPPER(cache_hit)` for hit/miss counts |
 
@@ -111,7 +112,7 @@ WHERE locktype = 'advisory' AND objid = 913374211;
 
 Expect one granted row while the leader process is up. If empty and monitoring shows critical, restart scheduler apps or fix DB connectivity before changing application code.
 
-**Beaches `STALE` while replica pipeline is active:** Listing tiles use `catching_up` when `replica_pages` has `pending`/`processing` rows or `replication_in_progress` is true, even if `last_sync_finished_at` is older than `MLS_REPLICATION_FRESHNESS_MINUTES` (default 15). Lag seconds still reflect time since last finished sync. True `stale` means no active pipeline work and the mirror is outside the freshness window.
+**Stuck `spark.persist_chunk` (1 / N batch pending):** A reserved persist job with `pending_jobs = 1` on `spark-replica-persist:beaches` is the last chunk of a 20-part page. Historical batches that took ~3600s match `DB_QUEUE_RESERVATION_TIMEOUT` — the worker lost the job until reservation expiry, then another worker finished. `RowsForChunk` now reads one gzip part via JSONB (~300KB) instead of the full ~6MB page per chunk. Deploy **workers** (not just API) for persist fixes. Listing tiles use `catching_up` when `replica_pages` has `pending`/`processing` rows or `replication_in_progress` is true, even if `last_sync_finished_at` is older than `MLS_REPLICATION_FRESHNESS_MINUTES` (default 15). Lag seconds still reflect time since last finished sync. True `stale` means no active pipeline work and the mirror is outside the freshness window.
 
 **`enqueue never` on the Infrastructure tile:** `last_enqueue_at` is `MAX(created_at)` from `jobs` for scheduler-owned types (`mls.replication_kickoff`, `mls.replication_resume`, `mls.proxy_cache_purge`, `crypto.refresh_pricing`). Successful jobs are **removed from `jobs` immediately** after workers finish them, so an empty or fast-draining queue shows no timestamp even while the scheduler is healthy and listings continue to update. Prefer `leader_active` + scheduler logs (`enqueued scheduled job`) over this field; the UI labels an empty queue as “none pending” when a leader is active.
 

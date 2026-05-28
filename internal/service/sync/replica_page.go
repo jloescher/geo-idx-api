@@ -116,19 +116,21 @@ func (s *ReplicaPageStore) MarkProcessing(ctx context.Context, pageID int64, bat
 }
 
 func (s *ReplicaPageStore) RowsForChunk(ctx context.Context, pageID int64, chunkIndex, chunkTotal int) ([]json.RawMessage, error) {
-	var payload string
-	err := s.db.Pool.QueryRow(ctx, `SELECT compressed_payload FROM replica_pages WHERE id = $1`, pageID).Scan(&payload)
+	if chunkIndex < 1 || chunkIndex > chunkTotal {
+		return nil, fmt.Errorf("chunk index out of range")
+	}
+	var partB64 *string
+	err := s.db.Pool.QueryRow(ctx, `
+		SELECT (compressed_payload::jsonb->'parts')->>($2::int)
+		FROM replica_pages WHERE id = $1
+	`, pageID, chunkIndex-1).Scan(&partB64)
 	if err != nil {
 		return nil, err
 	}
-	var p pagePayloadV2
-	if err := json.Unmarshal([]byte(payload), &p); err != nil {
-		return nil, err
-	}
-	if chunkIndex < 1 || chunkIndex > len(p.Parts) {
+	if partB64 == nil || *partB64 == "" {
 		return nil, fmt.Errorf("chunk index out of range")
 	}
-	raw, err := base64.StdEncoding.DecodeString(p.Parts[chunkIndex-1])
+	raw, err := base64.StdEncoding.DecodeString(*partB64)
 	if err != nil {
 		return nil, err
 	}

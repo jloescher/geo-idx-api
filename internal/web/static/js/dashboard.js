@@ -363,15 +363,23 @@ ${statusChip}
         `Failed jobs ${row.queue} ${row.job_type}`
       )
     );
-    const inFlightRows = (queues.in_flight || []).map((row) => [
-      row.job_id ?? "—",
-      row.queue || "—",
-      row.job_type || "unknown",
-      row.state || "—",
-      fmtNum(row.age_seconds) + "s",
-      fmtNum(row.attempts),
-      row.stale ? "stale" : "ok",
-    ]);
+    const inFlightRows = (queues.in_flight || []).map((row) => {
+      const chunk =
+        row.chunk_index != null && row.chunk_total != null
+          ? `${row.chunk_index}/${row.chunk_total}`
+          : "—";
+      return [
+        row.job_id ?? "—",
+        row.queue || "—",
+        row.job_type || "unknown",
+        row.state || "—",
+        chunk,
+        row.replica_page_id ?? "—",
+        fmtNum(row.age_seconds) + "s",
+        fmtNum(row.attempts),
+        row.stale ? "stale" : "ok",
+      ];
+    });
     const batchRows = (queues.active_batches || []).map((row) => [
       row.name || row.batch_id || "—",
       `${fmtNum(row.pending_jobs)} / ${fmtNum(row.total_jobs)}`,
@@ -389,7 +397,7 @@ ${statusChip}
       fmtNum(row.count),
     ]);
     const inFlightSection = inFlightRows.length
-      ? renderStatList("In-flight jobs", inFlightRows, ["ID", "Queue", "Type", "State", "Age", "Attempts", "Stale"])
+      ? renderStatList("In-flight jobs", inFlightRows, ["ID", "Queue", "Type", "State", "Chunk", "Page", "Age", "Attempts", "Stale"])
       : `<div class="metric-group"><h3 class="metric-group-title">In-flight jobs</h3><div class="empty-state"><p>No rows in jobs</p><p class="empty-hint">Successful jobs are deleted immediately. Reserved and ready rows appear here while work is outstanding.</p></div></div>`;
     const batchSection = batchRows.length
       ? renderStatList("Active batches", batchRows, ["Batch", "Pending / total", "Failed", "Age"])

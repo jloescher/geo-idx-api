@@ -316,6 +316,13 @@ func (w *SparkWorker) buildFinalizeArgs(
 }
 
 func (w *SparkWorker) PersistChunk(ctx context.Context, job *queue.ReservedJob) error {
+	timeout := w.cfg.MLS.PersistChunkTimeout
+	if timeout <= 0 {
+		timeout = 15 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	var wrapper struct {
 		BatchID string           `json:"batch_id"`
 		Job     persistChunkArgs `json:"job"`

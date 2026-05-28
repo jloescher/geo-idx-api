@@ -185,6 +185,7 @@ type MLSConfig struct {
 	ReplicationResumeStallMinutes  int
 	ReplicationResumeCron          string
 	MirrorKeyReconcileRetryMinutes int
+	PersistChunkTimeout            time.Duration
 }
 
 type GISConfig struct {
@@ -349,6 +350,7 @@ func Load() (Config, error) {
 			ReplicationResumeStallMinutes: envInt("MLS_REPLICATION_RESUME_STALL_MINUTES", 3),
 			ReplicationResumeCron:         env("MLS_REPLICATION_RESUME_CRON", "0 */2 * * * *"),
 			MirrorKeyReconcileRetryMinutes: envInt("MLS_MIRROR_KEY_RECONCILE_RETRY_MINUTES", 30),
+			PersistChunkTimeout:            time.Duration(envInt("MLS_PERSIST_CHUNK_TIMEOUT_SECONDS", 900)) * time.Second,
 		},
 		GIS: GISConfig{
 			EdgeCacheTTL:         envDuration("GIS_EDGE_CACHE_TTL", 900*time.Second),
