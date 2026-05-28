@@ -1,5 +1,5 @@
 // Package openapi serves the embedded OpenAPI document and Swagger UI.
-// Source of truth: docs/yaak-api-collection.json (run `make openapi-sync` after editing).
+// Source of truth: docs/yaak-api-collection.json — run `make openapi-sync` before build/test if openapi.json is missing.
 package openapi
 
 import (
@@ -8,7 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-//go:embed spec/openapi.json
+//go:embed openapi.json
 var specJSON []byte
 
 const swaggerUIHTML = `<!DOCTYPE html>

@@ -22,8 +22,9 @@ phpunit.xml
 .php-cs-fixer.cache
 pint.json
 
-# Docs (not needed at runtime in container)
+# Docs (not needed at runtime in container; keep OpenAPI source for image build sync)
 docs
+!docs/yaak-api-collection.json
 
 # Logs and caches (runtime paths recreated in Dockerfile)
 storage/logs

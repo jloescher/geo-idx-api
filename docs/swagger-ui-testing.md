@@ -19,7 +19,7 @@ Manual and smoke-test directions for the interactive API explorer served by the 
 | Artifact | Location |
 |----------|----------|
 | Human-edited source | [`docs/yaak-api-collection.json`](yaak-api-collection.json) |
-| Embedded copy (API binary) | `internal/openapi/spec/openapi.json` |
+| Embedded copy (API binary) | `internal/openapi/openapi.json` |
 | Sync command | `make openapi-sync` (also runs before `make build`) |
 
 After editing the Yaak/OpenAPI file:
@@ -28,6 +28,8 @@ After editing the Yaak/OpenAPI file:
 make openapi-sync
 make run-api   # or redeploy idx-api-web
 ```
+
+If the IDE or `go build` reports `pattern openapi.json: no matching files found`, the embed copy is missing — run `make openapi-sync` (copies into `internal/openapi/openapi.json`). That file is committed in git; a clean checkout should include it unless it was deleted locally.
 
 Verify the live spec includes your change:
 
