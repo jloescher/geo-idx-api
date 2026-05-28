@@ -83,6 +83,18 @@ func renderMonitoringBody(data PageData) string {
 <button type="button" id="monitoring-refresh" class="btn btn-secondary btn-sm" aria-busy="false">Refresh</button>
 </div>
 </div>
+<div id="monitoring-critical-strip" class="monitoring-critical-strip" hidden role="region" aria-live="polite" aria-label="Active incidents"></div>
+<div class="monitoring-tabs-shell">
+<div class="monitoring-tabs" role="tablist" aria-label="Monitoring categories">
+<button type="button" class="monitoring-tab" role="tab" id="tab-overview" data-tab="overview" aria-controls="panel-overview" aria-selected="true" tabindex="0">Overview</button>
+<button type="button" class="monitoring-tab" role="tab" id="tab-ingest" data-tab="ingest" aria-controls="panel-ingest" aria-selected="false" tabindex="-1">Ingest &amp; Sync</button>
+<button type="button" class="monitoring-tab" role="tab" id="tab-queues" data-tab="queues" aria-controls="panel-queues" aria-selected="false" tabindex="-1">Queue &amp; Jobs</button>
+<button type="button" class="monitoring-tab" role="tab" id="tab-data" data-tab="data" aria-controls="panel-data" aria-selected="false" tabindex="-1">Data Quality</button>
+<button type="button" class="monitoring-tab" role="tab" id="tab-infra" data-tab="infra" aria-controls="panel-infra" aria-selected="false" tabindex="-1">Infrastructure</button>
+<button type="button" class="monitoring-tab" role="tab" id="tab-integrations" data-tab="integrations" aria-controls="panel-integrations" aria-selected="false" tabindex="-1">Integrations</button>
+<button type="button" class="monitoring-tab" role="tab" id="tab-incidents" data-tab="incidents" aria-controls="panel-incidents" aria-selected="false" tabindex="-1">Incidents</button>
+</div>
+</div>
 <div id="monitoring-error" class="alert-danger" hidden role="alert">
 <span id="monitoring-error-text"></span>
 <button type="button" id="monitoring-retry" class="btn btn-sm btn-secondary">Retry</button>
@@ -91,7 +103,15 @@ func renderMonitoringBody(data PageData) string {
 <div class="monitoring-skeleton-grid" id="monitoring-skeleton">
 <div class="metric-skeleton"></div><div class="metric-skeleton"></div><div class="metric-skeleton"></div><div class="metric-skeleton"></div>
 </div>
-<div id="monitoring-content" hidden></div>
+<div id="monitoring-content" hidden>
+<section class="monitoring-panel active" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" data-panel="overview"></section>
+<section class="monitoring-panel" id="panel-ingest" role="tabpanel" aria-labelledby="tab-ingest" data-panel="ingest" hidden></section>
+<section class="monitoring-panel" id="panel-queues" role="tabpanel" aria-labelledby="tab-queues" data-panel="queues" hidden></section>
+<section class="monitoring-panel" id="panel-data" role="tabpanel" aria-labelledby="tab-data" data-panel="data" hidden></section>
+<section class="monitoring-panel" id="panel-infra" role="tabpanel" aria-labelledby="tab-infra" data-panel="infra" hidden></section>
+<section class="monitoring-panel" id="panel-integrations" role="tabpanel" aria-labelledby="tab-integrations" data-panel="integrations" hidden></section>
+<section class="monitoring-panel" id="panel-incidents" role="tabpanel" aria-labelledby="tab-incidents" data-panel="incidents" hidden></section>
+</div>
 </div>
 <details id="monitoring-queues" class="monitoring-queues" hidden>
 <summary>Queue job types (pending)</summary>

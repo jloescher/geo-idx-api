@@ -103,10 +103,11 @@ func (r *MonitoringRepo) CacheHitRate15m(ctx context.Context) (CacheHitStats, er
 
 // QueueCount is pending/reserved/failed jobs for a queue name.
 type QueueCount struct {
-	Queue    string `json:"queue"`
-	Pending  int64  `json:"pending"`
-	Reserved int64  `json:"reserved"`
-	Failed   int64  `json:"failed"`
+	Queue         string `json:"queue"`
+	Pending       int64  `json:"pending"`
+	Reserved      int64  `json:"reserved"`
+	Failed        int64  `json:"failed"`
+	StaleReserved int64  `json:"stale_reserved"`
 }
 
 // ListQueueCounts returns job counts grouped by queue.
@@ -119,7 +120,8 @@ func (r *MonitoringRepo) ListQueueCounts(ctx context.Context) ([]QueueCount, err
 		SELECT q.queue,
 		       COALESCE(j.pending, 0) AS pending,
 		       COALESCE(j.reserved, 0) AS reserved,
-		       COALESCE(f.failed, 0) AS failed
+		       COALESCE(f.failed, 0) AS failed,
+		       COALESCE(j.stale_reserved, 0) AS stale_reserved
 		FROM (
 			SELECT DISTINCT queue FROM jobs
 			UNION
@@ -128,7 +130,11 @@ func (r *MonitoringRepo) ListQueueCounts(ctx context.Context) ([]QueueCount, err
 		LEFT JOIN (
 			SELECT queue,
 			       COUNT(*) FILTER (WHERE reserved_at IS NULL AND available_at <= EXTRACT(EPOCH FROM NOW())::bigint) AS pending,
-			       COUNT(*) FILTER (WHERE reserved_at IS NOT NULL) AS reserved
+			       COUNT(*) FILTER (WHERE reserved_at IS NOT NULL) AS reserved,
+			       COUNT(*) FILTER (
+			       	WHERE reserved_at IS NOT NULL
+			       	  AND reserved_at < EXTRACT(EPOCH FROM NOW() - INTERVAL '10 minutes')::bigint
+			       ) AS stale_reserved
 			FROM jobs
 			GROUP BY queue
 		) j ON j.queue = q.queue
@@ -144,12 +150,137 @@ func (r *MonitoringRepo) ListQueueCounts(ctx context.Context) ([]QueueCount, err
 	var out []QueueCount
 	for rows.Next() {
 		var row QueueCount
-		if err := rows.Scan(&row.Queue, &row.Pending, &row.Reserved, &row.Failed); err != nil {
+		if err := rows.Scan(&row.Queue, &row.Pending, &row.Reserved, &row.Failed, &row.StaleReserved); err != nil {
 			return nil, err
 		}
 		out = append(out, row)
 	}
 	return out, rows.Err()
+}
+
+// FailedJobDetail captures failed jobs grouped by queue and type.
+type FailedJobDetail struct {
+	Queue         string `json:"queue"`
+	JobType       string `json:"job_type"`
+	Count         int64  `json:"count"`
+	LastFailedAt  string `json:"last_failed_at"`
+	LastException string `json:"last_exception"`
+}
+
+// TopFailedJobDetails returns the busiest failed job classes and latest exception text.
+func (r *MonitoringRepo) TopFailedJobDetails(ctx context.Context, limit int) ([]FailedJobDetail, error) {
+	if limit < 1 {
+		limit = 10
+	}
+	pool, err := r.db.ReadPool(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := pool.Query(ctx, `
+		WITH grouped AS (
+			SELECT
+				queue,
+				COALESCE(NULLIF(payload::json->>'type', ''), 'unknown') AS job_type,
+				COUNT(*) AS failed,
+				MAX(failed_at) AS last_failed_at
+			FROM failed_jobs
+			GROUP BY queue, job_type
+		)
+		SELECT
+			g.queue,
+			g.job_type,
+			g.failed,
+			TO_CHAR(g.last_failed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_failed_at,
+			COALESCE(LEFT(f.exception, 180), '') AS last_exception
+		FROM grouped g
+		LEFT JOIN LATERAL (
+			SELECT exception
+			FROM failed_jobs
+			WHERE queue = g.queue
+			  AND COALESCE(NULLIF(payload::json->>'type', ''), 'unknown') = g.job_type
+			ORDER BY failed_at DESC
+			LIMIT 1
+		) f ON true
+		ORDER BY g.failed DESC, g.last_failed_at DESC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []FailedJobDetail
+	for rows.Next() {
+		var row FailedJobDetail
+		if err := rows.Scan(&row.Queue, &row.JobType, &row.Count, &row.LastFailedAt, &row.LastException); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// ReplicaPageStatusCount is grouped replica_pages pipeline status by dataset.
+type ReplicaPageStatusCount struct {
+	DatasetSlug string `json:"dataset_slug"`
+	Status      string `json:"status"`
+	Count       int64  `json:"count"`
+}
+
+// ReplicaPageStatuses returns replica_pages grouped by dataset and pipeline status.
+func (r *MonitoringRepo) ReplicaPageStatuses(ctx context.Context) ([]ReplicaPageStatusCount, error) {
+	pool, err := r.db.ReadPool(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := pool.Query(ctx, `
+		SELECT dataset_slug, status, COUNT(*) AS count
+		FROM replica_pages
+		GROUP BY dataset_slug, status
+		ORDER BY dataset_slug, status
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ReplicaPageStatusCount
+	for rows.Next() {
+		var row ReplicaPageStatusCount
+		if err := rows.Scan(&row.DatasetSlug, &row.Status, &row.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// SchedulerLockHealth reports whether another process currently holds the scheduler advisory lock.
+type SchedulerLockHealth struct {
+	LockID       int64 `json:"lock_id"`
+	LeaderActive bool  `json:"leader_active"`
+}
+
+// SchedulerLockHealth checks advisory lock ownership by attempting lock acquisition.
+func (r *MonitoringRepo) SchedulerLockHealth(ctx context.Context, lockID int64) (SchedulerLockHealth, error) {
+	var acquired bool
+	err := r.db.Pool.QueryRow(ctx, `
+		WITH probe AS (
+			SELECT pg_try_advisory_lock($1) AS acquired
+		)
+		SELECT probe.acquired FROM probe
+	`, lockID).Scan(&acquired)
+	if err != nil {
+		return SchedulerLockHealth{}, err
+	}
+	if acquired {
+		// Release immediately if we acquired the lock during probing.
+		if _, err := r.db.Pool.Exec(ctx, `SELECT pg_advisory_unlock($1)`, lockID); err != nil {
+			return SchedulerLockHealth{}, err
+		}
+	}
+	return SchedulerLockHealth{
+		LockID:       lockID,
+		LeaderActive: !acquired,
+	}, nil
 }
 
 // JobTypeCount is pending jobs grouped by payload type.

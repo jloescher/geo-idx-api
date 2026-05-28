@@ -34,13 +34,16 @@ func NewMonitoringService(cfg config.Config, db *repository.DB) *MonitoringServi
 
 // Snapshot is the monitoring JSON payload.
 type Snapshot struct {
-	GeneratedAt time.Time        `json:"generated_at"`
-	Listings    []ListingMetric  `json:"listings"`
-	GIS         GISMetric        `json:"gis"`
-	Crypto      CryptoMetric     `json:"crypto"`
-	Cache       CacheMetric      `json:"cache"`
-	Queues      QueuesMetric     `json:"queues"`
-	Activation  ActivationMetric `json:"activation"`
+	GeneratedAt    time.Time          `json:"generated_at"`
+	Listings       []ListingMetric    `json:"listings"`
+	GIS            GISMetric          `json:"gis"`
+	Crypto         CryptoMetric       `json:"crypto"`
+	Cache          CacheMetric        `json:"cache"`
+	Queues         QueuesMetric       `json:"queues"`
+	SyncPipeline   SyncPipelineMetric `json:"sync_pipeline"`
+	Infrastructure InfraMetric        `json:"infrastructure"`
+	Incidents      []IncidentMetric   `json:"incidents"`
+	Activation     ActivationMetric   `json:"activation"`
 }
 
 type ListingMetric struct {
@@ -57,22 +60,22 @@ type ListingMetric struct {
 }
 
 type GISMetric struct {
-	ParcelsTotal          int64                    `json:"parcels_total"`
-	ParcelsLastSyncedAt   *time.Time               `json:"parcels_last_synced_at,omitempty"`
-	ParcelsStatus         string                   `json:"parcels_status"`
-	ByCounty              map[string]int64         `json:"by_county"`
-	CitiesTotal           int64                    `json:"cities_total"`
-	CitiesLastSyncedAt    *time.Time               `json:"cities_last_synced_at,omitempty"`
-	CitiesStatus          string                   `json:"cities_status"`
-	CountiesTotal         int64                    `json:"counties_total"`
-	CountiesLastSyncedAt  *time.Time               `json:"counties_last_synced_at,omitempty"`
-	CountiesStatus        string                   `json:"counties_status"`
-	ZipsTotal             int64                    `json:"zips_total"`
-	ZipsLastSyncedAt      *time.Time               `json:"zips_last_synced_at,omitempty"`
-	ZipsStatus            string                   `json:"zips_status"`
-	BoundaryStaleDays     int                      `json:"boundary_stale_days"`
-	Sources               []gisrepo.SourceStateRow `json:"sources"`
-	Status                string                   `json:"status"`
+	ParcelsTotal         int64                    `json:"parcels_total"`
+	ParcelsLastSyncedAt  *time.Time               `json:"parcels_last_synced_at,omitempty"`
+	ParcelsStatus        string                   `json:"parcels_status"`
+	ByCounty             map[string]int64         `json:"by_county"`
+	CitiesTotal          int64                    `json:"cities_total"`
+	CitiesLastSyncedAt   *time.Time               `json:"cities_last_synced_at,omitempty"`
+	CitiesStatus         string                   `json:"cities_status"`
+	CountiesTotal        int64                    `json:"counties_total"`
+	CountiesLastSyncedAt *time.Time               `json:"counties_last_synced_at,omitempty"`
+	CountiesStatus       string                   `json:"counties_status"`
+	ZipsTotal            int64                    `json:"zips_total"`
+	ZipsLastSyncedAt     *time.Time               `json:"zips_last_synced_at,omitempty"`
+	ZipsStatus           string                   `json:"zips_status"`
+	BoundaryStaleDays    int                      `json:"boundary_stale_days"`
+	Sources              []gisrepo.SourceStateRow `json:"sources"`
+	Status               string                   `json:"status"`
 }
 
 // BoundaryLayerStatus reports healthy/stale/unknown for infrequently refreshed boundary tables.
@@ -112,9 +115,29 @@ type CacheMetric struct {
 }
 
 type QueuesMetric struct {
-	ByQueue      []repository.QueueCount   `json:"by_queue"`
-	TopTypes     []repository.JobTypeCount `json:"top_job_types"`
-	TotalPending int64                     `json:"total_pending"`
+	ByQueue            []repository.QueueCount      `json:"by_queue"`
+	TopTypes           []repository.JobTypeCount    `json:"top_job_types"`
+	FailedTop          []repository.FailedJobDetail `json:"failed_top"`
+	TotalPending       int64                        `json:"total_pending"`
+	TotalStaleReserved int64                        `json:"total_stale_reserved"`
+	Status             string                       `json:"status"`
+}
+
+type SyncPipelineMetric struct {
+	ByStatus []repository.ReplicaPageStatusCount `json:"by_status"`
+	Status   string                              `json:"status"`
+}
+
+type InfraMetric struct {
+	Scheduler repository.SchedulerLockHealth `json:"scheduler"`
+	Status    string                         `json:"status"`
+}
+
+type IncidentMetric struct {
+	Severity string `json:"severity"`
+	Source   string `json:"source"`
+	Title    string `json:"title"`
+	Detail   string `json:"detail"`
 }
 
 type ActivationMetric struct {
@@ -293,11 +316,65 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 	if err != nil {
 		return nil, err
 	}
+	failedTop, err := s.repo.TopFailedJobDetails(ctx, 10)
+	if err != nil {
+		return nil, err
+	}
 	var pending int64
+	var staleReserved int64
 	for _, q := range queues {
 		pending += q.Pending
+		staleReserved += q.StaleReserved
 	}
-	snap.Queues = QueuesMetric{ByQueue: queues, TopTypes: topTypes, TotalPending: pending}
+	queueStatus := "healthy"
+	if pending > 500 || staleReserved > 0 {
+		queueStatus = "stale"
+	}
+	snap.Queues = QueuesMetric{
+		ByQueue:            queues,
+		TopTypes:           topTypes,
+		FailedTop:          failedTop,
+		TotalPending:       pending,
+		TotalStaleReserved: staleReserved,
+		Status:             queueStatus,
+	}
+
+	pipeline, err := s.repo.ReplicaPageStatuses(ctx)
+	if err != nil {
+		return nil, err
+	}
+	pipelineStatus := "healthy"
+	for _, row := range pipeline {
+		switch row.Status {
+		case "failed":
+			pipelineStatus = "stale"
+		case "pending":
+			if row.Count > 500 {
+				pipelineStatus = "stale"
+			}
+		}
+	}
+	snap.SyncPipeline = SyncPipelineMetric{
+		ByStatus: pipeline,
+		Status:   pipelineStatus,
+	}
+
+	lockID := s.cfg.Scheduler.LeaderLockKey
+	if lockID == 0 {
+		lockID = 913374211
+	}
+	scheduler, err := s.repo.SchedulerLockHealth(ctx, lockID)
+	if err != nil {
+		return nil, err
+	}
+	infraStatus := "healthy"
+	if !scheduler.LeaderActive {
+		infraStatus = "stale"
+	}
+	snap.Infrastructure = InfraMetric{
+		Scheduler: scheduler,
+		Status:    infraStatus,
+	}
 
 	act, err := s.repo.Activation(ctx)
 	if err != nil {
@@ -309,6 +386,31 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 		TokenCount:            act.TokenCount,
 		InvitationsAccepted:   act.InvitationsAccepted,
 		DomainsWithTraffic30d: act.DomainsWithTraffic30d,
+	}
+
+	if snap.Infrastructure.Status == "stale" {
+		snap.Incidents = append(snap.Incidents, IncidentMetric{
+			Severity: "critical",
+			Source:   "infrastructure",
+			Title:    "Scheduler leader not detected",
+			Detail:   "No process currently holds the scheduler advisory lock.",
+		})
+	}
+	if snap.Queues.TotalStaleReserved > 0 {
+		snap.Incidents = append(snap.Incidents, IncidentMetric{
+			Severity: "warning",
+			Source:   "queues",
+			Title:    "Stale reserved jobs detected",
+			Detail:   "At least one queue has jobs reserved for over 10 minutes.",
+		})
+	}
+	if snap.SyncPipeline.Status == "stale" {
+		snap.Incidents = append(snap.Incidents, IncidentMetric{
+			Severity: "warning",
+			Source:   "sync",
+			Title:    "Replica page backlog is degraded",
+			Detail:   "Replica pages include failed statuses or unusually high pending volume.",
+		})
 	}
 
 	return snap, nil

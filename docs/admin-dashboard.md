@@ -52,6 +52,16 @@ Catalog codes come from `mls.Resolver.Catalog()` (e.g. `bridge_stellar`, `spark_
 
 Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sessions persist in PostgreSQL (`dashboard_sessions`); re-login after migration or cookie invalidation.
 
+### Monitoring tabs
+
+- **Overview**: system rollup, queue pressure, cache efficiency, activation counters.
+- **Ingest & Sync**: listing freshness + lag by dataset and `replica_pages` pipeline state.
+- **Queue & Jobs**: queue depth, stale reservations (>10m), failed job hotspots.
+- **Data Quality**: GIS layer freshness (parcels, cities, counties, zips) and source status.
+- **Infrastructure**: scheduler advisory-lock leadership probe and infra health.
+- **Integrations**: crypto/dependency freshness.
+- **Incidents**: active warning/critical incidents generated from snapshot health checks.
+
 ### Metrics glossary
 
 | Section | Fields | Notes |
@@ -60,7 +70,10 @@ Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sess
 | **GIS** | parcels, cities, counties, zips, source states, layer freshness | Stale if parcel/zip sync &gt;35d or generation mismatch |
 | **Crypto** | BTC/ETH/SOL USD + age | Stale if snapshot &gt;1h |
 | **Cache** | 15m hit rate from `mls_proxy_audit_logs` | |
-| **Queues** | pending/reserved/failed by queue | PostgreSQL `jobs` / `failed_jobs` (not Asynq) |
+| **Queues** | pending/reserved/failed by queue + stale_reserved | `stale_reserved` means reserved &gt;10m |
+| **Queue failures** | top failed job types + latest exception preview | Grouped from `failed_jobs` |
+| **Sync pipeline** | `replica_pages` counts by dataset/status | Flags stale on failed rows or large pending backlog |
+| **Infrastructure** | scheduler advisory lock probe (`SCHEDULER_LEADER_LOCK_ID`) | Critical when no leader holds the lock |
 | **Activation** | domains, keys, verified, 30d audit traffic | Traffic proxies “first API call” setup step |
 
 ### GIS freshness {#gis-freshness}
@@ -73,11 +86,11 @@ County parcel sources, FDOR/FDOT upstream issues, and MLS coverage: [GIS sources
 
 | State | Monitoring | Domains |
 |-------|------------|---------|
-| Loading | Skeleton tiles | — |
-| Empty | Zeros + “No data yet” | Empty state + add-domain form |
-| Error | Alert + Retry | `.form-error`, `verify_error`, `error` query |
-| Success | Timestamp flash | Verify panel after provision; `verified=1` / `deleted=1` banners |
-| Stale | Amber badge | Pending badge on domain rows |
+| Loading | Skeleton tiles while preserving previous tab content on refresh | — |
+| Empty | Per-tab empty card when no records match available metrics | Empty state + add-domain form |
+| Error | Alert + Retry; stale cached snapshot remains visible | `.form-error`, `verify_error`, `error` query |
+| Success | Timestamp flash + tab-local render | Verify panel after provision; `verified=1` / `deleted=1` banners |
+| Stale | Amber status chips + critical strip for cross-tab incidents | Pending badge on domain rows |
 
 ## Deprecated dashboard token endpoints
 

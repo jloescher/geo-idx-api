@@ -52,10 +52,10 @@ func TestBoundaryLayerStatus(t *testing.T) {
 	staleDays := 90
 
 	tests := []struct {
-		name     string
-		synced   *time.Time
-		total    int64
-		want     string
+		name   string
+		synced *time.Time
+		total  int64
+		want   string
 	}{
 		{"zero rows", nil, 0, "unknown"},
 		{"no timestamp", nil, 100, "unknown"},
@@ -70,6 +70,48 @@ func TestBoundaryLayerStatus(t *testing.T) {
 				t.Fatalf("got %q want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestSnapshotJSONIncludesTabbedMonitoringSections(t *testing.T) {
+	s := dashboard.Snapshot{
+		Queues: dashboard.QueuesMetric{
+			Status:             "stale",
+			TotalPending:       42,
+			TotalStaleReserved: 3,
+		},
+		SyncPipeline: dashboard.SyncPipelineMetric{
+			Status: "healthy",
+		},
+		Infrastructure: dashboard.InfraMetric{
+			Status: "critical",
+		},
+		Incidents: []dashboard.IncidentMetric{
+			{
+				Severity: "critical",
+				Source:   "infrastructure",
+				Title:    "Scheduler leader not detected",
+				Detail:   "No process currently holds the scheduler advisory lock.",
+			},
+		},
+	}
+	raw, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{
+		"queues",
+		"sync_pipeline",
+		"infrastructure",
+		"incidents",
+	} {
+		if _, ok := decoded[key]; !ok {
+			t.Fatalf("missing %s", key)
+		}
 	}
 }
 

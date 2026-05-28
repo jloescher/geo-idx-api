@@ -1,9 +1,11 @@
 (function () {
   const REFRESH_MS = 30000;
   const MONITORING_URL = "/dashboard/monitoring/data";
+  const TABS = ["overview", "ingest", "queues", "data", "infra", "integrations", "incidents"];
   let lastFetchAt = 0;
   let timer = null;
   let hasLiveData = false;
+  let activeTab = "overview";
 
   function $(id) {
     return document.getElementById(id);
@@ -28,6 +30,7 @@
   }
 
   function badgeClass(status) {
+    if (status === "critical") return "badge badge-critical";
     if (status === "healthy") return "badge badge-healthy";
     if (status === "stale") return "badge badge-stale";
     return "badge badge-unknown";
@@ -64,7 +67,32 @@ ${statusChip}
     return `Synced ${days}d ago`;
   }
 
-  function renderMonitoring(data) {
+  function overviewTiles(data) {
+    const listings = data.listings || [];
+    const staleListings = listings.filter((l) => l.status === "stale").length;
+    const incidents = data.incidents || [];
+    const cache = data.cache || {};
+    const queues = data.queues || {};
+    return [
+      tile("Datasets", fmtNum(listings.length), `${fmtNum(staleListings)} stale`, null, staleListings > 0 ? "stale" : "healthy", "Listing datasets"),
+      tile("Open incidents", fmtNum(incidents.length), "Across monitoring tabs", null, incidents.some((i) => i.severity === "critical") ? "critical" : incidents.length > 0 ? "stale" : "healthy", "Open incidents"),
+      tile("Queue pending", fmtNum(queues.total_pending), `${fmtNum(queues.total_stale_reserved)} stale reserved`, null, queues.status || "unknown", "Queue pending jobs"),
+      tile("Cache hit rate", fmtPct(cache.hit_rate_pct), `${cache.window_minutes || 15}m window`, null, cache.total > 0 ? "healthy" : "unknown", "Cache hit rate"),
+    ];
+  }
+
+  function renderOverviewPanel(data) {
+    return (
+      renderGroup("Overview", overviewTiles(data)) +
+      renderGroup("Activation", [
+        tile("Domains", fmtNum(data.activation?.domain_count), `${fmtNum(data.activation?.verified_domain_count)} verified`, "/dashboard/domains", null, "Domains"),
+        tile("API keys", fmtNum(data.activation?.token_count), "Per-domain keys", "/dashboard/domains", null, "API keys"),
+        tile("Traffic 30d", fmtNum(data.activation?.domains_with_traffic_30d), "Domains with audit calls", "/dashboard/domains", null, "Activation traffic"),
+      ])
+    );
+  }
+
+  function renderIngestPanel(data) {
     const listings = (data.listings || []).map((row) => {
       const sub = `${fmtNum(row.active_pending)} active/pending · ${row.freshness_mode || "—"}`;
       return tile(
@@ -76,7 +104,21 @@ ${statusChip}
         `Listings ${row.dataset_slug}`
       );
     });
+    const pipelineRows = data.sync_pipeline?.by_status || [];
+    const pipelineTiles = pipelineRows.map((row) =>
+      tile(
+        `${row.dataset_slug} · ${row.status}`,
+        fmtNum(row.count),
+        "replica_pages",
+        null,
+        row.status === "failed" ? "critical" : row.status === "pending" ? "stale" : "healthy",
+        `Replica pages ${row.dataset_slug} ${row.status}`
+      )
+    );
+    return renderGroup("Listings Replication", listings) + renderGroup("Replica Pipeline", pipelineTiles);
+  }
 
+  function renderDataPanel(data) {
     const gis = data.gis || {};
     const gisTiles = [
       tile("Parcels", fmtNum(gis.parcels_total), fmtSyncAge(gis.parcels_last_synced_at), null, gis.parcels_status || "unknown", "GIS parcels"),
@@ -84,7 +126,10 @@ ${statusChip}
       tile("Counties", fmtNum(gis.counties_total), fmtSyncAge(gis.counties_last_synced_at), null, gis.counties_status || "unknown", "GIS counties"),
       tile("ZIPs", fmtNum(gis.zips_total), fmtSyncAge(gis.zips_last_synced_at), null, gis.zips_status || "unknown", "GIS zips"),
     ];
+    return renderGroup("GIS Data Health", gisTiles);
+  }
 
+  function renderIntegrationsPanel(data) {
     const cryptoAssets = (data.crypto && data.crypto.assets) || [];
     const cryptoTiles = cryptoAssets.length
       ? cryptoAssets.map((a) =>
@@ -98,7 +143,10 @@ ${statusChip}
           )
         )
       : [tile("Crypto", "—", "No snapshot", null, data.crypto?.status || "unknown", "Crypto prices")];
+    return renderGroup("Integrations", cryptoTiles);
+  }
 
+  function renderQueuePanel(data) {
     const cache = data.cache || {};
     const cacheTiles = [
       tile(
@@ -111,7 +159,6 @@ ${statusChip}
       ),
       tile("Audit requests", fmtNum(cache.total), `${fmtNum(cache.hits)} hits`, null, null, "Cache audit volume"),
     ];
-
     const queues = data.queues || {};
     const queueRows = queues.by_queue || [];
     const queueTiles = queueRows.slice(0, 4).map((q) => {
@@ -131,42 +178,69 @@ ${statusChip}
     if (!queueTiles.length) {
       queueTiles.push(tile("Queues", "0", "PostgreSQL jobs", "#monitoring-queues", "unknown", "Queue depth"));
     }
-
-    const act = data.activation || {};
-    const activationTiles = [
-      tile("Domains", fmtNum(act.domain_count), `${fmtNum(act.verified_domain_count)} verified`, "/dashboard/domains", null, "Domains"),
-      tile("API keys", fmtNum(act.token_count), "Per-domain keys", "/dashboard/domains", null, "API keys"),
-      tile("Traffic 30d", fmtNum(act.domains_with_traffic_30d), "Domains with audit calls", "/dashboard/domains", null, "Activation traffic"),
-    ];
-
+    const failedTiles = (queues.failed_top || []).slice(0, 4).map((row) =>
+      tile(
+        `${row.queue} · ${row.job_type}`,
+        fmtNum(row.count),
+        row.last_exception ? row.last_exception : "No exception detail",
+        null,
+        "stale",
+        `Failed jobs ${row.queue} ${row.job_type}`
+      )
+    );
     return (
-      renderGroup("Listings", listings) +
-      renderGroup("GIS Data", gisTiles) +
-      renderGroup("Crypto", cryptoTiles) +
-      renderGroup("Cache", cacheTiles) +
-      renderGroup("Queues", queueTiles) +
-      renderGroup("Activation", activationTiles)
+      renderGroup("Queue Health", queueTiles) +
+      renderGroup("Queue Performance", cacheTiles) +
+      renderGroup("Failed Jobs", failedTiles)
     );
   }
 
-  function renderQueueDetail(data) {
-    const lines = (data.queues?.top_job_types || [])
-      .map((row) => {
-        const queue = row.queue || "—";
-        const jobType = row.job_type || "unknown";
-        const count = row.count ?? 0;
-        return `${queue}\t${jobType}\t${count}`;
-      })
-      .filter((line) => line && !line.startsWith("undefined"));
-    const el = $("monitoring-queue-detail");
-    const details = $("monitoring-queues");
-    if (!el || !details) return;
-    if (lines.length) {
-      el.textContent = lines.join("\n");
-      details.hidden = false;
-    } else {
-      details.hidden = true;
+  function renderInfraPanel(data) {
+    const infra = data.infrastructure || {};
+    const scheduler = infra.scheduler || {};
+    const infraTiles = [
+      tile(
+        "Scheduler lock",
+        scheduler.leader_active ? "Leader active" : "No leader",
+        `lock_id ${scheduler.lock_id || "—"}`,
+        null,
+        scheduler.leader_active ? "healthy" : "critical",
+        "Scheduler leadership"
+      ),
+      tile("Infrastructure status", infra.status || "unknown", "Advisory lock probe", null, infra.status || "unknown", "Infrastructure health"),
+    ];
+    return renderGroup("Infrastructure", infraTiles);
+  }
+
+  function renderIncidentsPanel(data) {
+    const incidents = data.incidents || [];
+    if (!incidents.length) {
+      return `<div class="empty-state"><p>No active incidents</p><p class="empty-hint">Healthy systems have no open critical or warning incidents.</p></div>`;
     }
+    return `<div class="incident-list">${incidents
+      .map(
+        (item) => `<article class="incident-row incident-${item.severity || "warning"}">
+<header><span class="${badgeClass(item.severity)}">${item.severity || "warning"}</span> <strong>${item.title || "Incident"}</strong></header>
+<p>${item.detail || ""}</p>
+<p class="incident-source">Source: ${item.source || "unknown"}</p>
+</article>`
+      )
+      .join("")}</div>`;
+  }
+
+  function renderCriticalStrip(data) {
+    const strip = $("monitoring-critical-strip");
+    if (!strip) return;
+    const incidents = (data.incidents || []).filter((item) => item.severity === "critical");
+    if (!incidents.length) {
+      strip.hidden = true;
+      strip.innerHTML = "";
+      return;
+    }
+    strip.hidden = false;
+    strip.innerHTML = `<strong>Critical incidents</strong> ${incidents
+      .map((item) => `<span class="critical-pill">${item.title}</span>`)
+      .join("")}`;
   }
 
   function setLoading(loading, options) {
@@ -258,12 +332,73 @@ ${statusChip}
   }
 
   function applyMonitoringData(data) {
-    const content = $("monitoring-content");
-    if (content) {
-      content.innerHTML = renderMonitoring(data);
-    }
-    renderQueueDetail(data);
+    const panels = {
+      overview: $("panel-overview"),
+      ingest: $("panel-ingest"),
+      queues: $("panel-queues"),
+      data: $("panel-data"),
+      infra: $("panel-infra"),
+      integrations: $("panel-integrations"),
+      incidents: $("panel-incidents"),
+    };
+    if (panels.overview) panels.overview.innerHTML = renderOverviewPanel(data);
+    if (panels.ingest) panels.ingest.innerHTML = renderIngestPanel(data);
+    if (panels.queues) panels.queues.innerHTML = renderQueuePanel(data);
+    if (panels.data) panels.data.innerHTML = renderDataPanel(data);
+    if (panels.infra) panels.infra.innerHTML = renderInfraPanel(data);
+    if (panels.integrations) panels.integrations.innerHTML = renderIntegrationsPanel(data);
+    if (panels.incidents) panels.incidents.innerHTML = renderIncidentsPanel(data);
+    renderCriticalStrip(data);
     updateTimestamp();
+  }
+
+  function activateTab(tabName, focusTab) {
+    if (!TABS.includes(tabName)) tabName = "overview";
+    activeTab = tabName;
+    TABS.forEach((name) => {
+      const tab = $(`tab-${name}`);
+      const panel = $(`panel-${name}`);
+      const selected = name === tabName;
+      if (tab) {
+        tab.setAttribute("aria-selected", selected ? "true" : "false");
+        tab.setAttribute("tabindex", selected ? "0" : "-1");
+      }
+      if (panel) {
+        panel.hidden = !selected;
+        panel.classList.toggle("active", selected);
+      }
+    });
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tabName);
+    window.history.replaceState(null, "", url.toString());
+    if (focusTab) {
+      $(`tab-${tabName}`)?.focus();
+    }
+  }
+
+  function setupTabs() {
+    const tabList = document.querySelector(".monitoring-tabs");
+    if (!tabList) return;
+    const requested = new URL(window.location.href).searchParams.get("tab");
+    activateTab(requested || "overview", false);
+    tabList.addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-tab]");
+      if (!btn) return;
+      activateTab(btn.getAttribute("data-tab"), true);
+    });
+    tabList.addEventListener("keydown", (event) => {
+      const currentIndex = TABS.indexOf(activeTab);
+      if (currentIndex < 0) return;
+      let nextIndex = currentIndex;
+      if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % TABS.length;
+      if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + TABS.length) % TABS.length;
+      if (event.key === "Home") nextIndex = 0;
+      if (event.key === "End") nextIndex = TABS.length - 1;
+      if (nextIndex !== currentIndex) {
+        event.preventDefault();
+        activateTab(TABS[nextIndex], true);
+      }
+    });
   }
 
   function loadBootstrap() {
@@ -308,6 +443,7 @@ ${statusChip}
   document.addEventListener("DOMContentLoaded", () => {
     bindHostnamePreview();
     if (!$("monitoring")) return;
+    setupTabs();
     $("monitoring-refresh")?.addEventListener("click", () => fetchMonitoring());
     $("monitoring-retry")?.addEventListener("click", () => fetchMonitoring());
     const booted = loadBootstrap();
