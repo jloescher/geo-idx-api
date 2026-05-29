@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -68,7 +69,11 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 	adminAPI.Post("/flood-enrich", floodH.Enrich)
 	adminAPI.Post("/geocode/kickoff", dashH.RequireAdmin, geocodeH.Kickoff)
 	adminGIS := adminAPI.Group("/gis", dashH.RequireAdmin)
-	admin.RegisterGISRoutes(adminGIS, gisAdminH)
+	var uploadCORS fiber.Handler
+	if strings.TrimSpace(cfg.GIS.UploadPublicURL) != "" {
+		uploadCORS = middleware.UploadCORS(cfg)
+	}
+	admin.RegisterGISRoutes(adminGIS, gisAdminH, uploadCORS)
 
 	v1 := api.Group("/v1", domainAuth, mlsAccess)
 

@@ -336,12 +336,17 @@ func payloadToParcelRow(req parcelSourcePayload) (gisrepo.ParcelSourceRow, error
 }
 
 // RegisterGISRoutes mounts admin GIS operator endpoints (session auth required on parent group).
-func RegisterGISRoutes(grp fiber.Router, h *GISHandler) {
+func RegisterGISRoutes(grp fiber.Router, h *GISHandler, uploadCORS fiber.Handler) {
 	grp.Post("/probe", h.Probe)
 	grp.Post("/sync", h.Sync)
 	grp.Get("/sources", h.ListSources)
 	grp.Post("/sources", h.CreateSource)
 	grp.Put("/sources/:source_key", h.UpdateSource)
 	grp.Delete("/sources/:source_key", h.DeleteSource)
+	if uploadCORS != nil {
+		grp.Options("/sources/:source_key/upload", uploadCORS)
+		grp.Post("/sources/:source_key/upload", uploadCORS, h.UploadShapefile)
+		return
+	}
 	grp.Post("/sources/:source_key/upload", h.UploadShapefile)
 }

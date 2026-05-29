@@ -926,6 +926,13 @@ ${statusChip}
     });
   }
 
+  function gisUploadURL(sourceKey) {
+    const path = `/api/v1/admin/gis/sources/${encodeURIComponent(sourceKey)}/upload`;
+    const base = ($("monitoring")?.getAttribute("data-gis-upload-base") || "").trim();
+    if (!base) return path;
+    return `${base.replace(/\/$/, "")}${path}`;
+  }
+
   function bindGISOps() {
     const panel = $("panel-data");
     if (!panel || document.getElementById("monitoring")?.dataset?.isAdmin !== "true") return;
@@ -1027,9 +1034,9 @@ ${statusChip}
         if (status) status.textContent = `Uploading ${file.name}…`;
         const form = new FormData();
         form.append("file", file);
-        const res = await fetch(`/api/v1/admin/gis/sources/${encodeURIComponent(sourceKey)}/upload`, {
+        const res = await fetch(gisUploadURL(sourceKey), {
           method: "POST",
-          credentials: "same-origin",
+          credentials: "include",
           body: form,
         });
         const text = await res.text();
@@ -1057,7 +1064,7 @@ ${statusChip}
         if (!res.ok) {
           let msg = data.error || text || res.statusText;
           if (res.status === 413) {
-            msg = "Upload rejected (413). Redeploy idx-api-web with BodyLimit fix. Files >100MB may also be blocked by Cloudflare — use a smaller zip or upload via direct origin.";
+            msg = "Upload rejected (413). Files over 100MB cannot pass Cloudflare on idx.quantyralabs.cc — ensure GIS_UPLOAD_PUBLIC_URL is set and upload.idx is DNS-only.";
           }
           throw new Error(msg);
         }

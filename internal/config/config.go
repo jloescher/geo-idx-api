@@ -206,6 +206,7 @@ type GISConfig struct {
 	BoundaryStaleDays       int
 	ImportPath              string
 	ImportMaxBytes          int64
+	UploadPublicURL         string
 }
 
 type ImageCacheConfig struct {
@@ -214,8 +215,9 @@ type ImageCacheConfig struct {
 }
 
 type AuthConfig struct {
-	SessionLifetime time.Duration
-	InvitationTTL   time.Duration
+	SessionLifetime     time.Duration
+	SessionCookieDomain string
+	InvitationTTL       time.Duration
 	TurnstileSite   string
 	TurnstileSecret string
 	AdminSeedEmail  string
@@ -370,14 +372,16 @@ func Load() (Config, error) {
 			BoundaryStaleDays:      envInt("GIS_BOUNDARY_STALE_DAYS", 90),
 			ImportPath:             env("GIS_IMPORT_PATH", "/var/cache/geoidx/gis-imports"),
 			ImportMaxBytes:         envInt64("GIS_IMPORT_MAX_BYTES", 512*1024*1024),
+			UploadPublicURL:        strings.TrimRight(env("GIS_UPLOAD_PUBLIC_URL", ""), "/"),
 		},
 		Images: ImageCacheConfig{
 			Path: env("IMAGE_CACHE_PATH", "/var/cache/geoidx/images"),
 			TTL:  envDuration("IMAGE_CACHE_TTL", 86400*time.Second),
 		},
 		Auth: AuthConfig{
-			SessionLifetime: envDuration("SESSION_LIFETIME", 120*time.Minute),
-			InvitationTTL:   time.Duration(envInt("IDX_INVITATION_TTL_HOURS", 168)) * time.Hour,
+			SessionLifetime:     envDuration("SESSION_LIFETIME", 120*time.Minute),
+			SessionCookieDomain: env("SESSION_COOKIE_DOMAIN", ""),
+			InvitationTTL:       time.Duration(envInt("IDX_INVITATION_TTL_HOURS", 168)) * time.Hour,
 			TurnstileSite:   env("CLOUDFLARE_TURNSTILE_SITE_KEY", ""),
 			TurnstileSecret: env("CLOUDFLARE_TURNSTILE_SECRET_KEY", ""),
 			AdminSeedEmail:  env("ADMIN_SEED_EMAIL", ""),

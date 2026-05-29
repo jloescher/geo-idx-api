@@ -21,6 +21,7 @@ type PageData struct {
 	DomainError         string
 	SubmittedHost       string
 	MonitoringBootstrap *dashsvc.Snapshot
+	GISUploadBase       string
 	ProvisionFlash      *dashsvc.ProvisionResult
 	TokenReveals        map[int64]string
 	VerifyError         string
@@ -76,7 +77,8 @@ func renderMonitoringBody(data PageData) string {
 	if data.IsAdmin {
 		isAdmin = "true"
 	}
-	return `<section class="card" id="monitoring" data-is-admin="` + isAdmin + `" aria-labelledby="monitoring-heading">
+	uploadBase := web.Esc(strings.TrimSpace(data.GISUploadBase))
+	return `<section class="card" id="monitoring" data-is-admin="` + isAdmin + `" data-gis-upload-base="` + uploadBase + `" aria-labelledby="monitoring-heading">
 <script type="application/json" id="monitoring-bootstrap">` + bootstrapJSON + `</script>
 <h1 id="monitoring-heading">Monitoring</h1>
 <div class="monitoring-header">

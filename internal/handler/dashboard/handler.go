@@ -35,14 +35,21 @@ type Handler struct {
 
 // NewHandler constructs the dashboard handler.
 func NewHandler(cfg config.Config, db *repository.DB, logger *slog.Logger) *Handler {
-	store := session.New(session.Config{
+	sessCfg := session.Config{
 		Expiration:     cfg.Auth.SessionLifetime,
 		Storage:        newPGSessionStorage(db.Pool),
 		KeyLookup:      "cookie:session_id",
 		CookiePath:     "/",
 		CookieHTTPOnly: true,
 		CookieSameSite: "Lax",
-	})
+	}
+	if d := strings.TrimSpace(cfg.Auth.SessionCookieDomain); d != "" {
+		sessCfg.CookieDomain = d
+	}
+	if cfg.App.Env == "production" {
+		sessCfg.CookieSecure = true
+	}
+	store := session.New(sessCfg)
 	tokens := repository.NewTokenRepo(db)
 	return &Handler{
 		cfg:            cfg,
@@ -222,6 +229,7 @@ func (h *Handler) loadPageData(c *fiber.Ctx, uid int64, domainErr, submittedHost
 		Feeds:         h.feeds.Catalog(),
 		DomainError:   domainErr,
 		SubmittedHost: submittedHost,
+		GISUploadBase: strings.TrimRight(h.cfg.GIS.UploadPublicURL, "/"),
 	}
 	setup, err := h.monitoringRepo.UserSetup(c.Context(), uid)
 	if err != nil {
