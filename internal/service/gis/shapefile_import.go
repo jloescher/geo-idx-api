@@ -54,6 +54,10 @@ func (s *ShapefileImportService) Import(ctx context.Context, args ShapefileImpor
 		return err
 	}
 	outJSON := args.StoragePath + ".geojson"
+	if err := ensureImportFileReadable(args.StoragePath); err != nil {
+		s.failUpload(ctx, args.UploadID, err)
+		return err
+	}
 	if err := runOGR2OGR(ctx, args.StoragePath, outJSON); err != nil {
 		s.failUpload(ctx, args.UploadID, err)
 		return err
@@ -129,6 +133,20 @@ func (s *ShapefileImportService) failUpload(ctx context.Context, uploadID int64,
 		return
 	}
 	_ = s.db.SetImportUploadStatus(ctx, uploadID, "failed", err.Error())
+}
+
+func ensureImportFileReadable(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("upload file not found at %s: mount the same GIS_IMPORT_PATH volume on idx-api-web and idx-api-worker on the host that received the upload (multi-DC: use shared storage or a single upload origin)", path)
+		}
+		return fmt.Errorf("upload file stat %s: %w", path, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("upload path is a directory, expected file: %s", path)
+	}
+	return nil
 }
 
 func runOGR2OGR(ctx context.Context, inputPath, outPath string) error {
