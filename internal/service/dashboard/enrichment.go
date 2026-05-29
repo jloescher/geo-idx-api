@@ -211,9 +211,10 @@ func groupGeocodeDatasetOutcomes(rows []geocoderepo.DatasetOutcomeCount) []Datas
 func mapFEMANullSamples(rows []femarepo.NullWithCoordsSample) []FEMANullSample {
 	out := make([]FEMANullSample, 0, len(rows))
 	for _, r := range rows {
-		reason := "never_attempted"
-		if r.FEMAFailureReason != nil && *r.FEMAFailureReason != "" {
-			reason = *r.FEMAFailureReason
+		reason := femarepo.EffectiveFEMAFailureReason(r.FEMAFailureReason, r.FloodZoneUpdatedAt)
+		attempts := r.FEMAAttemptCount
+		if attempts == 0 && r.FloodZoneUpdatedAt != nil {
+			attempts = 1
 		}
 		var updated *string
 		if r.FloodZoneUpdatedAt != nil {
@@ -224,7 +225,7 @@ func mapFEMANullSamples(rows []femarepo.NullWithCoordsSample) []FEMANullSample {
 			ListingKey:         r.ListingKey,
 			DatasetSlug:        r.DatasetSlug,
 			FailureReason:      reason,
-			AttemptCount:       r.FEMAAttemptCount,
+			AttemptCount:       attempts,
 			FloodZoneUpdatedAt: updated,
 		})
 	}

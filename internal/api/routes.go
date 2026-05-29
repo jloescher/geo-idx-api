@@ -60,6 +60,16 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 	api.Post("/auth/token", authH.Token)
 	api.Get("/auth/user", authH.User)
 
+	floodH := admin.NewFloodHandler(cfg, db, logger)
+	geocodeH := admin.NewGeocodeHandler(cfg, db, logger)
+	gisAdminH := admin.NewGISHandler(cfg, db, logger)
+	adminAPI := api.Group("/v1/admin", dashH.SessionAuthMiddleware)
+	adminAPI.Get("/monitoring", dashH.MonitoringJSON)
+	adminAPI.Post("/flood-enrich", floodH.Enrich)
+	adminAPI.Post("/geocode/kickoff", dashH.RequireAdmin, geocodeH.Kickoff)
+	adminGIS := adminAPI.Group("/gis", dashH.RequireAdmin)
+	admin.RegisterGISRoutes(adminGIS, gisAdminH)
+
 	v1 := api.Group("/v1", domainAuth, mlsAccess)
 
 	// GIS (mls.access bypasses feed check inside middleware)
@@ -106,16 +116,6 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 	// Platform routes (host-checked in middleware or separate mount)
 	app.Get("/", mktH.Home)
 	dashH.Register(app)
-
-	floodH := admin.NewFloodHandler(cfg, db, logger)
-	geocodeH := admin.NewGeocodeHandler(cfg, db, logger)
-	gisAdminH := admin.NewGISHandler(cfg, db, logger)
-	adminAPI := api.Group("/v1/admin", dashH.SessionAuthMiddleware)
-	adminAPI.Get("/monitoring", dashH.MonitoringJSON)
-	adminAPI.Post("/flood-enrich", floodH.Enrich)
-	adminAPI.Post("/geocode/kickoff", dashH.RequireAdmin, geocodeH.Kickoff)
-	adminGIS := adminAPI.Group("/gis", dashH.RequireAdmin)
-	admin.RegisterGISRoutes(adminGIS, gisAdminH)
 }
 
 func healthz(c *fiber.Ctx) error {

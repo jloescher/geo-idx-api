@@ -839,9 +839,31 @@ ${statusChip}
       opts.headers["Content-Type"] = "application/json";
       opts.body = JSON.stringify(body);
     }
-    const res = await fetch(`/api/v1/admin/gis${path}`, opts);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || res.statusText);
+    const url = `/api/v1/admin/gis${path}`;
+    const res = await fetch(url, opts);
+    const text = await res.text();
+    let data = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      data = { error: text || res.statusText };
+    }
+    // #region agent log
+    fetch("http://127.0.0.1:7685/ingest/e6fa4028-535e-4c65-aee2-cbe02c1fc56d", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "4f5bac" },
+      body: JSON.stringify({
+        sessionId: "4f5bac",
+        runId: "post-fix",
+        hypothesisId: "GIS-A",
+        location: "dashboard.js:gisAdminFetch",
+        message: "gis admin response",
+        data: { method, url, status: res.status, ok: res.ok, error: data.error || null },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+    if (!res.ok) throw new Error(data.error || text || res.statusText);
     return data;
   }
 
@@ -908,9 +930,10 @@ ${statusChip}
     const panel = $("panel-data");
     if (!panel || document.getElementById("monitoring")?.dataset?.isAdmin !== "true") return;
 
-    $("gis-source-form")?.addEventListener("submit", async (event) => {
+    panel.addEventListener("submit", async (event) => {
+      const form = event.target.closest("#gis-source-form");
+      if (!form) return;
       event.preventDefault();
-      const form = event.target;
       const status = $("gis-ops-status");
       const payload = {
         source_key: form.source_key.value.trim(),

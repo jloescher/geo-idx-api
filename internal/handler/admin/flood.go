@@ -68,6 +68,11 @@ func (h *FloodHandler) Enrich(c *fiber.Ctx) error {
 	}
 
 	_, enqueued, err := svc.AdminKickoff(c.Context(), req.DatasetSlug)
+	// #region agent log
+	agentDebugLog("FEMA-B", "flood.go:Enrich", "kickoff result", map[string]any{
+		"enqueued": enqueued, "stale": stale, "err": err != nil,
+	})
+	// #endregion
 	if err != nil {
 		h.logger.Error("fema flood enrich kickoff", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to enqueue kickoff"})

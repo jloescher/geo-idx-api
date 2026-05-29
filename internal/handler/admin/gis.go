@@ -66,6 +66,9 @@ func (h *GISHandler) requireAdmin(c *fiber.Ctx) error {
 // Probe runs metadata probes (one source or all).
 func (h *GISHandler) Probe(c *fiber.Ctx) error {
 	if err := h.requireAdmin(c); err != nil {
+		// #region agent log
+		agentDebugLog("GIS-A", "gis.go:Probe", "requireAdmin failed", map[string]any{"error": err.Error()})
+		// #endregion
 		return err
 	}
 	var req gisProbeRequest
@@ -74,6 +77,9 @@ func (h *GISHandler) Probe(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid JSON body"})
 		}
 	}
+	// #region agent log
+	agentDebugLog("GIS-A", "gis.go:Probe", "handler reached", map[string]any{"source_key": req.SourceKey})
+	// #endregion
 	meta := gis.NewMetadataService(h.cfg, h.db, h.logger)
 	if req.SourceKey == "" {
 		result := meta.ProbeAll(c.Context())

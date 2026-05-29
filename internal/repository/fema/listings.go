@@ -152,10 +152,26 @@ func (r *Repository) CountNullFEMAWithCoords(ctx context.Context, datasetSlug st
 	return n, err
 }
 
+// EffectiveFEMAFailureReason maps legacy rows (flood_zone_updated_at set before audit columns) to no_nfhl_feature.
+func EffectiveFEMAFailureReason(reason *string, floodZoneUpdatedAt *time.Time) string {
+	if reason != nil && *reason != "" {
+		return *reason
+	}
+	if floodZoneUpdatedAt != nil {
+		return FailureReasonNoNFHLFeature
+	}
+	return "never_attempted"
+}
+
+const femaOutcomeExpr = `COALESCE(
+	NULLIF(TRIM(fema_failure_reason), ''),
+	CASE WHEN flood_zone_updated_at IS NOT NULL THEN 'no_nfhl_feature' ELSE 'never_attempted' END
+)`
+
 // CountByOutcome groups null-with-coords rows by failure reason (empty = never attempted).
 func (r *Repository) CountByOutcome(ctx context.Context, datasetSlug string) ([]OutcomeCount, error) {
 	query := `
-		SELECT COALESCE(fema_failure_reason, 'never_attempted') AS reason, COUNT(*)
+		SELECT ` + femaOutcomeExpr + ` AS reason, COUNT(*)
 		FROM listings
 		WHERE latitude IS NOT NULL AND longitude IS NOT NULL
 		  AND fema_flood_zone_code IS NULL
@@ -187,7 +203,7 @@ func (r *Repository) CountByOutcome(ctx context.Context, datasetSlug string) ([]
 // CountByDatasetOutcome returns per-dataset FEMA null breakdown.
 func (r *Repository) CountByDatasetOutcome(ctx context.Context) ([]DatasetOutcomeCount, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT dataset_slug, COALESCE(fema_failure_reason, 'never_attempted') AS reason, COUNT(*)
+		SELECT dataset_slug, `+femaOutcomeExpr+` AS reason, COUNT(*)
 		FROM listings
 		WHERE latitude IS NOT NULL AND longitude IS NOT NULL
 		  AND fema_flood_zone_code IS NULL
