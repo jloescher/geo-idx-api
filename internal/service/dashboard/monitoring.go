@@ -36,6 +36,7 @@ func NewMonitoringService(cfg config.Config, db *repository.DB) *MonitoringServi
 type Snapshot struct {
 	GeneratedAt    time.Time          `json:"generated_at"`
 	Listings       []ListingMetric    `json:"listings"`
+	Enrichment     EnrichmentMetric   `json:"enrichment"`
 	GIS            GISMetric          `json:"gis"`
 	Crypto         CryptoMetric       `json:"crypto"`
 	Cache          CacheMetric        `json:"cache"`
@@ -215,6 +216,12 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 		m.Status = ListingDatasetStatus(isCurrent, hasActiveReplica)
 		snap.Listings = append(snap.Listings, m)
 	}
+
+	enrichment, err := loadEnrichmentMetrics(ctx, s.cfg, s.repo.Pool())
+	if err != nil {
+		return nil, err
+	}
+	snap.Enrichment = *enrichment
 
 	counts, err := s.gis.MonitoringCounts(ctx)
 	if err != nil {
@@ -441,6 +448,10 @@ func (s *MonitoringService) BuildSnapshot(ctx context.Context) (*Snapshot, error
 		StaleInFlight:          filterStaleInFlight(inFlight),
 		TotalFailed:            snap.Queues.TotalFailedRecent,
 		SyncPipelineStatus:     snap.SyncPipeline.Status,
+		FEMAStale:              snap.Enrichment.FEMA.Stale,
+		GeocodePending:         snap.Enrichment.Geocode.Pending,
+		GeocodeHighAttempt:     snap.Enrichment.Geocode.HighAttemptErrors,
+		EnrichmentStatus:       snap.Enrichment.Status,
 	})
 	for _, src := range snap.GIS.Sources {
 		if !src.Enabled {

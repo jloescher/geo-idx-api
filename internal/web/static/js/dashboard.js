@@ -188,32 +188,163 @@ ${statusChip}
     );
   }
 
+  function truncateCell(text, max) {
+    if (!text) return "—";
+    const s = String(text);
+    if (s.length <= max) return s;
+    return s.slice(0, max - 1) + "…";
+  }
+
+  function renderEnrichmentPanel(enrichment, isAdmin) {
+    const fema = enrichment?.fema || {};
+    const geo = enrichment?.geocode || {};
+    const enrichTiles = [
+      tile(
+        "FEMA stale",
+        fmtNum(fema.stale),
+        `${fmtNum(fema.null_with_coords)} null w/ coords`,
+        null,
+        fema.status || "unknown",
+        "FEMA enrichment stale queue"
+      ),
+      tile(
+        "Geocode pending",
+        fmtNum(geo.pending),
+        `${fmtNum(geo.missing_coords)} missing coords`,
+        null,
+        geo.status || "unknown",
+        "Geocode pending listings"
+      ),
+      tile(
+        "Geocode bad address",
+        fmtNum(geo.bad_address),
+        `${fmtNum(geo.high_attempt_errors)} high-attempt errors`,
+        null,
+        (geo.high_attempt_errors || 0) > 0 ? "stale" : "healthy",
+        "Geocode bad addresses"
+      ),
+      tile(
+        "Enrichment jobs",
+        fema.active_job || geo.active_job ? "active" : "idle",
+        `${fema.active_job ? "FEMA" : ""}${fema.active_job && geo.active_job ? " · " : ""}${geo.active_job ? "geocode" : ""}`,
+        null,
+        fema.active_job || geo.active_job ? "healthy" : "healthy",
+        "Background enrichment jobs"
+      ),
+    ];
+    const femaReasonRows = (fema.by_reason || []).map((r) => [r.reason || "—", fmtNum(r.count)]);
+    const geoReasonRows = (geo.by_reason || []).map((r) => [r.reason || "—", fmtNum(r.count)]);
+    const datasetRows = [];
+    const byDS = {};
+    (fema.by_dataset || []).forEach((block) => {
+      byDS[block.dataset_slug] = byDS[block.dataset_slug] || { fema: [], geo: [] };
+      byDS[block.dataset_slug].fema = block.by_reason || [];
+    });
+    (geo.by_dataset || []).forEach((block) => {
+      byDS[block.dataset_slug] = byDS[block.dataset_slug] || { fema: [], geo: [] };
+      byDS[block.dataset_slug].geo = block.by_reason || [];
+    });
+    Object.keys(byDS)
+      .sort()
+      .forEach((ds) => {
+        const fSum = (byDS[ds].fema || []).map((r) => `${r.reason}:${r.count}`).join(", ") || "—";
+        const gSum = (byDS[ds].geo || []).map((r) => `${r.reason}:${r.count}`).join(", ") || "—";
+        datasetRows.push([ds, fSum, gSum]);
+      });
+    const femaSampleRows = (fema.null_samples || []).map((r) => [
+      r.listing_key || "—",
+      r.dataset_slug || "—",
+      r.failure_reason || "never_attempted",
+      fmtNum(r.attempt_count),
+      r.flood_zone_updated_at || "—",
+    ]);
+    const geoSampleRows = (geo.failure_samples || []).map((r) => [
+      r.listing_key || "—",
+      r.dataset_slug || "—",
+      r.failure_reason || "—",
+      fmtNum(r.attempt_count),
+      truncateCell(r.query_snippet, 40),
+      r.failed_at || "—",
+    ]);
+    const adminToolbar = isAdmin
+      ? `<div class="monitoring-toolbar">
+<button type="button" class="btn btn-secondary btn-sm" data-enrich-action="fema">Run FEMA enrich</button>
+<button type="button" class="btn btn-secondary btn-sm" data-enrich-action="geocode">Run geocode kickoff</button>
+<span id="enrich-ops-status" class="monitoring-meta" role="status"></span>
+</div>`
+      : "";
+    return (
+      adminToolbar +
+      renderGroup("Listing Enrichment", enrichTiles) +
+      renderStatList("FEMA null-with-coords by reason", femaReasonRows, ["Reason", "Count"]) +
+      renderStatList("Geocode gaps by reason", geoReasonRows, ["Reason", "Count"]) +
+      renderStatList("Enrichment by dataset", datasetRows, ["Dataset", "FEMA null reasons", "Geocode gap reasons"]) +
+      renderStatList("FEMA null samples (top 25)", femaSampleRows, ["Listing", "Dataset", "Reason", "Attempts", "Flood updated"]) +
+      renderStatList("Geocode failure samples (top 25)", geoSampleRows, ["Listing", "Dataset", "Reason", "Attempts", "Query", "Failed at"])
+    );
+  }
+
   function renderGISOpsTable(sources, isAdmin) {
     const rows = (sources || []).map((src) => {
       const api = src.api_status || "unknown";
       const probe = src.last_probe_at ? fmtSyncAge(src.last_probe_at) : "—";
+      const probeHTTP = src.last_probe_http_status != null ? String(src.last_probe_http_status) : "—";
+      const probeErr = src.last_probe_error ? truncateCell(src.last_probe_error, 48) : "—";
+      const importStatus = src.last_import_status || "—";
+      const syncDisabled = src.sync_mode === "shapefile";
       const actions = isAdmin
         ? `<button type="button" class="btn btn-secondary btn-sm" data-gis-action="probe" data-source-key="${src.source_key}">Probe</button>
-           <button type="button" class="btn btn-secondary btn-sm" data-gis-action="sync" data-source-key="${src.source_key}">Sync</button>`
+           <button type="button" class="btn btn-secondary btn-sm" data-gis-action="sync" data-source-key="${src.source_key}" ${syncDisabled ? "disabled title=\"Use shapefile upload\"" : ""}>Sync</button>
+           <button type="button" class="btn btn-secondary btn-sm" data-gis-action="edit" data-source-key="${src.source_key}">Edit</button>
+           <button type="button" class="btn btn-secondary btn-sm" data-gis-action="delete" data-source-key="${src.source_key}">Disable</button>
+           <label class="btn btn-secondary btn-sm gis-upload-label">Upload<input type="file" accept=".zip,.shp" hidden data-gis-action="upload" data-source-key="${src.source_key}"></label>`
         : "—";
       return `<tr>
         <td>${src.source_key || "—"}</td>
         <td>${src.county_slug || "—"}</td>
         <td>${src.sync_mode || "—"}</td>
         <td><span class="${badgeClass(api === "reachable" ? "healthy" : api === "unreachable" ? "critical" : "unknown")}">${api}</span></td>
+        <td>${probeHTTP}</td>
+        <td title="${src.last_probe_error || ""}">${probeErr}</td>
         <td>${probe}</td>
         <td>${fmtNum(src.parcel_count)}</td>
+        <td>${importStatus}</td>
         <td>${src.active_sync_job ? "yes" : "no"}</td>
-        <td>${actions}</td>
+        <td class="gis-actions-cell">${actions}</td>
       </tr>`;
     });
     const toolbar = isAdmin
       ? `<div class="monitoring-toolbar"><button type="button" class="btn btn-secondary btn-sm" data-gis-action="probe-all">Probe all</button>
-         <span id="gis-ops-status" class="monitoring-meta" role="status"></span></div>`
+         <button type="button" class="btn btn-secondary btn-sm" data-gis-action="add-source">Add source</button>
+         <span id="gis-ops-status" class="monitoring-meta" role="status"></span></div>
+         <dialog id="gis-source-dialog" class="gis-source-dialog">
+           <form method="dialog" id="gis-source-form" class="gis-source-form">
+             <h3 id="gis-source-dialog-title">GIS source</h3>
+             <label>Source key <input name="source_key" required></label>
+             <label>County slug <input name="county_slug" required></label>
+             <label>Query URL <input name="query_url"></label>
+             <label>Sync mode
+               <select name="sync_mode">
+                 <option value="bbox">bbox</option>
+                 <option value="paginate">paginate</option>
+                 <option value="where_filter">where_filter</option>
+                 <option value="shapefile">shapefile</option>
+               </select>
+             </label>
+             <label>MLS feed <input name="mls_feed" value="stellar"></label>
+             <label>Priority <input name="priority" type="number" value="100"></label>
+             <label>Notes <input name="notes"></label>
+             <label><input name="enabled" type="checkbox" checked> Enabled</label>
+             <div class="form-actions">
+               <button type="submit" class="btn btn-primary btn-sm">Save</button>
+               <button type="button" class="btn btn-secondary btn-sm" data-gis-action="cancel-dialog">Cancel</button>
+             </div>
+           </form>
+         </dialog>`
       : "";
     return `${toolbar}<table class="monitoring-table"><thead><tr>
-      <th>Source</th><th>County</th><th>Mode</th><th>API</th><th>Last probe</th><th>Parcels</th><th>Sync active</th><th>Actions</th>
-    </tr></thead><tbody>${rows.join("") || '<tr><td colspan="8">No GIS sources in snapshot</td></tr>'}</tbody></table>`;
+      <th>Source</th><th>County</th><th>Mode</th><th>API</th><th>Probe HTTP</th><th>Error</th><th>Last probe</th><th>Parcels</th><th>Import</th><th>Sync active</th><th>Actions</th>
+    </tr></thead><tbody>${rows.join("") || '<tr><td colspan="11">No GIS sources in snapshot</td></tr>'}</tbody></table>`;
   }
 
   function renderDataPanel(data) {
@@ -230,6 +361,7 @@ ${statusChip}
       .slice(0, 8)
       .map(([county, total]) => [county, fmtNum(total)]);
     return (
+      renderEnrichmentPanel(data.enrichment, isAdmin) +
       renderGroup("GIS Data Health", gisTiles) +
       renderStatList("Top Counties by Parcel Count", byCounty, ["County", "Parcels"]) +
       `<div class="monitoring-group"><h3 class="monitoring-group-title">GIS Sources</h3>${renderGISOpsTable(gis.sources, isAdmin)}</div>`
@@ -697,45 +829,194 @@ ${statusChip}
     update();
   }
 
+  async function gisAdminFetch(method, path, body) {
+    const opts = {
+      method,
+      credentials: "same-origin",
+      headers: {},
+    };
+    if (body !== undefined) {
+      opts.headers["Content-Type"] = "application/json";
+      opts.body = JSON.stringify(body);
+    }
+    const res = await fetch(`/api/v1/admin/gis${path}`, opts);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    return data;
+  }
+
   async function gisAdminPost(path, body) {
-    const res = await fetch(`/api/v1/admin/gis${path}`, {
+    return gisAdminFetch("POST", path, body);
+  }
+
+  async function adminEnrichPost(path) {
+    const res = await fetch(`/api/v1/admin${path}`, {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body || {}),
+      body: "{}",
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || res.statusText);
     return data;
   }
 
-  function bindGISOps() {
+  function openGISSourceDialog(mode, source) {
+    const dialog = $("gis-source-dialog");
+    const form = $("gis-source-form");
+    if (!dialog || !form) return;
+    $("gis-source-dialog-title").textContent = mode === "edit" ? `Edit ${source?.source_key || ""}` : "Add GIS source";
+    form.source_key.value = source?.source_key || "";
+    form.source_key.readOnly = mode === "edit";
+    form.county_slug.value = source?.county_slug || "";
+    form.query_url.value = source?.query_url || "";
+    form.sync_mode.value = source?.sync_mode || "bbox";
+    form.mls_feed.value = source?.mls_feed || "stellar";
+    form.priority.value = source?.priority != null ? source.priority : 100;
+    form.notes.value = source?.notes || "";
+    form.enabled.checked = source?.enabled !== false;
+    form.dataset.mode = mode;
+    dialog.showModal();
+  }
+
+  function bindEnrichmentOps() {
     const panel = $("panel-data");
     if (!panel || document.getElementById("monitoring")?.dataset?.isAdmin !== "true") return;
     panel.addEventListener("click", async (event) => {
+      const btn = event.target.closest("[data-enrich-action]");
+      if (!btn) return;
+      const status = $("enrich-ops-status");
+      try {
+        btn.disabled = true;
+        if (status) status.textContent = "Working…";
+        if (btn.getAttribute("data-enrich-action") === "fema") {
+          await adminEnrichPost("/flood-enrich");
+        } else if (btn.getAttribute("data-enrich-action") === "geocode") {
+          await adminEnrichPost("/geocode/kickoff");
+        }
+        if (status) status.textContent = "Enqueued";
+        fetchMonitoring({ silent: true });
+      } catch (err) {
+        if (status) status.textContent = err.message || "Failed";
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+
+  function bindGISOps() {
+    const panel = $("panel-data");
+    if (!panel || document.getElementById("monitoring")?.dataset?.isAdmin !== "true") return;
+
+    $("gis-source-form")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.target;
+      const status = $("gis-ops-status");
+      const payload = {
+        source_key: form.source_key.value.trim(),
+        county_slug: form.county_slug.value.trim(),
+        query_url: form.query_url.value.trim(),
+        sync_mode: form.sync_mode.value,
+        mls_feed: form.mls_feed.value.trim() || "stellar",
+        priority: Number(form.priority.value) || 100,
+        notes: form.notes.value.trim() || null,
+        enabled: form.enabled.checked,
+      };
+      try {
+        if (status) status.textContent = "Saving…";
+        if (form.dataset.mode === "edit") {
+          await gisAdminFetch("PUT", `/sources/${encodeURIComponent(payload.source_key)}`, payload);
+        } else {
+          await gisAdminPost("/sources", payload);
+        }
+        $("gis-source-dialog")?.close();
+        if (status) status.textContent = "Saved";
+        fetchMonitoring({ silent: true });
+      } catch (err) {
+        if (status) status.textContent = err.message || "Save failed";
+      }
+    });
+
+    panel.addEventListener("click", async (event) => {
+      const uploadInput = event.target.closest('input[data-gis-action="upload"]');
+      if (uploadInput) return;
+
       const btn = event.target.closest("[data-gis-action]");
       if (!btn) return;
       const status = $("gis-ops-status");
       const action = btn.getAttribute("data-gis-action");
       const sourceKey = btn.getAttribute("data-source-key");
       try {
+        if (action === "cancel-dialog") {
+          $("gis-source-dialog")?.close();
+          return;
+        }
         btn.disabled = true;
         if (status) status.textContent = "Working…";
-        if (action === "probe-all") {
-          await gisAdminPost("/probe", {});
+        if (action === "add-source") {
+          openGISSourceDialog("create", null);
+          if (status) status.textContent = "";
+          return;
+        }
+        if (action === "edit" && sourceKey) {
+          const data = await gisAdminFetch("GET", "/sources");
+          const match = (data.sources || []).find((s) => s.source_key === sourceKey);
+          openGISSourceDialog("edit", match || { source_key: sourceKey });
+          if (status) status.textContent = "";
+          return;
+        }
+        if (action === "delete" && sourceKey) {
+          if (!window.confirm(`Disable GIS source ${sourceKey}?`)) return;
+          await gisAdminFetch("DELETE", `/sources/${encodeURIComponent(sourceKey)}`);
+        } else if (action === "probe-all") {
+          const data = await gisAdminPost("/probe", {});
+          if (data.failed && data.failed.length) {
+            const msg = data.failed.map((f) => `${f.source_key}: ${f.error}`).join("; ");
+            if (status) status.textContent = truncateCell(msg, 120);
+          } else {
+            if (status) status.textContent = "Probe all done";
+          }
         } else if (action === "probe" && sourceKey) {
           await gisAdminPost("/probe", { source_key: sourceKey });
+          if (status) status.textContent = "Probe done";
         } else if (action === "sync" && sourceKey) {
           const force = window.confirm(`Start parcel sync for ${sourceKey}?`);
           if (!force) return;
           await gisAdminPost("/sync", { source_key: sourceKey, force: true });
+          if (status) status.textContent = "Sync enqueued";
         }
-        if (status) status.textContent = "Done";
+        if (action !== "probe-all" && status && !status.textContent) status.textContent = "Done";
         fetchMonitoring({ silent: true });
       } catch (err) {
         if (status) status.textContent = err.message || "Failed";
       } finally {
         btn.disabled = false;
+      }
+    });
+
+    panel.addEventListener("change", async (event) => {
+      const input = event.target.closest('input[data-gis-action="upload"]');
+      if (!input || !input.files || !input.files[0]) return;
+      const sourceKey = input.getAttribute("data-source-key");
+      const status = $("gis-ops-status");
+      const file = input.files[0];
+      try {
+        if (status) status.textContent = `Uploading ${file.name}…`;
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetch(`/api/v1/admin/gis/sources/${encodeURIComponent(sourceKey)}/upload`, {
+          method: "POST",
+          credentials: "same-origin",
+          body: form,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || res.statusText);
+        if (status) status.textContent = `Upload queued (job ${data.job_id})`;
+        fetchMonitoring({ silent: true });
+      } catch (err) {
+        if (status) status.textContent = err.message || "Upload failed";
+      } finally {
+        input.value = "";
       }
     });
   }
@@ -746,6 +1027,7 @@ ${statusChip}
     setupTabs();
     bindTabDrillLinks();
     bindGISOps();
+    bindEnrichmentOps();
     $("monitoring-refresh")?.addEventListener("click", () => fetchMonitoring());
     $("monitoring-retry")?.addEventListener("click", () => fetchMonitoring());
     const booted = loadBootstrap();

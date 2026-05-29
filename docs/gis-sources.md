@@ -278,7 +278,7 @@ Dashboard GIS tile uses `parcels_last_synced_at`, `zips_last_synced_at`, per-sou
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/api/v1/admin/gis/probe` | Probe one source (`source_key`) or all |
+| `POST` | `/api/v1/admin/gis/probe` | Probe one source (`source_key`) or all; response includes `{ failed: [{source_key, error}] }` on partial errors |
 | `POST` | `/api/v1/admin/gis/sync` | Enqueue `gis.parcel_sync_page` chain (`source_key`, `force`) |
 | `GET` | `/api/v1/admin/gis/sources` | List catalog + `gis_source_states` health |
 | `POST` | `/api/v1/admin/gis/sources` | Upsert catalog row |
@@ -286,9 +286,18 @@ Dashboard GIS tile uses `parcels_last_synced_at`, `zips_last_synced_at`, per-sou
 | `DELETE` | `/api/v1/admin/gis/sources/:source_key` | Soft-disable (`enabled=false`) or `?hard=true` |
 | `POST` | `/api/v1/admin/gis/sources/:source_key/upload` | Multipart `.zip`/`.shp` → `gis.shapefile_import` worker job |
 
-**Dashboard:** Monitoring → **Data Quality** → GIS Sources table (**Probe**, **Sync**, **Probe all**) when logged in as admin.
+**Dashboard:** Monitoring → **Data Quality** → GIS Sources table when logged in as admin:
 
-**Shapefile ingest:** Set `sync_mode=shapefile` on the catalog row, upload via admin API or dashboard. Worker image includes `gdal-tools` (`ogr2ogr`). Set `GIS_IMPORT_PATH` (default `/var/cache/geoidx/gis-imports`) on **API and worker** with a **shared volume** in multi-DC so workers can read uploads.
+- **Probe** / **Probe all** — updates `last_probe_at`, `last_probe_ok`, `last_probe_http_status`, `last_probe_error` (shown in table)
+- **Sync** — disabled when `sync_mode=shapefile` or source is a boundary-only row
+- **Add / Edit / Disable** — CRUD modals wired to `/api/v1/admin/gis/sources`
+- **Upload** — per-row file input (`.zip` or `.shp` + sidecars); status from `gis_import_uploads` (`pending` → `processing` → `done` / `failed`)
+
+**Probe all behavior:** Probes the static county catalog **and** all `enabled` rows in `gis_parcel_sources`. Shapefile sources are skipped (no live ArcGIS query). `API: UNKNOWN` in the UI means `last_probe_at` is NULL — run Probe or Probe all after migration `00010`.
+
+**Shapefile ingest:** Set `sync_mode=shapefile` on the catalog row (empty `query_url` allowed), upload via admin API or dashboard. Worker image includes `gdal-tools` (`ogr2ogr`); verify with `make docker-gis-smoke` after image build.
+
+**Shared volume (required in production):** Mount the same host path or named volume at `GIS_IMPORT_PATH` (default `/var/cache/geoidx/gis-imports`) on **idx-api-web** and **idx-api-worker 1** in each DC. The API writes uploads; worker 1 runs `gis.shapefile_import` and reads via `/vsizip/` or direct `.shp`. Without a shared mount, uploads succeed on API but the worker cannot read the file.
 
 **Env:** `GIS_SYNC_QUEUE`, `GIS_IMPORT_PATH`, `GIS_IMPORT_MAX_BYTES` (default 512MB).
 

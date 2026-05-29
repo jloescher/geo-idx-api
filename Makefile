@@ -1,4 +1,4 @@
-.PHONY: build test fmt lint run-api run-worker run-scheduler migrate migrate-install seed-admin gis-enqueue-parcels gis-enqueue-zips openapi-sync
+.PHONY: build test fmt lint run-api run-worker run-scheduler migrate migrate-install seed-admin gis-enqueue-parcels gis-enqueue-zips openapi-sync docker-gis-smoke
 
 # Copy OpenAPI source into the API binary embed path (required for //go:embed in internal/openapi).
 openapi-sync:
@@ -54,3 +54,9 @@ migrate:
 # Optional: install goose on PATH ($(go env GOPATH)/bin must be in PATH)
 migrate-install:
 	go install $(GOOSE_PKG)
+
+# Verify worker image includes ogr2ogr for GIS shapefile imports.
+docker-gis-smoke:
+	docker build -f Dockerfile --target worker -t idx-api-worker:gis-smoke .
+	docker run --rm idx-api-worker:gis-smoke ogr2ogr --version
+	docker run --rm idx-api-worker:gis-smoke sh -c 'ogr2ogr --formats | grep -i shapefile'

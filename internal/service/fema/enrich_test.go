@@ -52,6 +52,9 @@ func TestBuildListingFEMAUpdate_miss(t *testing.T) {
 	if u.FEMAFloodZoneCode != nil {
 		t.Fatalf("expected nil fema code on miss, got %+v", u.FEMAFloodZoneCode)
 	}
+	if u.FEMAFailureReason == nil || *u.FEMAFailureReason != femarepo.FailureReasonNoNFHLFeature {
+		t.Fatalf("expected no_nfhl_feature reason, got %+v", u.FEMAFailureReason)
+	}
 	if u.LowRiskFloodZoneYN {
 		t.Fatal("miss should not be low risk")
 	}
@@ -85,16 +88,19 @@ func TestRunBatchSkipsUpdateOnQueryPointError(t *testing.T) {
 		t.Fatal("expected query error")
 	}
 
-	updates := collectBatchUpdates(err, nil, time.Now().UTC(), 99)
+	updates, errorIDs := collectBatchUpdates(err, nil, time.Now().UTC(), 99)
 	if len(updates) != 0 {
 		t.Fatalf("expected no updates on query error, got %d", len(updates))
 	}
+	if len(errorIDs) != 1 || errorIDs[0] != 99 {
+		t.Fatalf("expected error id 99, got %v", errorIDs)
+	}
 }
 
-// collectBatchUpdates mirrors RunBatch persist decision: only successful queries produce updates.
-func collectBatchUpdates(queryErr error, attrs *PointAttributes, now time.Time, id int64) []femarepo.FEMAUpdate {
+// collectBatchUpdates mirrors RunBatch persist decision: errors are tracked separately.
+func collectBatchUpdates(queryErr error, attrs *PointAttributes, now time.Time, id int64) ([]femarepo.FEMAUpdate, []int64) {
 	if queryErr != nil {
-		return nil
+		return nil, []int64{id}
 	}
-	return []femarepo.FEMAUpdate{buildListingFEMAUpdate(id, now, attrs)}
+	return []femarepo.FEMAUpdate{buildListingFEMAUpdate(id, now, attrs)}, nil
 }

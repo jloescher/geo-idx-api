@@ -11,6 +11,10 @@ idx-api enriches mirrored `listings` with FEMA National Flood Hazard Layer (NFHL
 | `flood_zone_sfha_tf` | FEMA `SFHA_TF` |
 | `flood_zone_raw` | Full ArcGIS feature attributes (JSON) |
 | `flood_zone_updated_at` | Last NFHL point query (including no-match) |
+| `fema_attempted_at` | Last enrichment attempt (any outcome) |
+| `fema_failure_reason` | `no_nfhl_feature`, `request_error`, or `insufficient_coords` (NULL on success) |
+| `fema_failed_at` | Set on `request_error`; cleared on success |
+| `fema_attempt_count` | Incremented on every attempt |
 | `low_risk_flood_zone_yn` | **`ComputeLowRiskFloodZoneYN(fema_flood_zone_code)` only** — not MLS |
 
 MLS persist sets `low_risk_flood_zone_yn = false` on insert and does **not** overwrite it on `ON CONFLICT` update. FEMA batch jobs recompute the flag from `fema_flood_zone_code`.
@@ -102,7 +106,18 @@ ORDER BY n DESC;
 
 Listings with coordinates outside WGS-84 ranges are **skipped** by `SelectStaleForEnrichment` until coords are corrected.
 
-**Worker logs:** `fema flood enrich batch` with `processed` vs `updated`; `fema point query failed` on NFHL errors (those rows are **not** marked attempted and remain stale).
+### Outcome semantics (migration `00011`)
+
+| Outcome | `fema_failure_reason` | `flood_zone_updated_at` | Retry |
+|---------|----------------------|-------------------------|-------|
+| NFHL success with zone | NULL | set | — |
+| NFHL success, no feature at point | `no_nfhl_feature` | set (staleness watermark) | After `FEMA_FLOOD_STALE_DAYS` |
+| HTTP/circuit/timeout error | `request_error` | **NULL** (stays in stale queue) | Next batch / kickoff |
+| Missing coordinates | `insufficient_coords` | unchanged | After geocode |
+
+**Worker logs:** `fema flood enrich batch` with `processed` vs `updated`; `fema point query failed` on NFHL errors (rows get `request_error`, not `flood_zone_updated_at`).
+
+**Dashboard:** Data Quality tab shows FEMA stale/null-with-coords counts, per-reason breakdown, sample rows, and **Run FEMA enrich** (`POST /api/v1/admin/flood-enrich`).
 
 **Metrics:** Prometheus on `/metrics` — `fema_nfhl_requests_total`, `fema_enrich_listings_updated_total`, `fema_circuit_breaker_open`, etc.
 
@@ -113,4 +128,4 @@ Listings with coordinates outside WGS-84 ranges are **skipped** by `SelectStaleF
 
 ## Fresh database
 
-Schema columns are in `migrations/00001_initial.sql`. New environments: `make migrate` on an empty database per [database-migrations.md](database-migrations.md).
+Schema columns are in `migrations/00001_initial.sql`; audit columns in `migrations/00011_fema_enrichment_audit.sql`. New environments: `make migrate` on an empty database per [database-migrations.md](database-migrations.md).

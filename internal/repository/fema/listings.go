@@ -10,6 +10,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+const (
+	FailureReasonNoNFHLFeature     = "no_nfhl_feature"
+	FailureReasonRequestError      = "request_error"
+	FailureReasonInsufficientCoords = "insufficient_coords"
+)
+
 // ListingCoord is a listing id with coordinates for NFHL point queries.
 type ListingCoord struct {
 	ID        int64
@@ -19,17 +25,43 @@ type ListingCoord struct {
 
 // FEMAUpdate is one row of FEMA enrichment to persist.
 type FEMAUpdate struct {
-	ID                   int64
+	ID                 int64
+	Outcome            string // success, no_nfhl_feature
 	FEMAFloodZoneCode    *string
 	FloodZoneSFHA_TF     *string
 	FloodZoneRaw         json.RawMessage
 	FloodZoneUpdatedAt   time.Time
 	LowRiskFloodZoneYN   bool
+	FEMAFailureReason    *string
+}
+
+// NullWithCoordsSample is a dashboard drill-down row for FEMA gaps.
+type NullWithCoordsSample struct {
+	ID                int64
+	DatasetSlug       string
+	ListingKey        string
+	FEMAFailureReason *string
+	FEMAAttemptCount  int
+	FloodZoneUpdatedAt *time.Time
+	FEMAAttemptedAt   *time.Time
+}
+
+// OutcomeCount groups listings by fema_failure_reason (or never_attempted).
+type OutcomeCount struct {
+	Reason string
+	Count  int64
+}
+
+// DatasetOutcomeCount is per-dataset FEMA breakdown.
+type DatasetOutcomeCount struct {
+	DatasetSlug string
+	Reason      string
+	Count       int64
 }
 
 // Repository reads stale listings and batch-updates FEMA columns.
 type Repository struct {
-	pool         *pgxpool.Pool
+	pool          *pgxpool.Pool
 	staleInterval time.Duration
 }
 
@@ -101,7 +133,117 @@ func (r *Repository) CountStale(ctx context.Context, datasetSlug string) (int64,
 	return n, err
 }
 
-// BatchUpdateFEMA applies FEMA flood fields in a single transaction.
+// CountNullFEMAWithCoords counts active/pending listings with coords but no FEMA zone code.
+func (r *Repository) CountNullFEMAWithCoords(ctx context.Context, datasetSlug string) (int64, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM listings
+		WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+		  AND fema_flood_zone_code IS NULL
+		  AND LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
+	`
+	args := []any{}
+	if datasetSlug != "" {
+		query += ` AND dataset_slug = $1`
+		args = append(args, datasetSlug)
+	}
+	var n int64
+	err := r.pool.QueryRow(ctx, query, args...).Scan(&n)
+	return n, err
+}
+
+// CountByOutcome groups null-with-coords rows by failure reason (empty = never attempted).
+func (r *Repository) CountByOutcome(ctx context.Context, datasetSlug string) ([]OutcomeCount, error) {
+	query := `
+		SELECT COALESCE(fema_failure_reason, 'never_attempted') AS reason, COUNT(*)
+		FROM listings
+		WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+		  AND fema_flood_zone_code IS NULL
+		  AND LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
+	`
+	args := []any{}
+	if datasetSlug != "" {
+		query += ` AND dataset_slug = $1`
+		args = append(args, datasetSlug)
+	}
+	query += ` GROUP BY 1 ORDER BY 2 DESC`
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []OutcomeCount
+	for rows.Next() {
+		var row OutcomeCount
+		if err := rows.Scan(&row.Reason, &row.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// CountByDatasetOutcome returns per-dataset FEMA null breakdown.
+func (r *Repository) CountByDatasetOutcome(ctx context.Context) ([]DatasetOutcomeCount, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT dataset_slug, COALESCE(fema_failure_reason, 'never_attempted') AS reason, COUNT(*)
+		FROM listings
+		WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+		  AND fema_flood_zone_code IS NULL
+		  AND LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
+		GROUP BY 1, 2
+		ORDER BY 1, 3 DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DatasetOutcomeCount
+	for rows.Next() {
+		var row DatasetOutcomeCount
+		if err := rows.Scan(&row.DatasetSlug, &row.Reason, &row.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// ListNullWithCoordsSamples returns recent listings missing FEMA codes for dashboard drill-down.
+func (r *Repository) ListNullWithCoordsSamples(ctx context.Context, limit int) ([]NullWithCoordsSample, error) {
+	if limit <= 0 {
+		limit = 25
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, dataset_slug, listing_key, fema_failure_reason, fema_attempt_count,
+		       flood_zone_updated_at, fema_attempted_at
+		FROM listings
+		WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+		  AND fema_flood_zone_code IS NULL
+		  AND LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
+		ORDER BY COALESCE(fema_attempted_at, updated_at) DESC NULLS LAST, id DESC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []NullWithCoordsSample
+	for rows.Next() {
+		var row NullWithCoordsSample
+		if err := rows.Scan(
+			&row.ID, &row.DatasetSlug, &row.ListingKey, &row.FEMAFailureReason,
+			&row.FEMAAttemptCount, &row.FloodZoneUpdatedAt, &row.FEMAAttemptedAt,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// BatchUpdateFEMA applies successful or no-feature FEMA outcomes in a single transaction.
 func (r *Repository) BatchUpdateFEMA(ctx context.Context, updates []FEMAUpdate) error {
 	if len(updates) == 0 {
 		return nil
@@ -117,6 +259,7 @@ func (r *Repository) BatchUpdateFEMA(ctx context.Context, updates []FEMAUpdate) 
 		if len(u.FloodZoneRaw) > 0 {
 			raw = u.FloodZoneRaw
 		}
+		reason := u.FEMAFailureReason
 		_, err := tx.Exec(ctx, `
 			UPDATE listings SET
 				fema_flood_zone_code = $2,
@@ -124,14 +267,36 @@ func (r *Repository) BatchUpdateFEMA(ctx context.Context, updates []FEMAUpdate) 
 				flood_zone_raw = $4,
 				flood_zone_updated_at = $5,
 				low_risk_flood_zone_yn = $6,
+				fema_attempted_at = $5,
+				fema_failure_reason = $7,
+				fema_failed_at = NULL,
+				fema_attempt_count = COALESCE(fema_attempt_count, 0) + 1,
 				updated_at = NOW()
 			WHERE id = $1
-		`, u.ID, u.FEMAFloodZoneCode, u.FloodZoneSFHA_TF, raw, u.FloodZoneUpdatedAt, u.LowRiskFloodZoneYN)
+		`, u.ID, u.FEMAFloodZoneCode, u.FloodZoneSFHA_TF, raw, u.FloodZoneUpdatedAt, u.LowRiskFloodZoneYN, reason)
 		if err != nil {
 			return err
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+// BatchMarkRequestError records transient NFHL query failures without advancing flood_zone_updated_at.
+func (r *Repository) BatchMarkRequestError(ctx context.Context, ids []int64, attemptedAt time.Time) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	reason := FailureReasonRequestError
+	_, err := r.pool.Exec(ctx, `
+		UPDATE listings SET
+			fema_attempted_at = $2,
+			fema_failed_at = $2,
+			fema_failure_reason = $3,
+			fema_attempt_count = COALESCE(fema_attempt_count, 0) + 1,
+			updated_at = NOW()
+		WHERE id = ANY($1)
+	`, ids, attemptedAt, reason)
+	return err
 }
 
 // HasActiveFloodEnrichJob returns true if a pending/reserved fema.flood_enrich% job exists.

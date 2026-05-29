@@ -49,7 +49,8 @@ Catalog codes come from `mls.Resolver.Catalog()` (e.g. `bridge_stellar`, `spark_
 | `GET /dashboard/monitoring/data` | Dashboard session (JSON snapshot) |
 | `GET /api/v1/admin/monitoring` | Same session middleware (JSON) |
 | `POST /api/v1/admin/flood-enrich` | Enqueue FEMA NFHL flood enrichment ([fema-flood-enrichment.md](fema-flood-enrichment.md)) |
-| `POST /api/v1/admin/gis/probe` | Admin: probe ArcGIS metadata (`{ "source_key": "optional" }`) |
+| `POST /api/v1/admin/geocode/kickoff` | Admin: enqueue geocode listings backfill |
+| `POST /api/v1/admin/gis/probe` | Admin: probe ArcGIS metadata (`{ "source_key": "optional" }`; returns `{ failed: [...] }` on partial errors) |
 | `POST /api/v1/admin/gis/sync` | Admin: enqueue parcel sync (`source_key`, `force`) |
 | `GET /api/v1/admin/gis/sources` | Admin: list `gis_parcel_sources` + health |
 | `POST/PUT/DELETE /api/v1/admin/gis/sources` | Admin: CRUD catalog rows |
@@ -62,7 +63,7 @@ Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sess
 - **Overview**: system rollup, queue pressure, cache efficiency, activation counters.
 - **Ingest & Sync**: listing freshness + lag by dataset and `replica_pages` pipeline state.
 - **Queue & Jobs**: ready / reserved / scheduled roll-up, per-queue counts, **in-flight jobs** table (job id, type, state, age, stale flag), **active batches** (`job_batches`), ready vs reserved job-type breakdown, failed job hotspots.
-- **Data Quality**: GIS layer freshness (parcels, cities, counties, zips) and source status.
+- **Data Quality**: **Listing enrichment** (FEMA + geocode KPIs, failure samples, kickoff buttons), GIS layer freshness, **GIS Sources** CRUD/probe/sync/upload.
 - **Infrastructure**: scheduler advisory-lock leadership probe and infra health.
 - **Integrations**: crypto/dependency freshness.
 - **Incidents**: active warning/critical incidents generated from snapshot health checks.
@@ -72,8 +73,9 @@ Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sess
 | Section | Fields | Notes |
 |---------|--------|-------|
 | **Listings** | total, active/pending, lag, freshness mode | Per `dataset_slug`; dashboard drill-down → **Ingest & Sync** tab (not `/api/v1/bridge/stats`, which requires API domain token auth) |
+| **Enrichment** | `enrichment.fema`, `enrichment.geocode` | FEMA stale/null-with-coords, geocode pending/bad-address; sample tables; per-dataset reason breakdown |
 | **GIS** | parcels, cities, counties, zips, source states, layer freshness | Stale if parcel/zip sync &gt;35d or generation mismatch; `api_status` from `last_probe_ok` |
-| **GIS ops (admin)** | Data Quality tab: Probe / Sync / Probe all | Requires `is_admin`; see [gis-sources.md](gis-sources.md) |
+| **GIS ops (admin)** | Data Quality → GIS Sources | Probe / Sync / Probe all / Add / Edit / Disable / Upload; probe HTTP + error columns; import status from `gis_import_uploads` |
 | **Crypto** | BTC/ETH/SOL USD + age | Stale if snapshot &gt;1h |
 | **Cache** | 15m hit rate from `mls_proxy_audit_logs` | `cache_hit` stored as `HIT`/`MISS`; status `no_data` when no audits in window |
 | **Queues** | `pending` (ready now), `scheduled` (delayed), `reserved`, `stale_reserved`, failed | Merges configured `WORKER_QUEUES` with zero rows when empty; reads primary pool |
@@ -94,6 +96,9 @@ Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sess
 | Stale reserved | `max(600s, DB_QUEUE_RESERVATION_TIMEOUT / 2)` | Monitoring warning; workers **release** reserved rows past this age on the next `Reserve()` poll (same half-timeout rule) |
 | Persist chunk timeout | `MLS_PERSIST_CHUNK_TIMEOUT_SECONDS` (default 900) | Worker fails and retries persist chunks that exceed this wall clock |
 | Failed jobs | any `failed_jobs` row | Opens warning incident; queue rollup status `stale` |
+| FEMA stale with coords | &gt; 10,000 listings | `enrichment.fema.stale_with_coords`; no attempt in stale window |
+| Geocode pending | &gt; 5,000 listings | Displayable address, missing lat/lng |
+| Geocode high-attempt errors | &gt; 100 listings | `geocode_attempt_count` ≥ 5 and `request_error` |
 | Cache | 15m audit window | `UPPER(cache_hit)` for hit/miss counts |
 
 ### Scheduler leadership verification (ops)

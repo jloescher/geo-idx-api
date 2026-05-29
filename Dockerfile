@@ -26,7 +26,8 @@ CMD ["/usr/local/bin/api"]
 
 FROM alpine:3.21 AS worker
 RUN apk add --no-cache ca-certificates tzdata gdal-tools && \
-    mkdir -p /var/cache/geoidx/images /var/cache/geoidx/gis-imports
+    mkdir -p /var/cache/geoidx/images /var/cache/geoidx/gis-imports && \
+    chown -R nobody:nobody /var/cache/geoidx
 COPY --from=build /out/worker /usr/local/bin/worker
 USER nobody
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

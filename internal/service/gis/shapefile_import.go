@@ -37,8 +37,12 @@ func (s *ShapefileImportService) Import(ctx context.Context, args ShapefileImpor
 	if args.SourceKey == "" || args.StoragePath == "" {
 		return fmt.Errorf("source_key and storage_path required")
 	}
+	if args.UploadID > 0 {
+		_ = s.db.SetImportUploadStatus(ctx, args.UploadID, "processing", "")
+	}
 	spec, err := NewParcelSyncService(s.cfg, s.db, nil, s.logger).resolveParcelSource(ctx, args.SourceKey)
 	if err != nil {
+		s.failUpload(ctx, args.UploadID, err)
 		return err
 	}
 	if err := s.db.EnsureSourceState(ctx, args.SourceKey); err != nil {
@@ -46,20 +50,24 @@ func (s *ShapefileImportService) Import(ctx context.Context, args ShapefileImpor
 	}
 	gen, err := s.db.BumpSourceGeneration(ctx, args.SourceKey)
 	if err != nil {
+		s.failUpload(ctx, args.UploadID, err)
 		return err
 	}
 	outJSON := args.StoragePath + ".geojson"
 	if err := runOGR2OGR(ctx, args.StoragePath, outJSON); err != nil {
+		s.failUpload(ctx, args.UploadID, err)
 		return err
 	}
 	defer os.Remove(outJSON)
 
 	body, err := os.ReadFile(outJSON)
 	if err != nil {
+		s.failUpload(ctx, args.UploadID, err)
 		return err
 	}
 	page, err := ParseFeatureCollection(body)
 	if err != nil {
+		s.failUpload(ctx, args.UploadID, err)
 		return err
 	}
 	chunk := s.cfg.GIS.SyncUpsertChunk
@@ -90,6 +98,7 @@ func (s *ShapefileImportService) Import(ctx context.Context, args ShapefileImpor
 		batch = append(batch, row)
 		if len(batch) >= chunk {
 			if err := s.db.BulkUpsertParcels(ctx, batch, chunk); err != nil {
+				s.failUpload(ctx, args.UploadID, err)
 				return err
 			}
 			batch = batch[:0]
@@ -97,6 +106,7 @@ func (s *ShapefileImportService) Import(ctx context.Context, args ShapefileImpor
 	}
 	if len(batch) > 0 {
 		if err := s.db.BulkUpsertParcels(ctx, batch, chunk); err != nil {
+			s.failUpload(ctx, args.UploadID, err)
 			return err
 		}
 	}
@@ -105,11 +115,20 @@ func (s *ShapefileImportService) Import(ctx context.Context, args ShapefileImpor
 		staleCounty = ""
 	}
 	if _, err := s.db.DeleteStaleParcels(ctx, args.SourceKey, staleCounty, int(gen)); err != nil {
+		s.failUpload(ctx, args.UploadID, err)
 		return err
 	}
 	_ = s.db.TouchParcelSourceSynced(ctx, args.SourceKey)
+	_ = s.db.SetImportUploadStatus(ctx, args.UploadID, "done", "")
 	s.logger.Info("gis shapefile import done", "source", args.SourceKey, "features", len(page.Features))
 	return nil
+}
+
+func (s *ShapefileImportService) failUpload(ctx context.Context, uploadID int64, err error) {
+	if uploadID <= 0 || err == nil {
+		return
+	}
+	_ = s.db.SetImportUploadStatus(ctx, uploadID, "failed", err.Error())
 }
 
 func runOGR2OGR(ctx context.Context, inputPath, outPath string) error {

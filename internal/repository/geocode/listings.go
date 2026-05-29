@@ -3,6 +3,7 @@ package geocoderepo
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -172,4 +173,174 @@ func HasActiveGeocodeJob(ctx context.Context, pool *pgxpool.Pool, table string) 
 		return false, err
 	}
 	return exists, nil
+}
+
+// FailureSample is a dashboard drill-down row for geocode failures.
+type FailureSample struct {
+	ID                  int64
+	DatasetSlug         string
+	ListingKey          string
+	GeocodeFailureReason *string
+	GeocodeAttemptCount int
+	GeocodeQuery        *string
+	GeocodeFailedAt     *time.Time
+}
+
+// OutcomeCount groups listings by geocode_failure_reason.
+type OutcomeCount struct {
+	Reason string
+	Count  int64
+}
+
+// DatasetOutcomeCount is per-dataset geocode breakdown.
+type DatasetOutcomeCount struct {
+	DatasetSlug string
+	Reason      string
+	Count       int64
+}
+
+// CountMissingCoords counts displayable active/pending listings without coordinates.
+func (r *Repository) CountMissingCoords(ctx context.Context, datasetSlug string) (int64, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM listings
+		WHERE LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
+		  AND internet_address_display_yn IS TRUE
+		  AND (latitude IS NULL OR longitude IS NULL)
+	`
+	args := []any{}
+	if datasetSlug != "" {
+		query += ` AND dataset_slug = $1`
+		args = append(args, datasetSlug)
+	}
+	var n int64
+	err := r.pool.QueryRow(ctx, query, args...).Scan(&n)
+	return n, err
+}
+
+// CountBadAddress counts listings permanently skipped by geocode.
+func (r *Repository) CountBadAddress(ctx context.Context, datasetSlug string) (int64, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM listings
+		WHERE geocode_bad_address_yn IS TRUE
+		  AND LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
+	`
+	args := []any{}
+	if datasetSlug != "" {
+		query += ` AND dataset_slug = $1`
+		args = append(args, datasetSlug)
+	}
+	var n int64
+	err := r.pool.QueryRow(ctx, query, args...).Scan(&n)
+	return n, err
+}
+
+// CountByFailureReason groups missing-coord listings by failure reason.
+func (r *Repository) CountByFailureReason(ctx context.Context, datasetSlug string) ([]OutcomeCount, error) {
+	query := `
+		SELECT COALESCE(geocode_failure_reason, 'never_attempted') AS reason, COUNT(*)
+		FROM listings
+		WHERE LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
+		  AND internet_address_display_yn IS TRUE
+		  AND (latitude IS NULL OR longitude IS NULL)
+	`
+	args := []any{}
+	if datasetSlug != "" {
+		query += ` AND dataset_slug = $1`
+		args = append(args, datasetSlug)
+	}
+	query += ` GROUP BY 1 ORDER BY 2 DESC`
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []OutcomeCount
+	for rows.Next() {
+		var row OutcomeCount
+		if err := rows.Scan(&row.Reason, &row.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// CountByDatasetFailureReason returns per-dataset geocode failure breakdown.
+func (r *Repository) CountByDatasetFailureReason(ctx context.Context) ([]DatasetOutcomeCount, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT dataset_slug, COALESCE(geocode_failure_reason, 'never_attempted') AS reason, COUNT(*)
+		FROM listings
+		WHERE LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
+		  AND internet_address_display_yn IS TRUE
+		  AND (latitude IS NULL OR longitude IS NULL)
+		GROUP BY 1, 2
+		ORDER BY 1, 3 DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DatasetOutcomeCount
+	for rows.Next() {
+		var row DatasetOutcomeCount
+		if err := rows.Scan(&row.DatasetSlug, &row.Reason, &row.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// CountHighAttemptRequestErrors counts retryable geocode failures with many attempts.
+func (r *Repository) CountHighAttemptRequestErrors(ctx context.Context, minAttempts int) (int64, error) {
+	if minAttempts <= 0 {
+		minAttempts = 5
+	}
+	var n int64
+	err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM listings
+		WHERE geocode_failure_reason = 'request_error'
+		  AND geocode_bad_address_yn IS FALSE
+		  AND geocode_attempt_count >= $1
+		  AND LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
+	`, minAttempts).Scan(&n)
+	return n, err
+}
+
+// ListFailureSamples returns recent geocode failures for dashboard drill-down.
+func (r *Repository) ListFailureSamples(ctx context.Context, limit int) ([]FailureSample, error) {
+	if limit <= 0 {
+		limit = 25
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, dataset_slug, listing_key, geocode_failure_reason, geocode_attempt_count,
+		       geocode_query, geocode_failed_at
+		FROM listings
+		WHERE internet_address_display_yn IS TRUE
+		  AND (latitude IS NULL OR longitude IS NULL)
+		  AND geocode_failure_reason IS NOT NULL
+		  AND LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
+		ORDER BY geocode_failed_at DESC NULLS LAST, id DESC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []FailureSample
+	for rows.Next() {
+		var row FailureSample
+		if err := rows.Scan(
+			&row.ID, &row.DatasetSlug, &row.ListingKey, &row.GeocodeFailureReason,
+			&row.GeocodeAttemptCount, &row.GeocodeQuery, &row.GeocodeFailedAt,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
 }

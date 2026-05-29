@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // MonitoringRepo aggregates ops metrics for the admin dashboard.
@@ -13,6 +15,11 @@ type MonitoringRepo struct {
 // NewMonitoringRepo creates a monitoring repository.
 func NewMonitoringRepo(db *DB) *MonitoringRepo {
 	return &MonitoringRepo{db: db}
+}
+
+// Pool returns the primary PostgreSQL pool for read queries.
+func (r *MonitoringRepo) Pool() *pgxpool.Pool {
+	return r.db.Pool
 }
 
 // ListingDatasetRow is per-dataset listing mirror stats.

@@ -38,10 +38,27 @@ func NewMetadataService(cfg config.Config, db *repository.DB, logger *slog.Logge
 	}
 }
 
+// ProbeResult summarizes one source probe attempt.
+type ProbeResult struct {
+	SourceKey string `json:"source_key"`
+	OK        bool   `json:"ok"`
+	Error     string `json:"error,omitempty"`
+}
+
+// ProbeAllResult is returned to the admin dashboard after probing many sources.
+type ProbeAllResult struct {
+	OK     bool          `json:"ok"`
+	Failed []ProbeResult `json:"failed,omitempty"`
+}
+
 // ProbeSource probes one catalog source by key.
 func (m *MetadataService) ProbeSource(ctx context.Context, sourceKey string) error {
 	if sourceKey == "" {
-		return m.ProbeAll(ctx)
+		result := m.ProbeAll(ctx)
+		if len(result.Failed) > 0 {
+			return fmt.Errorf("gis probe failed for %d source(s)", len(result.Failed))
+		}
+		return nil
 	}
 	endpoint := ""
 	switch sourceKey {
@@ -63,9 +80,9 @@ func (m *MetadataService) ProbeSource(ctx context.Context, sourceKey string) err
 	return m.probeOne(ctx, sourceKey, endpoint)
 }
 
-func (m *MetadataService) ProbeAll(ctx context.Context) error {
+func (m *MetadataService) ProbeAll(ctx context.Context) ProbeAllResult {
 	endpoints := map[string]string{
-		FDOTAdminBoundariesKey: "https://gis.fdot.gov/arcgis/rest/services/Admin_Boundaries/FeatureServer/6?f=json",
+		FDOTAdminBoundariesKey:       "https://gis.fdot.gov/arcgis/rest/services/Admin_Boundaries/FeatureServer/6?f=json",
 		FloridaStatewideCadastralKey: queryMetaURL(FloridaStatewideCadastralURL),
 	}
 	for _, spec := range EnabledParcelSourcesForConfig(m.cfg.GIS) {
@@ -74,12 +91,28 @@ func (m *MetadataService) ProbeAll(ctx context.Context) error {
 		}
 		endpoints[spec.SourceKey] = queryMetaURL(spec.QueryURL)
 	}
+	rows, err := m.gis.ListEnabledParcelSources(ctx)
+	if err != nil {
+		m.logger.Warn("gis probe list db sources failed", "error", err)
+	} else {
+		for _, row := range rows {
+			if row.SyncMode == SyncModeShapefile {
+				continue
+			}
+			if strings.TrimSpace(row.QueryURL) == "" {
+				continue
+			}
+			endpoints[row.SourceKey] = queryMetaURL(row.QueryURL)
+		}
+	}
+	var failed []ProbeResult
 	for key, endpoint := range endpoints {
 		if err := m.probeOne(ctx, key, endpoint); err != nil {
 			m.logger.Warn("gis probe failed", "source", key, "error", err)
+			failed = append(failed, ProbeResult{SourceKey: key, OK: false, Error: err.Error()})
 		}
 	}
-	return nil
+	return ProbeAllResult{OK: len(failed) == 0, Failed: failed}
 }
 
 func queryMetaURL(queryURL string) string {

@@ -122,6 +122,10 @@ type IncidentInput struct {
 	StaleInFlight          []repository.InFlightJob
 	TotalFailed            int64
 	SyncPipelineStatus     string
+	FEMAStale              int64
+	GeocodePending         int64
+	GeocodeHighAttempt     int64
+	EnrichmentStatus       string
 }
 
 // StaleReservedIncidentDetail builds warning copy for stale reserved queue jobs.
@@ -212,6 +216,30 @@ func BuildIncidents(in IncidentInput) []IncidentMetric {
 			Source:   "sync",
 			Title:    "Replica page backlog is degraded",
 			Detail:   "Replica pages include failed statuses or unusually high pending volume.",
+		})
+	}
+	if in.FEMAStale > 10000 {
+		out = append(out, IncidentMetric{
+			Severity: "warning",
+			Source:   "enrichment",
+			Title:    "FEMA enrichment backlog is large",
+			Detail:   "More than 10k listings with coordinates need NFHL refresh. Check FEMA worker on default queue and Data Quality → Listing enrichment.",
+		})
+	}
+	if in.GeocodePending > 5000 {
+		out = append(out, IncidentMetric{
+			Severity: "warning",
+			Source:   "enrichment",
+			Title:    "Geocode backlog is large",
+			Detail:   "More than 5k displayable listings are missing coordinates. Confirm GOOGLE_MAPS_GEOCODING_API_KEY on worker 1.",
+		})
+	}
+	if in.GeocodeHighAttempt > 100 {
+		out = append(out, IncidentMetric{
+			Severity: "warning",
+			Source:   "enrichment",
+			Title:    "Geocode request errors retrying heavily",
+			Detail:   "Listings with geocode_failure_reason=request_error and 5+ attempts exceed 100. Check Google API quota and worker logs.",
 		})
 	}
 	return out

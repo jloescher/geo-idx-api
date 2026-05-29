@@ -557,6 +557,67 @@ input:focus {
   border-bottom: none;
 }
 
+.monitoring-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+}
+
+.monitoring-toolbar .monitoring-meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.gis-actions-cell {
+  white-space: normal;
+  min-width: 12rem;
+}
+
+.gis-actions-cell .btn,
+.gis-upload-label {
+  margin: 0.15rem 0.15rem 0.15rem 0;
+}
+
+.gis-source-dialog {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0;
+  max-width: 28rem;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.gis-source-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+}
+
+.gis-source-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+}
+
+.gis-source-form input,
+.gis-source-form select {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: inherit;
+}
+
+.gis-source-form .form-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
 .setup-progress {
   display: flex;
   flex-wrap: wrap;

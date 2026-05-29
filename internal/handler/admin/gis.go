@@ -76,10 +76,12 @@ func (h *GISHandler) Probe(c *fiber.Ctx) error {
 	}
 	meta := gis.NewMetadataService(h.cfg, h.db, h.logger)
 	if req.SourceKey == "" {
-		if err := meta.ProbeAll(c.Context()); err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		result := meta.ProbeAll(c.Context())
+		resp := fiber.Map{"ok": result.OK, "scope": "all"}
+		if len(result.Failed) > 0 {
+			resp["failed"] = result.Failed
 		}
-		return c.JSON(fiber.Map{"ok": true, "scope": "all"})
+		return c.JSON(resp)
 	}
 	if err := meta.ProbeSource(c.Context(), req.SourceKey); err != nil {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": err.Error()})
@@ -254,8 +256,8 @@ func (h *GISHandler) UploadShapefile(c *fiber.Ctx) error {
 }
 
 func payloadToParcelRow(req parcelSourcePayload) (gisrepo.ParcelSourceRow, error) {
-	if req.SourceKey == "" || req.CountySlug == "" || req.QueryURL == "" {
-		return gisrepo.ParcelSourceRow{}, fmt.Errorf("source_key, county_slug, query_url required")
+	if req.SourceKey == "" || req.CountySlug == "" {
+		return gisrepo.ParcelSourceRow{}, fmt.Errorf("source_key, county_slug required")
 	}
 	mode := req.SyncMode
 	if mode == "" {
@@ -265,6 +267,13 @@ func payloadToParcelRow(req parcelSourcePayload) (gisrepo.ParcelSourceRow, error
 	case gis.SyncModeBBox, gis.SyncModePaginate, gis.SyncModeWhereFilter, gis.SyncModeShapefile:
 	default:
 		return gisrepo.ParcelSourceRow{}, fmt.Errorf("invalid sync_mode")
+	}
+	queryURL := strings.TrimSpace(req.QueryURL)
+	if queryURL == "" && mode != gis.SyncModeShapefile {
+		return gisrepo.ParcelSourceRow{}, fmt.Errorf("query_url required unless sync_mode=shapefile")
+	}
+	if queryURL == "" {
+		queryURL = "shapefile://local"
 	}
 	feed := req.MLSFeed
 	if feed == "" {
@@ -281,7 +290,7 @@ func payloadToParcelRow(req parcelSourcePayload) (gisrepo.ParcelSourceRow, error
 	return gisrepo.ParcelSourceRow{
 		SourceKey:      req.SourceKey,
 		CountySlug:     req.CountySlug,
-		QueryURL:       req.QueryURL,
+		QueryURL:       queryURL,
 		SyncMode:       mode,
 		ArcGISWhere:    req.ArcGISWhere,
 		BBoxWest:       req.BBoxWest,

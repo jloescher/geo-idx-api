@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/quantyralabs/idx-api/internal/queue"
 	gisrepo "github.com/quantyralabs/idx-api/internal/repository/gis"
@@ -70,7 +71,11 @@ func (r *Registry) handlePurgeReplicaPages(ctx context.Context, job *queue.Reser
 }
 
 func (r *Registry) handleGISProbe(ctx context.Context, job *queue.ReservedJob) error {
-	return r.gisMeta.ProbeAll(ctx)
+	result := r.gisMeta.ProbeAll(ctx)
+	if len(result.Failed) > 0 {
+		return fmt.Errorf("gis probe failed for %d source(s)", len(result.Failed))
+	}
+	return nil
 }
 
 func (r *Registry) handleGISMonthlyParcelRefresh(ctx context.Context, job *queue.ReservedJob) error {

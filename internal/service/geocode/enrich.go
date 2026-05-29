@@ -197,6 +197,11 @@ func strVal(p *string) string {
 	return *p
 }
 
+// CountPendingForAdmin returns listings awaiting geocode for dashboard/admin.
+func (s *EnrichmentService) CountPendingForAdmin(ctx context.Context, datasetSlug string) (int64, error) {
+	return s.repo.CountPending(ctx, datasetSlug)
+}
+
 // UnmarshalGeocodeKickoffArgs parses kickoff job args.
 func UnmarshalGeocodeKickoffArgs(raw json.RawMessage) (GeocodeKickoffArgs, error) {
 	var args GeocodeKickoffArgs

@@ -23,6 +23,8 @@ type SourceStateRow struct {
 	ParcelCount         int64      `json:"parcel_count"`
 	ActiveSyncJob       bool       `json:"active_sync_job"`
 	Status              string     `json:"status"` // healthy | stale | unknown
+	LastImportStatus    string     `json:"last_import_status,omitempty"`
+	LastImportError     string     `json:"last_import_error,omitempty"`
 }
 
 // GISCounts holds aggregate GIS table counts.
@@ -101,9 +103,18 @@ func (r *Repository) ListSourceStates(ctx context.Context) ([]SourceStateRow, er
 		               j.reserved_at IS NULL
 		               OR j.reserved_at > EXTRACT(EPOCH FROM NOW())::bigint - 7200
 		             )
-		       ) AS active_sync
+		       ) AS active_sync,
+		       COALESCE(imp.status, '') AS import_status,
+		       COALESCE(imp.error, '') AS import_error
 		FROM gis_source_states s
 		LEFT JOIN gis_parcel_sources ps ON ps.source_key = s.source_key
+		LEFT JOIN LATERAL (
+			SELECT status, error
+			FROM gis_import_uploads u
+			WHERE u.source_key = s.source_key
+			ORDER BY u.created_at DESC
+			LIMIT 1
+		) imp ON TRUE
 		LEFT JOIN (
 			SELECT source_key,
 			       MAX(source_generation) AS max_gen,
@@ -127,6 +138,7 @@ func (r *Repository) ListSourceStates(ctx context.Context) ([]SourceStateRow, er
 			&row.Generation, &row.LastCheckedAt,
 			&row.LastProbeAt, &row.LastProbeOK, &row.LastProbeHTTPStatus, &row.LastProbeError,
 			&row.MaxGeneration, &row.MaxSyncedAt, &row.ParcelCount, &row.ActiveSyncJob,
+			&row.LastImportStatus, &row.LastImportError,
 		); err != nil {
 			return nil, err
 		}

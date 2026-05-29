@@ -119,6 +119,7 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args FloodEnrichBatchA
 
 	now := time.Now().UTC()
 	updates := make([]femarepo.FEMAUpdate, 0, len(rows))
+	var errorIDs []int64
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	workers := 8
@@ -139,6 +140,9 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args FloodEnrichBatchA
 			attrs, err := s.client.QueryPoint(ctx, r.Latitude, r.Longitude)
 			if err != nil {
 				s.logger.Warn("fema point query failed", "listing_id", r.ID, "error", err)
+				mu.Lock()
+				errorIDs = append(errorIDs, r.ID)
+				mu.Unlock()
 				return
 			}
 
@@ -151,6 +155,9 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args FloodEnrichBatchA
 	}
 	wg.Wait()
 
+	if err := s.repo.BatchMarkRequestError(ctx, errorIDs, now); err != nil {
+		return err
+	}
 	if err := s.repo.BatchUpdateFEMA(ctx, updates); err != nil {
 		return err
 	}
@@ -175,10 +182,11 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args FloodEnrichBatchA
 	return nil
 }
 
-// buildListingFEMAUpdate maps a successful NFHL point query to a persistable row update.
+// buildListingFEMAUpdate maps an NFHL point query outcome to a persistable row update.
 func buildListingFEMAUpdate(id int64, now time.Time, attrs *PointAttributes) femarepo.FEMAUpdate {
 	u := femarepo.FEMAUpdate{
 		ID:                 id,
+		Outcome:            "success",
 		FloodZoneUpdatedAt: now,
 		LowRiskFloodZoneYN: false,
 	}
@@ -189,6 +197,10 @@ func buildListingFEMAUpdate(id int64, now time.Time, attrs *PointAttributes) fem
 			u.FloodZoneRaw = attrs.Raw
 		}
 		u.LowRiskFloodZoneYN = mls.ComputeLowRiskFloodZoneYN(attrs.FLDZone)
+	} else {
+		u.Outcome = femarepo.FailureReasonNoNFHLFeature
+		reason := femarepo.FailureReasonNoNFHLFeature
+		u.FEMAFailureReason = &reason
 	}
 	return u
 }

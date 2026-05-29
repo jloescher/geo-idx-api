@@ -102,6 +102,23 @@ func (r *Repository) LoadParcelSources(ctx context.Context) ([]ParcelSourceRow, 
 	return out, rows.Err()
 }
 
+// ListEnabledParcelSources returns enabled catalog rows for operator probes.
+func (r *Repository) ListEnabledParcelSources(ctx context.Context) ([]ParcelSourceRow, error) {
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT source_key, county_slug, query_url, sync_mode, arcgis_where,
+		       bbox_west, bbox_south, bbox_east, bbox_north,
+		       http_timeout_sec, page_size, mls_feed, enabled, priority, notes
+		FROM gis_parcel_sources
+		WHERE enabled IS TRUE
+		ORDER BY priority, county_slug, source_key
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanParcelSourceRows(rows)
+}
+
 // ListAllParcelSources returns all catalog rows including disabled sources.
 func (r *Repository) ListAllParcelSources(ctx context.Context) ([]ParcelSourceRow, error) {
 	rows, err := r.db.Pool.Query(ctx, `
