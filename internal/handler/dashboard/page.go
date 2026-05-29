@@ -122,8 +122,38 @@ func renderMonitoringBody(data PageData) string {
 <details id="monitoring-queues" class="monitoring-queues" hidden>
 <summary>Queue job types (pending)</summary>
 <pre id="monitoring-queue-detail" class="queue-detail"></pre>
-</details>
+</details>` + renderGISAdminDialog(data.IsAdmin) + `
 </section>`
+}
+
+func renderGISAdminDialog(isAdmin bool) string {
+	if !isAdmin {
+		return ""
+	}
+	return `<dialog id="gis-source-dialog" class="gis-source-dialog">
+<form id="gis-source-form" class="gis-source-form">
+<h3 id="gis-source-dialog-title">GIS source</h3>
+<label>Source key <input name="source_key" required></label>
+<label>County slug <input name="county_slug" required></label>
+<label>Query URL <input name="query_url"></label>
+<label>Sync mode
+<select name="sync_mode">
+<option value="bbox">bbox</option>
+<option value="paginate">paginate</option>
+<option value="where_filter">where_filter</option>
+<option value="shapefile">shapefile</option>
+</select>
+</label>
+<label>MLS feed <input name="mls_feed" value="stellar"></label>
+<label>Priority <input name="priority" type="number" value="100"></label>
+<label>Notes <input name="notes"></label>
+<label><input name="enabled" type="checkbox" checked> Enabled</label>
+<div class="form-actions">
+<button type="submit" class="btn btn-primary btn-sm">Save</button>
+<button type="button" class="btn btn-secondary btn-sm" data-gis-action="cancel-dialog">Cancel</button>
+</div>
+</form>
+</dialog>`
 }
 
 func renderDomainsBody(data PageData) string {

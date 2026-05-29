@@ -299,8 +299,9 @@ ${statusChip}
            <button type="button" class="btn btn-secondary btn-sm" data-gis-action="delete" data-source-key="${src.source_key}">Disable</button>
            <label class="btn btn-secondary btn-sm gis-upload-label">Upload<input type="file" accept=".zip,.shp" hidden data-gis-action="upload" data-source-key="${src.source_key}"></label>`
         : "—";
-      return `<tr>
-        <td>${src.source_key || "—"}</td>
+      const disabledMark = src.enabled === false ? ' <span class="badge badge-muted">disabled</span>' : "";
+      return `<tr class="${src.enabled === false ? "gis-source-disabled" : ""}">
+        <td>${src.source_key || "—"}${disabledMark}</td>
         <td>${src.county_slug || "—"}</td>
         <td>${src.sync_mode || "—"}</td>
         <td><span class="${badgeClass(api === "reachable" ? "healthy" : api === "unreachable" ? "critical" : "unknown")}">${api}</span></td>
@@ -316,31 +317,7 @@ ${statusChip}
     const toolbar = isAdmin
       ? `<div class="monitoring-toolbar"><button type="button" class="btn btn-secondary btn-sm" data-gis-action="probe-all">Probe all</button>
          <button type="button" class="btn btn-secondary btn-sm" data-gis-action="add-source">Add source</button>
-         <span id="gis-ops-status" class="monitoring-meta" role="status"></span></div>
-         <dialog id="gis-source-dialog" class="gis-source-dialog">
-           <form method="dialog" id="gis-source-form" class="gis-source-form">
-             <h3 id="gis-source-dialog-title">GIS source</h3>
-             <label>Source key <input name="source_key" required></label>
-             <label>County slug <input name="county_slug" required></label>
-             <label>Query URL <input name="query_url"></label>
-             <label>Sync mode
-               <select name="sync_mode">
-                 <option value="bbox">bbox</option>
-                 <option value="paginate">paginate</option>
-                 <option value="where_filter">where_filter</option>
-                 <option value="shapefile">shapefile</option>
-               </select>
-             </label>
-             <label>MLS feed <input name="mls_feed" value="stellar"></label>
-             <label>Priority <input name="priority" type="number" value="100"></label>
-             <label>Notes <input name="notes"></label>
-             <label><input name="enabled" type="checkbox" checked> Enabled</label>
-             <div class="form-actions">
-               <button type="submit" class="btn btn-primary btn-sm">Save</button>
-               <button type="button" class="btn btn-secondary btn-sm" data-gis-action="cancel-dialog">Cancel</button>
-             </div>
-           </form>
-         </dialog>`
+         <span id="gis-ops-status" class="monitoring-meta" role="status"></span></div>`
       : "";
     return `${toolbar}<table class="monitoring-table"><thead><tr>
       <th>Source</th><th>County</th><th>Mode</th><th>API</th><th>Probe HTTP</th><th>Error</th><th>Last probe</th><th>Parcels</th><th>Import</th><th>Sync active</th><th>Actions</th>
@@ -710,7 +687,12 @@ ${statusChip}
     if (panels.overview) panels.overview.innerHTML = renderOverviewPanel(data);
     if (panels.ingest) panels.ingest.innerHTML = renderIngestPanel(data);
     if (panels.queues) panels.queues.innerHTML = renderQueuePanel(data);
-    if (panels.data) panels.data.innerHTML = renderDataPanel(data);
+    if (panels.data) {
+      const statusText = $("gis-ops-status")?.textContent || "";
+      panels.data.innerHTML = renderDataPanel(data);
+      const statusEl = $("gis-ops-status");
+      if (statusEl && statusText) statusEl.textContent = statusText;
+    }
     if (panels.infra) panels.infra.innerHTML = renderInfraPanel(data);
     if (panels.integrations) panels.integrations.innerHTML = renderIntegrationsPanel(data);
     if (panels.incidents) panels.incidents.innerHTML = renderIncidentsPanel(data);
@@ -934,13 +916,13 @@ ${statusChip}
   }
 
   function bindGISOps() {
-    const panel = $("panel-data");
-    if (!panel || document.getElementById("monitoring")?.dataset?.isAdmin !== "true") return;
+    const root = $("monitoring");
+    if (!root || root.dataset?.isAdmin !== "true") return;
 
-    panel.addEventListener("submit", async (event) => {
-      const form = event.target.closest("#gis-source-form");
-      if (!form) return;
+    $("gis-source-form")?.addEventListener("submit", async (event) => {
       event.preventDefault();
+      const form = event.target;
+      if (!form || form.id !== "gis-source-form") return;
       const status = $("gis-ops-status");
       const payload = {
         source_key: form.source_key.value.trim(),
@@ -967,7 +949,7 @@ ${statusChip}
       }
     });
 
-    panel.addEventListener("click", async (event) => {
+    root.addEventListener("click", async (event) => {
       const uploadInput = event.target.closest('input[data-gis-action="upload"]');
       if (uploadInput) return;
 
@@ -998,6 +980,7 @@ ${statusChip}
         if (action === "delete" && sourceKey) {
           if (!window.confirm(`Disable GIS source ${sourceKey}?`)) return;
           await gisAdminFetch("DELETE", `/sources/${encodeURIComponent(sourceKey)}`);
+          if (status) status.textContent = `Disabled ${sourceKey}`;
         } else if (action === "probe-all") {
           const data = await gisAdminPost("/probe", {});
           if (data.failed && data.failed.length) {
@@ -1024,7 +1007,7 @@ ${statusChip}
       }
     });
 
-    panel.addEventListener("change", async (event) => {
+    root.addEventListener("change", async (event) => {
       const input = event.target.closest('input[data-gis-action="upload"]');
       if (!input || !input.files || !input.files[0]) return;
       const sourceKey = input.getAttribute("data-source-key");

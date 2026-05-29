@@ -68,11 +68,17 @@ func (m *MetadataService) ProbeSource(ctx context.Context, sourceKey string) err
 		endpoint = queryMetaURL(FloridaStatewideCadastralURL)
 	default:
 		if spec, ok := ParcelSourceSpecByKey(sourceKey); ok {
+			if spec.SyncMode == SyncModeShapefile {
+				return m.probeShapefileSource(ctx, sourceKey)
+			}
 			endpoint = queryMetaURL(spec.QueryURL)
 		} else {
 			row, err := m.gis.GetParcelSourceByKey(ctx, sourceKey)
 			if err != nil {
 				return err
+			}
+			if row.SyncMode == SyncModeShapefile || strings.HasPrefix(strings.TrimSpace(row.QueryURL), "shapefile://") {
+				return m.probeShapefileSource(ctx, sourceKey)
 			}
 			endpoint = queryMetaURL(row.QueryURL)
 		}
@@ -87,6 +93,9 @@ func (m *MetadataService) ProbeAll(ctx context.Context) ProbeAllResult {
 	}
 	for _, spec := range EnabledParcelSourcesForConfig(m.cfg.GIS) {
 		if spec.CountySlug == "" || spec.CountySlug == "statewide" {
+			continue
+		}
+		if spec.SyncMode == SyncModeShapefile {
 			continue
 		}
 		endpoints[spec.SourceKey] = queryMetaURL(spec.QueryURL)
@@ -121,6 +130,10 @@ func queryMetaURL(queryURL string) string {
 }
 
 func (m *MetadataService) probeOne(ctx context.Context, sourceKey, endpoint string) error {
+	endpoint = strings.TrimSpace(endpoint)
+	if endpoint == "" || !strings.HasPrefix(endpoint, "http") {
+		return m.probeShapefileSource(ctx, sourceKey)
+	}
 	if err := m.gis.EnsureSourceState(ctx, sourceKey); err != nil {
 		return err
 	}
@@ -169,6 +182,13 @@ func (m *MetadataService) probeOne(ctx context.Context, sourceKey, endpoint stri
 		`, sourceKey)
 	}
 	return err
+}
+
+func (m *MetadataService) probeShapefileSource(ctx context.Context, sourceKey string) error {
+	if err := m.gis.EnsureSourceState(ctx, sourceKey); err != nil {
+		return err
+	}
+	return m.gis.UpdateProbeResult(ctx, sourceKey, true, 0, "")
 }
 
 func metadataFingerprint(body []byte) string {

@@ -497,6 +497,17 @@ input:focus {
   color: var(--muted);
 }
 
+.badge-muted {
+  background: rgba(139, 156, 179, 0.12);
+  color: var(--muted);
+  font-size: 0.65rem;
+  vertical-align: middle;
+}
+
+tr.gis-source-disabled td {
+  opacity: 0.55;
+}
+
 .incident-list {
   display: grid;
   gap: 0.75rem;
