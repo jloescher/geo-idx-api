@@ -64,15 +64,17 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 	floodH := admin.NewFloodHandler(cfg, db, logger)
 	geocodeH := admin.NewGeocodeHandler(cfg, db, logger)
 	gisAdminH := admin.NewGISHandler(cfg, db, logger)
+	var uploadCORS fiber.Handler
+	if strings.TrimSpace(cfg.GIS.UploadPublicURL) != "" {
+		uploadCORS = middleware.UploadCORS(cfg)
+		// CORS preflight must not require session auth (browser sends OPTIONS before POST).
+		api.Options("/v1/admin/gis/sources/:source_key/upload", uploadCORS)
+	}
 	adminAPI := api.Group("/v1/admin", dashH.SessionAuthMiddleware)
 	adminAPI.Get("/monitoring", dashH.MonitoringJSON)
 	adminAPI.Post("/flood-enrich", floodH.Enrich)
 	adminAPI.Post("/geocode/kickoff", dashH.RequireAdmin, geocodeH.Kickoff)
 	adminGIS := adminAPI.Group("/gis", dashH.RequireAdmin)
-	var uploadCORS fiber.Handler
-	if strings.TrimSpace(cfg.GIS.UploadPublicURL) != "" {
-		uploadCORS = middleware.UploadCORS(cfg)
-	}
 	admin.RegisterGISRoutes(adminGIS, gisAdminH, uploadCORS)
 
 	v1 := api.Group("/v1", domainAuth, mlsAccess)
