@@ -1032,8 +1032,32 @@ ${statusChip}
           credentials: "same-origin",
           body: form,
         });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || res.statusText);
+        const text = await res.text();
+        let data = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          data = { error: text || res.statusText };
+        }
+        // #region agent log
+        fetch("http://127.0.0.1:7685/ingest/e6fa4028-535e-4c65-aee2-cbe02c1fc56d", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "4f5bac" },
+          body: JSON.stringify({
+            sessionId: "4f5bac",
+            runId: "post-fix",
+            hypothesisId: "SHP-A",
+            location: "dashboard.js:upload",
+            message: "shapefile upload response",
+            data: { sourceKey, status: res.status, ok: res.ok, error: data.error || null, job_id: data.job_id || null },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+        // #endregion
+        if (!res.ok) {
+          const msg = data.error || text || res.statusText;
+          throw new Error(res.status === 413 ? `File too large for server limit. Upload a .zip (with .shp/.dbf/.shx inside) under ${Math.round(512)}MB.` : msg);
+        }
         if (status) status.textContent = `Upload queued (job ${data.job_id})`;
         fetchMonitoring({ silent: true });
       } catch (err) {

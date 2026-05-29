@@ -215,8 +215,23 @@ func (h *GISHandler) UploadShapefile(c *fiber.Ctx) error {
 	sourceKey := c.Params("source_key")
 	file, err := c.FormFile("file")
 	if err != nil {
+		// #region agent log
+		agentDebugLog("SHP-A", "gis.go:UploadShapefile", "FormFile failed", map[string]any{
+			"source_key": sourceKey, "error": err.Error(),
+		})
+		// #endregion
+		if strings.Contains(strings.ToLower(err.Error()), "limit") || strings.Contains(strings.ToLower(err.Error()), "large") {
+			return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{
+				"error": "upload exceeds server body limit; zip parcel shapefiles and ensure API BodyLimit matches GIS_IMPORT_MAX_BYTES",
+			})
+		}
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "file required"})
 	}
+	// #region agent log
+	agentDebugLog("SHP-A", "gis.go:UploadShapefile", "upload received", map[string]any{
+		"source_key": sourceKey, "filename": file.Filename, "size": file.Size,
+	})
+	// #endregion
 	if h.cfg.GIS.ImportMaxBytes > 0 && file.Size > h.cfg.GIS.ImportMaxBytes {
 		return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{"error": "file too large"})
 	}
@@ -239,11 +254,14 @@ func (h *GISHandler) UploadShapefile(c *fiber.Ctx) error {
 	}
 	uid, _ := c.Locals("user_id").(int64)
 	var uploadID int64
-	_ = h.db.Pool.QueryRow(c.Context(), `
+	if err := h.db.Pool.QueryRow(c.Context(), `
 		INSERT INTO gis_import_uploads (source_key, original_filename, storage_path, status, uploaded_by_user_id)
 		VALUES ($1, $2, $3, 'pending', NULLIF($4, 0))
 		RETURNING id
-	`, sourceKey, file.Filename, path, uid).Scan(&uploadID)
+	`, sourceKey, file.Filename, path, uid).Scan(&uploadID); err != nil {
+		h.logger.Error("gis import upload record", "error", err, "source_key", sourceKey)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to record upload"})
+	}
 
 	q := queue.NewClient(h.db.Pool, h.cfg.Queue.Table, h.cfg.Queue.NotifyChannel, h.cfg.Queue.RetryAfter, h.cfg.Queue.ReservationTimeout)
 	queueName := h.cfg.GIS.SyncQueue
@@ -258,6 +276,11 @@ func (h *GISHandler) UploadShapefile(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
+	// #region agent log
+	agentDebugLog("SHP-B", "gis.go:UploadShapefile", "job enqueued", map[string]any{
+		"source_key": sourceKey, "job_id": jobID, "upload_id": uploadID, "queue": queueName, "path": path,
+	})
+	// #endregion
 	return c.JSON(fiber.Map{"job_id": jobID, "upload_id": uploadID, "storage_path": path})
 }
 

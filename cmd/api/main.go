@@ -57,11 +57,17 @@ func main() {
 		dbConn.Close()
 	}()
 
+	bodyLimit := int(cfg.GIS.ImportMaxBytes)
+	if bodyLimit <= 0 {
+		bodyLimit = 512 * 1024 * 1024
+	}
+
 	app := fiber.New(fiber.Config{
 		AppName:      cfg.App.Name,
 		ReadTimeout:  60 * time.Second,
 		WriteTimeout: 120 * time.Second,
 		IdleTimeout:  120 * time.Second,
+		BodyLimit:    bodyLimit,
 	})
 	app.Use(recover.New())
 
@@ -77,7 +83,7 @@ func main() {
 	}()
 
 	addr := ":" + cfg.App.Port
-	logger.Info("api listening", "addr", addr)
+	logger.Info("api listening", "addr", addr, "body_limit_bytes", bodyLimit)
 	if err := app.Listen(addr); err != nil {
 		logger.Error("listen", "error", err)
 		os.Exit(1)
