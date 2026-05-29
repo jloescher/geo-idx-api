@@ -64,8 +64,8 @@ func main() {
 
 	app := fiber.New(fiber.Config{
 		AppName:      cfg.App.Name,
-		ReadTimeout:  60 * time.Second,
-		WriteTimeout: 120 * time.Second,
+		ReadTimeout:  900 * time.Second,  // large GIS shapefile uploads (100MB+)
+		WriteTimeout: 900 * time.Second,
 		IdleTimeout:  120 * time.Second,
 		BodyLimit:    bodyLimit,
 	})

@@ -1055,8 +1055,11 @@ ${statusChip}
         }).catch(() => {});
         // #endregion
         if (!res.ok) {
-          const msg = data.error || text || res.statusText;
-          throw new Error(res.status === 413 ? `File too large for server limit. Upload a .zip (with .shp/.dbf/.shx inside) under ${Math.round(512)}MB.` : msg);
+          let msg = data.error || text || res.statusText;
+          if (res.status === 413) {
+            msg = "Upload rejected (413). Redeploy idx-api-web with BodyLimit fix. Files >100MB may also be blocked by Cloudflare — use a smaller zip or upload via direct origin.";
+          }
+          throw new Error(msg);
         }
         if (status) status.textContent = `Upload queued (job ${data.job_id})`;
         fetchMonitoring({ silent: true });
