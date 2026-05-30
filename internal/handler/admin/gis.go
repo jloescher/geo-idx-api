@@ -182,7 +182,7 @@ func (h *GISHandler) UpdateSource(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"source_key": row.SourceKey})
 }
 
-// DeleteSource soft-disables or hard-deletes a catalog row.
+// DeleteSource soft-disables or fully purges a GIS source (catalog, state, parcels).
 func (h *GISHandler) DeleteSource(c *fiber.Ctx) error {
 	if err := h.requireAdmin(c); err != nil {
 		return err
@@ -190,10 +190,15 @@ func (h *GISHandler) DeleteSource(c *fiber.Ctx) error {
 	sourceKey := c.Params("source_key")
 	repo := gisrepo.New(h.db)
 	if c.Query("hard") == "true" {
-		if err := repo.DeleteParcelSource(c.Context(), sourceKey); err != nil {
+		parcelsDeleted, err := repo.DeleteParcelSourceFull(c.Context(), sourceKey)
+		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 		}
-		return c.JSON(fiber.Map{"deleted": true, "source_key": sourceKey})
+		return c.JSON(fiber.Map{
+			"deleted":          true,
+			"source_key":       sourceKey,
+			"parcels_deleted":  parcelsDeleted,
+		})
 	}
 	if err := repo.SetParcelSourceEnabled(c.Context(), sourceKey, false); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})

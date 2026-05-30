@@ -26,7 +26,7 @@ func dashboardShell(title, navHTML, body string, dashboardLayout bool) string {
 	b.WriteString("<link rel=\"stylesheet\" href=\"/static/css/app.css\">\n")
 	b.WriteString("<script src=\"/static/js/app.js\" defer></script>\n")
 	if dashboardLayout {
-		b.WriteString("<script src=\"/static/js/dashboard.js?v=20260529c\" defer></script>\n")
+		b.WriteString("<script src=\"/static/js/dashboard.js?v=20260529d\" defer></script>\n")
 	}
 	b.WriteString("</head>\n<body>\n")
 	b.WriteString("<header class=\"site-header\">\n")

@@ -283,14 +283,14 @@ Dashboard GIS tile uses `parcels_last_synced_at`, `zips_last_synced_at`, per-sou
 | `GET` | `/api/v1/admin/gis/sources` | List catalog + `gis_source_states` health |
 | `POST` | `/api/v1/admin/gis/sources` | Upsert catalog row |
 | `PUT` | `/api/v1/admin/gis/sources/:source_key` | Update row |
-| `DELETE` | `/api/v1/admin/gis/sources/:source_key` | Soft-disable (`enabled=false`) or `?hard=true` |
+| `DELETE` | `/api/v1/admin/gis/sources/:source_key` | Soft-disable (`enabled=false`) or `?hard=true` for full purge (catalog + `gis_source_states` + all `gis_parcels`) |
 | `POST` | `/api/v1/admin/gis/sources/:source_key/upload` | Multipart `.zip`/`.shp` → `gis.shapefile_import` worker job |
 
 **Dashboard:** Monitoring → **Data Quality** → GIS Sources table when logged in as admin:
 
 - **Probe** / **Probe all** — updates `last_probe_at`, `last_probe_ok`, `last_probe_http_status`, `last_probe_error` (shown in table)
 - **Sync** — disabled when `sync_mode=shapefile` or source is a boundary-only row
-- **Add / Edit / Disable** — CRUD modals wired to `/api/v1/admin/gis/sources`
+- **Add / Edit / Disable / Delete** — CRUD modals wired to `/api/v1/admin/gis/sources`; **Disable** soft-disables; **Delete** permanently removes catalog, source state, and all parcels (`?hard=true`)
 - **Upload** — per-row file input (`.zip` or `.shp` + sidecars); status from `gis_import_uploads` (`pending` → `processing` → `done` / `failed`)
 
 **Probe all behavior:** Probes the static county catalog **and** all `enabled` rows in `gis_parcel_sources`. Shapefile sources are skipped (no live ArcGIS query). `API: UNKNOWN` in the UI means `last_probe_at` is NULL — run Probe or Probe all after migration `00010`.

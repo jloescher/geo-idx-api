@@ -292,26 +292,32 @@ ${statusChip}
       const probeErr = src.last_probe_error ? truncateCell(src.last_probe_error, 48) : "—";
       const importStatus = src.last_import_status || "—";
       const syncDisabled = src.sync_mode === "shapefile";
+      const hasCatalog = Boolean(src.sync_mode);
+      const parcelCount = src.parcel_count != null ? String(src.parcel_count) : "0";
+      const purgeBtn = hasCatalog
+        ? `<button type="button" class="btn btn-danger btn-sm" data-gis-action="purge" data-source-key="${src.source_key}" data-parcel-count="${parcelCount}">Delete</button>`
+        : "";
       const actions = isAdmin
         ? `<button type="button" class="btn btn-secondary btn-sm" data-gis-action="probe" data-source-key="${src.source_key}">Probe</button>
            <button type="button" class="btn btn-secondary btn-sm" data-gis-action="sync" data-source-key="${src.source_key}" ${syncDisabled ? "disabled title=\"Use shapefile upload\"" : ""}>Sync</button>
            <button type="button" class="btn btn-secondary btn-sm" data-gis-action="edit" data-source-key="${src.source_key}">Edit</button>
-           <button type="button" class="btn btn-secondary btn-sm" data-gis-action="delete" data-source-key="${src.source_key}">Disable</button>
+           ${hasCatalog ? `<button type="button" class="btn btn-secondary btn-sm" data-gis-action="disable" data-source-key="${src.source_key}">Disable</button>` : ""}
+           ${purgeBtn}
            <label class="btn btn-secondary btn-sm gis-upload-label">Upload<input type="file" accept=".zip,.shp" hidden data-gis-action="upload" data-source-key="${src.source_key}"></label>`
         : "—";
       const disabledMark = src.enabled === false ? ' <span class="badge badge-muted">disabled</span>' : "";
       return `<tr class="${src.enabled === false ? "gis-source-disabled" : ""}">
-        <td>${src.source_key || "—"}${disabledMark}</td>
-        <td>${src.county_slug || "—"}</td>
-        <td>${src.sync_mode || "—"}</td>
-        <td><span class="${badgeClass(api === "reachable" ? "healthy" : api === "unreachable" ? "critical" : "unknown")}">${api}</span></td>
-        <td>${probeHTTP}</td>
-        <td title="${src.last_probe_error || ""}">${probeErr}</td>
-        <td>${probe}</td>
-        <td>${fmtNum(src.parcel_count)}</td>
-        <td>${importStatus}</td>
-        <td>${src.active_sync_job ? "yes" : "no"}</td>
-        <td class="gis-actions-cell">${actions}</td>
+        <td data-label="Source">${src.source_key || "—"}${disabledMark}</td>
+        <td data-label="County">${src.county_slug || "—"}</td>
+        <td data-label="Mode">${src.sync_mode || "—"}</td>
+        <td data-label="API"><span class="${badgeClass(api === "reachable" ? "healthy" : api === "unreachable" ? "critical" : "unknown")}">${api}</span></td>
+        <td data-label="Probe HTTP">${probeHTTP}</td>
+        <td data-label="Error" title="${src.last_probe_error || ""}">${probeErr}</td>
+        <td data-label="Last probe">${probe}</td>
+        <td data-label="Parcels">${fmtNum(src.parcel_count)}</td>
+        <td data-label="Import">${importStatus}</td>
+        <td data-label="Sync active">${src.active_sync_job ? "yes" : "no"}</td>
+        <td class="gis-actions-cell" data-label="Actions">${actions}</td>
       </tr>`;
     });
     const toolbar = isAdmin
@@ -319,9 +325,9 @@ ${statusChip}
          <button type="button" class="btn btn-secondary btn-sm" data-gis-action="add-source">Add source</button>
          <span id="gis-ops-status" class="monitoring-meta" role="status"></span></div>`
       : "";
-    return `${toolbar}<table class="monitoring-table"><thead><tr>
+    return `${toolbar}<div class="monitoring-table-wrap monitoring-table-wrap--gis"><table class="monitoring-table monitoring-table--stacked"><thead><tr>
       <th>Source</th><th>County</th><th>Mode</th><th>API</th><th>Probe HTTP</th><th>Error</th><th>Last probe</th><th>Parcels</th><th>Import</th><th>Sync active</th><th>Actions</th>
-    </tr></thead><tbody>${rows.join("") || '<tr><td colspan="11">No GIS sources in snapshot</td></tr>'}</tbody></table>`;
+    </tr></thead><tbody>${rows.join("") || '<tr><td colspan="11">No GIS sources in snapshot</td></tr>'}</tbody></table></div>`;
   }
 
   function renderDataPanel(data) {
@@ -962,10 +968,18 @@ ${statusChip}
           if (status) status.textContent = "";
           return;
         }
-        if (action === "delete" && sourceKey) {
+        if (action === "disable" && sourceKey) {
           if (!window.confirm(`Disable GIS source ${sourceKey}?`)) return;
           await gisAdminFetch("DELETE", `/sources/${encodeURIComponent(sourceKey)}`);
           if (status) status.textContent = `Disabled ${sourceKey}`;
+        } else if (action === "purge" && sourceKey) {
+          const parcelCount = btn.getAttribute("data-parcel-count") || "0";
+          const msg = `Permanently delete ${sourceKey}? This removes the catalog entry, source state, and all ${fmtNum(parcelCount)} parcels. This cannot be undone.`;
+          if (!window.confirm(msg)) return;
+          const data = await gisAdminFetch("DELETE", `/sources/${encodeURIComponent(sourceKey)}?hard=true`);
+          if (status) {
+            status.textContent = `Deleted ${sourceKey} (${fmtNum(data.parcels_deleted)} parcels)`;
+          }
         } else if (action === "probe-all") {
           const data = await gisAdminPost("/probe", {});
           if (data.failed && data.failed.length) {

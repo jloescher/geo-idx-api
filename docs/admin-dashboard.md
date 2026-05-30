@@ -75,7 +75,7 @@ Refresh: manual **Refresh** button + 30s interval (pauses when tab hidden). Sess
 | **Listings** | total, active/pending, lag, freshness mode | Per `dataset_slug`; dashboard drill-down → **Ingest & Sync** tab (not `/api/v1/bridge/stats`, which requires API domain token auth) |
 | **Enrichment** | `enrichment.fema`, `enrichment.geocode` | FEMA stale/null-with-coords, geocode pending/bad-address; sample tables; per-dataset reason breakdown |
 | **GIS** | parcels, cities, counties, zips, source states, layer freshness | Stale if parcel/zip sync &gt;35d or generation mismatch; `api_status` from `last_probe_ok` |
-| **GIS ops (admin)** | Data Quality → GIS Sources | Probe / Sync / Probe all / Add / Edit / Disable / Upload; probe HTTP + error columns; import status from `gis_import_uploads` |
+| **GIS ops (admin)** | Data Quality → GIS Sources | Probe / Sync / Probe all / Add / Edit / Disable / Delete / Upload; probe HTTP + error columns; import status from `gis_import_uploads` |
 | **Crypto** | BTC/ETH/SOL USD + age | Stale if snapshot &gt;1h |
 | **Cache** | 15m hit rate from `mls_proxy_audit_logs` | `cache_hit` stored as `HIT`/`MISS`; status `no_data` when no audits in window |
 | **Queues** | `pending` (ready now), `scheduled` (delayed), `reserved`, `stale_reserved`, failed | Merges configured `WORKER_QUEUES` with zero rows when empty; reads primary pool |

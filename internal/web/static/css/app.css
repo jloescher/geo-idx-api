@@ -147,6 +147,16 @@ input:focus {
   color: var(--text);
 }
 
+.btn-danger {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+}
+
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.22);
+}
+
 .btn-sm {
   padding: 0.35rem 0.75rem;
   font-size: 0.8rem;
@@ -541,6 +551,20 @@ tr.gis-source-disabled td {
   overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.monitoring-group {
+  margin-bottom: 1.25rem;
+}
+
+.monitoring-group-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 0.5rem;
 }
 
 .monitoring-table {
@@ -968,15 +992,59 @@ main.dashboard-main {
   margin-bottom: 1rem;
 }
 
+@media (max-width: 768px) {
+  .site-header {
+    padding: 0.85rem 1rem;
+  }
+
+  main.dashboard-main {
+    padding: 1.25rem 1rem 2.5rem;
+  }
+
+  .card {
+    padding: 1.25rem;
+  }
+
+  .monitoring-skeleton-grid,
+  .monitoring-grid {
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  }
+}
+
 @media (max-width: 640px) {
   .dashboard-layout {
     grid-template-columns: 1fr;
+  }
+
+  .site-header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .site-header .brand {
+    font-size: 1rem;
+  }
+
+  .site-header nav a,
+  .site-header-actions a {
+    margin-left: 0.75rem;
+  }
+
+  .site-header-actions a:first-child {
+    margin-left: 0;
   }
 
   .dashboard-nav {
     border-right: none;
     border-bottom: 1px solid var(--border);
     padding: 0.75rem;
+  }
+
+  .dashboard-nav-link {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
   }
 
   .dashboard-nav-list {
@@ -990,11 +1058,127 @@ main.dashboard-main {
     align-items: flex-start;
   }
 
+  .inline-form .btn-primary,
+  .inline-form .btn-secondary {
+    width: 100%;
+  }
+
+  .monitoring-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .monitoring-controls {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .monitoring-skeleton-grid,
   .monitoring-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 
   .monitoring-tabs {
     padding-bottom: 0.4rem;
+  }
+
+  .setup-progress li {
+    flex: 1 1 100%;
+  }
+
+  .token-field {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .token-actions {
+    width: 100%;
+  }
+
+  .token-actions .btn {
+    flex: 1 1 auto;
+  }
+
+  .delete-bundle-form .btn {
+    width: 100%;
+  }
+
+  .domain-bundle-staging,
+  .domain-staging {
+    padding-left: 0.5rem;
+  }
+
+  .gis-source-dialog {
+    width: calc(100vw - 2rem);
+    max-width: none;
+    margin: auto;
+  }
+
+  .gis-source-form .form-actions {
+    flex-direction: column;
+  }
+
+  .gis-source-form .form-actions .btn {
+    width: 100%;
+  }
+
+  .monitoring-table:not(.monitoring-table--stacked) th,
+  .monitoring-table:not(.monitoring-table--stacked) td {
+    white-space: normal;
+  }
+
+  .monitoring-table-wrap--gis .monitoring-table--stacked thead {
+    display: none;
+  }
+
+  .monitoring-table-wrap--gis .monitoring-table--stacked tbody tr {
+    display: block;
+    border-bottom: 1px solid var(--border);
+    padding: 0.5rem 0;
+  }
+
+  .monitoring-table-wrap--gis .monitoring-table--stacked tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  .monitoring-table-wrap--gis .monitoring-table--stacked td {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+    white-space: normal;
+    padding: 0.35rem 0.75rem;
+    border-bottom: none;
+  }
+
+  .monitoring-table-wrap--gis .monitoring-table--stacked td::before {
+    content: attr(data-label);
+    flex: 0 0 6.5rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .monitoring-table-wrap--gis .monitoring-table--stacked .gis-actions-cell {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .monitoring-table-wrap--gis .monitoring-table--stacked .gis-actions-cell::before {
+    margin-bottom: 0.25rem;
+  }
+
+  .monitoring-table-wrap--gis .monitoring-table--stacked .gis-actions-cell .btn,
+  .monitoring-table-wrap--gis .monitoring-table--stacked .gis-actions-cell .gis-upload-label {
+    width: 100%;
+    margin: 0.15rem 0;
+    text-align: center;
+  }
+}
+
+@media (max-width: 400px) {
+  .monitoring-skeleton-grid,
+  .monitoring-grid {
+    grid-template-columns: 1fr;
   }
 }

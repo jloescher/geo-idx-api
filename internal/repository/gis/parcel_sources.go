@@ -160,10 +160,37 @@ func (r *Repository) SetParcelSourceEnabled(ctx context.Context, sourceKey strin
 	return err
 }
 
-// DeleteParcelSource removes a catalog row (does not delete gis_parcels).
+// DeleteParcelSource removes a catalog row (does not delete gis_parcels or gis_source_states).
 func (r *Repository) DeleteParcelSource(ctx context.Context, sourceKey string) error {
 	_, err := r.db.Pool.Exec(ctx, `DELETE FROM gis_parcel_sources WHERE source_key = $1`, sourceKey)
 	return err
+}
+
+// DeleteParcelSourceFull removes parcels, source state, and catalog row in one transaction.
+// gis_import_uploads rows cascade when the catalog row is deleted.
+func (r *Repository) DeleteParcelSourceFull(ctx context.Context, sourceKey string) (parcelsDeleted int64, err error) {
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx, `DELETE FROM gis_parcels WHERE source_key = $1`, sourceKey)
+	if err != nil {
+		return 0, err
+	}
+	parcelsDeleted = tag.RowsAffected()
+
+	if _, err := tx.Exec(ctx, `DELETE FROM gis_source_states WHERE source_key = $1`, sourceKey); err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM gis_parcel_sources WHERE source_key = $1`, sourceKey); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	return parcelsDeleted, nil
 }
 
 func scanParcelSourceRows(rows interface {
