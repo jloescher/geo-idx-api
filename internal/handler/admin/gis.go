@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -233,13 +234,17 @@ func (h *GISHandler) UploadShapefile(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to read upload"})
 	}
 	defer f.Close()
-	data := make([]byte, file.Size)
-	if _, err := f.Read(data); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to read upload"})
-	}
-	path, err := gis.SaveUpload(h.cfg.GIS.ImportPath, sourceKey, file.Filename, data)
+	path, written, err := gis.SaveUploadStream(h.cfg.GIS.ImportPath, sourceKey, file.Filename, f, h.cfg.GIS.ImportMaxBytes)
 	if err != nil {
+		if errors.Is(err, gis.ErrUploadTooLarge) {
+			return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{
+				"error": fmt.Sprintf("file too large (max %d bytes)", h.cfg.GIS.ImportMaxBytes),
+			})
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	if h.cfg.GIS.ImportMaxBytes > 0 && written > h.cfg.GIS.ImportMaxBytes {
+		return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{"error": "file too large"})
 	}
 	uid, _ := c.Locals("user_id").(int64)
 	var uploadID int64

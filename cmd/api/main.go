@@ -59,7 +59,7 @@ func main() {
 
 	bodyLimit := int(cfg.GIS.ImportMaxBytes)
 	if bodyLimit <= 0 {
-		bodyLimit = 512 * 1024 * 1024
+		bodyLimit = 1024 * 1024 * 1024
 	}
 
 	app := fiber.New(fiber.Config{

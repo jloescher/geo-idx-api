@@ -1,10 +1,13 @@
 package gis
 
 import (
+	"archive/zip"
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -229,9 +232,9 @@ func runOGR2OGRGeoJSONSeq(ctx context.Context, inputPath, outPath string) error 
 	if _, err := exec.LookPath("ogr2ogr"); err != nil {
 		return fmt.Errorf("ogr2ogr not installed in worker image: %w", err)
 	}
-	src := inputPath
-	if strings.HasSuffix(strings.ToLower(inputPath), ".zip") {
-		src = "/vsizip/" + inputPath
+	src, err := shapefileOGRSource(inputPath)
+	if err != nil {
+		return err
 	}
 	cmd := exec.CommandContext(ctx, "ogr2ogr", "-f", "GeoJSONSeq", outPath, src, "-t_srs", "EPSG:4326", "-dim", "2")
 	out, err := cmd.CombinedOutput()
@@ -248,19 +251,101 @@ func UnmarshalShapefileImportArgs(raw json.RawMessage) (ShapefileImportArgs, err
 	return args, err
 }
 
-// SaveUpload writes multipart upload bytes under GIS_IMPORT_PATH.
-func SaveUpload(basePath, sourceKey, filename string, data []byte) (string, error) {
+// shapefileOGRSource returns the ogr2ogr input path for a .shp file or zip archive.
+func shapefileOGRSource(inputPath string) (string, error) {
+	if !strings.HasSuffix(strings.ToLower(inputPath), ".zip") {
+		return inputPath, nil
+	}
+	inner, err := findShapefileInZip(inputPath)
+	if err != nil {
+		return "", err
+	}
+	if inner != "" {
+		return "/vsizip/" + inputPath + "/" + inner, nil
+	}
+	return "/vsizip/" + inputPath, nil
+}
+
+// findShapefileInZip locates a .shp member inside a zip. Prefers the shallowest path,
+// then the largest .shp when multiple candidates exist (nested county exports).
+func findShapefileInZip(zipPath string) (string, error) {
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return "", fmt.Errorf("open zip %s: %w", zipPath, err)
+	}
+	defer r.Close()
+
+	type candidate struct {
+		name  string
+		depth int
+		size  uint64
+	}
+	var best *candidate
+	for _, f := range r.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		name := filepath.ToSlash(f.Name)
+		if strings.HasPrefix(name, "__MACOSX/") {
+			continue
+		}
+		if !strings.HasSuffix(strings.ToLower(name), ".shp") {
+			continue
+		}
+		depth := strings.Count(strings.Trim(name, "/"), "/")
+		c := candidate{name: name, depth: depth, size: f.UncompressedSize64}
+		if best == nil || c.depth < best.depth || (c.depth == best.depth && c.size > best.size) {
+			best = &c
+		}
+	}
+	if best == nil {
+		return "", nil
+	}
+	return best.name, nil
+}
+
+var ErrUploadTooLarge = fmt.Errorf("upload exceeds max size")
+
+// SaveUploadStream writes a multipart upload under GIS_IMPORT_PATH without buffering the full file in memory.
+func SaveUploadStream(basePath, sourceKey, filename string, r io.Reader, maxBytes int64) (path string, written int64, err error) {
 	dir := filepath.Join(basePath, sourceKey)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return "", err
+		return "", 0, err
 	}
 	safe := filepath.Base(filename)
 	if safe == "" || safe == "." {
 		safe = "upload.zip"
 	}
 	dest := filepath.Join(dir, safe)
-	if err := os.WriteFile(dest, data, 0o640); err != nil {
-		return "", err
+	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o640)
+	if err != nil {
+		return "", 0, err
 	}
-	return dest, nil
+	defer func() {
+		if err != nil {
+			_ = os.Remove(dest)
+		}
+	}()
+
+	limited := io.Reader(r)
+	if maxBytes > 0 {
+		limited = io.LimitReader(r, maxBytes+1)
+	}
+	written, err = io.Copy(f, limited)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if maxBytes > 0 && written > maxBytes {
+		return "", written, fmt.Errorf("%w %d bytes", ErrUploadTooLarge, maxBytes)
+	}
+	if err != nil {
+		return "", written, err
+	}
+	return dest, written, nil
+}
+
+// SaveUpload writes multipart upload bytes under GIS_IMPORT_PATH.
+func SaveUpload(basePath, sourceKey, filename string, data []byte) (string, error) {
+	path, _, err := SaveUploadStream(basePath, sourceKey, filename, bytes.NewReader(data), 0)
+	return path, err
 }
