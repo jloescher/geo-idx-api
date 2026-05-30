@@ -19,6 +19,7 @@ type PendingRow struct {
 	Postal        *string
 	StreetNumber  *string
 	StreetName    *string
+	Recovery      bool
 }
 
 // Repository selects listings for geocode enrichment.
@@ -28,16 +29,29 @@ type Repository struct {
 
 const selectPendingBaseSQL = `
 		SELECT id, dataset_slug, unparsed_address, city, state_or_province, postal_code,
-		       street_number, street_name
+		       street_number, street_name,
+		       (fema_failure_reason = 'insufficient_coords') AS recovery
 		FROM listings
 		WHERE id > $1
 		  AND LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
 		  AND internet_address_display_yn IS TRUE
 		  AND geocode_bad_address_yn IS FALSE
-		  AND (latitude IS NULL OR longitude IS NULL)
 		  AND (
-		    (unparsed_address IS NOT NULL AND trim(unparsed_address) <> '')
-		    OR (street_number IS NOT NULL AND city IS NOT NULL)
+		    (
+		      (latitude IS NULL OR longitude IS NULL)
+		      AND (
+		        (unparsed_address IS NOT NULL AND trim(unparsed_address) <> '')
+		        OR (street_number IS NOT NULL AND city IS NOT NULL)
+		      )
+		    )
+		    OR (
+		      fema_failure_reason = 'insufficient_coords'
+		      AND latitude IS NOT NULL AND longitude IS NOT NULL
+		      AND (
+		        (unparsed_address IS NOT NULL AND trim(unparsed_address) <> '')
+		        OR (street_number IS NOT NULL AND city IS NOT NULL)
+		      )
+		    )
 		  )
 	`
 
@@ -47,10 +61,22 @@ const countPendingBaseSQL = `
 		WHERE LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
 		  AND internet_address_display_yn IS TRUE
 		  AND geocode_bad_address_yn IS FALSE
-		  AND (latitude IS NULL OR longitude IS NULL)
 		  AND (
-		    (unparsed_address IS NOT NULL AND trim(unparsed_address) <> '')
-		    OR (street_number IS NOT NULL AND city IS NOT NULL)
+		    (
+		      (latitude IS NULL OR longitude IS NULL)
+		      AND (
+		        (unparsed_address IS NOT NULL AND trim(unparsed_address) <> '')
+		        OR (street_number IS NOT NULL AND city IS NOT NULL)
+		      )
+		    )
+		    OR (
+		      fema_failure_reason = 'insufficient_coords'
+		      AND latitude IS NOT NULL AND longitude IS NOT NULL
+		      AND (
+		        (unparsed_address IS NOT NULL AND trim(unparsed_address) <> '')
+		        OR (street_number IS NOT NULL AND city IS NOT NULL)
+		      )
+		    )
 		  )
 	`
 
@@ -66,9 +92,15 @@ const applyCoordsSQL = `
 			geocode_failed_at = NULL,
 			geocode_failure_reason = NULL,
 			geocode_attempt_count = COALESCE(geocode_attempt_count, 0) + 1,
+			flood_zone_updated_at = NULL,
+			fema_failure_reason = NULL,
+			fema_failed_at = NULL,
 			updated_at = NOW()
 		WHERE id = $1
-		  AND (latitude IS NULL OR longitude IS NULL)
+		  AND (
+		    latitude IS NULL OR longitude IS NULL
+		    OR fema_failure_reason = 'insufficient_coords'
+		  )
 	`
 
 const markFailedAttemptSQL = `
@@ -81,7 +113,10 @@ const markFailedAttemptSQL = `
 			geocode_attempt_count = COALESCE(geocode_attempt_count, 0) + 1,
 			updated_at = NOW()
 		WHERE id = $1
-		  AND (latitude IS NULL OR longitude IS NULL)
+		  AND (
+		    latitude IS NULL OR longitude IS NULL
+		    OR fema_failure_reason = 'insufficient_coords'
+		  )
 	`
 
 // NewRepository creates a geocode listings repository.
@@ -113,7 +148,7 @@ func (r *Repository) SelectPending(ctx context.Context, cursorID int64, limit in
 		var row PendingRow
 		if err := rows.Scan(
 			&row.ID, &row.DatasetSlug, &row.Unparsed, &row.City, &row.State, &row.Postal,
-			&row.StreetNumber, &row.StreetName,
+			&row.StreetNumber, &row.StreetName, &row.Recovery,
 		); err != nil {
 			return nil, err
 		}

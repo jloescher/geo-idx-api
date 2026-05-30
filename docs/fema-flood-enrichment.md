@@ -30,11 +30,17 @@ flowchart LR
   kickoff[fema.flood_enrich_kickoff]
   batch[fema.flood_enrich_batch]
   nfhl[FEMA NFHL Layer 28]
+  geocodeKick[mls.geocode_listings_kickoff]
+  geocodeBatch[mls.geocode_listings_batch]
+  google[Google Geocoding API]
   listings[(listings)]
   persist --> listings
   finalize --> kickoff --> batch
   batch --> nfhl
   batch --> listings
+  batch -->|"insufficient_coords"| geocodeKick --> geocodeBatch --> google
+  geocodeBatch --> listings
+  geocodeBatch --> kickoff
 ```
 
 - **Queue:** PostgreSQL `jobs` table (`fema.flood_enrich_kickoff`, `fema.flood_enrich_batch`)
@@ -114,8 +120,47 @@ Listings with coordinates outside WGS-84 ranges are **skipped** by `SelectStaleF
 | NFHL success, no feature at point | `no_nfhl_feature` | set (staleness watermark) | After `FEMA_FLOOD_STALE_DAYS` |
 | HTTP/circuit/timeout error | `request_error` | **NULL** (stays in stale queue) | Next batch / kickoff |
 | Missing coordinates | `insufficient_coords` | unchanged | After geocode |
+| Bad coordinates on first NFHL miss | `insufficient_coords` | **NULL** (stays in stale queue) | Geocode recovery, then FEMA re-run |
 
 **Worker logs:** `fema flood enrich batch` with `processed` vs `updated`; `fema point query failed` on NFHL errors (rows get `request_error`, not `flood_zone_updated_at`).
+
+## Coordinate recovery (suspicious coords)
+
+When a listing's **first** FEMA pass (`flood_zone_updated_at IS NULL`) returns no NFHL feature **and** coordinates are implausible, the batch marks `fema_failure_reason = insufficient_coords` **without** setting `flood_zone_updated_at`. This avoids the 30-day stale lock on bad MLS pins (Antarctica, Null Island, swapped lat/lng, outside Florida service area).
+
+Suspicious rules (`internal/service/mls/coords_suspicious.go`):
+
+| Rule | Condition |
+|------|-----------|
+| Antarctica | `lat < -60` |
+| Null Island | `lat = 0` and `lng = 0` |
+| Outside FL service area | `state = FL` and coords outside lat 24.5–31.2, lng -87.8–-79.8 |
+| Likely swapped lat/lng | `state = FL` and `abs(lat) > 50` and `abs(lng) < 45` |
+
+Recovery flow:
+
+1. FEMA batch marks `insufficient_coords` and enqueues geocode kickoff (deduped).
+2. Geocode batch selects rows with `fema_failure_reason = insufficient_coords` (even when lat/lng are present), geocodes from address, overwrites coords, clears FEMA watermark.
+3. Geocode batch enqueues FEMA kickoff for re-enrichment at corrected coordinates.
+
+Legitimate first-pass `no_nfhl_feature` rows (valid FL coords, no NFHL polygon) are unchanged.
+
+**Existing bad rows:** Use [scripts/fema_insufficient_coords_backfill.sql](scripts/fema_insufficient_coords_backfill.sql) to reset legacy `no_nfhl_feature` rows with suspicious coords, then run admin geocode + flood-enrich kickoffs.
+
+### Staging verification
+
+1. Seed a listing with `lat = -82`, `lng = 27`, FL address, `flood_zone_updated_at IS NULL`.
+2. Run FEMA batch → expect `fema_failure_reason = insufficient_coords`, `flood_zone_updated_at` still NULL.
+3. Run geocode batch → coords updated from address, FEMA fields cleared.
+4. Run FEMA batch again → expect NFHL hit or legitimate `no_nfhl_feature` at corrected point.
+
+```sql
+SELECT id, latitude, longitude, state_or_province, fema_failure_reason, flood_zone_updated_at
+FROM listings
+WHERE fema_failure_reason IN ('no_nfhl_feature', 'insufficient_coords')
+  AND latitude < -60
+LIMIT 20;
+```
 
 **Dashboard:** Data Quality tab shows FEMA stale/null-with-coords counts, per-reason breakdown, sample rows, and **Run FEMA enrich** (`POST /api/v1/admin/flood-enrich`).
 

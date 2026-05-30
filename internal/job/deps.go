@@ -26,6 +26,8 @@ func (r *Registry) InitServices(q *queue.Client) {
 	r.crypto = crypto.NewPricingService(r.cfg, r.db, r.logger)
 	r.femaEnrich = fema.NewEnrichmentService(r.cfg, r.db, q, r.logger)
 	r.geocodeEnrich = geocode.NewEnrichmentService(r.cfg, r.db, q, r.logger)
+	r.femaEnrich.SetGeocodeKickoff(r.geocodeEnrich.EnqueueKickoffIfAbsent)
+	r.geocodeEnrich.SetFEMAKickoff(r.femaEnrich.EnqueueKickoffIfAbsent)
 	r.bridgeSync.SetFEMAEnrichment(r.femaEnrich)
 	r.sparkSync.SetFEMAEnrichment(r.femaEnrich)
 	r.bridgeSync.SetGeocodeEnrichment(r.geocodeEnrich)

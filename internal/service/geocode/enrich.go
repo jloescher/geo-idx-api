@@ -33,12 +33,18 @@ const (
 
 // EnrichmentService runs Google Geocoding backfill for mirror listings.
 type EnrichmentService struct {
-	cfg    config.Config
-	db     *repository.DB
-	queue  *queue.Client
-	repo   *geocoderepo.Repository
-	client *Geocoder
-	logger *slog.Logger
+	cfg          config.Config
+	db           *repository.DB
+	queue        *queue.Client
+	repo         *geocoderepo.Repository
+	client       *Geocoder
+	logger       *slog.Logger
+	femaKickoff  func(ctx context.Context, datasetSlug string) error
+}
+
+// SetFEMAKickoff wires optional FEMA re-enrichment after coordinate recovery.
+func (s *EnrichmentService) SetFEMAKickoff(fn func(ctx context.Context, datasetSlug string) error) {
+	s.femaKickoff = fn
 }
 
 // NewEnrichmentService wires geocode enrichment dependencies.
@@ -124,6 +130,7 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args GeocodeBatchArgs)
 	interval := time.Second / time.Duration(rps)
 
 	var updated int
+	var recoveryUpdated bool
 	for _, row := range rows {
 		select {
 		case <-ctx.Done():
@@ -167,6 +174,9 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args GeocodeBatchArgs)
 			s.logger.Warn("geocode persist failed", "listing_id", row.ID, "error", err)
 		} else {
 			updated++
+			if row.Recovery {
+				recoveryUpdated = true
+			}
 		}
 		time.Sleep(interval)
 	}
@@ -178,6 +188,12 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args GeocodeBatchArgs)
 		"updated", updated,
 		"max_id", maxID,
 	)
+
+	if recoveryUpdated && s.femaKickoff != nil {
+		if err := s.femaKickoff(ctx, args.DatasetSlug); err != nil {
+			s.logger.Warn("fema re-enrich kickoff failed", "error", err)
+		}
+	}
 
 	if len(rows) == limit {
 		_, err = s.queue.Enqueue(ctx, s.cfg.Geocode.EnrichQueue, queue.TypeMLSGeocodeListingsBatch, GeocodeBatchArgs{

@@ -28,12 +28,18 @@ type FloodEnrichBatchArgs struct {
 
 // EnrichmentService runs NFHL point enrichment jobs.
 type EnrichmentService struct {
-	cfg    config.Config
-	db     *repository.DB
-	queue  *queue.Client
-	repo   *femarepo.Repository
-	client *Client
-	logger *slog.Logger
+	cfg            config.Config
+	db             *repository.DB
+	queue          *queue.Client
+	repo           *femarepo.Repository
+	client         *Client
+	logger         *slog.Logger
+	geocodeKickoff func(ctx context.Context, datasetSlug string) error
+}
+
+// SetGeocodeKickoff wires optional geocode recovery kickoff after insufficient_coords marking.
+func (s *EnrichmentService) SetGeocodeKickoff(fn func(ctx context.Context, datasetSlug string) error) {
+	s.geocodeKickoff = fn
 }
 
 // NewEnrichmentService wires FEMA enrichment dependencies.
@@ -120,6 +126,7 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args FloodEnrichBatchA
 	now := time.Now().UTC()
 	updates := make([]femarepo.FEMAUpdate, 0, len(rows))
 	var errorIDs []int64
+	var insufficientCoordsIDs []int64
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	workers := 8
@@ -146,7 +153,15 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args FloodEnrichBatchA
 				return
 			}
 
-			u := buildListingFEMAUpdate(r.ID, now, attrs)
+			isFirstPass := r.FloodZoneUpdatedAt == nil
+			state := strVal(r.StateOrProvince)
+			u, markInsufficient := buildListingFEMAUpdate(r.ID, now, attrs, r.Latitude, r.Longitude, state, isFirstPass)
+			if markInsufficient {
+				mu.Lock()
+				insufficientCoordsIDs = append(insufficientCoordsIDs, r.ID)
+				mu.Unlock()
+				return
+			}
 
 			mu.Lock()
 			updates = append(updates, u)
@@ -158,10 +173,19 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args FloodEnrichBatchA
 	if err := s.repo.BatchMarkRequestError(ctx, errorIDs, now); err != nil {
 		return err
 	}
+	if err := s.repo.BatchMarkInsufficientCoords(ctx, insufficientCoordsIDs, now); err != nil {
+		return err
+	}
 	if err := s.repo.BatchUpdateFEMA(ctx, updates); err != nil {
 		return err
 	}
 	enrichListingsUpdatedTotal.Add(float64(len(updates)))
+
+	if len(insufficientCoordsIDs) > 0 && s.geocodeKickoff != nil {
+		if err := s.geocodeKickoff(ctx, args.DatasetSlug); err != nil {
+			s.logger.Warn("geocode recovery kickoff failed", "error", err, "count", len(insufficientCoordsIDs))
+		}
+	}
 
 	maxID := rows[len(rows)-1].ID
 	s.logger.Info("fema flood enrich batch",
@@ -183,7 +207,8 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args FloodEnrichBatchA
 }
 
 // buildListingFEMAUpdate maps an NFHL point query outcome to a persistable row update.
-func buildListingFEMAUpdate(id int64, now time.Time, attrs *PointAttributes) femarepo.FEMAUpdate {
+// When markInsufficient is true, the caller must use BatchMarkInsufficientCoords instead of BatchUpdateFEMA.
+func buildListingFEMAUpdate(id int64, now time.Time, attrs *PointAttributes, lat, lng float64, state string, isFirstPass bool) (femarepo.FEMAUpdate, bool) {
 	u := femarepo.FEMAUpdate{
 		ID:                 id,
 		Outcome:            "success",
@@ -197,12 +222,22 @@ func buildListingFEMAUpdate(id int64, now time.Time, attrs *PointAttributes) fem
 			u.FloodZoneRaw = attrs.Raw
 		}
 		u.LowRiskFloodZoneYN = mls.ComputeLowRiskFloodZoneYN(attrs.FLDZone)
-	} else {
-		u.Outcome = femarepo.FailureReasonNoNFHLFeature
-		reason := femarepo.FailureReasonNoNFHLFeature
-		u.FEMAFailureReason = &reason
+		return u, false
 	}
-	return u
+	if isFirstPass && mls.IsSuspiciousCoordinate(lat, lng, state) {
+		return u, true
+	}
+	u.Outcome = femarepo.FailureReasonNoNFHLFeature
+	reason := femarepo.FailureReasonNoNFHLFeature
+	u.FEMAFailureReason = &reason
+	return u, false
+}
+
+func strVal(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }
 
 // CountStaleForAdmin returns listings needing FEMA refresh.

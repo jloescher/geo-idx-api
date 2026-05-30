@@ -21,7 +21,10 @@ func TestBuildListingFEMAUpdate_hit(t *testing.T) {
 		Raw:     []byte(`{"FLD_ZONE":"AE"}`),
 	}
 
-	u := buildListingFEMAUpdate(42, now, attrs)
+	u, markInsufficient := buildListingFEMAUpdate(42, now, attrs, 27.95, -82.45, "FL", true)
+	if markInsufficient {
+		t.Fatal("hit should not mark insufficient coords")
+	}
 	if u.ID != 42 {
 		t.Fatalf("id: got %d", u.ID)
 	}
@@ -42,7 +45,10 @@ func TestBuildListingFEMAUpdate_hit(t *testing.T) {
 func TestBuildListingFEMAUpdate_miss(t *testing.T) {
 	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
 
-	u := buildListingFEMAUpdate(7, now, nil)
+	u, markInsufficient := buildListingFEMAUpdate(7, now, nil, 27.95, -82.45, "FL", true)
+	if markInsufficient {
+		t.Fatal("valid FL miss should not mark insufficient coords")
+	}
 	if u.ID != 7 {
 		t.Fatalf("id: got %d", u.ID)
 	}
@@ -60,12 +66,36 @@ func TestBuildListingFEMAUpdate_miss(t *testing.T) {
 	}
 }
 
+func TestBuildListingFEMAUpdate_missSuspiciousFirstPass(t *testing.T) {
+	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
+
+	_, markInsufficient := buildListingFEMAUpdate(8, now, nil, -82, 27, "FL", true)
+	if !markInsufficient {
+		t.Fatal("suspicious first-pass miss should mark insufficient coords")
+	}
+}
+
+func TestBuildListingFEMAUpdate_missSuspiciousStalePass(t *testing.T) {
+	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
+
+	u, markInsufficient := buildListingFEMAUpdate(9, now, nil, -82, 27, "FL", false)
+	if markInsufficient {
+		t.Fatal("stale re-run should not mark insufficient coords")
+	}
+	if u.FEMAFailureReason == nil || *u.FEMAFailureReason != femarepo.FailureReasonNoNFHLFeature {
+		t.Fatalf("expected no_nfhl_feature on stale pass, got %+v", u.FEMAFailureReason)
+	}
+}
+
 func TestBuildListingFEMAUpdate_lowRiskZone(t *testing.T) {
 	now := time.Now().UTC()
 	zone := "X"
 	attrs := &PointAttributes{FLDZone: &zone}
 
-	u := buildListingFEMAUpdate(1, now, attrs)
+	u, markInsufficient := buildListingFEMAUpdate(1, now, attrs, 27.95, -82.45, "FL", true)
+	if markInsufficient {
+		t.Fatal("hit should not mark insufficient coords")
+	}
 	if !u.LowRiskFloodZoneYN {
 		t.Fatal("zone X should be low risk")
 	}
@@ -88,19 +118,26 @@ func TestRunBatchSkipsUpdateOnQueryPointError(t *testing.T) {
 		t.Fatal("expected query error")
 	}
 
-	updates, errorIDs := collectBatchUpdates(err, nil, time.Now().UTC(), 99)
+	updates, errorIDs, insufficientIDs := collectBatchUpdates(err, nil, time.Now().UTC(), 99, 27.95, -82.45, "FL", true)
 	if len(updates) != 0 {
 		t.Fatalf("expected no updates on query error, got %d", len(updates))
 	}
 	if len(errorIDs) != 1 || errorIDs[0] != 99 {
 		t.Fatalf("expected error id 99, got %v", errorIDs)
 	}
+	if len(insufficientIDs) != 0 {
+		t.Fatalf("expected no insufficient ids on query error, got %v", insufficientIDs)
+	}
 }
 
 // collectBatchUpdates mirrors RunBatch persist decision: errors are tracked separately.
-func collectBatchUpdates(queryErr error, attrs *PointAttributes, now time.Time, id int64) ([]femarepo.FEMAUpdate, []int64) {
+func collectBatchUpdates(queryErr error, attrs *PointAttributes, now time.Time, id int64, lat, lng float64, state string, isFirstPass bool) ([]femarepo.FEMAUpdate, []int64, []int64) {
 	if queryErr != nil {
-		return nil, []int64{id}
+		return nil, []int64{id}, nil
 	}
-	return []femarepo.FEMAUpdate{buildListingFEMAUpdate(id, now, attrs)}, nil
+	u, markInsufficient := buildListingFEMAUpdate(id, now, attrs, lat, lng, state, isFirstPass)
+	if markInsufficient {
+		return nil, nil, []int64{id}
+	}
+	return []femarepo.FEMAUpdate{u}, nil, nil
 }

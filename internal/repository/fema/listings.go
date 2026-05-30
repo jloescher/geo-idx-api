@@ -18,9 +18,11 @@ const (
 
 // ListingCoord is a listing id with coordinates for NFHL point queries.
 type ListingCoord struct {
-	ID        int64
-	Latitude  float64
-	Longitude float64
+	ID                 int64
+	Latitude           float64
+	Longitude          float64
+	StateOrProvince    *string
+	FloodZoneUpdatedAt *time.Time
 }
 
 // FEMAUpdate is one row of FEMA enrichment to persist.
@@ -83,7 +85,7 @@ func (r *Repository) SelectStaleForEnrichment(ctx context.Context, cursorID int6
 		limit = 2000
 	}
 	query := `
-		SELECT id, latitude::float8, longitude::float8
+		SELECT id, latitude::float8, longitude::float8, state_or_province, flood_zone_updated_at
 		FROM listings
 		WHERE id > $1
 		  AND latitude IS NOT NULL AND longitude IS NOT NULL
@@ -106,7 +108,7 @@ func (r *Repository) SelectStaleForEnrichment(ctx context.Context, cursorID int6
 	var out []ListingCoord
 	for rows.Next() {
 		var row ListingCoord
-		if err := rows.Scan(&row.ID, &row.Latitude, &row.Longitude); err != nil {
+		if err := rows.Scan(&row.ID, &row.Latitude, &row.Longitude, &row.StateOrProvince, &row.FloodZoneUpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, row)
@@ -295,6 +297,23 @@ func (r *Repository) BatchUpdateFEMA(ctx context.Context, updates []FEMAUpdate) 
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+// BatchMarkInsufficientCoords records bad coordinates without advancing flood_zone_updated_at.
+func (r *Repository) BatchMarkInsufficientCoords(ctx context.Context, ids []int64, attemptedAt time.Time) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	reason := FailureReasonInsufficientCoords
+	_, err := r.pool.Exec(ctx, `
+		UPDATE listings SET
+			fema_attempted_at = $2,
+			fema_failure_reason = $3,
+			fema_attempt_count = COALESCE(fema_attempt_count, 0) + 1,
+			updated_at = NOW()
+		WHERE id = ANY($1)
+	`, ids, attemptedAt, reason)
+	return err
 }
 
 // BatchMarkRequestError records transient NFHL query failures without advancing flood_zone_updated_at.
