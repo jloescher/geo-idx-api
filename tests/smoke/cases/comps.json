@@ -1,0 +1,34 @@
+{
+  "cases": [
+    {
+      "name": "comps_run_radius_mode_a",
+      "method": "POST",
+      "path": "/api/v1/comps/run",
+      "query": { "dataset": "{{dataset}}" },
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "subject": {
+          "type": "off_market",
+          "lat": 27.916,
+          "lng": -82.769,
+          "bedrooms": 3,
+          "bathrooms": 2,
+          "living_area_sqft": 1800
+        },
+        "mode": "A",
+        "scope": { "type": "radius", "radius_miles": 3 },
+        "filters": { "max_sold_comps": 3, "sold_months_back": 12 }
+      },
+      "expect_status": [200, 422, 502],
+      "expect_status_unauthed": [401],
+      "expect_json_when_status": [200],
+      "expect_json": {
+        "success": "boolean",
+        "subject": "object",
+        "sold_comps": "array"
+      },
+      "export_as": "comps-radius-mode-a.json",
+      "nextjs_hint": "POST comps body from a server action; subject.type off_market avoids listing lookup."
+    }
+  ]
+}

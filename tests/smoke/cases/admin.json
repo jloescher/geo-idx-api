@@ -1,0 +1,12 @@
+{
+  "cases": [
+    {
+      "name": "admin_monitoring",
+      "skip": "requires dashboard session_id cookie (set YAAK_SESSION_COOKIE to enable in a future slice)"
+    },
+    {
+      "name": "admin_flood_enrich",
+      "skip": "mutating route — never run on production smoke tests"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "cases": [
+    {
+      "name": "bridge_stats",
+      "method": "GET",
+      "path": "/api/v1/bridge/stats",
+      "query": { "dataset": "{{dataset}}" },
+      "expect_status": [200, 403],
+      "expect_status_unauthed": [401],
+      "expect_json_when_status": [200],
+      "expect_json_object": true
+    }
+  ]
+}

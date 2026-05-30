@@ -1,0 +1,33 @@
+{
+  "description": "comps_run_radius_mode_a",
+  "method": "POST",
+  "url": "https://idx.quantyralabs.cc/api/v1/comps/run?dataset=stellar",
+  "headers": {
+    "Authorization": "Bearer ${process.env.IDX_API_TOKEN}",
+    "Content-Type": "application/json",
+    "X-Domain-Slug": "${process.env.IDX_DOMAIN_SLUG}"
+  },
+  "body": {
+    "subject": {
+      "type": "off_market",
+      "lat": 27.916,
+      "lng": -82.769,
+      "bedrooms": 3,
+      "bathrooms": 2,
+      "living_area_sqft": 1800
+    },
+    "mode": "A",
+    "scope": {
+      "type": "radius",
+      "radius_miles": 3
+    },
+    "filters": {
+      "max_sold_comps": 3,
+      "sold_months_back": 12
+    }
+  },
+  "nextjs_fetch_example": {
+    "note": "Use in a Next.js Server Action or Route Handler; never expose the PAT to the browser.",
+    "snippet": "const res = await fetch(\"https://idx.quantyralabs.cc/api/v1/comps/run?dataset=stellar\", {\n  method: \"POST\",\n  headers: {\n    \"Authorization\": \"Bearer ${process.env.IDX_API_TOKEN}\",\n    \"Content-Type\": \"application/json\",\n    \"X-Domain-Slug\": \"${process.env.IDX_DOMAIN_SLUG}\"\n  },\n  body: JSON.stringify({\n        \"subject\": {\n          \"type\": \"off_market\",\n          \"lat\": 27.916,\n          \"lng\": -82.769,\n          \"bedrooms\": 3,\n          \"bathrooms\": 2,\n          \"living_area_sqft\": 1800\n        },\n        \"mode\": \"A\",\n        \"scope\": { \"type\": \"radius\", \"radius_miles\": 3 },\n        \"filters\": { \"max_sold_comps\": 3, \"sold_months_back\": 12 }\n      }),\n});\nif (!res.ok) throw new Error(`API ${res.status}`);\nconst data = await res.json();"
+  }
+}

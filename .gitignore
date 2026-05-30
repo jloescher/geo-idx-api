@@ -18,6 +18,7 @@ Thumbs.db
 /dist/scheduler
 *.test
 coverage.out
+tests/smoke/reports/
 
 # Duplicate agent guide (use AGENTS.md)
 CLAUDE.md

@@ -1,0 +1,29 @@
+{
+  "cases": [
+    {
+      "name": "search_largo_active",
+      "method": "POST",
+      "path": "/api/v1/search",
+      "query": { "dataset": "{{dataset}}" },
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "min_price": 250000,
+        "min_beds": 2,
+        "city": "Largo",
+        "statuses": ["Active"],
+        "low_risk_floodzone": true,
+        "max_monthly_fees": 500,
+        "page": { "limit": 24, "skip": 0 }
+      },
+      "expect_status": [200],
+      "expect_status_unauthed": [401],
+      "expect_json": {
+        "results": "array",
+        "hasMore": "boolean",
+        "nextSkip": "number"
+      },
+      "export_as": "search-active-listings.json",
+      "nextjs_hint": "POST this body to /api/v1/search?dataset=stellar from a Next.js server action."
+    }
+  ]
+}

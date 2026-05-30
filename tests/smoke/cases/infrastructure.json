@@ -1,0 +1,37 @@
+{
+  "cases": [
+    {
+      "name": "healthz",
+      "method": "GET",
+      "path": "/healthz",
+      "auth": false,
+      "expect_status": [200],
+      "expect_json": { "status": "string" },
+      "expect_json_equals": { "status": "ok" }
+    },
+    {
+      "name": "readyz",
+      "method": "GET",
+      "path": "/readyz",
+      "auth": false,
+      "expect_status": [200, 503],
+      "expect_json_when_status": [200],
+      "expect_json": { "ready": "boolean" }
+    },
+    {
+      "name": "health_replicas",
+      "method": "GET",
+      "path": "/health/replicas",
+      "auth": false,
+      "expect_status": [200, 503]
+    },
+    {
+      "name": "metrics",
+      "method": "GET",
+      "path": "/metrics",
+      "auth": false,
+      "expect_status": [200],
+      "expect_min_body_bytes": 1
+    }
+  ]
+}

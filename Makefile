@@ -1,4 +1,4 @@
-.PHONY: build test fmt lint run-api run-worker run-scheduler migrate migrate-install seed-admin gis-enqueue-parcels gis-enqueue-zips openapi-sync docker-gis-smoke
+.PHONY: build test fmt lint run-api run-worker run-scheduler migrate migrate-install seed-admin gis-enqueue-parcels gis-enqueue-zips openapi-sync docker-gis-smoke test-api-smoke test-api-smoke-report
 
 # Copy OpenAPI source into the API binary embed path (required for //go:embed in internal/openapi).
 openapi-sync:
@@ -18,6 +18,15 @@ build: openapi-sync
 
 test: openapi-sync
 	GOFLAGS=$(GOFLAGS) go test ./...
+
+# Production smoke tests (read-only). Requires YAAK_BEARER_TOKEN + YAAK_DOMAIN_SLUG.
+# Optional: GOOSE_DBSTRING for live listing_key/photo_id fixtures (SELECT only).
+test-api-smoke:
+	YAAK_BASE_URL=$${YAAK_BASE_URL:-https://idx.quantyralabs.cc} \
+	  GOFLAGS=$(GOFLAGS) go test -tags smoke -count=1 -timeout 10m ./tests/smoke/... -v
+
+test-api-smoke-report: test-api-smoke
+	@cat tests/smoke/reports/latest.json
 
 fmt:
 	gofmt -w cmd internal

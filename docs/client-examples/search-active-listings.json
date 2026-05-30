@@ -1,0 +1,28 @@
+{
+  "description": "search_largo_active",
+  "method": "POST",
+  "url": "https://idx.quantyralabs.cc/api/v1/search?dataset=stellar",
+  "headers": {
+    "Authorization": "Bearer ${process.env.IDX_API_TOKEN}",
+    "Content-Type": "application/json",
+    "X-Domain-Slug": "${process.env.IDX_DOMAIN_SLUG}"
+  },
+  "body": {
+    "min_price": 250000,
+    "min_beds": 2,
+    "city": "Largo",
+    "statuses": [
+      "Active"
+    ],
+    "low_risk_floodzone": true,
+    "max_monthly_fees": 500,
+    "page": {
+      "limit": 24,
+      "skip": 0
+    }
+  },
+  "nextjs_fetch_example": {
+    "note": "Use in a Next.js Server Action or Route Handler; never expose the PAT to the browser.",
+    "snippet": "const res = await fetch(\"https://idx.quantyralabs.cc/api/v1/search?dataset=stellar\", {\n  method: \"POST\",\n  headers: {\n    \"Authorization\": \"Bearer ${process.env.IDX_API_TOKEN}\",\n    \"Content-Type\": \"application/json\",\n    \"X-Domain-Slug\": \"${process.env.IDX_DOMAIN_SLUG}\"\n  },\n  body: JSON.stringify({\n        \"min_price\": 250000,\n        \"min_beds\": 2,\n        \"city\": \"Largo\",\n        \"statuses\": [\"Active\"],\n        \"low_risk_floodzone\": true,\n        \"max_monthly_fees\": 500,\n        \"page\": { \"limit\": 24, \"skip\": 0 }\n      }),\n});\nif (!res.ok) throw new Error(`API ${res.status}`);\nconst data = await res.json();"
+  }
+}

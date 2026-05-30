@@ -1,0 +1,52 @@
+{
+  "cases": [
+    {
+      "name": "pub_parcels",
+      "method": "GET",
+      "path": "/api/v1/pub/parcels",
+      "query": { "dataset": "{{dataset}}", "limit": "2" },
+      "expect_status": [200, 404, 502],
+      "expect_status_unauthed": [401]
+    },
+    {
+      "name": "pub_parcel",
+      "method": "GET",
+      "path": "/api/v1/pub/parcels/1",
+      "query": { "dataset": "{{dataset}}" },
+      "expect_status": [200, 404, 502],
+      "expect_status_unauthed": [401]
+    },
+    {
+      "name": "pub_parcel_assessments",
+      "method": "GET",
+      "path": "/api/v1/pub/parcels/1/assessments",
+      "query": { "dataset": "{{dataset}}" },
+      "expect_status": [200, 404, 502],
+      "expect_status_unauthed": [401]
+    },
+    {
+      "name": "pub_parcel_transactions",
+      "method": "GET",
+      "path": "/api/v1/pub/parcels/1/transactions",
+      "query": { "dataset": "{{dataset}}" },
+      "expect_status": [200, 404, 502],
+      "expect_status_unauthed": [401]
+    },
+    {
+      "name": "pub_assessments",
+      "method": "GET",
+      "path": "/api/v1/pub/assessments",
+      "query": { "dataset": "{{dataset}}", "limit": "2" },
+      "expect_status": [200, 404, 502],
+      "expect_status_unauthed": [401]
+    },
+    {
+      "name": "pub_transactions",
+      "method": "GET",
+      "path": "/api/v1/pub/transactions",
+      "query": { "dataset": "{{dataset}}", "limit": "2" },
+      "expect_status": [200, 404, 502],
+      "expect_status_unauthed": [401]
+    }
+  ]
+}

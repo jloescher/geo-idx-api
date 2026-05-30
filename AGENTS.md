@@ -183,6 +183,7 @@ make lint           # Run golangci-lint
 | `make build` | Build all binaries to bin/ (runs `openapi-sync` first) |
 | `make openapi-sync` | Copy `docs/yaak-api-collection.json` → embedded `internal/openapi/openapi.json` |
 | `make test` | Run all tests with coverage |
+| `make test-api-smoke` | **Explicit opt-in:** read-only production HTTP smoke tests (`YAAK_BEARER_TOKEN` required); not run by `make test` |
 
 ## Database Schema
 
