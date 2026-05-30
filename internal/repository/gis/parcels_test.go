@@ -39,6 +39,22 @@ func TestQueryParcelsByBBoxIntegration(t *testing.T) {
 		_, _ = db.Pool.Exec(ctx, `DELETE FROM gis_parcels WHERE parcel_id = $1`, "integration-test-1")
 	})
 
+	// Pinellas shapefiles often include Z; column is GEOMETRY(MultiPolygon, 4326) (2D only).
+	rows3d := []ParcelRow{{
+		ParcelID:         "integration-test-3d",
+		SourceKey:        "pinellas",
+		County:           "pinellas",
+		GeometryJSON:     `{"type":"Polygon","coordinates":[[[-82.82,27.96,0],[-82.81,27.96,0],[-82.81,27.97,0],[-82.82,27.97,0],[-82.82,27.96,0]]]}`,
+		Properties:       json.RawMessage(`{}`),
+		SourceGeneration: 1,
+	}}
+	if err := repo.BulkUpsertParcels(ctx, rows3d, 500); err != nil {
+		t.Fatalf("3d geometry: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.Pool.Exec(ctx, `DELETE FROM gis_parcels WHERE parcel_id = $1`, "integration-test-3d")
+	})
+
 	has, err := repo.HasParcelsInBBox(ctx, -82.83, 27.95, -82.79, 27.98, []string{"pinellas"})
 	if err != nil {
 		t.Fatal(err)

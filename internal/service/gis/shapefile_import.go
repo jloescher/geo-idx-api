@@ -232,7 +232,7 @@ func runOGR2OGRGeoJSONSeq(ctx context.Context, inputPath, outPath string) error 
 	if strings.HasSuffix(strings.ToLower(inputPath), ".zip") {
 		src = "/vsizip/" + inputPath
 	}
-	cmd := exec.CommandContext(ctx, "ogr2ogr", "-f", "GeoJSONSeq", outPath, src, "-t_srs", "EPSG:4326")
+	cmd := exec.CommandContext(ctx, "ogr2ogr", "-f", "GeoJSONSeq", outPath, src, "-t_srs", "EPSG:4326", "-dim", "2")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("ogr2ogr: %w: %s", err, strings.TrimSpace(string(out)))

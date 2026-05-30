@@ -75,7 +75,7 @@ func (r *Repository) upsertParcelBatch(ctx context.Context, rows []ParcelRow) er
 		}
 		b.WriteString(fmt.Sprintf(`(
 			$%d, $%d, $%d,
-			ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($%d), 4326)),
+			ST_Multi(ST_SetSRID(ST_Force2D(ST_GeomFromGeoJSON($%d)), 4326)),
 			$%d::jsonb,
 			$%d, $%d, $%d, $%d,
 			$%d, $%d, $%d, $%d,
