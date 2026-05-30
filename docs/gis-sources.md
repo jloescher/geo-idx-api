@@ -295,9 +295,9 @@ Dashboard GIS tile uses `parcels_last_synced_at`, `zips_last_synced_at`, per-sou
 
 **Probe all behavior:** Probes the static county catalog **and** all `enabled` rows in `gis_parcel_sources`. Shapefile sources are skipped (no live ArcGIS query). `API: UNKNOWN` in the UI means `last_probe_at` is NULL — run Probe or Probe all after migration `00010`.
 
-**Shapefile ingest:** Set `sync_mode=shapefile` on the catalog row (empty `query_url` allowed), upload via admin API or dashboard. Worker image includes `gdal-tools` (`ogr2ogr`); verify with `make docker-gis-smoke` after image build.
+**Shapefile ingest:** Set `sync_mode=shapefile` on the catalog row (empty `query_url` allowed), upload via admin API or dashboard. Worker image includes `gdal-tools` (`ogr2ogr`); verify with `make docker-gis-smoke` after image build. Uploads enqueue to **`GIS_IMPORT_QUEUE`** (default `gis-import`); only worker 1 should consume that queue.
 
-**Shared volume (required in production):** Mount the same host path or named volume at `GIS_IMPORT_PATH` (default `/var/cache/geoidx/gis-imports`) on **idx-api-web** and **idx-api-worker 1** in each DC. The API writes uploads; worker 1 runs `gis.shapefile_import` and reads via `/vsizip/` or direct `.shp`. Without a shared mount, uploads succeed on API but the worker cannot read the file.
+**Shared volume (required in production):** Mount the same host path or named volume at `GIS_IMPORT_PATH` (default `/var/cache/geoidx/gis-imports`) on **idx-api-web** and **idx-api-worker 1** in each DC. The API writes uploads; worker 1 runs `gis.shapefile_import` (GeoJSONSeq streaming ingest) and reads via `/vsizip/` or direct `.shp`. Without a shared mount, uploads succeed on API but the worker cannot read the file.
 
 **Env:** `GIS_SYNC_QUEUE`, `GIS_IMPORT_PATH`, `GIS_IMPORT_MAX_BYTES` (default 512MB).
 

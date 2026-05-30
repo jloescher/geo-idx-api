@@ -30,6 +30,7 @@ func KnownQueueNames(cfg config.Config) []string {
 	add(cfg.Spark.SyncFetchQueue)
 	add(cfg.Spark.SyncPersistQueue)
 	add(cfg.GIS.SyncQueue)
+	add(cfg.GIS.ImportQueue)
 	add(cfg.GIS.Queue)
 	add(cfg.FEMA.EnrichQueue)
 	add(cfg.Geocode.EnrichQueue)

@@ -3,30 +3,41 @@ package gis
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
-func TestEnsureImportFileReadableMissing(t *testing.T) {
-	err := ensureImportFileReadable(filepath.Join(t.TempDir(), "missing.zip"))
-	if err == nil {
-		t.Fatal("expected error")
+func TestParseGeoJSONFeature(t *testing.T) {
+	line := []byte(`{"type":"Feature","geometry":{"type":"Point","coordinates":[-82.5,27.9]},"properties":{"PARCELID":"123"}}`)
+	feat, err := ParseGeoJSONFeature(line)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "upload file not found") {
-		t.Fatalf("unexpected error: %v", err)
+	if feat.Properties["PARCELID"] != "123" {
+		t.Fatalf("unexpected properties: %v", feat.Properties)
 	}
-	if !strings.Contains(err.Error(), "GIS_IMPORT_PATH") {
-		t.Fatalf("expected volume hint: %v", err)
+	if len(feat.Geometry) == 0 {
+		t.Fatal("expected geometry")
 	}
 }
 
-func TestEnsureImportFileReadableOK(t *testing.T) {
+func TestStreamGeoJSONSeqFeatures(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "Parcels.zip")
-	if err := os.WriteFile(path, []byte("test"), 0o640); err != nil {
+	path := filepath.Join(dir, "test.geojsonl")
+	content := `{"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]},"properties":{"PARCELID":"a"}}
+{"type":"Feature","geometry":{"type":"Point","coordinates":[1,1]},"properties":{"PARCELID":"b"}}
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := ensureImportFileReadable(path); err != nil {
+	var ids []string
+	n, err := streamGeoJSONSeqFeatures(path, func(f ArcGISFeature) error {
+		ids = append(ids, f.Properties["PARCELID"].(string))
+		return nil
+	})
+	if err != nil {
 		t.Fatal(err)
+	}
+	if n != 2 || len(ids) != 2 {
+		t.Fatalf("got count=%d ids=%v", n, ids)
 	}
 }

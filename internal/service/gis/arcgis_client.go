@@ -211,6 +211,26 @@ func ParseFeatureCollection(body []byte) (ArcGISPageResult, error) {
 	return result, nil
 }
 
+// ParseGeoJSONFeature parses one GeoJSON Feature object (GeoJSONSeq line or single feature).
+func ParseGeoJSONFeature(body []byte) (ArcGISFeature, error) {
+	var feat map[string]any
+	if err := json.Unmarshal(body, &feat); err != nil {
+		return ArcGISFeature{}, err
+	}
+	if typ, _ := feat["type"].(string); typ != "Feature" {
+		return ArcGISFeature{}, fmt.Errorf("expected GeoJSON Feature, got %q", typ)
+	}
+	geom, _ := json.Marshal(feat["geometry"])
+	props, _ := feat["properties"].(map[string]any)
+	if props == nil {
+		props, _ = feat["attributes"].(map[string]any)
+	}
+	if props == nil {
+		props = map[string]any{}
+	}
+	return ArcGISFeature{Geometry: geom, Properties: props}, nil
+}
+
 func boolField(doc map[string]any, key string) bool {
 	v, ok := doc[key].(bool)
 	return ok && v

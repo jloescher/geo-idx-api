@@ -206,6 +206,7 @@ type GISConfig struct {
 	BoundaryStaleDays       int
 	ImportPath              string
 	ImportMaxBytes          int64
+	ImportQueue             string
 	UploadPublicURL         string
 }
 
@@ -372,6 +373,7 @@ func Load() (Config, error) {
 			BoundaryStaleDays:      envInt("GIS_BOUNDARY_STALE_DAYS", 90),
 			ImportPath:             env("GIS_IMPORT_PATH", "/var/cache/geoidx/gis-imports"),
 			ImportMaxBytes:         envInt64("GIS_IMPORT_MAX_BYTES", 512*1024*1024),
+			ImportQueue:            env("GIS_IMPORT_QUEUE", "gis-import"),
 			UploadPublicURL:        strings.TrimRight(env("GIS_UPLOAD_PUBLIC_URL", ""), "/"),
 		},
 		Images: ImageCacheConfig{

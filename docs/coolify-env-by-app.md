@@ -37,7 +37,7 @@ Set on **web**, **scheduler**, and **every worker** unless noted.
 | **Bridge** | `BRIDGE_API_KEY`, `BRIDGE_HOST`, `BRIDGE_DATASET`, `BRIDGE_DATASETS`, `BRIDGE_PATH_PREFIX`, `BRIDGE_RESO_ROOT`, `BRIDGE_TIMEOUT`, `LISTINGS_CACHE_TTL`, `MLS_PROXY_CACHE_RETENTION_DAYS`, `MLS_LOOKUP_CACHE_TTL`, sync queue names, `BRIDGE_SYNC_REPLICATION_TOP`, `BRIDGE_SYNC_INCREMENTAL_TOP`, persist/upsert chunks, rate limits |
 | **Spark** | `SPARK_ACCESS_TOKEN`, `SPARK_REPLICATION_HOST`, `SPARK_REPLICATION_RESO_ROOT` (e.g. `Version/3/Reso/OData`), `SPARK_API_HOST`, `SPARK_API_VERSION`, `SPARK_LIVE_RESO_ROOT`, `SPARK_DATASETS`, `SPARK_TIMEOUT=120`, `SPARK_SYNC_REPLICATION_TOP`, `SPARK_SYNC_INCREMENTAL_TOP`, fetch/persist queues and chunks |
 | **MLS mirror** | `MLS_LISTINGS_CACHE_RETENTION_DAYS`, `MLS_REPLICATION_FRESHNESS_MINUTES`, `MLS_LOCAL_MIRROR_ROLLING_MONTHS`, `MLS_STELLAR_PERSIST_CHUNK_SIZE`, `MLS_BEACHES_PERSIST_CHUNK_SIZE`, `MLS_PERSIST_CHUNK_TIMEOUT_SECONDS`, `MLS_REPLICA_PAGE_RETENTION_HOURS`, `MLS_REPLICA_PAGE_FAILED_RETENTION_DAYS`, `MLS_MIRROR_KEY_RECONCILE_RETRY_MINUTES`, `MLS_SYNC_KICKOFF_QUEUE` |
-| **GIS** | `GIS_SYNC_PAGE_SIZE`, `GIS_SYNC_UPSERT_CHUNK`, `GIS_HTTP_TIMEOUT`, `GIS_SYNC_QUEUE`, `GIS_QUEUE`, `GIS_EDGE_CACHE_TTL`, `GIS_ORIGIN_MAX_DAYS_*`, `GIS_MAX_BBOX_SPAN_DEG`, `GIS_MAX_FEATURES`, `GIS_TEASER_*`, `GIS_FLORIDA_MLS_CODES`, `GIS_BOUNDARY_STALE_DAYS`, `GIS_IMPORT_PATH`, `GIS_IMPORT_MAX_BYTES` |
+| **GIS** | `GIS_SYNC_PAGE_SIZE`, `GIS_SYNC_UPSERT_CHUNK`, `GIS_HTTP_TIMEOUT`, `GIS_SYNC_QUEUE`, `GIS_QUEUE`, `GIS_IMPORT_QUEUE`, `GIS_EDGE_CACHE_TTL`, `GIS_ORIGIN_MAX_DAYS_*`, `GIS_MAX_BBOX_SPAN_DEG`, `GIS_MAX_FEATURES`, `GIS_TEASER_*`, `GIS_FLORIDA_MLS_CODES`, `GIS_BOUNDARY_STALE_DAYS`, `GIS_IMPORT_PATH`, `GIS_IMPORT_MAX_BYTES` |
 | **Images** | `IMAGE_CACHE_PATH`, `IMAGE_CACHE_TTL` |
 | **Dashboard** | `CLOUDFLARE_TURNSTILE_*`, `SESSION_LIFETIME`, `IDX_INVITATION_TTL_HOURS` |
 
@@ -62,12 +62,12 @@ Set on **web**, **scheduler**, and **every worker** unless noted.
 - `MLS_REPLICATION_RESUME_STALL_MINUTES`, `MLS_REPLICATION_RESUME_CRON`
 - `FEMA_ENRICH_QUEUE=default`, `GEOCODE_QUEUE=default` (cron targets — workers must consume these queues)
 
-### Worker 1 (`default,sync-kickoff`)
+### Worker 1 (`default,sync-kickoff,gis-import`)
 
 **Required** for background enrichment (not optional on a split stack):
 
 ```env
-WORKER_QUEUES=default,sync-kickoff
+WORKER_QUEUES=default,sync-kickoff,gis-import
 MLS_REPLICATION_RESUME_STALL_MINUTES=3
 MLS_REPLICATION_RESUME_CRON=0 */2 * * * *
 MLS_SYNC_RATE_LIMIT_RETRY_SECONDS=300
@@ -94,11 +94,16 @@ COINGECKO_QUEUE=default
 # GIS shapefile import — same GIS_IMPORT_PATH mount as idx-api-web
 GIS_IMPORT_PATH=/var/cache/geoidx/gis-imports
 GIS_IMPORT_MAX_BYTES=536870912
+GIS_IMPORT_QUEUE=gis-import
 ```
 
-Also runs: `mls.replication_kickoff` (via `sync-kickoff`), GIS sync on `GIS_SYNC_QUEUE`, `gis.shapefile_import`, purge jobs, `crypto.refresh_pricing`.
+Also runs: `mls.replication_kickoff` (via `sync-kickoff`), GIS sync on `GIS_SYNC_QUEUE`, `gis.shapefile_import` on **`GIS_IMPORT_QUEUE`** (`gis-import`), purge jobs, `crypto.refresh_pricing`.
+
+**Shapefile queue:** Enqueue uploads to `GIS_IMPORT_QUEUE` (default `gis-import`). Only **idx-api-worker 1** should list `gis-import` in `WORKER_QUEUES` (both NYC and ATL replicas). Workers 2–4 omit `gis-import` so replication jobs stay isolated; both DC worker-1 instances may consume `gis-import` for redundancy — ensure **`DB_QUEUE_RESERVATION_TIMEOUT` matches on every replica** so one DC does not stale-release another’s long ogr2ogr run.
 
 **Shapefile volume:** In Coolify, attach the **same** persistent volume to **idx-api-web** and **idx-api-worker 1** at `/var/cache/geoidx/gis-imports` (or your `GIS_IMPORT_PATH`). Redeploy **both** after Dockerfile worker changes (`gdal-tools`, directory permissions). Smoke-test the worker image: `make docker-gis-smoke`.
+
+**Multi-server (re-db + re-node-02):** Coolify routes `upload.idx.quantyralabs.cc` to the **additional server** while worker 1 on the **primary** may consume import jobs. Per-host bind mounts are not shared — use **NFS over Tailscale** so both hosts see the same `/data/coolify/gis-imports`. Step-by-step: [gis-import-nfs-setup.md](gis-import-nfs-setup.md). Verify with `./scripts/verify-gis-import-nfs.sh` on each host.
 
 ### Worker 2 (fetch)
 

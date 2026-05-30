@@ -1,6 +1,7 @@
 package gis
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/quantyralabs/idx-api/internal/config"
 	gisrepo "github.com/quantyralabs/idx-api/internal/repository/gis"
@@ -32,11 +34,18 @@ func NewShapefileImportService(cfg config.Config, repo *gisrepo.Repository, logg
 	return &ShapefileImportService{cfg: cfg, db: repo, logger: logger}
 }
 
-// Import reads a shapefile or zip on disk via ogr2ogr → GeoJSON, then upserts parcels.
+// Import reads a shapefile or zip on disk via ogr2ogr → GeoJSONSeq, streaming features into gis_parcels.
 func (s *ShapefileImportService) Import(ctx context.Context, args ShapefileImportArgs) error {
 	if args.SourceKey == "" || args.StoragePath == "" {
 		return fmt.Errorf("source_key and storage_path required")
 	}
+	started := time.Now()
+	s.logger.Info("gis shapefile import started",
+		"source", args.SourceKey,
+		"upload_id", args.UploadID,
+		"path", args.StoragePath,
+	)
+
 	if args.UploadID > 0 {
 		_ = s.db.SetImportUploadStatus(ctx, args.UploadID, "processing", "")
 	}
@@ -48,72 +57,67 @@ func (s *ShapefileImportService) Import(ctx context.Context, args ShapefileImpor
 	if err := s.db.EnsureSourceState(ctx, args.SourceKey); err != nil {
 		return err
 	}
+	if err := ensureImportFileReadable(args.StoragePath); err != nil {
+		s.failUpload(ctx, args.UploadID, err)
+		return err
+	}
+
+	outSeq := args.StoragePath + ".geojsonl"
+	ogrStarted := time.Now()
+	if err := runOGR2OGRGeoJSONSeq(ctx, args.StoragePath, outSeq); err != nil {
+		s.failUpload(ctx, args.UploadID, err)
+		return err
+	}
+	defer os.Remove(outSeq)
+	s.logger.Info("gis shapefile import ogr2ogr done",
+		"source", args.SourceKey,
+		"upload_id", args.UploadID,
+		"elapsed_sec", int(time.Since(ogrStarted).Seconds()),
+	)
+
 	gen, err := s.db.BumpSourceGeneration(ctx, args.SourceKey)
 	if err != nil {
 		s.failUpload(ctx, args.UploadID, err)
 		return err
 	}
-	outJSON := args.StoragePath + ".geojson"
-	if err := ensureImportFileReadable(args.StoragePath); err != nil {
-		s.failUpload(ctx, args.UploadID, err)
-		return err
-	}
-	if err := runOGR2OGR(ctx, args.StoragePath, outJSON); err != nil {
-		s.failUpload(ctx, args.UploadID, err)
-		return err
-	}
-	defer os.Remove(outJSON)
 
-	body, err := os.ReadFile(outJSON)
-	if err != nil {
-		s.failUpload(ctx, args.UploadID, err)
-		return err
-	}
-	page, err := ParseFeatureCollection(body)
-	if err != nil {
-		s.failUpload(ctx, args.UploadID, err)
-		return err
-	}
 	chunk := s.cfg.GIS.SyncUpsertChunk
 	if chunk <= 0 {
 		chunk = 500
 	}
-	var batch []gisrepo.ParcelRow
-	fpStr := ""
 	statewide := IsStatewideCadastralSource(args.SourceKey)
 	idFields := spec.ParcelIDFields
-	for _, feat := range page.Features {
+	fpStr := ""
+	var batch batchState
+	batch.chunk = chunk
+	featureCount, err := streamGeoJSONSeqFeatures(outSeq, func(feat ArcGISFeature) error {
 		county := spec.CountySlug
 		if statewide {
 			coNo, ok := CONOFromProperties(feat.Properties)
 			if !ok {
-				continue
+				return nil
 			}
 			slug, ok := CountySlugFromCONO(coNo)
 			if !ok || !IsMLSPilotCounty(slug) {
-				continue
+				return nil
 			}
 			county = slug
 		}
 		row, err := ExtractParcelRow(feat, args.SourceKey, county, int(gen), &fpStr, idFields)
 		if err != nil {
-			continue
+			return nil
 		}
-		batch = append(batch, row)
-		if len(batch) >= chunk {
-			if err := s.db.BulkUpsertParcels(ctx, batch, chunk); err != nil {
-				s.failUpload(ctx, args.UploadID, err)
-				return err
-			}
-			batch = batch[:0]
-		}
+		return upsertParcelBatch(ctx, s.db, &batch, row)
+	})
+	if err != nil {
+		s.failUpload(ctx, args.UploadID, err)
+		return err
 	}
-	if len(batch) > 0 {
-		if err := s.db.BulkUpsertParcels(ctx, batch, chunk); err != nil {
-			s.failUpload(ctx, args.UploadID, err)
-			return err
-		}
+	if err := flushParcelBatch(ctx, s.db, batch); err != nil {
+		s.failUpload(ctx, args.UploadID, err)
+		return err
 	}
+
 	staleCounty := spec.CountySlug
 	if statewide {
 		staleCounty = ""
@@ -124,8 +128,79 @@ func (s *ShapefileImportService) Import(ctx context.Context, args ShapefileImpor
 	}
 	_ = s.db.TouchParcelSourceSynced(ctx, args.SourceKey)
 	_ = s.db.SetImportUploadStatus(ctx, args.UploadID, "done", "")
-	s.logger.Info("gis shapefile import done", "source", args.SourceKey, "features", len(page.Features))
+	s.logger.Info("gis shapefile import done",
+		"source", args.SourceKey,
+		"upload_id", args.UploadID,
+		"features", featureCount,
+		"generation", gen,
+		"elapsed_sec", int(time.Since(started).Seconds()),
+	)
 	return nil
+}
+
+type batchState struct {
+	chunk int
+	rows  []gisrepo.ParcelRow
+}
+
+func upsertParcelBatch(ctx context.Context, db *gisrepo.Repository, st *batchState, row gisrepo.ParcelRow) error {
+	st.rows = append(st.rows, row)
+	if len(st.rows) < st.chunk {
+		return nil
+	}
+	if err := db.BulkUpsertParcels(ctx, st.rows, st.chunk); err != nil {
+		return err
+	}
+	st.rows = st.rows[:0]
+	return nil
+}
+
+func flushParcelBatch(ctx context.Context, db *gisrepo.Repository, st batchState) error {
+	if len(st.rows) == 0 {
+		return nil
+	}
+	return db.BulkUpsertParcels(ctx, st.rows, st.chunk)
+}
+
+func streamGeoJSONSeqFeatures(path string, fn func(ArcGISFeature) error) (int, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	buf := make([]byte, 0, 256*1024)
+	scanner.Buffer(buf, 16*1024*1024)
+
+	count := 0
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		feat, err := ParseGeoJSONFeature([]byte(line))
+		if err != nil {
+			var collection map[string]any
+			if json.Unmarshal([]byte(line), &collection) == nil {
+				if typ, _ := collection["type"].(string); typ == "FeatureCollection" {
+					continue
+				}
+			}
+			return count, fmt.Errorf("parse feature line %d: %w", count+1, err)
+		}
+		if err := fn(feat); err != nil {
+			return count, err
+		}
+		count++
+	}
+	if err := scanner.Err(); err != nil {
+		return count, err
+	}
+	if count == 0 {
+		return 0, fmt.Errorf("ogr2ogr produced no features in %s", path)
+	}
+	return count, nil
 }
 
 func (s *ShapefileImportService) failUpload(ctx context.Context, uploadID int64, err error) {
@@ -149,7 +224,7 @@ func ensureImportFileReadable(path string) error {
 	return nil
 }
 
-func runOGR2OGR(ctx context.Context, inputPath, outPath string) error {
+func runOGR2OGRGeoJSONSeq(ctx context.Context, inputPath, outPath string) error {
 	if _, err := exec.LookPath("ogr2ogr"); err != nil {
 		return fmt.Errorf("ogr2ogr not installed in worker image: %w", err)
 	}
@@ -157,7 +232,7 @@ func runOGR2OGR(ctx context.Context, inputPath, outPath string) error {
 	if strings.HasSuffix(strings.ToLower(inputPath), ".zip") {
 		src = "/vsizip/" + inputPath
 	}
-	cmd := exec.CommandContext(ctx, "ogr2ogr", "-f", "GeoJSON", outPath, src, "-t_srs", "EPSG:4326")
+	cmd := exec.CommandContext(ctx, "ogr2ogr", "-f", "GeoJSONSeq", outPath, src, "-t_srs", "EPSG:4326")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("ogr2ogr: %w: %s", err, strings.TrimSpace(string(out)))

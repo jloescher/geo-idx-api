@@ -264,9 +264,9 @@ func (h *GISHandler) UploadShapefile(c *fiber.Ctx) error {
 	}
 
 	q := queue.NewClient(h.db.Pool, h.cfg.Queue.Table, h.cfg.Queue.NotifyChannel, h.cfg.Queue.RetryAfter, h.cfg.Queue.ReservationTimeout)
-	queueName := h.cfg.GIS.SyncQueue
+	queueName := h.cfg.GIS.ImportQueue
 	if queueName == "" {
-		queueName = "default"
+		queueName = "gis-import"
 	}
 	jobID, err := q.Enqueue(c.Context(), queueName, queue.TypeGISShapefileImport, gis.ShapefileImportArgs{
 		SourceKey:   sourceKey,

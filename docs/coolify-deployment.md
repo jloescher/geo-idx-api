@@ -258,7 +258,7 @@ IDX_PLATFORM_URL=https://idx.quantyralabs.cc
 
 **Image cache:** Each API has local disk at `IMAGE_CACHE_PATH` (default `/var/cache/geoidx/images`). Geo-routed APIs do **not** share cache; extra MLS origin fetches on miss are acceptable.
 
-**GIS shapefile imports:** Admin uploads land at `GIS_IMPORT_PATH` (default `/var/cache/geoidx/gis-imports`). Mount the **same** persistent volume on **idx-api-web** and **idx-api-worker 1** in each DC so `gis.shapefile_import` can read API-written files. Worker image includes `gdal-tools`; run `make docker-gis-smoke` after image rebuild. Details: [gis-sources.md](gis-sources.md), [coolify-env-by-app.md](coolify-env-by-app.md).
+**GIS shapefile imports:** Admin uploads land at `GIS_IMPORT_PATH` (default `/var/cache/geoidx/gis-imports`). Mount the **same** persistent volume on **idx-api-web** and **idx-api-worker 1** in each DC so `gis.shapefile_import` can read API-written files. Worker image includes `gdal-tools`; run `make docker-gis-smoke` after image rebuild. **Multi-server:** use shared NFS — [gis-import-nfs-setup.md](gis-import-nfs-setup.md). Details: [gis-sources.md](gis-sources.md), [coolify-env-by-app.md](coolify-env-by-app.md).
 
 **Build:** Git deploy from this repo, or GHCR images from [`.github/workflows/docker-publish.yml`](../.github/workflows/docker-publish.yml).
 

@@ -109,6 +109,14 @@ func (r *Registry) handleGISShapefileImport(ctx context.Context, job *queue.Rese
 	if err != nil {
 		return err
 	}
+	r.logger.Info("gis shapefile import job reserved",
+		"job_id", job.ID,
+		"queue", job.Queue,
+		"attempt", job.Attempts(),
+		"source_key", args.SourceKey,
+		"upload_id", args.UploadID,
+		"path", args.StoragePath,
+	)
 	// #region agent log
 	debuglog.Agent("SHP-C", "handlers.go:handleGISShapefileImport", "job started", map[string]any{
 		"job_id": job.ID, "source_key": args.SourceKey, "upload_id": args.UploadID, "path": args.StoragePath,
