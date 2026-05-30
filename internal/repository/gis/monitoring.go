@@ -143,6 +143,14 @@ func (r *Repository) ListSourceStates(ctx context.Context) ([]SourceStateRow, er
 			return nil, err
 		}
 		row.APIStatus = apiStatusFromProbe(row.LastProbeOK, row.LastProbeAt)
+		if row.SyncMode == "shapefile" {
+			row.APIStatus = shapefileAPIStatus(row)
+			if row.APIStatus == "reachable" {
+				row.LastProbeError = ""
+			} else if row.APIStatus == "unreachable" && row.LastImportError != "" {
+				row.LastProbeError = row.LastImportError
+			}
+		}
 		row.Status = "unknown"
 		if row.MaxSyncedAt != nil {
 			if row.MaxSyncedAt.Before(staleCutoff) || (row.ParcelCount > 0 && row.MaxGeneration != row.Generation) {
@@ -166,6 +174,17 @@ func apiStatusFromProbe(ok *bool, probedAt *time.Time) string {
 		return "reachable"
 	}
 	return "unreachable"
+}
+
+// shapefileAPIStatus derives health from upload/import state instead of ArcGIS HTTP probes.
+func shapefileAPIStatus(row SourceStateRow) string {
+	if row.LastImportStatus == "failed" && row.ParcelCount == 0 {
+		return "unreachable"
+	}
+	if row.ParcelCount > 0 || row.LastImportStatus == "done" {
+		return "reachable"
+	}
+	return "unknown"
 }
 
 // UpdateProbeResult persists the latest ArcGIS metadata probe outcome.

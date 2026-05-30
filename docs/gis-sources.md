@@ -293,7 +293,7 @@ Dashboard GIS tile uses `parcels_last_synced_at`, `zips_last_synced_at`, per-sou
 - **Add / Edit / Disable / Delete** — CRUD modals wired to `/api/v1/admin/gis/sources`; **Disable** soft-disables; **Delete** permanently removes catalog, source state, and all parcels (`?hard=true`)
 - **Upload** — per-row file input (`.zip` or `.shp` + sidecars); status from `gis_import_uploads` (`pending` → `processing` → `done` / `failed`)
 
-**Probe all behavior:** Probes the static county catalog **and** all `enabled` rows in `gis_parcel_sources`. Shapefile sources are skipped (no live ArcGIS query). `API: UNKNOWN` in the UI means `last_probe_at` is NULL — run Probe or Probe all after migration `00010`.
+**Probe all behavior:** Probes ArcGIS metadata for live feed sources. **Shapefile** sources are marked reachable via upload probe (no HTTP); dashboard **API** status for shapefile rows follows import/parcel state (`done` or parcel count &gt; 0 → reachable). `API: UNKNOWN` means no upload yet — run **Probe** on the row after adding a shapefile catalog entry.
 
 **Shapefile ingest:** Set `sync_mode=shapefile` on the catalog row (empty `query_url` allowed), upload via admin API or dashboard. Worker image includes `gdal-tools` (`ogr2ogr`); verify with `make docker-gis-smoke` after image build. Uploads enqueue to **`GIS_IMPORT_QUEUE`** (default `gis-import`); only worker 1 should consume that queue.
 

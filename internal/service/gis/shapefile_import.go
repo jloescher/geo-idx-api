@@ -128,6 +128,7 @@ func (s *ShapefileImportService) Import(ctx context.Context, args ShapefileImpor
 	}
 	_ = s.db.TouchParcelSourceSynced(ctx, args.SourceKey)
 	_ = s.db.SetImportUploadStatus(ctx, args.UploadID, "done", "")
+	_ = s.db.UpdateProbeResult(ctx, args.SourceKey, true, 0, "")
 	s.logger.Info("gis shapefile import done",
 		"source", args.SourceKey,
 		"upload_id", args.UploadID,

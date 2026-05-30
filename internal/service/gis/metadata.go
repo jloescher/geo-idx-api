@@ -91,11 +91,13 @@ func (m *MetadataService) ProbeAll(ctx context.Context) ProbeAllResult {
 		FDOTAdminBoundariesKey:       "https://gis.fdot.gov/arcgis/rest/services/Admin_Boundaries/FeatureServer/6?f=json",
 		FloridaStatewideCadastralKey: queryMetaURL(FloridaStatewideCadastralURL),
 	}
+	shapefileKeys := map[string]struct{}{}
 	for _, spec := range EnabledParcelSourcesForConfig(m.cfg.GIS) {
 		if spec.CountySlug == "" || spec.CountySlug == "statewide" {
 			continue
 		}
-		if spec.SyncMode == SyncModeShapefile {
+		if spec.SyncMode == SyncModeShapefile || isShapefileEndpoint(spec.QueryURL) {
+			shapefileKeys[spec.SourceKey] = struct{}{}
 			continue
 		}
 		endpoints[spec.SourceKey] = queryMetaURL(spec.QueryURL)
@@ -105,7 +107,8 @@ func (m *MetadataService) ProbeAll(ctx context.Context) ProbeAllResult {
 		m.logger.Warn("gis probe list db sources failed", "error", err)
 	} else {
 		for _, row := range rows {
-			if row.SyncMode == SyncModeShapefile {
+			if row.SyncMode == SyncModeShapefile || isShapefileEndpoint(row.QueryURL) {
+				shapefileKeys[row.SourceKey] = struct{}{}
 				continue
 			}
 			if strings.TrimSpace(row.QueryURL) == "" {
@@ -121,6 +124,12 @@ func (m *MetadataService) ProbeAll(ctx context.Context) ProbeAllResult {
 			failed = append(failed, ProbeResult{SourceKey: key, OK: false, Error: err.Error()})
 		}
 	}
+	for key := range shapefileKeys {
+		if err := m.probeShapefileSource(ctx, key); err != nil {
+			m.logger.Warn("gis shapefile probe failed", "source", key, "error", err)
+			failed = append(failed, ProbeResult{SourceKey: key, OK: false, Error: err.Error()})
+		}
+	}
 	return ProbeAllResult{OK: len(failed) == 0, Failed: failed}
 }
 
@@ -129,9 +138,13 @@ func queryMetaURL(queryURL string) string {
 	return base + "?f=json"
 }
 
+func isShapefileEndpoint(endpoint string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(endpoint)), "shapefile://")
+}
+
 func (m *MetadataService) probeOne(ctx context.Context, sourceKey, endpoint string) error {
 	endpoint = strings.TrimSpace(endpoint)
-	if endpoint == "" || !strings.HasPrefix(endpoint, "http") {
+	if endpoint == "" || isShapefileEndpoint(endpoint) || !strings.HasPrefix(endpoint, "http") {
 		return m.probeShapefileSource(ctx, sourceKey)
 	}
 	if err := m.gis.EnsureSourceState(ctx, sourceKey); err != nil {
