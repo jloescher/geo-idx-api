@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/quantyralabs/idx-api/internal/debuglog"
 	"github.com/quantyralabs/idx-api/internal/queue"
 	gisrepo "github.com/quantyralabs/idx-api/internal/repository/gis"
 	"github.com/quantyralabs/idx-api/internal/service/fema"
@@ -117,26 +116,9 @@ func (r *Registry) handleGISShapefileImport(ctx context.Context, job *queue.Rese
 		"upload_id", args.UploadID,
 		"path", args.StoragePath,
 	)
-	// #region agent log
-	debuglog.Agent("SHP-C", "handlers.go:handleGISShapefileImport", "job started", map[string]any{
-		"job_id": job.ID, "source_key": args.SourceKey, "upload_id": args.UploadID, "path": args.StoragePath,
-	})
-	// #endregion
 	repo := gisrepo.New(r.db)
 	svc := gis.NewShapefileImportService(r.cfg, repo, r.logger)
-	importErr := svc.Import(ctx, args)
-	// #region agent log
-	debuglog.Agent("SHP-C", "handlers.go:handleGISShapefileImport", "job finished", map[string]any{
-		"job_id": job.ID, "source_key": args.SourceKey, "ok": importErr == nil,
-		"error": func() string {
-			if importErr != nil {
-				return importErr.Error()
-			}
-			return ""
-		}(),
-	})
-	// #endregion
-	return importErr
+	return svc.Import(ctx, args)
 }
 
 func (r *Registry) handleCryptoRefresh(ctx context.Context, job *queue.ReservedJob) error {

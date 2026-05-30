@@ -830,21 +830,6 @@ ${statusChip}
     } catch {
       data = { error: text || res.statusText };
     }
-    // #region agent log
-    fetch("http://127.0.0.1:7685/ingest/e6fa4028-535e-4c65-aee2-cbe02c1fc56d", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "4f5bac" },
-      body: JSON.stringify({
-        sessionId: "4f5bac",
-        runId: "post-fix",
-        hypothesisId: "GIS-A",
-        location: "dashboard.js:gisAdminFetch",
-        message: "gis admin response",
-        data: { method, url, status: res.status, ok: res.ok, error: data.error || null },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     if (!res.ok) throw new Error(data.error || text || res.statusText);
     return data;
   }
@@ -1029,21 +1014,6 @@ ${statusChip}
         } catch {
           data = { error: text || res.statusText };
         }
-        // #region agent log
-        fetch("http://127.0.0.1:7685/ingest/e6fa4028-535e-4c65-aee2-cbe02c1fc56d", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "4f5bac" },
-          body: JSON.stringify({
-            sessionId: "4f5bac",
-            runId: "post-fix",
-            hypothesisId: "SHP-A",
-            location: "dashboard.js:upload",
-            message: "shapefile upload response",
-            data: { sourceKey, status: res.status, ok: res.ok, error: data.error || null, job_id: data.job_id || null },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
-        // #endregion
         if (!res.ok) {
           let msg = data.error || text || res.statusText;
           if (res.status === 413) {
