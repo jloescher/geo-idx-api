@@ -14,6 +14,8 @@ const MirrorListingColumns = `
 	property_type, property_sub_type, on_market_date, close_date,
 	modification_timestamp, price_change_timestamp, previous_list_price,
 	flood_zone_code, estimated_total_monthly_fees,
+	fema_flood_zone_code, flood_zone_sfha_tf, low_risk_flood_zone_yn,
+	flood_zone_updated_at, fema_failure_reason, fema_attempted_at,
 	latitude, longitude,
 	waterfront_yn, pool_private_yn, dock_yn, new_construction_yn, garage_yn,
 	association_yn, spa_yn, fireplace_yn, senior_community_yn,
@@ -36,6 +38,8 @@ const MirrorListingSearchColumns = `
 	property_type, property_sub_type, on_market_date, close_date,
 	modification_timestamp, price_change_timestamp, previous_list_price,
 	flood_zone_code, estimated_total_monthly_fees,
+	fema_flood_zone_code, flood_zone_sfha_tf, low_risk_flood_zone_yn,
+	flood_zone_updated_at, fema_failure_reason, fema_attempted_at,
 	latitude, longitude,
 	waterfront_yn, pool_private_yn, dock_yn, new_construction_yn, garage_yn,
 	association_yn, spa_yn, fireplace_yn, senior_community_yn,
@@ -74,6 +78,12 @@ type MirrorListingRow struct {
 	PriceChangeTimestamp                *time.Time
 	PreviousListPrice                   *float64
 	FloodZoneCode                       *string
+	FEMAFloodZoneCode                   *string
+	FloodZoneSFHA_TF                    *string
+	LowRiskFloodZoneYN                  bool
+	FloodZoneUpdatedAt                  *time.Time
+	FEMAFailureReason                   *string
+	FEMAAttemptedAt                     *time.Time
 	EstimatedTotalMonthlyFees           *float64
 	Latitude                            *float64
 	Longitude                           *float64
@@ -128,7 +138,9 @@ func ScanMirrorListingRow(scan func(dest ...any) error) (MirrorListingRow, error
 		&row.YearBuilt, &row.StoriesTotal, &row.City, &row.CountyOrParish, &row.PostalCode, &row.StateOrProvince,
 		&row.PropertyType, &row.PropertySubType, &row.OnMarketDate, &row.CloseDate,
 		&row.ModificationTimestamp, &row.PriceChangeTimestamp, &row.PreviousListPrice,
-		&row.FloodZoneCode, &row.EstimatedTotalMonthlyFees,
+		&row.FloodZoneCode, &row.FEMAFloodZoneCode, &row.FloodZoneSFHA_TF, &row.LowRiskFloodZoneYN,
+		&row.FloodZoneUpdatedAt, &row.FEMAFailureReason, &row.FEMAAttemptedAt,
+		&row.EstimatedTotalMonthlyFees,
 		&row.Latitude, &row.Longitude,
 		&row.WaterfrontYN, &row.PoolPrivateYN, &row.DockYN, &row.NewConstructionYN, &row.GarageYN,
 		&row.AssociationYN, &row.SpaYN, &row.FireplaceYN, &row.SeniorCommunityYN,
@@ -165,7 +177,9 @@ func ScanMirrorListingSearchRow(scan func(dest ...any) error) (MirrorListingRow,
 		&row.YearBuilt, &row.StoriesTotal, &row.City, &row.CountyOrParish, &row.PostalCode, &row.StateOrProvince,
 		&row.PropertyType, &row.PropertySubType, &row.OnMarketDate, &row.CloseDate,
 		&row.ModificationTimestamp, &row.PriceChangeTimestamp, &row.PreviousListPrice,
-		&row.FloodZoneCode, &row.EstimatedTotalMonthlyFees,
+		&row.FloodZoneCode, &row.FEMAFloodZoneCode, &row.FloodZoneSFHA_TF, &row.LowRiskFloodZoneYN,
+		&row.FloodZoneUpdatedAt, &row.FEMAFailureReason, &row.FEMAAttemptedAt,
+		&row.EstimatedTotalMonthlyFees,
 		&row.Latitude, &row.Longitude,
 		&row.WaterfrontYN, &row.PoolPrivateYN, &row.DockYN, &row.NewConstructionYN, &row.GarageYN,
 		&row.AssociationYN, &row.SpaYN, &row.FireplaceYN, &row.SeniorCommunityYN,
@@ -227,6 +241,8 @@ func buildPublicListingMap(row MirrorListingRow, opts listingJSONOpts) map[strin
 	putTimestampPtr(root, "PriceChangeTimestamp", row.PriceChangeTimestamp)
 	putFloatPtr(root, "PreviousListPrice", row.PreviousListPrice)
 	putStringPtr(root, "FloodZoneCode", row.FloodZoneCode)
+	floodZone := BuildFloodZoneResponse(row)
+	root["flood_zone"] = floodZone
 	putFloatPtr(root, "EstimatedTotalMonthlyFees", row.EstimatedTotalMonthlyFees)
 	putFloatPtr(root, "Latitude", row.Latitude)
 	putFloatPtr(root, "Longitude", row.Longitude)

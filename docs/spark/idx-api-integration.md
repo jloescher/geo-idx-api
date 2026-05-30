@@ -108,7 +108,7 @@ Domains enable feeds via **Allowed MLS datasets** during domain registration on 
 | `listings` column | Beaches RESO source | Notes |
 |-------------------|---------------------|--------|
 | `flood_zone_code` | `Location_sp_and_sp_Legal_co_Flood_sp_Zone2` | Raw MLS flood zone string |
-| `low_risk_flood_zone_yn` | Derived from `fema_flood_zone_code` (FEMA NFHL jobs) | Same rules as `ComputeLowRiskFloodZoneYN` on FEMA code; MLS `flood_zone_code` does not set this flag — see [fema-flood-enrichment.md](../fema-flood-enrichment.md) |
+| `low_risk_flood_zone_yn` | Derived from `fema_flood_zone_code` when enriched; MLS `flood_zone_code` fallback when FEMA misses or at persist insert | Same rules as `ComputeLowRiskFloodZoneYN`; see [fema-flood-enrichment.md](../fema-flood-enrichment.md) |
 | `estimated_total_monthly_fees` | `AssociationFee` + `AssociationFeeFrequency`, `AssociationFee2` + `AssociationFee2Frequency` | Each fee converted to a monthly equivalent and summed; replaces RESO `total_monthly_fees` / extension fields at persist |
 
 **Association fee frequencies** (exact MLS strings): `Monthly`, `Annually`, `Semi-Annually`, `Quarterly`, `Weekly`, `Daily`, `One Time`. Null frequency or `One Time` does not contribute to the monthly total. If both association pairs yield no recurring total, fallback: `Financial_sp_Information_co_Estimated_sp_Monthly_sp_Assoc_sp_Recurring_sp_Fee3`.

@@ -127,12 +127,21 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args FloodEnrichBatchA
 	updates := make([]femarepo.FEMAUpdate, 0, len(rows))
 	var errorIDs []int64
 	var insufficientCoordsIDs []int64
+	var nfhlRows []femarepo.ListingCoord
+	for _, row := range rows {
+		if mls.IsOutsideFLNFHLCoverage(row.Latitude, row.Longitude, strVal(row.StateOrProvince)) {
+			updates = append(updates, buildOutOfCoverageUpdate(row.ID, now, row.FloodZoneCode))
+			continue
+		}
+		nfhlRows = append(nfhlRows, row)
+	}
+
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	workers := 8
 	sem := make(chan struct{}, workers)
 
-	for _, row := range rows {
+	for _, row := range nfhlRows {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -155,7 +164,7 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args FloodEnrichBatchA
 
 			isFirstPass := r.FloodZoneUpdatedAt == nil
 			state := strVal(r.StateOrProvince)
-			u, markInsufficient := buildListingFEMAUpdate(r.ID, now, attrs, r.Latitude, r.Longitude, state, isFirstPass)
+			u, markInsufficient := buildListingFEMAUpdate(r.ID, now, attrs, r.Latitude, r.Longitude, state, isFirstPass, r.FloodZoneCode)
 			if markInsufficient {
 				mu.Lock()
 				insufficientCoordsIDs = append(insufficientCoordsIDs, r.ID)
@@ -208,7 +217,7 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args FloodEnrichBatchA
 
 // buildListingFEMAUpdate maps an NFHL point query outcome to a persistable row update.
 // When markInsufficient is true, the caller must use BatchMarkInsufficientCoords instead of BatchUpdateFEMA.
-func buildListingFEMAUpdate(id int64, now time.Time, attrs *PointAttributes, lat, lng float64, state string, isFirstPass bool) (femarepo.FEMAUpdate, bool) {
+func buildListingFEMAUpdate(id int64, now time.Time, attrs *PointAttributes, lat, lng float64, state string, isFirstPass bool, mlsFloodCode *string) (femarepo.FEMAUpdate, bool) {
 	u := femarepo.FEMAUpdate{
 		ID:                 id,
 		Outcome:            "success",
@@ -230,7 +239,19 @@ func buildListingFEMAUpdate(id int64, now time.Time, attrs *PointAttributes, lat
 	u.Outcome = femarepo.FailureReasonNoNFHLFeature
 	reason := femarepo.FailureReasonNoNFHLFeature
 	u.FEMAFailureReason = &reason
+	u.LowRiskFloodZoneYN = mls.ComputeLowRiskFloodZoneYN(mlsFloodCode)
 	return u, false
+}
+
+func buildOutOfCoverageUpdate(id int64, now time.Time, mlsFloodCode *string) femarepo.FEMAUpdate {
+	reason := femarepo.FailureReasonOutOfCoverage
+	return femarepo.FEMAUpdate{
+		ID:                 id,
+		Outcome:            femarepo.FailureReasonOutOfCoverage,
+		FloodZoneUpdatedAt: now,
+		LowRiskFloodZoneYN: mls.ComputeLowRiskFloodZoneYN(mlsFloodCode),
+		FEMAFailureReason:  &reason,
+	}
 }
 
 func strVal(p *string) string {

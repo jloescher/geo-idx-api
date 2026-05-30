@@ -112,7 +112,15 @@ func BuildListingRecord(
 	}
 
 	datasetUpper := strings.ToUpper(replicationDataset)
+	stateOrProvince := optionalString(row["StateOrProvince"])
 	lat, lng, hasCoords := resolveLatLng(row)
+	if hasCoords {
+		stateVal := ""
+		if stateOrProvince != nil {
+			stateVal = *stateOrProvince
+		}
+		lat, lng, _ = NormalizeFLCoordinates(lat, lng, stateVal)
+	}
 	var latPtr, lngPtr *float64
 	if hasCoords {
 		latPtr = &lat
@@ -164,7 +172,7 @@ func BuildListingRecord(
 		City:                        optionalString(row["City"]),
 		CountyOrParish:              optionalString(row["CountyOrParish"]),
 		PostalCode:                  optionalString(row["PostalCode"]),
-		StateOrProvince:             optionalString(row["StateOrProvince"]),
+		StateOrProvince:             stateOrProvince,
 		PropertyType:                optionalString(row["PropertyType"]),
 		PropertySubType:             optionalString(row["PropertySubType"]),
 		OnMarketDate:                datePtr(row["OnMarketDate"]),
@@ -173,7 +181,7 @@ func BuildListingRecord(
 		PriceChangeTimestamp:        timestampPtr(row["PriceChangeTimestamp"]),
 		PreviousListPrice:           ClampNumeric14_2Ptr(row["PreviousListPrice"]),
 		FloodZoneCode:               floodZoneCode,
-		LowRiskFloodZoneYN:          false, // set by FEMA enrichment (fema_flood_zone_code), not MLS
+		LowRiskFloodZoneYN:          ComputeLowRiskFloodZoneYN(floodZoneCode),
 		EstimatedTotalMonthlyFees:   resolver.ResolveEstimatedTotalMonthlyFees(row, provider, datasetUpper),
 		Latitude:                    latPtr,
 		Longitude:                   lngPtr,

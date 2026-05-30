@@ -12,14 +12,14 @@ idx-api enriches mirrored `listings` with FEMA National Flood Hazard Layer (NFHL
 | `flood_zone_raw` | Full ArcGIS feature attributes (JSON) |
 | `flood_zone_updated_at` | Last NFHL point query (including no-match) |
 | `fema_attempted_at` | Last enrichment attempt (any outcome) |
-| `fema_failure_reason` | `no_nfhl_feature`, `request_error`, or `insufficient_coords` (NULL on success) |
+| `fema_failure_reason` | `no_nfhl_feature`, `request_error`, `insufficient_coords`, or `out_of_coverage` (NULL on success) |
 | `fema_failed_at` | Set on `request_error`; cleared on success |
 | `fema_attempt_count` | Incremented on every attempt |
-| `low_risk_flood_zone_yn` | **`ComputeLowRiskFloodZoneYN(fema_flood_zone_code)` only** — not MLS |
+| `low_risk_flood_zone_yn` | `ComputeLowRiskFloodZoneYN` on FEMA code when enriched; MLS `flood_zone_code` fallback on `no_nfhl_feature` / `out_of_coverage`; set at persist insert from MLS when code present |
 
-MLS persist sets `low_risk_flood_zone_yn = false` on insert and does **not** overwrite it on `ON CONFLICT` update. FEMA batch jobs recompute the flag from `fema_flood_zone_code`.
+MLS persist sets `low_risk_flood_zone_yn` from MLS `flood_zone_code` on **insert** and does **not** overwrite it on `ON CONFLICT` update. FEMA batch jobs recompute the flag from FEMA or MLS fallback.
 
-Display/API helpers may use `EffectiveFloodZoneCode(mls, fema, femaAt)` for a single label (FEMA when enriched, else MLS). Search `low_risk_floodzone` filters `low_risk_flood_zone_yn = TRUE` on the stored column.
+Public listing/search JSON includes a nested **`flood_zone`** object (`mls_code`, `fema_code`, `effective_code`, `sfha`, `low_risk`, `source`, `status`, `reason`, `updated_at`). Top-level `FloodZoneCode` (MLS) remains for backward compatibility.
 
 ## Architecture
 
@@ -117,12 +117,29 @@ Listings with coordinates outside WGS-84 ranges are **skipped** by `SelectStaleF
 | Outcome | `fema_failure_reason` | `flood_zone_updated_at` | Retry |
 |---------|----------------------|-------------------------|-------|
 | NFHL success with zone | NULL | set | — |
-| NFHL success, no feature at point | `no_nfhl_feature` | set (staleness watermark) | After `FEMA_FLOOD_STALE_DAYS` |
+| NFHL success, no feature at point | `no_nfhl_feature` | set (staleness watermark) | After `FEMA_FLOOD_STALE_DAYS`; `low_risk` from MLS code when present |
+| Outside FL NFHL coverage | `out_of_coverage` | set (no retry storm) | —; skips HTTP query |
 | HTTP/circuit/timeout error | `request_error` | **NULL** (stays in stale queue) | Next batch / kickoff |
 | Missing coordinates | `insufficient_coords` | unchanged | After geocode |
 | Bad coordinates on first NFHL miss | `insufficient_coords` | **NULL** (stays in stale queue) | Geocode recovery, then FEMA re-run |
 
 **Worker logs:** `fema flood enrich batch` with `processed` vs `updated`; `fema point query failed` on NFHL errors (rows get `request_error`, not `flood_zone_updated_at`).
+
+### Client `flood_zone` status mapping
+
+| `flood_zone.status` | When |
+|---------------------|------|
+| `enriched` | FEMA returned `fema_flood_zone_code` |
+| `mls_fallback` | FEMA queried, no polygon; MLS code present |
+| `no_data` | FEMA queried, no polygon; no MLS code |
+| `out_of_coverage` | Non-FL / international; NFHL skipped |
+| `coords_recovery` | `insufficient_coords` |
+| `error` | `request_error` |
+| `pending` | Not yet FEMA-attempted |
+
+### MLS sync coordinate normalization
+
+FL listings (`state = FL`) normalize swapped/out-of-bbox coordinates at persist via `NormalizeFLCoordinates` in `internal/service/mls/coords_suspicious.go` (same FL bounds as suspicious-coord detection). Bridge top-level `Coordinates: [lng, lat]` arrays are parsed at ingest.
 
 ## Coordinate recovery (suspicious coords)
 
@@ -149,10 +166,32 @@ Legitimate first-pass `no_nfhl_feature` rows (valid FL coords, no NFHL polygon) 
 
 ### Staging verification
 
+**Coordinate normalization**
+
+1. Upsert a FL listing with swapped coords (`lat = -82`, `lng = 27`) via replication.
+2. Confirm persisted `latitude = 27`, `longitude = -82`.
+
+**FEMA + MLS fallback**
+
+1. Run FEMA batch on a listing with MLS zone `X` and valid FL coords that NFHL misses.
+2. Expect `fema_failure_reason = no_nfhl_feature`, `low_risk_flood_zone_yn = true`, API `flood_zone.status = mls_fallback`.
+
+**Out of coverage**
+
+1. Run FEMA batch on an international Beaches listing (null state, coords outside FL).
+2. Expect `fema_failure_reason = out_of_coverage`, no NFHL HTTP call in worker logs.
+
+**Geocode recovery**
+
 1. Seed a listing with `lat = -82`, `lng = 27`, FL address, `flood_zone_updated_at IS NULL`.
 2. Run FEMA batch → expect `fema_failure_reason = insufficient_coords`, `flood_zone_updated_at` still NULL.
 3. Run geocode batch → coords updated from address, FEMA fields cleared.
 4. Run FEMA batch again → expect NFHL hit or legitimate `no_nfhl_feature` at corrected point.
+
+**Backfill scripts**
+
+- [scripts/fema_insufficient_coords_backfill.sql](scripts/fema_insufficient_coords_backfill.sql) — bad coords
+- [scripts/flood_low_risk_mls_fallback.sql](scripts/flood_low_risk_mls_fallback.sql) — recompute `low_risk_flood_zone_yn` from MLS for existing `no_nfhl_feature` rows
 
 ```sql
 SELECT id, latitude, longitude, state_or_province, fema_failure_reason, flood_zone_updated_at

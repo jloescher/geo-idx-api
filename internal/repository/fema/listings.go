@@ -11,9 +11,10 @@ import (
 )
 
 const (
-	FailureReasonNoNFHLFeature     = "no_nfhl_feature"
-	FailureReasonRequestError      = "request_error"
+	FailureReasonNoNFHLFeature      = "no_nfhl_feature"
+	FailureReasonRequestError       = "request_error"
 	FailureReasonInsufficientCoords = "insufficient_coords"
+	FailureReasonOutOfCoverage      = "out_of_coverage"
 )
 
 // ListingCoord is a listing id with coordinates for NFHL point queries.
@@ -22,6 +23,7 @@ type ListingCoord struct {
 	Latitude           float64
 	Longitude          float64
 	StateOrProvince    *string
+	FloodZoneCode      *string
 	FloodZoneUpdatedAt *time.Time
 }
 
@@ -85,7 +87,7 @@ func (r *Repository) SelectStaleForEnrichment(ctx context.Context, cursorID int6
 		limit = 2000
 	}
 	query := `
-		SELECT id, latitude::float8, longitude::float8, state_or_province, flood_zone_updated_at
+		SELECT id, latitude::float8, longitude::float8, state_or_province, flood_zone_code, flood_zone_updated_at
 		FROM listings
 		WHERE id > $1
 		  AND latitude IS NOT NULL AND longitude IS NOT NULL
@@ -108,7 +110,7 @@ func (r *Repository) SelectStaleForEnrichment(ctx context.Context, cursorID int6
 	var out []ListingCoord
 	for rows.Next() {
 		var row ListingCoord
-		if err := rows.Scan(&row.ID, &row.Latitude, &row.Longitude, &row.StateOrProvince, &row.FloodZoneUpdatedAt); err != nil {
+		if err := rows.Scan(&row.ID, &row.Latitude, &row.Longitude, &row.StateOrProvince, &row.FloodZoneCode, &row.FloodZoneUpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, row)

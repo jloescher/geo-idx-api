@@ -114,8 +114,8 @@ func TestBuildListingRecordBeachesFloodZone(t *testing.T) {
 		if rec.FloodZoneCode == nil || *rec.FloodZoneCode != "X" {
 			t.Fatalf("index %d flood_zone_code %v", i, rec.FloodZoneCode)
 		}
-		if rec.LowRiskFloodZoneYN {
-			t.Fatalf("index %d low_risk_flood_zone_yn want false until FEMA enrichment", i)
+		if !rec.LowRiskFloodZoneYN {
+			t.Fatalf("index %d low_risk_flood_zone_yn want true for MLS X", i)
 		}
 		return
 	}
@@ -275,5 +275,48 @@ func TestBuildListingRecordCoordinatesGeoJSON(t *testing.T) {
 	}
 	if *rec.Latitude != 27.95 || *rec.Longitude != -82.45 {
 		t.Fatalf("lat/lng got %v %v", *rec.Latitude, *rec.Longitude)
+	}
+}
+
+func TestBuildListingRecordCoordinatesBridgeArray(t *testing.T) {
+	row := map[string]any{
+		"ListingKey":       "92db0afbb51861ea702ccfe33390e6f3",
+		"StandardStatus":   "Active",
+		"ListPrice":        100000,
+		"StateOrProvince":  "FL",
+		"Coordinates":      []any{-82.110861, 29.947093},
+	}
+	raw, _ := json.Marshal(row)
+	rec, action := mls.BuildListingRecord("stellar", mls.MirrorProviderBridge, row, raw, mls.NewResoFieldResolver(), nil)
+	if action != mls.RowActionUpsert {
+		t.Fatalf("action %s", action)
+	}
+	if rec.Latitude == nil || rec.Longitude == nil {
+		t.Fatal("expected lat/lng from Coordinates array")
+	}
+	if *rec.Latitude != 29.947093 || *rec.Longitude != -82.110861 {
+		t.Fatalf("lat/lng got %v %v", *rec.Latitude, *rec.Longitude)
+	}
+}
+
+func TestBuildListingRecordNormalizesSwappedFLCoords(t *testing.T) {
+	row := map[string]any{
+		"ListingKey":      "k",
+		"StandardStatus":  "Active",
+		"ListPrice":       100000,
+		"StateOrProvince": "FL",
+		"Latitude":        -82.0,
+		"Longitude":       27.0,
+	}
+	raw, _ := json.Marshal(row)
+	rec, action := mls.BuildListingRecord("stellar", mls.MirrorProviderBridge, row, raw, mls.NewResoFieldResolver(), nil)
+	if action != mls.RowActionUpsert {
+		t.Fatalf("action %s", action)
+	}
+	if rec.Latitude == nil || rec.Longitude == nil {
+		t.Fatal("expected lat/lng")
+	}
+	if *rec.Latitude != 27.0 || *rec.Longitude != -82.0 {
+		t.Fatalf("normalized lat/lng got %v %v", *rec.Latitude, *rec.Longitude)
 	}
 }

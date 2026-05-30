@@ -72,7 +72,9 @@ Hybrid mirror + upstream search. Active/Pending defaults to PostGIS; Closed uses
 | `city` | Geography filter: expands via GIS autocomplete, then `LIKE` on `listings.city` / `county_or_parish` (not exact equality). |
 | `county_or_parish` | County display name or slug from autocomplete; same OR-LIKE geography expansion. |
 | `statuses` | e.g. `Active`, `Pending`, `Closed`. Blank array entries are ignored. |
-| `low_risk_floodzone` | When true, mirror leg requires `low_risk_flood_zone_yn` (FEMA-enriched). |
+| `low_risk_floodzone` | When true, mirror leg requires `low_risk_flood_zone_yn` (FEMA or MLS-derived). |
+
+Listing and search responses include a nested **`flood_zone`** object (`mls_code`, `fema_code`, `effective_code`, `sfha`, `low_risk`, `source`, `status`, `reason`, `updated_at`) in addition to top-level `FloodZoneCode`. See [fema-flood-enrichment.md](fema-flood-enrichment.md).
 | `min_monthly_fees`, `max_monthly_fees` | Filter `estimated_total_monthly_fees`. |
 | `remarks_query` | Optional full-text search on typed `public_remarks` (`plainto_tsquery`, English). |
 | `focus_areas`, `sort`, `sort_dir`, `geo` | **Not implemented** — ignored if sent; use `city` / `county_or_parish` for geography. |

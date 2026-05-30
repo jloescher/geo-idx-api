@@ -130,6 +130,13 @@ func resolveLatLng(row map[string]any) (lat, lng float64, ok bool) {
 			}
 		}
 	}
+	if pair, okArr := row["Coordinates"].([]any); okArr && len(pair) >= 2 {
+		lngV, lngOK := numericValue(pair[0])
+		latV, latOK := numericValue(pair[1])
+		if lngOK && latOK && !math.IsNaN(latV) && !math.IsNaN(lngV) {
+			return latV, lngV, true
+		}
+	}
 	latV, latOK := numericValue(row["Latitude"])
 	lngV, lngOK := numericValue(row["Longitude"])
 	if latOK && lngOK && !math.IsNaN(latV) && !math.IsNaN(lngV) {

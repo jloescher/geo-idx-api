@@ -35,7 +35,10 @@ func parseProperty(raw json.RawMessage) CompRecord {
 	if c.MonthlyFees == 0 {
 		c.MonthlyFees = num(m["TotalMonthlyFees"])
 	}
-	c.FloodZone = str(m["STELLAR_FloodZoneCode"])
+	c.FloodZone = floodZoneFromProperty(m)
+	if c.FloodZone == "" {
+		c.FloodZone = str(m["STELLAR_FloodZoneCode"])
+	}
 	if c.FloodZone == "" {
 		c.FloodZone = str(m["FloodZoneCode"])
 	}
@@ -65,6 +68,14 @@ func coordsFromMap(m map[string]any) (lat, lng float64) {
 		}
 	}
 	return lat, lng
+}
+
+func floodZoneFromProperty(m map[string]any) string {
+	fz, ok := m["flood_zone"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	return str(fz["effective_code"])
 }
 
 func str(v any) string {
