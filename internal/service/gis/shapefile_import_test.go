@@ -3,10 +3,13 @@ package gis
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseGeoJSONFeature(t *testing.T) {
@@ -136,6 +139,42 @@ func TestSaveUploadStream_enforcesMaxBytes(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "pasco", "upload.zip")); !os.IsNotExist(err) {
 		t.Fatal("expected partial upload removed")
+	}
+}
+
+func TestExtractShapefileSet_polkFixture(t *testing.T) {
+	zipPath := filepath.Join("..", "..", "..", "temp", "parcel.zip")
+	if _, err := os.Stat(zipPath); err != nil {
+		t.Skip("temp/parcel.zip not present")
+	}
+	inner, err := findShapefileInZip(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inner != "FTP_GIS/parcel.shp" {
+		t.Fatalf("got inner %q", inner)
+	}
+	dir, shp, err := extractShapefileSet(zipPath, inner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	for _, name := range []string{"parcel.shp", "parcel.dbf", "parcel.shx"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("missing %s: %v", name, err)
+		}
+	}
+	if filepath.Base(shp) != "parcel.shp" {
+		t.Fatalf("shp path %q", shp)
+	}
+	if _, err := exec.LookPath("ogr2ogr"); err != nil {
+		t.Skip("ogr2ogr not installed")
+	}
+	out := filepath.Join(t.TempDir(), "out.geojsonl")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	if err := runOGR2OGRGeoJSONSeqWithSource(ctx, shp, out); err != nil {
+		t.Fatal(err)
 	}
 }
 

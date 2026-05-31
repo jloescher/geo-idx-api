@@ -67,7 +67,19 @@ func (s *ShapefileImportService) Import(ctx context.Context, args ShapefileImpor
 
 	outSeq := args.StoragePath + ".geojsonl"
 	ogrStarted := time.Now()
-	if err := runOGR2OGRGeoJSONSeq(ctx, args.StoragePath, outSeq); err != nil {
+	ogrSrc, ogrCleanup, err := prepareOGRInput(args.StoragePath)
+	if err != nil {
+		s.failUpload(ctx, args.UploadID, err)
+		return err
+	}
+	defer ogrCleanup()
+	s.logger.Info("gis shapefile import prepared ogr input",
+		"source", args.SourceKey,
+		"upload_id", args.UploadID,
+		"ogr_source", ogrSrc,
+		"extracted", !strings.HasPrefix(ogrSrc, "/vsizip/"),
+	)
+	if err := runOGR2OGRGeoJSONSeqWithSource(ctx, ogrSrc, outSeq); err != nil {
 		s.failUpload(ctx, args.UploadID, err)
 		return err
 	}
@@ -229,12 +241,17 @@ func ensureImportFileReadable(path string) error {
 }
 
 func runOGR2OGRGeoJSONSeq(ctx context.Context, inputPath, outPath string) error {
-	if _, err := exec.LookPath("ogr2ogr"); err != nil {
-		return fmt.Errorf("ogr2ogr not installed in worker image: %w", err)
-	}
-	src, err := shapefileOGRSource(inputPath)
+	src, cleanup, err := prepareOGRInput(inputPath)
 	if err != nil {
 		return err
+	}
+	defer cleanup()
+	return runOGR2OGRGeoJSONSeqWithSource(ctx, src, outPath)
+}
+
+func runOGR2OGRGeoJSONSeqWithSource(ctx context.Context, src, outPath string) error {
+	if _, err := exec.LookPath("ogr2ogr"); err != nil {
+		return fmt.Errorf("ogr2ogr not installed in worker image: %w", err)
 	}
 	cmd := exec.CommandContext(ctx, "ogr2ogr", "-f", "GeoJSONSeq", outPath, src, "-t_srs", "EPSG:4326", "-dim", "2")
 	out, err := cmd.CombinedOutput()
@@ -251,7 +268,111 @@ func UnmarshalShapefileImportArgs(raw json.RawMessage) (ShapefileImportArgs, err
 	return args, err
 }
 
-// shapefileOGRSource returns the ogr2ogr input path for a .shp file or zip archive.
+// prepareOGRInput returns a filesystem path for ogr2ogr. Zip uploads are extracted to a temp
+// directory because GDAL /vsizip/ is unreliable for large DBF reads on Alpine (Polk-scale zips).
+func prepareOGRInput(inputPath string) (ogrPath string, cleanup func(), err error) {
+	cleanup = func() {}
+	if !strings.HasSuffix(strings.ToLower(inputPath), ".zip") {
+		return inputPath, cleanup, nil
+	}
+	inner, err := findShapefileInZip(inputPath)
+	if err != nil {
+		return "", cleanup, err
+	}
+	if inner == "" {
+		return "/vsizip/" + inputPath, cleanup, nil
+	}
+	dir, shp, err := extractShapefileSet(inputPath, inner)
+	if err != nil {
+		return "", cleanup, err
+	}
+	return shp, func() { _ = os.RemoveAll(dir) }, nil
+}
+
+func extractShapefileSet(zipPath, innerShp string) (tmpdir, shpPath string, err error) {
+	innerShp = filepath.ToSlash(innerShp)
+	dirPrefix := filepath.ToSlash(filepath.Dir(innerShp))
+	if dirPrefix == "." {
+		dirPrefix = ""
+	} else {
+		dirPrefix += "/"
+	}
+
+	tmpdir, err = os.MkdirTemp("", "gis-shp-import-*")
+	if err != nil {
+		return "", "", err
+	}
+	defer func() {
+		if err != nil {
+			_ = os.RemoveAll(tmpdir)
+		}
+	}()
+
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return "", "", fmt.Errorf("open zip %s: %w", zipPath, err)
+	}
+	defer r.Close()
+
+	extracted := 0
+	for _, f := range r.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		name := filepath.ToSlash(f.Name)
+		if strings.HasPrefix(name, "__MACOSX/") {
+			continue
+		}
+		if dirPrefix != "" {
+			if !strings.HasPrefix(name, dirPrefix) {
+				continue
+			}
+		} else if strings.Contains(name, "/") {
+			continue
+		}
+		dest := filepath.Join(tmpdir, filepath.Base(name))
+		if err := extractZipEntry(f, dest); err != nil {
+			return "", "", fmt.Errorf("extract %s: %w", name, err)
+		}
+		extracted++
+	}
+	if extracted == 0 {
+		return "", "", fmt.Errorf("no files extracted for shapefile %s in %s", innerShp, zipPath)
+	}
+
+	shpPath = filepath.Join(tmpdir, filepath.Base(innerShp))
+	for _, ext := range []string{".shp", ".dbf", ".shx"} {
+		side := strings.TrimSuffix(shpPath, ".shp") + ext
+		if _, statErr := os.Stat(side); statErr != nil {
+			return "", "", fmt.Errorf("shapefile sidecar missing after extract: %s", filepath.Base(side))
+		}
+	}
+	return tmpdir, shpPath, nil
+}
+
+func extractZipEntry(f *zip.File, dest string) error {
+	rc, err := f.Open()
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+
+	mode := f.Mode().Perm()
+	if mode == 0 {
+		mode = 0o640
+	}
+	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, rc); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
+
+// shapefileOGRSource returns the ogr2ogr /vsizip/ path (used in tests; production extracts zips to disk).
 func shapefileOGRSource(inputPath string) (string, error) {
 	if !strings.HasSuffix(strings.ToLower(inputPath), ".zip") {
 		return inputPath, nil
