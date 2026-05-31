@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -12,6 +14,32 @@ import (
 	"github.com/quantyralabs/idx-api/internal/service/comps"
 	"github.com/quantyralabs/idx-api/internal/service/dashboard"
 )
+
+// context keys for HTTP transport auth injection
+type contextKey string
+
+const (
+	mcpKeyContextKey contextKey = "validatedMCPKey"
+)
+
+// contextWithMCPKey stores a pre-validated key (from Authorization header or query param)
+// so that tool handlers can use it without re-parsing the mcp_key parameter.
+func contextWithMCPKey(ctx context.Context, key *repository.MCPKey) context.Context {
+	if key == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, mcpKeyContextKey, key)
+}
+
+// mcpKeyFromContext retrieves a key that was injected by the HTTP transport layer.
+func mcpKeyFromContext(ctx context.Context) *repository.MCPKey {
+	if v := ctx.Value(mcpKeyContextKey); v != nil {
+		if k, ok := v.(*repository.MCPKey); ok {
+			return k
+		}
+	}
+	return nil
+}
 
 // Server wraps the MCP server for the monitoring + comps tools.
 type Server struct {
@@ -52,15 +80,27 @@ func (s *Server) GetMCPServer() *server.MCPServer {
 	return s.mcpServer
 }
 
-// authenticated extracts the mcp_key from the request, validates it, and returns the key.
+// authenticated extracts the mcp_key (from context if injected by HTTP transport,
+// otherwise from the tool call parameter), validates it, and returns the key.
 // It also updates last_used_at as a side effect.
 func (s *Server) authenticated(ctx context.Context, req mcp.CallToolRequest) (*repository.MCPKey, error) {
-	key := req.GetString("mcp_key", "")
-	if key == "" {
+	// Prefer a key that was already validated and injected by the HTTP transport layer
+	// (via Authorization: Bearer or ?mcp_key= query param). This is the recommended
+	// path for remote / Coolify-hosted usage.
+	if key := mcpKeyFromContext(ctx); key != nil {
+		// Refresh last_used_at asynchronously (best effort)
+		go s.keyRepo.TouchLastUsed(context.Background(), key.ID)
+		return key, nil
+	}
+
+	// Fallback to explicit mcp_key parameter inside the tool call (works for stdio
+	// clients, local connectors, and explicit JSON-RPC calls over HTTP).
+	keyStr := req.GetString("mcp_key", "")
+	if keyStr == "" {
 		return nil, fmt.Errorf("missing required parameter: mcp_key")
 	}
 
-	hash := repository.HashMCPKey(key)
+	hash := repository.HashMCPKey(keyStr)
 	mcpKey, err := s.keyRepo.FindValidByHash(ctx, hash)
 	if err != nil {
 		return nil, fmt.Errorf("key validation error: %w", err)
@@ -548,6 +588,66 @@ func (s *Server) handleQueryGISForContent(ctx context.Context, req mcp.CallToolR
 	resp := NewToolResponse(mcpKey, data, "Safe GIS query for content generation use cases.")
 	jsonStr, _ := resp.ToJSONResult()
 	return mcp.NewToolResultText(jsonStr), nil
+}
+
+// --- HTTP / SSE transport support ---
+
+// httpContextFunc is used with mcp-go's WithHTTPContextFunc.
+// It attempts to authenticate using Authorization: Bearer <mcp_...> (preferred for HTTP)
+// or the mcp_key query parameter, and injects the validated key into the request context
+// so that all subsequent tool handlers can use the normal authenticated() path without changes.
+func (s *Server) httpContextFunc(ctx context.Context, r *http.Request) context.Context {
+	// 1. Authorization: Bearer mcp_xxx (recommended for remote / production use)
+	auth := r.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		token := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+		if strings.HasPrefix(token, "mcp_") {
+			if key := s.validateAndLoadKey(ctx, token); key != nil {
+				return contextWithMCPKey(ctx, key)
+			}
+		}
+	}
+
+	// 2. Query parameter fallback (?mcp_key=...) - convenient for curl / simple clients
+	if q := r.URL.Query().Get("mcp_key"); strings.HasPrefix(q, "mcp_") {
+		if key := s.validateAndLoadKey(ctx, q); key != nil {
+			return contextWithMCPKey(ctx, key)
+		}
+	}
+
+	return ctx
+}
+
+// validateAndLoadKey is a small helper for the HTTP context injector.
+func (s *Server) validateAndLoadKey(ctx context.Context, rawKey string) *repository.MCPKey {
+	hash := repository.HashMCPKey(rawKey)
+	key, err := s.keyRepo.FindValidByHash(ctx, hash)
+	if err != nil || key == nil {
+		return nil
+	}
+	// Touch last used (best effort, fire-and-forget)
+	go s.keyRepo.TouchLastUsed(context.Background(), key.ID)
+	return key
+}
+
+// HTTPHandler returns a ready-to-use http.Handler that serves the full MCP protocol
+// over Streamable HTTP (with SSE support for streaming responses when clients request it).
+// Mount it at /mcp (or any path) in your HTTP server.
+//
+// Example:
+//
+//	httpServer := server.NewStreamableHTTPServer(monitorServer.GetMCPServer(), ...)
+//	// or simply:
+//	handler := monitorServer.HTTPHandler()
+//	http.Handle("/mcp", handler)
+func (s *Server) HTTPHandler() http.Handler {
+	return server.NewStreamableHTTPServer(
+		s.mcpServer,
+		server.WithEndpointPath("/mcp"),
+		server.WithHTTPContextFunc(s.httpContextFunc),
+		// CORS is intentionally not enabled by default for this internal monitoring service.
+		// Add WithStreamableHTTPCORS(...) only if you have legitimate browser-based MCP clients.
+	)
 }
 
 

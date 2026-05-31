@@ -44,11 +44,14 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 CMD ["/usr/local/bin/scheduler"]
 
 # MCP Monitor (for AI agents / Grok connectors)
-# This is intentionally a lightweight, mostly read-only service.
+# Supports both stdio (local connectors) and HTTP + SSE streamable transport (Coolify / remote).
 FROM alpine:3.21 AS mcp-monitor
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata wget
 COPY --from=build /out/mcp-monitor /usr/local/bin/mcp-monitor
 USER nobody
-# No EXPOSE by default — the service is designed for stdio transport.
-# If you later want to run it in SSE/HTTP mode, expose the appropriate port here.
+EXPOSE 3000
+# Healthcheck works for the HTTP mode (Coolify default). In pure stdio usage the
+# healthcheck is irrelevant and the container is usually not run as a long-lived service.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget -qO- http://127.0.0.1:3000/healthz || exit 1
 CMD ["/usr/local/bin/mcp-monitor"]
