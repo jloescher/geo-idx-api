@@ -205,7 +205,9 @@ func (h *Handler) requireAdmin(c *fiber.Ctx) error {
 }
 
 func (h *Handler) LoginForm(c *fiber.Ctx) error {
+	returnTo := c.Query("return_to")
 	form := `<form method="post" action="/login" class="form-stack">
+<input type="hidden" name="return_to" value="` + web.Esc(returnTo) + `">
 <label>Email <input name="email" type="email" required autocomplete="email"></label>
 <label>Password <input name="password" type="password" required autocomplete="current-password"></label>
 <button type="submit" class="btn btn-primary">Sign in</button>
@@ -218,6 +220,7 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 	pass := c.FormValue("password")
 	pool, err := h.db.ReadPool(c.Context())
 	if err != nil {
+		h.logger.Error("login readpool failed", "error", err)
 		return c.Status(500).SendString("Database error")
 	}
 	var id int64
@@ -237,6 +240,13 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 		h.logger.Error("dashboard session save failed", "error", err, "user_id", id)
 		return c.Status(500).SendString("Could not start session — try again.")
 	}
+
+	// Respect return_to (used by OAuth consent flow and other deep links)
+	if rt := c.FormValue("return_to"); rt != "" {
+		if u, err := url.Parse(rt); err == nil && !u.IsAbs() && !strings.HasPrefix(rt, "//") {
+			return c.Redirect(rt)
+		}
+	}
 	return c.Redirect("/dashboard/monitoring")
 }
 
@@ -254,6 +264,7 @@ func (h *Handler) MonitoringPage(c *fiber.Ctx) error {
 	uid, _ := c.Locals("user_id").(int64)
 	data, err := h.loadPageData(c, uid, "", "")
 	if err != nil {
+		h.logger.Error("dashboard page load failed", "error", err, "user_id", uid)
 		return c.Status(500).SendString("Database error")
 	}
 	snap, err := h.monitoring.BuildSnapshot(c.Context())
@@ -277,6 +288,7 @@ func (h *Handler) DomainsPage(c *fiber.Ctx) error {
 	uid, _ := c.Locals("user_id").(int64)
 	data, err := h.loadPageData(c, uid, "", "")
 	if err != nil {
+		h.logger.Error("dashboard page load failed", "error", err, "user_id", uid)
 		return c.Status(500).SendString("Database error")
 	}
 	data.ProvisionFlash = h.takeProvisionFlash(c)
@@ -300,6 +312,7 @@ func (h *Handler) InvitePage(c *fiber.Ctx) error {
 	uid, _ := c.Locals("user_id").(int64)
 	data, err := h.loadPageData(c, uid, "", "")
 	if err != nil {
+		h.logger.Error("dashboard page load failed", "error", err, "user_id", uid)
 		return c.Status(500).SendString("Database error")
 	}
 	return c.Type("html").SendString(renderInvitePage(data))
