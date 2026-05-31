@@ -58,6 +58,8 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 
 	// OAuth 2.1 handler (for Custom MCP connectors)
 	oauthH := oauth.NewHandler(cfg, db, mcpKeyRepo, logger)
+	oauthH.RegisterRoutes(app)   // mounts /oauth/authorize and /oauth/token (the actual AS endpoints Grok needs)
+
 	mktH := marketing.NewHandler(cfg)
 
 	// Image proxy (API host)
