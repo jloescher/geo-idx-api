@@ -13,6 +13,7 @@ const (
 	NavMonitoring NavPage = "monitoring"
 	NavDomains    NavPage = "domains"
 	NavInvite     NavPage = "invite"
+	NavMCPKeys    NavPage = "mcp-keys"
 )
 
 func renderDashboardNav(active NavPage, isAdmin bool) string {
@@ -30,6 +31,11 @@ func renderDashboardNav(active NavPage, isAdmin bool) string {
 			label string
 			href  string
 		}{NavInvite, "Invite user", "/dashboard/invite"})
+		items = append(items, struct {
+			id    NavPage
+			label string
+			href  string
+		}{"mcp-keys", "MCP Keys", "/dashboard/mcp-keys"})
 	}
 	var b strings.Builder
 	b.WriteString(`<nav class="dashboard-nav" aria-label="Dashboard sections"><ul class="dashboard-nav-list">`)

@@ -1,4 +1,5 @@
-// Package config loads environment variables matching .env.example (Laravel parity).
+// Package config loads environment variables.
+// Variable names maintain compatibility with the prior Laravel .env.example for operational continuity.
 package config
 
 import (

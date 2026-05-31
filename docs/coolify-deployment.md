@@ -4,7 +4,7 @@ Run **Quantyra IDX API** on [Coolify](https://coolify.io/) using the **[Dockerfi
 
 Use **separate Coolify projects** for staging and production, each with its own PostgreSQL database (or shared Patroni primary for multi-DC production — see §8).
 
-**Queues:** PostgreSQL `jobs` table (no Redis). Deploy **web**, **worker(s)**, **scheduler**, and **idx-images**.
+**Queues:** PostgreSQL `jobs` table only (no Redis anywhere in the architecture). Deploy **web**, **worker(s)**, **scheduler**, and **idx-images**.
 
 **Related:** [README.md](../README.md), [deployment-operations.md](deployment-operations.md), [go-cutover.md](go-cutover.md).
 

@@ -2,6 +2,7 @@
   "description": "properties_post",
   "method": "POST",
   "url": "https://idx.quantyralabs.cc/api/v1/properties?dataset=stellar",
+  "status": 200,
   "headers": {
     "Authorization": "Bearer ${process.env.IDX_API_TOKEN}",
     "Content-Type": "application/json",

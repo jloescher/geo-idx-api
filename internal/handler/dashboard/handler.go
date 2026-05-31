@@ -15,6 +15,7 @@ import (
 	"github.com/quantyralabs/idx-api/internal/service/auth"
 	dashsvc "github.com/quantyralabs/idx-api/internal/service/dashboard"
 	"github.com/quantyralabs/idx-api/internal/service/dns"
+	mcpkeysvc "github.com/quantyralabs/idx-api/internal/service/mcpkey"
 	"github.com/quantyralabs/idx-api/internal/service/mls"
 	"github.com/quantyralabs/idx-api/internal/web"
 )
@@ -27,6 +28,7 @@ type Handler struct {
 	monitoringRepo *repository.MonitoringRepo
 	provision      *dashsvc.ProvisionService
 	monitoring     *dashsvc.MonitoringService
+	mcpKeys        *mcpkeysvc.Service
 	feeds          *mls.Resolver
 	invitations    *auth.InvitationService
 	sessions       *session.Store
@@ -34,7 +36,7 @@ type Handler struct {
 }
 
 // NewHandler constructs the dashboard handler.
-func NewHandler(cfg config.Config, db *repository.DB, logger *slog.Logger) *Handler {
+func NewHandler(cfg config.Config, db *repository.DB, mcpKeySvc *mcpkeysvc.Service, logger *slog.Logger) *Handler {
 	sessCfg := session.Config{
 		Expiration:     cfg.Auth.SessionLifetime,
 		Storage:        newPGSessionStorage(db.Pool),
@@ -51,18 +53,21 @@ func NewHandler(cfg config.Config, db *repository.DB, logger *slog.Logger) *Hand
 	}
 	store := session.New(sessCfg)
 	tokens := repository.NewTokenRepo(db)
-	return &Handler{
+
+	h := &Handler{
 		cfg:            cfg,
 		db:             db,
 		tokens:         tokens,
 		monitoringRepo: repository.NewMonitoringRepo(db),
 		provision:      dashsvc.NewProvisionService(db, tokens),
 		monitoring:     dashsvc.NewMonitoringService(cfg, db),
+		mcpKeys:        mcpKeySvc,
 		feeds:          mls.NewResolver(cfg),
 		invitations:    auth.NewInvitationService(cfg, db),
 		sessions:       store,
 		logger:         logger,
 	}
+	return h
 }
 
 func (h *Handler) Register(app *fiber.App) {
@@ -73,6 +78,12 @@ func (h *Handler) Register(app *fiber.App) {
 	app.Get("/dashboard", h.requireAuth, h.DashboardHome)
 	app.Get("/dashboard/monitoring", h.requireAuth, h.MonitoringPage)
 	app.Get("/dashboard/monitoring/data", h.SessionAuthMiddleware, h.MonitoringJSON)
+
+	// MCP Key management (admin only)
+	app.Get("/dashboard/mcp-keys", h.requireAuth, h.RequireAdmin, h.MCPKeysPage)
+	app.Get("/dashboard/api/mcp-keys", h.SessionAuthMiddleware, h.RequireAdmin, h.ListMCPKeys)
+	app.Post("/dashboard/api/mcp-keys", h.SessionAuthMiddleware, h.RequireAdmin, h.CreateMCPKey)
+	app.Delete("/dashboard/api/mcp-keys/:id", h.SessionAuthMiddleware, h.RequireAdmin, h.RevokeMCPKey)
 	app.Get("/dashboard/domains", h.requireAuth, h.DomainsPage)
 	app.Get("/dashboard/setup", h.requireAuth, h.redirectToDomains)
 	app.Get("/dashboard/api-keys", h.requireAuth, h.redirectToDomains)

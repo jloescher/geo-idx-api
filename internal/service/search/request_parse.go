@@ -44,7 +44,7 @@ type searchRequestWire struct {
 	Page                   json.RawMessage `json:"page"`
 }
 
-// UnmarshalJSON accepts documented search fields with OpenAPI/Laravel-style aliases:
+// UnmarshalJSON accepts documented search fields with OpenAPI-style aliases (some originating from the prior Laravel implementation):
 // string-encoded numbers, empty strings as omitted, min_beds/max_beds, and page.limit/skip.
 func (r *SearchRequest) UnmarshalJSON(data []byte) error {
 	var w searchRequestWire

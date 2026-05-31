@@ -14,7 +14,8 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// Scheduler dispatches recurring jobs (Laravel routes/console.php parity).
+// Scheduler dispatches recurring jobs.
+// Recurring job patterns were designed for compatibility with the prior Laravel scheduler.
 type Scheduler struct {
 	cfg    config.Config
 	queue  *queue.Client

@@ -7,7 +7,8 @@ import (
 	"strings"
 )
 
-// urarGridFeatures is the fixed 14-line URAR sales comparison grid (Laravel BpoAdjustmentEngine parity).
+// urarGridFeatures is the fixed 14-line URAR sales comparison grid.
+// The structure was originally implemented to match the prior Laravel BPO engine output.
 var urarGridFeatures = []string{
 	"time_of_sale", "location", "site_lot", "design_style", "quality",
 	"age_condition", "gla", "bedrooms", "bathrooms", "garage",

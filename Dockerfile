@@ -10,7 +10,8 @@ COPY . .
 RUN cp docs/yaak-api-collection.json internal/openapi/openapi.json
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/api ./cmd/api && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/worker ./cmd/worker && \
-    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/scheduler ./cmd/scheduler
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/scheduler ./cmd/scheduler && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/mcp-monitor ./cmd/mcp-monitor
 
 FROM alpine:3.21 AS api
 RUN apk add --no-cache ca-certificates tzdata && \
@@ -41,3 +42,13 @@ USER nobody
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD test "$(cat /proc/1/comm 2>/dev/null)" = "scheduler" || exit 1
 CMD ["/usr/local/bin/scheduler"]
+
+# MCP Monitor (for AI agents / Grok connectors)
+# This is intentionally a lightweight, mostly read-only service.
+FROM alpine:3.21 AS mcp-monitor
+RUN apk add --no-cache ca-certificates tzdata
+COPY --from=build /out/mcp-monitor /usr/local/bin/mcp-monitor
+USER nobody
+# No EXPOSE by default — the service is designed for stdio transport.
+# If you later want to run it in SSE/HTTP mode, expose the appropriate port here.
+CMD ["/usr/local/bin/mcp-monitor"]

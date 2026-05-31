@@ -191,7 +191,7 @@ The application uses PostgreSQL with PostGIS. Key tables:
 
 - `domains` - Authorized domains and API keys
 - `tokens` - Active API tokens with scopes
-- `jobs` - PostgreSQL job queue (Laravel parity)
+- `jobs` - PostgreSQL job queue (with schema compatibility for prior Laravel jobs table during migration)
 - `replica_pages` - Staged MLS data before persistence
 - `listings` - Final mirrored listings with geospatial data
 - `audit_logs` - API access and change tracking

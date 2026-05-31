@@ -1,0 +1,15 @@
+{
+  "description": "properties_convenience_get",
+  "method": "GET",
+  "url": "https://idx.quantyralabs.cc/api/v1/properties?city=Largo\u0026dataset=stellar\u0026limit=2",
+  "status": 200,
+  "headers": {
+    "Authorization": "Bearer ${process.env.IDX_API_TOKEN}",
+    "Content-Type": "application/json",
+    "X-Domain-Slug": "${process.env.IDX_DOMAIN_SLUG}"
+  },
+  "nextjs_fetch_example": {
+    "note": "Use in a Next.js Server Action or Route Handler; never expose the PAT to the browser.",
+    "snippet": "const res = await fetch(\"https://idx.quantyralabs.cc/api/v1/properties?city=Largo\u0026dataset=stellar\u0026limit=2\", {\n  method: \"GET\",\n  headers: {\n    \"Authorization\": \"Bearer ${process.env.IDX_API_TOKEN}\",\n    \"Content-Type\": \"application/json\",\n    \"X-Domain-Slug\": \"${process.env.IDX_DOMAIN_SLUG}\"\n  },\n});\nif (!res.ok) throw new Error(`API ${res.status}`);\nconst data = await res.json();"
+  }
+}

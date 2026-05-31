@@ -9,7 +9,8 @@ import (
 	"github.com/quantyralabs/idx-api/internal/auth/password"
 )
 
-// Admin upserts the bootstrap admin user (Laravel AdminUserSeeder parity).
+// Admin upserts the bootstrap admin user.
+// The seeding logic follows the same pattern as the prior Laravel AdminUserSeeder.
 func Admin(ctx context.Context, pool *pgxpool.Pool, email, plainPassword, name string) (int64, error) {
 	email = strings.TrimSpace(strings.ToLower(email))
 	plainPassword = strings.TrimSpace(plainPassword)

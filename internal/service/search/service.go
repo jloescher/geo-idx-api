@@ -93,7 +93,8 @@ func (s *Service) searchSplit(c *fiber.Ctx, feed string, req SearchRequest) (Sea
 
 func intPtr(n int) *int { return &n }
 
-// SearchRequest mirrors Laravel SearchRequest JSON.
+// SearchRequest defines the search payload shape.
+// Field names and aliases maintain compatibility with prior API consumers.
 type SearchRequest struct {
 	Statuses               []string `json:"statuses"`
 	ActiveOnly             *bool    `json:"active_only"`

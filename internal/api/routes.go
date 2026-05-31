@@ -22,6 +22,7 @@ import (
 	"github.com/quantyralabs/idx-api/internal/openapi"
 	"github.com/quantyralabs/idx-api/internal/repository"
 	"github.com/quantyralabs/idx-api/internal/service/audit"
+	mcpkeysvc "github.com/quantyralabs/idx-api/internal/service/mcpkey"
 )
 
 // RegisterRoutes mounts all HTTP routes.
@@ -49,7 +50,10 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 	imgH := images.NewHandler(cfg, db, logger)
 	compsH := comps.NewHandler(cfg, db, logger)
 	authH := auth.NewHandler(cfg, db, logger)
-	dashH := dashboard.NewHandler(cfg, db, logger)
+	mcpKeyRepo := repository.NewMCPKeyRepo(db)
+	mcpKeySvc := mcpkeysvc.NewService(mcpKeyRepo)
+
+	dashH := dashboard.NewHandler(cfg, db, mcpKeySvc, logger)
 	mktH := marketing.NewHandler(cfg)
 
 	// Image proxy (API host)

@@ -11,7 +11,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Client is a PostgreSQL-backed job queue (Laravel jobs table compatible).
+// Client is a PostgreSQL-backed job queue.
+// The jobs table schema maintains compatibility with the prior Laravel implementation
+// for safe cutover and legacy job purging during migration.
 // Revenue impact: durable async work without Redis keeps ops cost low and survives restarts.
 type Client struct {
 	pool               *pgxpool.Pool
