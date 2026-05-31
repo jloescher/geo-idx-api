@@ -1,3 +1,10 @@
 {
-    "mcpServers": {}
+  "mcpServers": {
+    "quantyra-idx": {
+      "url": "http://zbciezu1hyfuf5tq0cxdik7u.208.87.128.115.sslip.io/mcp",
+      "headers": {
+        "Authorization": "Bearer mcp_6af50524ccc307ae728cbd08ffb2bfb0adbf56718d30dc89a70803525896b506"
+      }
+    }
+  }
 }
