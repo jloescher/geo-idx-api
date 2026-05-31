@@ -20,6 +20,9 @@ Thumbs.db
 coverage.out
 tests/smoke/reports/
 
+# One-off build artifacts at repo root (use make build → bin/)
+/mcp-monitor
+
 # Duplicate agent guide (use AGENTS.md)
 CLAUDE.md
 
