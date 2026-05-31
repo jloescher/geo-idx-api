@@ -4,10 +4,10 @@
       "name": "listing_photo",
       "method": "GET",
       "path": "/images/{{listing_key}}/{{photo_id}}",
-      "expect_status": [200, 404, 502],
+      "expect_status": [200, 404],
       "expect_status_unauthed": [401],
       "expect_content_type_prefix": "image/",
-      "expect_min_body_bytes": 1,
+      "expect_min_body_bytes": 5000,
       "export_as": "images-listing-photo.json",
       "nextjs_hint": "Use Next.js Image with src pointing at /images/{listingKey}/{photoId} on the API host."
     }

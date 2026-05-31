@@ -8,7 +8,7 @@
       "expect_status": [200, 404, 502],
       "expect_status_unauthed": [401],
       "expect_json_when_status": [200],
-      "expect_json": { "value": "array" },
+      "expect_json": { "bundle": "array", "total": "number" },
       "export_as": "listings-collection.json",
       "nextjs_hint": "GET listings with ?dataset=stellar&limit=2 and Bearer + X-Domain-Slug headers."
     },

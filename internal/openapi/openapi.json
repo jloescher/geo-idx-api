@@ -74,10 +74,11 @@
       },
       "ListingsResponse": {
         "type": "object",
+        "description": "Bridge Data Output web API envelope for GET /api/v1/listings (not OData `value`). RESO OData routes use a separate shape.",
         "properties": {
           "pricing": {
             "type": "object",
-            "description": "Global quote matrix used for listing-level conversion output.",
+            "description": "Global quote matrix used for listing-level conversion output (when include_pricing=1).",
             "properties": {
               "status": { "type": "string", "example": "ok" },
               "as_of": { "type": "string", "format": "date-time", "nullable": true },
@@ -92,8 +93,9 @@
               }
             }
           },
-          "value": {
+          "bundle": {
             "type": "array",
+            "description": "Listing objects from Bridge web API.",
             "items": {
               "type": "object",
               "properties": {
@@ -116,8 +118,9 @@
               "additionalProperties": true
             }
           },
-          "links": { "type": "object" },
-          "meta": { "type": "object" }
+          "status": { "type": "integer", "example": 200 },
+          "success": { "type": "boolean", "example": true },
+          "total": { "type": "integer", "example": 4708105, "description": "Total listings matching the upstream query." }
         }
       },
       "GisResponse": {

@@ -2,6 +2,7 @@ package mls_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/quantyralabs/idx-api/internal/service/mls"
@@ -247,4 +248,72 @@ func mustJSON(t *testing.T, v any) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+func parseMirrorSelectColumns(sql string) []string {
+	sql = strings.ReplaceAll(sql, "\n", " ")
+	parts := strings.Split(sql, ",")
+	var cols []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			cols = append(cols, p)
+		}
+	}
+	return cols
+}
+
+// TestMirrorListingSearchColumns_alignsWithScanOrder guards POST /search: ScanMirrorListingSearchRow
+// must bind the same columns as MirrorListingSearchColumns (misalignment caused pgx 502s).
+func TestMirrorListingSearchColumns_alignsWithScanOrder(t *testing.T) {
+	cols := parseMirrorSelectColumns(mls.MirrorListingSearchColumns)
+	if len(cols) == 0 {
+		t.Fatal("expected columns")
+	}
+	floodIdx := -1
+	for i, c := range cols {
+		if c == "flood_zone_code" {
+			floodIdx = i
+			break
+		}
+	}
+	if floodIdx < 0 || floodIdx+1 >= len(cols) {
+		t.Fatalf("flood_zone_code not found in columns: %v", cols)
+	}
+	if cols[floodIdx+1] != "estimated_total_monthly_fees" {
+		t.Fatalf("expected estimated_total_monthly_fees after flood_zone_code, got %q", cols[floodIdx+1])
+	}
+}
+
+func TestScanMirrorListingSearchRow_readsEstimatedFees(t *testing.T) {
+	wantFees := 500.0
+	cols := parseMirrorSelectColumns(mls.MirrorListingSearchColumns)
+	row, err := mls.ScanMirrorListingSearchRow(func(dest ...any) error {
+		if len(dest) != len(cols) {
+			t.Fatalf("scan dest count %d != column count %d", len(dest), len(cols))
+		}
+		for i, name := range cols {
+			switch name {
+			case "dataset_slug":
+				*(dest[i].(*string)) = "stellar"
+			case "listing_key":
+				*(dest[i].(*string)) = "k"
+			case "list_price":
+				*(dest[i].(*float64)) = 1
+			case "estimated_total_monthly_fees":
+				*(dest[i].(**float64)) = &wantFees
+			case "special_listing_conditions":
+				*(dest[i].(*[]byte)) = []byte("[]")
+			default:
+				// leave nil pointers / zero values
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.EstimatedTotalMonthlyFees == nil || *row.EstimatedTotalMonthlyFees != wantFees {
+		t.Fatalf("EstimatedTotalMonthlyFees = %v, want %v", row.EstimatedTotalMonthlyFees, wantFees)
+	}
 }

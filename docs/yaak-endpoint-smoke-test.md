@@ -53,10 +53,21 @@ Unlike the old bash-only script (status codes only), the Go smoke suite checks:
 
 - HTTP status (with per-route acceptable sets, e.g. MLS `200|404|502`)
 - JSON response shape via path assertions (`results`, `hasMore`, GeoJSON `FeatureCollection`, etc.)
-- Image routes: `Content-Type: image/*` and non-empty body on `200`
+- **`GET /api/v1/listings`** — Bridge web envelope: `bundle` (array) and `total` (number), **not** OData `value` (that shape is for `/api/v1/properties`)
+- Image routes: `Content-Type: image/*` and body ≥ 5 KB on `200` (502 no longer accepted)
 - Autocomplete: top-level JSON array
 
 Test cases live in [`tests/smoke/cases/`](../tests/smoke/cases/). Edit JSON there to add routes or assertions.
+
+## Known fixes (deploy required for search)
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| `listings_collection` asserts wrong key | Test expected OData `value`; Bridge web returns `bundle` | Fixed in smoke cases + OpenAPI `ListingsResponse` |
+| `search_largo_active` → 502 | `ScanMirrorListingSearchRow` skipped `estimated_total_monthly_fees`, misaligning pgx column scan | Fixed in `internal/service/mls/listing_response.go` — **redeploy API** |
+| Search 502 with `city` only (older builds) | Geography filter bound pattern array twice | Fixed in `a9cd351` — ensure production includes that commit |
+
+After deploying the API, re-run `make test-api-smoke`. `search_largo_active` should return **200** with `{ results, hasMore, nextSkip }`.
 
 ## Next.js client examples
 
@@ -65,7 +76,7 @@ When tests pass with a valid PAT, resolved requests are exported to [`docs/clien
 ## Interpreting results
 
 - **401** without `YAAK_BEARER_TOKEN` — expected for `/api/v1/*` and `/images/*`.
-- **502** on `POST /api/v1/search` — often upstream Bridge/PostGIS; check API logs and redeploy.
+- **502** on `POST /api/v1/search` with `city` — if undeployed, check API logs for pgx scan errors or `expected N arguments, got N+1` (geography bind bug). Redeploy after `listing_response.go` scan fix.
 - **`ADMIN_SEED_*` login** — only works when those credentials exist in the target environment’s `users` table (often local seed, not production).
 - **Admin routes** — skipped unless `YAAK_SESSION_COOKIE` is wired in a future slice.
 
