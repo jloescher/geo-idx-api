@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -35,6 +38,7 @@ func main() {
 	defer db.Close()
 
 	mcpKeyRepo := repository.NewMCPKeyRepo(db)
+	oauthRepo := repository.NewOAuthRepo(db)
 	monitoringService := dashboard.NewMonitoringService(cfg, db)
 	monitoringRepo := repository.NewMonitoringRepo(db)
 	compsEngine := comps.NewEngine(cfg, db)
@@ -77,8 +81,68 @@ func main() {
 		mux := http.NewServeMux()
 
 		mcpHandler := monitorServer.HTTPHandler()
-		mux.Handle("/mcp", mcpHandler)
-		mux.Handle("/mcp/", mcpHandler) // allow trailing slash variants
+
+		// Dual auth middleware (functional version):
+		// - If Authorization: Bearer mcp_... → use existing direct mcp_key path (unchanged, highest priority)
+		// - Else if Authorization: Bearer <oauth_access_token> → validate against oauth_access_tokens table
+		// - Otherwise → 401 with resource_metadata pointing to OAuth flow
+		authChallengeHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// HTTPS enforcement
+			if r.Header.Get("X-Forwarded-Proto") != "https" && os.Getenv("APP_ENV") == "production" {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":"https_required","error_description":"This endpoint must be accessed over HTTPS"}`))
+				return
+			}
+
+			auth := r.Header.Get("Authorization")
+
+			// Path 1: Direct mcp_ key (existing behavior, unchanged)
+			if strings.HasPrefix(auth, "Bearer mcp_") {
+				mcpHandler.ServeHTTP(w, r)
+				return
+			}
+
+			// Path 2: OAuth access token (new flow)
+			if strings.HasPrefix(auth, "Bearer ") {
+				token := strings.TrimPrefix(auth, "Bearer ")
+				tokenHash := sha256.Sum256([]byte(token))
+				tokenHashStr := hex.EncodeToString(tokenHash[:])
+
+				accessToken, err := oauthRepo.FindAccessTokenByHash(r.Context(), tokenHashStr)
+				if err == nil && accessToken != nil && time.Now().Before(accessToken.ExpiresAt) {
+					// Valid OAuth access token.
+					// For a functional implementation, we map it to the granted mcp keys.
+					// If the token recorded specific mcp_key IDs, we can inject the first one
+					// so the existing `authenticated()` + `requireScope()` logic continues to work.
+
+					ctx := r.Context()
+					ctx = context.WithValue(ctx, monitor.OAuthAccessTokenContextKey, accessToken)
+
+					// If this token was issued with specific granted mcp keys, inject them
+					// into the context so the existing authenticated() + requireScope() logic works.
+					if len(accessToken.GrantedMCPKeyIDs) > 0 {
+						// For functional v1, inject the first granted key.
+						// A more advanced version could combine scopes from all granted keys.
+						key, err := mcpKeyRepo.FindByID(r.Context(), accessToken.GrantedMCPKeyIDs[0])
+						if err == nil && key != nil {
+							ctx = context.WithValue(ctx, monitor.MCPKeyContextKey, key)
+						}
+					}
+
+					r = r.WithContext(ctx)
+					mcpHandler.ServeHTTP(w, r)
+					return
+				}
+			}
+
+			// No valid credential → tell client to start OAuth flow
+			w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="https://your-mcp-domain/.well-known/oauth-protected-resource"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"unauthorized","error_description":"MCP key or OAuth access token required"}`))
+		})
+
+		mux.Handle("/mcp", authChallengeHandler)
+		mux.Handle("/mcp/", authChallengeHandler)
 
 		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -89,6 +153,18 @@ func main() {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"status":"ok"}`))
+		})
+
+		// Protected Resource Metadata (RFC 9728) - required for proper OAuth discovery by clients like Grok
+		mux.HandleFunc("/.well-known/oauth-protected-resource", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			// TODO: Make this configurable / derived from actual public URL when we have one
+			_, _ = w.Write([]byte(`{
+  "resource": "http://localhost:3000/mcp",
+  "authorization_servers": ["http://localhost:8000"],
+  "scopes_supported": ["monitor", "comps", "content"]
+}`))
 		})
 
 		srv := &http.Server{

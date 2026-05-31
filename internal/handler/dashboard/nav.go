@@ -14,6 +14,9 @@ const (
 	NavDomains    NavPage = "domains"
 	NavInvite     NavPage = "invite"
 	NavMCPKeys    NavPage = "mcp-keys"
+	NavAdminTokens  NavPage = "admin-tokens"
+	NavOAuthClients NavPage = "oauth-clients"
+	NavOAuthTokens  NavPage = "oauth-tokens"
 )
 
 func renderDashboardNav(active NavPage, isAdmin bool) string {
@@ -36,6 +39,21 @@ func renderDashboardNav(active NavPage, isAdmin bool) string {
 			label string
 			href  string
 		}{"mcp-keys", "MCP Keys", "/dashboard/mcp-keys"})
+		items = append(items, struct {
+			id    NavPage
+			label string
+			href  string
+		}{NavAdminTokens, "Admin Tokens", "/dashboard/admin-tokens"})
+		items = append(items, struct {
+			id    NavPage
+			label string
+			href  string
+		}{NavOAuthClients, "OAuth Clients", "/dashboard/oauth-clients"})
+		items = append(items, struct {
+			id    NavPage
+			label string
+			href  string
+		}{NavOAuthTokens, "Active OAuth Tokens", "/dashboard/oauth-tokens"})
 	}
 	var b strings.Builder
 	b.WriteString(`<nav class="dashboard-nav" aria-label="Dashboard sections"><ul class="dashboard-nav-list">`)

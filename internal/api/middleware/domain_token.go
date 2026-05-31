@@ -61,6 +61,24 @@ func handleToken(c *fiber.Ctx, domains *repository.DomainRepo, tokens *repositor
 		return fiber.NewError(fiber.StatusForbidden, "Domain must be TXT-verified before API token access is allowed.")
 	}
 	fullAccess := tokens.HasAbility(tok, "idx:full")
+
+	// Admin tokens (created via CreateAdminToken) are not domain-specific and get full access.
+	if tokens.HasAbility(tok, "admin") || tokens.HasAbility(tok, "idx:admin") {
+		fullAccess = true
+		// For admin tokens, we can still attach a domain if provided, but it's not required.
+		// If no domain was provided, we can leave MLSDomain unset or set a sentinel.
+		if d == nil {
+			// Allow proceeding with admin privileges even without a specific domain.
+			c.Locals(ctxkeys.MLSAuth, "token")
+			c.Locals(ctxkeys.MLSFullAccess, true)
+			c.Locals(ctxkeys.MLSUserID, &user.ID)
+			c.Locals(ctxkeys.MLSTokenName, &tok.Name)
+			// Optionally set a flag
+			c.Locals("is_admin_token", true)
+			return c.Next()
+		}
+	}
+
 	setMLSLocals(c, "token", d, &tok.Name, &user.ID, fullAccess)
 	return c.Next()
 }

@@ -81,15 +81,52 @@ To use comps tools, the MCP key must have the `comps` scope. For content tools, 
 
 More tools will be added over time.
 
-## Using with Grok Connectors (Recommended Pattern)
+## Using with Grok Connectors
 
-1. Create an MCP key with the `comps` scope from the admin dashboard.
-2. Run the MCP server:
-   ```bash
-   export MCP_KEY="mcp_xxxxxxxxxxxxxxxx"
-   ./mcp-monitor
+You have two main ways to connect the Quantyra IDX MCP to Grok:
+
+### Option 1: Local stdio (Recommended for most development)
+Run the binary locally with a key:
+
+```bash
+export MCP_KEY="mcp_xxxxxxxxxxxxxxxx"
+./mcp-monitor
+```
+
+Then add it as a stdio MCP server in Grok (or via `.grok/mcp.toml` for project-scoped use).
+
+### Option 2: Remote via OAuth (Best for Grok Web Custom Connectors)
+The production `idx-api-mcp` service (deployed in Coolify) now supports a full OAuth 2.1 Authorization Code + PKCE flow.
+
+This allows you to add it as a **Custom MCP Connector** directly in Grok Web without manually managing bearer tokens.
+
+#### Steps to connect in Grok Web
+
+1. As an admin, register a client at **`/dashboard/oauth-clients`**:
+   - Name: `Grok Web`
+   - Client ID: `grok-web`
+   - Redirect URIs: `https://grok.x.ai` (or the exact redirect URI Grok provides)
+
+   You can manage all OAuth clients (list, create, revoke) from this admin page.
+
+2. In Grok Web, go to **Settings → Connectors → New Connector → Custom**.
+
+3. Enter your public MCP URL:
    ```
-3. In Grok, configure the `idx-api-mcp` MCP server as a connector (stdio mode).
+   https://your-mcp-domain.com/mcp
+   ```
+   (This must be served over HTTPS.)
+
+4. Grok will redirect you to our `/oauth/authorize` endpoint.
+   - Log in with your Quantyra dashboard account.
+   - Select which of your MCP keys you want to grant access to.
+   - Approve the request.
+
+5. Grok will receive an access token and can now call the MCP tools.
+
+This flow is powered by the dual-auth system in the MCP server: direct `mcp_...` bearer tokens continue to work for local/CLI use, while Grok Web uses short-lived OAuth access tokens.
+
+**Important**: The remote MCP endpoint must be publicly reachable over HTTPS. Plain HTTP is rejected for the OAuth flow.
 
 ### Example System Prompt for Grok when using Comps
 

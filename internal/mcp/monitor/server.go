@@ -22,6 +22,16 @@ const (
 	mcpKeyContextKey contextKey = "validatedMCPKey"
 )
 
+// Exported context keys so cmd/mcp-monitor and other packages can inject
+// authentication information in a compatible way.
+var (
+	// MCPKeyContextKey is used to store a validated *repository.MCPKey in the context.
+	MCPKeyContextKey = mcpKeyContextKey
+
+	// OAuthAccessTokenContextKey is used to store a validated *repository.OAuthAccessToken.
+	OAuthAccessTokenContextKey contextKey = "oauthAccessToken"
+)
+
 // contextWithMCPKey stores a pre-validated key (from Authorization header or query param)
 // so that tool handlers can use it without re-parsing the mcp_key parameter.
 func contextWithMCPKey(ctx context.Context, key *repository.MCPKey) context.Context {
@@ -33,7 +43,14 @@ func contextWithMCPKey(ctx context.Context, key *repository.MCPKey) context.Cont
 
 // mcpKeyFromContext retrieves a key that was injected by the HTTP transport layer.
 func mcpKeyFromContext(ctx context.Context) *repository.MCPKey {
+	// Check the unexported key first (used internally)
 	if v := ctx.Value(mcpKeyContextKey); v != nil {
+		if k, ok := v.(*repository.MCPKey); ok {
+			return k
+		}
+	}
+	// Also check the exported key (used by cmd/mcp-monitor when injecting OAuth tokens)
+	if v := ctx.Value(MCPKeyContextKey); v != nil {
 		if k, ok := v.(*repository.MCPKey); ok {
 			return k
 		}

@@ -16,7 +16,7 @@ func TestMonitoringJSONUnauthorized(t *testing.T) {
 	cfg := config.Config{}
 	logger := testLogger()
 	db := &repository.DB{}
-	h := NewHandler(cfg, db, logger)
+	h := NewHandler(cfg, db, nil, logger)
 
 	app := fiber.New()
 	app.Get("/dashboard/monitoring/data", h.SessionAuthMiddleware, h.MonitoringJSON)
@@ -58,7 +58,7 @@ func testLogger() *slog.Logger {
 
 func TestRedirectLegacyDashboardRoutes(t *testing.T) {
 	cfg := config.Config{}
-	h := NewHandler(cfg, &repository.DB{}, testLogger())
+	h := NewHandler(cfg, &repository.DB{}, nil, testLogger())
 	app := fiber.New()
 	app.Get("/dashboard/setup", h.redirectToDomains)
 	app.Get("/dashboard/api-keys", h.redirectToDomains)

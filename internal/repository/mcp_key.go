@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -126,6 +127,78 @@ func (r *MCPKeyRepo) FindValidByHash(ctx context.Context, hash string) (*MCPKey,
 	}
 
 	return &k, nil
+}
+
+// FindByID retrieves an MCP key by its ID (even if revoked, for admin/audit use).
+func (r *MCPKeyRepo) FindByID(ctx context.Context, id int64) (*MCPKey, error) {
+	query := `
+		SELECT id, name, key_hash, scopes, created_by_user_id, created_at, last_used_at, revoked_at, notes
+		FROM mcp_keys
+		WHERE id = $1
+		LIMIT 1
+	`
+
+	var k MCPKey
+	var scopesJSON []byte
+
+	err := r.db.Pool.QueryRow(ctx, query, id).Scan(
+		&k.ID, &k.Name, &k.KeyHash, &scopesJSON,
+		&k.CreatedByUserID, &k.CreatedAt, &k.LastUsedAt, &k.RevokedAt, &k.Notes,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find mcp_key by id: %w", err)
+	}
+
+	if len(scopesJSON) > 0 {
+		if err := json.Unmarshal(scopesJSON, &k.Scopes); err != nil {
+			return nil, fmt.Errorf("unmarshal mcp_key scopes: %w", err)
+		}
+	}
+
+	return &k, nil
+}
+
+// GetNamesByIDs returns a map of MCP key ID -> name for the given IDs.
+// Useful for enriching token data in admin UIs.
+func (r *MCPKeyRepo) GetNamesByIDs(ctx context.Context, ids []int64) (map[int64]string, error) {
+	if len(ids) == 0 {
+		return map[int64]string{}, nil
+	}
+
+	// Build a safe IN clause with parameters
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, name 
+		FROM mcp_keys 
+		WHERE id IN (%s)
+	`, strings.Join(placeholders, ","))
+
+	rows, err := r.db.Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[int64]string)
+	for rows.Next() {
+		var id int64
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		result[id] = name
+	}
+
+	return result, nil
 }
 
 // ListByCreator returns active keys created by a given admin user.

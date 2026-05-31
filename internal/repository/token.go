@@ -100,6 +100,27 @@ func (r *TokenRepo) CreateWithTx(ctx context.Context, tx pgx.Tx, userID int64, n
 	return r.createToken(ctx, tx, userID, 0, name, abilities)
 }
 
+// CreateAdminToken creates a global admin token (not tied to any domain).
+// Only call this after verifying the user is an admin.
+func (r *TokenRepo) CreateAdminToken(ctx context.Context, userID int64, name string, abilities []string) (plain string, err error) {
+	// Admin tokens are created with domain_id = NULL and special handling.
+	// We use the same table but mark them via abilities or a future column.
+	// For now, we ensure "admin" ability is present and create without domain.
+	if !containsAbility(abilities, "admin") {
+		abilities = append(abilities, "admin")
+	}
+	return r.createToken(ctx, r.db.Pool, userID, 0, name, abilities)
+}
+
+func containsAbility(abilities []string, ability string) bool {
+	for _, a := range abilities {
+		if a == ability {
+			return true
+		}
+	}
+	return false
+}
+
 // RegenerateForDomain replaces the token for a domain atomically.
 func (r *TokenRepo) RegenerateForDomain(ctx context.Context, userID, domainID int64, name string, abilities []string) (plain string, err error) {
 	tx, err := r.db.Pool.Begin(ctx)
@@ -199,4 +220,36 @@ func (r *TokenRepo) Revoke(ctx context.Context, userID, tokenID int64) error {
 		return fmt.Errorf("token not found")
 	}
 	return nil
+}
+
+// ListAdminTokensForUser returns admin tokens created by the given user.
+func (r *TokenRepo) ListAdminTokensForUser(ctx context.Context, userID int64) ([]TokenMeta, error) {
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT id, name, last_used_at
+		FROM personal_access_tokens
+		WHERE tokenable_type = 'App\\Models\\User'
+		  AND tokenable_id = $1
+		  AND abilities LIKE '%admin%'
+		ORDER BY created_at DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tokens []TokenMeta
+	for rows.Next() {
+		var t TokenMeta
+		var lastUsed *time.Time
+		if err := rows.Scan(&t.ID, &t.Name, &lastUsed); err != nil {
+			return nil, err
+		}
+		if lastUsed != nil {
+			t.LastUsed = lastUsed.Format("2006-01-02 15:04")
+		} else {
+			t.NeverUsed = true
+		}
+		tokens = append(tokens, t)
+	}
+	return tokens, nil
 }

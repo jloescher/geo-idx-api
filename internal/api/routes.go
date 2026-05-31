@@ -19,6 +19,7 @@ import (
 	"github.com/quantyralabs/idx-api/internal/handler/gis"
 	"github.com/quantyralabs/idx-api/internal/handler/images"
 	"github.com/quantyralabs/idx-api/internal/handler/marketing"
+	"github.com/quantyralabs/idx-api/internal/handler/oauth"
 	"github.com/quantyralabs/idx-api/internal/openapi"
 	"github.com/quantyralabs/idx-api/internal/repository"
 	"github.com/quantyralabs/idx-api/internal/service/audit"
@@ -54,6 +55,9 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 	mcpKeySvc := mcpkeysvc.NewService(mcpKeyRepo)
 
 	dashH := dashboard.NewHandler(cfg, db, mcpKeySvc, logger)
+
+	// OAuth 2.1 handler (for Custom MCP connectors)
+	oauthH := oauth.NewHandler(cfg, db, mcpKeyRepo, logger)
 	mktH := marketing.NewHandler(cfg)
 
 	// Image proxy (API host)
@@ -78,6 +82,18 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 	adminAPI.Get("/monitoring", dashH.MonitoringJSON)
 	adminAPI.Post("/flood-enrich", floodH.Enrich)
 	adminAPI.Post("/geocode/kickoff", dashH.RequireAdmin, geocodeH.Kickoff)
+
+	// OAuth Clients admin management
+	adminAPI.Post("/oauth/clients", dashH.RequireAdmin, oauthH.CreateClient)
+	adminAPI.Get("/oauth/clients", dashH.RequireAdmin, oauthH.ListClients)
+	adminAPI.Delete("/oauth/clients/:id", dashH.RequireAdmin, oauthH.RevokeClient)
+
+	// Revocation of issued access tokens
+	adminAPI.Get("/oauth/access-tokens", dashH.RequireAdmin, oauthH.ListAccessTokens)
+	adminAPI.Get("/oauth/access-tokens/all", dashH.RequireAdmin, oauthH.ListAllAccessTokens)
+	adminAPI.Delete("/oauth/access-tokens/:token_hash", dashH.RequireAdmin, oauthH.RevokeAccessToken)
+	adminAPI.Delete("/oauth/clients/:id/tokens", dashH.RequireAdmin, oauthH.RevokeAllTokensForClient)
+
 	adminGIS := adminAPI.Group("/gis", dashH.RequireAdmin)
 	admin.RegisterGISRoutes(adminGIS, gisAdminH, uploadCORS)
 

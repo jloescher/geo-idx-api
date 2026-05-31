@@ -29,6 +29,7 @@ type Handler struct {
 	provision      *dashsvc.ProvisionService
 	monitoring     *dashsvc.MonitoringService
 	mcpKeys        *mcpkeysvc.Service
+	oauthClients   *repository.OAuthClientRepo
 	feeds          *mls.Resolver
 	invitations    *auth.InvitationService
 	sessions       *session.Store
@@ -62,6 +63,7 @@ func NewHandler(cfg config.Config, db *repository.DB, mcpKeySvc *mcpkeysvc.Servi
 		provision:      dashsvc.NewProvisionService(db, tokens),
 		monitoring:     dashsvc.NewMonitoringService(cfg, db),
 		mcpKeys:        mcpKeySvc,
+		oauthClients:   repository.NewOAuthClientRepo(db),
 		feeds:          mls.NewResolver(cfg),
 		invitations:    auth.NewInvitationService(cfg, db),
 		sessions:       store,
@@ -84,6 +86,14 @@ func (h *Handler) Register(app *fiber.App) {
 	app.Get("/dashboard/api/mcp-keys", h.SessionAuthMiddleware, h.RequireAdmin, h.ListMCPKeys)
 	app.Post("/dashboard/api/mcp-keys", h.SessionAuthMiddleware, h.RequireAdmin, h.CreateMCPKey)
 	app.Delete("/dashboard/api/mcp-keys/:id", h.SessionAuthMiddleware, h.RequireAdmin, h.RevokeMCPKey)
+
+	// Admin Tokens (global, not domain-specific)
+	app.Get("/dashboard/admin-tokens", h.requireAuth, h.RequireAdmin, h.AdminTokensPage)
+	app.Get("/dashboard/oauth-clients", h.requireAuth, h.RequireAdmin, h.OAuthClientsPage)
+	app.Get("/dashboard/oauth-tokens", h.requireAuth, h.RequireAdmin, h.ActiveOAuthTokensPage)
+	app.Get("/dashboard/api/admin-tokens", h.SessionAuthMiddleware, h.RequireAdmin, h.ListAdminTokens)
+	app.Post("/dashboard/api/admin-tokens", h.SessionAuthMiddleware, h.RequireAdmin, h.CreateAdminToken)
+	app.Delete("/dashboard/api/admin-tokens/:id", h.SessionAuthMiddleware, h.RequireAdmin, h.RevokeAdminToken)
 	app.Get("/dashboard/domains", h.requireAuth, h.DomainsPage)
 	app.Get("/dashboard/setup", h.requireAuth, h.redirectToDomains)
 	app.Get("/dashboard/api-keys", h.requireAuth, h.redirectToDomains)
@@ -98,8 +108,72 @@ func (h *Handler) Register(app *fiber.App) {
 	app.Delete("/dashboard/api-tokens/:id", h.requireAuth, h.RevokeToken)
 	app.Post("/dashboard/api-tokens/:id/revoke", h.requireAuth, h.RevokeToken)
 	app.Post("/dashboard/invitations", h.requireAuth, h.requireAdmin, h.CreateInvitation)
+	app.Post("/dashboard/admin-tokens", h.requireAuth, h.requireAdmin, h.CreateAdminToken)
 	app.Get("/invite/:token", h.InviteRegisterForm)
 	app.Post("/invite/:token", h.AcceptInvitation)
+}
+
+func (h *Handler) CreateAdminToken(c *fiber.Ctx) error {
+	type req struct {
+		Name      string   `json:"name"`
+		Abilities []string `json:"abilities"`
+	}
+
+	var body req
+	if err := c.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+
+	if body.Name == "" {
+		body.Name = "Admin Token"
+	}
+
+	// Ensure at least 'admin' ability
+	hasAdmin := false
+	for _, a := range body.Abilities {
+		if strings.EqualFold(a, "admin") || strings.EqualFold(a, "idx:admin") {
+			hasAdmin = true
+			break
+		}
+	}
+	if !hasAdmin {
+		body.Abilities = append(body.Abilities, "admin")
+	}
+
+	uid := c.Locals("user_id").(int64)
+
+	plain, err := h.tokens.CreateAdminToken(c.Context(), uid, body.Name, body.Abilities)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	return c.JSON(fiber.Map{
+		"token":     plain,
+		"abilities": body.Abilities,
+		"message":   "Admin token created. This token is not scoped to any specific domain and carries elevated privileges. Store it securely — it will not be shown again.",
+	})
+}
+
+func (h *Handler) ListAdminTokens(c *fiber.Ctx) error {
+	uid := c.Locals("user_id").(int64)
+	tokens, err := h.tokens.ListAdminTokensForUser(c.Context(), uid)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(tokens)
+}
+
+func (h *Handler) RevokeAdminToken(c *fiber.Ctx) error {
+	id, err := c.ParamsInt("id")
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid token id")
+	}
+
+	uid := c.Locals("user_id").(int64)
+	if err := h.tokens.Revoke(c.Context(), uid, int64(id)); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(fiber.Map{"ok": true})
 }
 
 func (h *Handler) requireAuth(c *fiber.Ctx) error {

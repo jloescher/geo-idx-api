@@ -21,6 +21,7 @@ coverage.out
 tests/smoke/reports/
 
 # One-off build artifacts at repo root (use make build → bin/)
+/api
 /mcp-monitor
 
 # Duplicate agent guide (use AGENTS.md)
@@ -33,3 +34,6 @@ CLAUDE.md
 _ide_helper.php
 .phpstorm.meta.php
 frankenphp
+
+# Personal / secret MCP server configs (contain real tokens)
+/.grok/config.toml

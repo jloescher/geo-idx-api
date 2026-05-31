@@ -1,0 +1,234 @@
+package repository
+
+import (
+	"context"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// OAuthAuthorizationCode represents a short-lived authorization code.
+type OAuthAuthorizationCode struct {
+	Code                string    `db:"code"`
+	ClientID            string    `db:"client_id"`
+	UserID              int64     `db:"user_id"`
+	RedirectURI         string    `db:"redirect_uri"`
+	Scope               string    `db:"scope"`
+	CodeChallenge       *string   `db:"code_challenge"`
+	CodeChallengeMethod *string   `db:"code_challenge_method"`
+	ExpiresAt           time.Time `db:"expires_at"`
+	Used                bool      `db:"used"`
+	CreatedAt           time.Time `db:"created_at"`
+}
+
+// OAuthAccessToken represents an issued access token.
+type OAuthAccessToken struct {
+	TokenHash         string    `db:"token_hash"`
+	ClientID          string    `db:"client_id"`
+	UserID            int64     `db:"user_id"`
+	Scope             string    `db:"scope"`
+	GrantedMCPKeyIDs  []int64   `db:"granted_mcp_key_ids"`
+	ExpiresAt         time.Time `db:"expires_at"`
+	CreatedAt         time.Time `db:"created_at"`
+}
+
+// OAuthConsent represents a recorded user consent.
+type OAuthConsent struct {
+	ID               int64     `db:"id"`
+	UserID           int64     `db:"user_id"`
+	ClientID         string    `db:"client_id"`
+	Scope            string    `db:"scope"`
+	GrantedMCPKeyIDs []int64   `db:"granted_mcp_key_ids"`
+	ConsentedAt      time.Time `db:"consented_at"`
+	RevokedAt        *time.Time `db:"revoked_at"`
+}
+
+// OAuthRepo handles OAuth-related persistence.
+type OAuthRepo struct {
+	pool *pgxpool.Pool
+}
+
+// NewOAuthRepo creates a new OAuth repository.
+func NewOAuthRepo(db *DB) *OAuthRepo {
+	return &OAuthRepo{pool: db.Pool}
+}
+
+// CreateAuthorizationCode stores a new authorization code.
+func (r *OAuthRepo) CreateAuthorizationCode(ctx context.Context, code *OAuthAuthorizationCode) error {
+	query := `
+		INSERT INTO oauth_authorization_codes 
+		(code, client_id, user_id, redirect_uri, scope, code_challenge, code_challenge_method, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`
+	_, err := r.pool.Exec(ctx, query,
+		code.Code, code.ClientID, code.UserID, code.RedirectURI, code.Scope,
+		code.CodeChallenge, code.CodeChallengeMethod, code.ExpiresAt,
+	)
+	return err
+}
+
+// ConsumeAuthorizationCode marks a code as used and returns it if valid.
+func (r *OAuthRepo) ConsumeAuthorizationCode(ctx context.Context, code string) (*OAuthAuthorizationCode, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	query := `
+		SELECT code, client_id, user_id, redirect_uri, scope, code_challenge, code_challenge_method, expires_at, used
+		FROM oauth_authorization_codes 
+		WHERE code = $1 FOR UPDATE
+	`
+
+	var ac OAuthAuthorizationCode
+	err = tx.QueryRow(ctx, query, code).Scan(
+		&ac.Code, &ac.ClientID, &ac.UserID, &ac.RedirectURI, &ac.Scope,
+		&ac.CodeChallenge, &ac.CodeChallengeMethod, &ac.ExpiresAt, &ac.Used,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if ac.Used || time.Now().After(ac.ExpiresAt) {
+		return nil, nil
+	}
+
+	// Mark as used
+	_, err = tx.Exec(ctx, `UPDATE oauth_authorization_codes SET used = true WHERE code = $1`, code)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	return &ac, nil
+}
+
+// CreateAccessToken stores a new access token (we store the hash).
+func (r *OAuthRepo) CreateAccessToken(ctx context.Context, token *OAuthAccessToken) error {
+	query := `
+		INSERT INTO oauth_access_tokens 
+		(token_hash, client_id, user_id, scope, granted_mcp_key_ids, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`
+	_, err := r.pool.Exec(ctx, query,
+		token.TokenHash, token.ClientID, token.UserID, token.Scope,
+		token.GrantedMCPKeyIDs, token.ExpiresAt,
+	)
+	return err
+}
+
+// FindAccessTokenByHash retrieves a non-expired access token by its hash.
+func (r *OAuthRepo) FindAccessTokenByHash(ctx context.Context, tokenHash string) (*OAuthAccessToken, error) {
+	query := `
+		SELECT token_hash, client_id, user_id, scope, granted_mcp_key_ids, expires_at, created_at
+		FROM oauth_access_tokens 
+		WHERE token_hash = $1 AND expires_at > NOW()
+		LIMIT 1
+	`
+
+	var t OAuthAccessToken
+	err := r.pool.QueryRow(ctx, query, tokenHash).Scan(
+		&t.TokenHash, &t.ClientID, &t.UserID, &t.Scope, &t.GrantedMCPKeyIDs,
+		&t.ExpiresAt, &t.CreatedAt,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &t, nil
+}
+
+// RevokeAccessToken deletes an access token (revokes it).
+func (r *OAuthRepo) RevokeAccessToken(ctx context.Context, tokenHash string) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM oauth_access_tokens WHERE token_hash = $1`, tokenHash)
+	return err
+}
+
+// ListActiveAccessTokensByClient returns currently valid access tokens for a given client.
+func (r *OAuthRepo) ListActiveAccessTokensByClient(ctx context.Context, clientID string) ([]OAuthAccessToken, error) {
+	query := `
+		SELECT token_hash, client_id, user_id, scope, granted_mcp_key_ids, expires_at, created_at
+		FROM oauth_access_tokens
+		WHERE client_id = $1 AND expires_at > NOW()
+		ORDER BY created_at DESC
+	`
+
+	rows, err := r.pool.Query(ctx, query, clientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tokens []OAuthAccessToken
+	for rows.Next() {
+		var t OAuthAccessToken
+		err := rows.Scan(&t.TokenHash, &t.ClientID, &t.UserID, &t.Scope, &t.GrantedMCPKeyIDs, &t.ExpiresAt, &t.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		tokens = append(tokens, t)
+	}
+	return tokens, nil
+}
+
+// ListAllActiveAccessTokens returns all currently valid access tokens (for global admin view).
+func (r *OAuthRepo) ListAllActiveAccessTokens(ctx context.Context) ([]OAuthAccessToken, error) {
+	query := `
+		SELECT token_hash, client_id, user_id, scope, granted_mcp_key_ids, expires_at, created_at
+		FROM oauth_access_tokens
+		WHERE expires_at > NOW()
+		ORDER BY created_at DESC
+	`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tokens []OAuthAccessToken
+	for rows.Next() {
+		var t OAuthAccessToken
+		err := rows.Scan(&t.TokenHash, &t.ClientID, &t.UserID, &t.Scope, &t.GrantedMCPKeyIDs, &t.ExpiresAt, &t.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		tokens = append(tokens, t)
+	}
+	return tokens, nil
+}
+
+// RevokeAllAccessTokensForClient deletes all active tokens for a client (bulk revoke).
+func (r *OAuthRepo) RevokeAllAccessTokensForClient(ctx context.Context, clientID string) error {
+	_, err := r.pool.Exec(ctx, `
+		DELETE FROM oauth_access_tokens 
+		WHERE client_id = $1 AND expires_at > NOW()
+	`, clientID)
+	return err
+}
+
+// CreateConsent records that a user granted consent to a client.
+func (r *OAuthRepo) CreateConsent(ctx context.Context, consent *OAuthConsent) error {
+	query := `
+		INSERT INTO oauth_consents (user_id, client_id, scope, granted_mcp_key_ids)
+		VALUES ($1, $2, $3, $4)
+	`
+	_, err := r.pool.Exec(ctx, query, consent.UserID, consent.ClientID, consent.Scope, consent.GrantedMCPKeyIDs)
+	return err
+}
+
+// RevokeConsent soft-revokes a consent record.
+func (r *OAuthRepo) RevokeConsent(ctx context.Context, id int64) error {
+	_, err := r.pool.Exec(ctx, `UPDATE oauth_consents SET revoked_at = NOW() WHERE id = $1`, id)
+	return err
+}
