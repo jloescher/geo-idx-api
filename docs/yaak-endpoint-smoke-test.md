@@ -65,9 +65,26 @@ Test cases live in [`tests/smoke/cases/`](../tests/smoke/cases/). Edit JSON ther
 |-------|-------|-----|
 | `listings_collection` asserts wrong key | Test expected OData `value`; Bridge web returns `bundle` | Fixed in smoke cases + OpenAPI `ListingsResponse` |
 | `search_largo_active` → 502 | `ScanMirrorListingSearchRow` skipped `estimated_total_monthly_fees`, misaligning pgx column scan | Fixed in `internal/service/mls/listing_response.go` — **redeploy API** |
+| `listing_photo` → 502 | Bridge handler used dead REST `/photos/{id}` path; Stellar photos live on mirrored `MediaURL` | Fixed in `internal/handler/images/proxy.go` — **redeploy API** |
 | Search 502 with `city` only (older builds) | Geography filter bound pattern array twice | Fixed in `a9cd351` — ensure production includes that commit |
 
-After deploying the API, re-run `make test-api-smoke`. `search_largo_active` should return **200** with `{ results, hasMore, nextSkip }`.
+After deploying the API, re-run `make test-api-smoke`. `search_largo_active` should return **200** with `{ results, hasMore, nextSkip }`. `listing_photo` should return **200** with `Content-Type: image/*` (or **404** if the listing has no media).
+
+## idx-images edge (`IDX_IMAGES_PUBLIC_URL`)
+
+Smoke tests call **`https://idx.quantyralabs.cc/images/...`** (API host). Production listing pages often use **`https://idx-images.quantyralabs.cc`** via `IDX_IMAGES_PUBLIC_URL` — a separate nginx edge that proxies to local `idx-api:8000`.
+
+If `idx-images.quantyralabs.cc/health` returns Cloudflare `error code: 502` (not nginx `OK`), the **idx-images container origin is down**, not an MLS upstream bug:
+
+| Check | Action |
+|-------|--------|
+| Coolify apps | Confirm `idx-images-nyc` / `idx-images-atl` running |
+| Docker network alias | API container must be reachable as **`idx-api:8000`** on the shared network ([`nginx.idx-images.conf`](../nginx.idx-images.conf)) |
+| Port | idx-images listens on **8080**; Cloudflare pool targets `:8080` |
+| Verify locally | `curl -sS http://<coolify-host>:8080/health` → `OK` |
+| Verify through CF | `curl -sS https://idx-images.quantyralabs.cc/health` → `OK` |
+
+See [deployment-operations.md](deployment-operations.md#idx-images) and [coolify-deployment.md](coolify-deployment.md#4-idx-images) for the full matrix.
 
 ## Next.js client examples
 
@@ -77,6 +94,7 @@ When tests pass with a valid PAT, resolved requests are exported to [`docs/clien
 
 - **401** without `YAAK_BEARER_TOKEN` — expected for `/api/v1/*` and `/images/*`.
 - **502** on `POST /api/v1/search` with `city` — if undeployed, check API logs for pgx scan errors or `expected N arguments, got N+1` (geography bind bug). Redeploy after `listing_response.go` scan fix.
+- **502** on `GET /images/...` — if undeployed, Bridge REST photo path may 404; redeploy after `internal/handler/images/proxy.go` mirror `MediaURL` fix. Missing photo returns **404** (`image not found`), not 502.
 - **`ADMIN_SEED_*` login** — only works when those credentials exist in the target environment’s `users` table (often local seed, not production).
 - **Admin routes** — skipped unless `YAAK_SESSION_COOKIE` is wired in a future slice.
 

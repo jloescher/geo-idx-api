@@ -44,10 +44,7 @@ func (h *Handler) Show(c *fiber.Ctx) error {
 	feed := mlspoxy.Feed(c)
 	ds := bridge.DatasetFromFeed(feed, h.cfg.Bridge.Dataset)
 	cli := h.factory.ForRequest(c)
-	upstream := ""
-	if feed.Provider == "spark" {
-		upstream = h.sparkMediaURL(c.Context(), ds, listingKey, photoID)
-	}
+	upstream := h.mirrorMediaURL(c.Context(), ds, listingKey, photoID)
 	if upstream == "" {
 		upstream = strings.ReplaceAll(strings.ReplaceAll(h.cfg.Bridge.ListingPhotoPath, "{dataset}", ds), "{listingKey}", listingKey)
 		upstream = strings.ReplaceAll(upstream, "{photoId}", photoID)
@@ -56,6 +53,9 @@ func (h *Handler) Show(c *fiber.Ctx) error {
 		}
 	}
 	status, body, hdr, err := cli.Proxy(c, upstream)
+	if status == fiber.StatusNotFound {
+		return fiber.NewError(fiber.StatusNotFound, "image not found")
+	}
 	if err != nil || status >= 400 {
 		return fiber.NewError(fiber.StatusBadGateway, "image upstream error")
 	}
@@ -81,7 +81,7 @@ func (h *Handler) publicURL(listingKey, photoID string) string {
 	return strings.TrimRight(h.cfg.Idx.ImagesPublic, "/") + "/images/" + listingKey + "/" + photoID
 }
 
-func (h *Handler) sparkMediaURL(ctx context.Context, dataset, listingKey, photoID string) string {
+func (h *Handler) mirrorMediaURL(ctx context.Context, dataset, listingKey, photoID string) string {
 	pool, err := h.db.ReadPool(ctx)
 	if err != nil {
 		return ""
@@ -97,14 +97,12 @@ func (h *Handler) sparkMediaURL(ctx context.Context, dataset, listingKey, photoI
 	if json.Unmarshal(media, &items) != nil {
 		return ""
 	}
+	return findMediaURL(items, photoID)
+}
+
+func findMediaURL(items []map[string]any, photoID string) string {
 	for _, item := range items {
-		id, _ := item["MediaKey"].(string)
-		if id == "" {
-			if n, ok := item["MediaKey"].(float64); ok {
-				id = strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(fmt.Sprintf("%.0f", n), ".0"), ".0"))
-			}
-		}
-		if id != photoID && fmt.Sprint(item["MediaKey"]) != photoID {
+		if !mediaItemMatchesPhotoID(item, photoID) {
 			continue
 		}
 		if u, ok := item["MediaURL"].(string); ok && u != "" {
@@ -112,6 +110,26 @@ func (h *Handler) sparkMediaURL(ctx context.Context, dataset, listingKey, photoI
 		}
 	}
 	return ""
+}
+
+func mediaItemMatchesPhotoID(item map[string]any, photoID string) bool {
+	for _, key := range []string{"MediaKey", "PhotoId"} {
+		if mediaFieldMatches(item[key], photoID) {
+			return true
+		}
+	}
+	return false
+}
+
+func mediaFieldMatches(v any, photoID string) bool {
+	switch t := v.(type) {
+	case string:
+		return t != "" && t == photoID
+	case float64:
+		return fmt.Sprint(t) == photoID || strings.TrimSuffix(strings.TrimSuffix(fmt.Sprintf("%.0f", t), ".0"), ".0") == photoID
+	default:
+		return v != nil && fmt.Sprint(v) == photoID
+	}
 }
 
 // Ensure ctxkeys used for domain auth on image routes

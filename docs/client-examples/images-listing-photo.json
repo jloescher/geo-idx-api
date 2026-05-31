@@ -1,7 +1,7 @@
 {
   "description": "listing_photo",
   "method": "GET",
-  "url": "https://idx.quantyralabs.cc/images/a82370065a0613155e068214cd364d34/a82370065a0613155e068214cd364d34-m1",
+  "url": "https://idx.quantyralabs.cc/images/5d6013f5cf0fdf36a62557a4dac50567/5d6013f5cf0fdf36a62557a4dac50567-m1",
   "headers": {
     "Authorization": "Bearer ${process.env.IDX_API_TOKEN}",
     "Content-Type": "application/json",
@@ -9,6 +9,6 @@
   },
   "nextjs_fetch_example": {
     "note": "Use in a Next.js Server Action or Route Handler; never expose the PAT to the browser.",
-    "snippet": "const res = await fetch(\"https://idx.quantyralabs.cc/images/a82370065a0613155e068214cd364d34/a82370065a0613155e068214cd364d34-m1\", {\n  method: \"GET\",\n  headers: {\n    \"Authorization\": \"Bearer ${process.env.IDX_API_TOKEN}\",\n    \"Content-Type\": \"application/json\",\n    \"X-Domain-Slug\": \"${process.env.IDX_DOMAIN_SLUG}\"\n  },\n});\nif (!res.ok) throw new Error(`API ${res.status}`);\nconst data = await res.json();"
+    "snippet": "const res = await fetch(\"https://idx.quantyralabs.cc/images/5d6013f5cf0fdf36a62557a4dac50567/5d6013f5cf0fdf36a62557a4dac50567-m1\", {\n  method: \"GET\",\n  headers: {\n    \"Authorization\": \"Bearer ${process.env.IDX_API_TOKEN}\",\n    \"Content-Type\": \"application/json\",\n    \"X-Domain-Slug\": \"${process.env.IDX_DOMAIN_SLUG}\"\n  },\n});\nif (!res.ok) throw new Error(`API ${res.status}`);\nconst data = await res.json();"
   }
 }
