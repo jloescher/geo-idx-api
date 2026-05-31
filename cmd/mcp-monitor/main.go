@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -159,12 +160,23 @@ func main() {
 		mux.HandleFunc("/.well-known/oauth-protected-resource", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			// TODO: Make this configurable / derived from actual public URL when we have one
-			_, _ = w.Write([]byte(`{
-  "resource": "http://localhost:3000/mcp",
-  "authorization_servers": ["http://localhost:8000"],
+
+			resource := os.Getenv("MCP_PUBLIC_URL")
+			if resource == "" {
+				// Fallback (should be set in Coolify for the mcp app)
+				resource = "https://" + r.Host + "/mcp"
+			}
+			authServer := os.Getenv("OAUTH_AUTH_SERVER")
+			if authServer == "" {
+				// Fallback to same host (works only in single-binary dev setups)
+				authServer = "https://" + r.Host
+			}
+
+			_, _ = w.Write([]byte(fmt.Sprintf(`{
+  "resource": "%s",
+  "authorization_servers": ["%s"],
   "scopes_supported": ["monitor", "comps", "content"]
-}`))
+}`, resource, authServer)))
 		})
 
 		srv := &http.Server{
