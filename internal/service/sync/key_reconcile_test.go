@@ -10,10 +10,10 @@ import (
 func TestValidateReconcileDelete(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name       string
-		keysSeen   int64
-		mirror     int64
-		wantErr    bool
+		name     string
+		keysSeen int64
+		mirror   int64
+		wantErr  bool
 	}{
 		{"empty mirror", 0, 0, false},
 		{"zero keys with mirror", 0, 100, true},

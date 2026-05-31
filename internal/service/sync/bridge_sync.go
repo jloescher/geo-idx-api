@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/quantyralabs/idx-api/internal/config"
+	dom "github.com/quantyralabs/idx-api/internal/domain"
+	"github.com/quantyralabs/idx-api/internal/mlspoxy/bridge"
 	"github.com/quantyralabs/idx-api/internal/repository"
 	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
@@ -330,20 +332,7 @@ func bridgeKeyPageFromResult(page PageResult) KeyPageResult {
 }
 
 func (s *BridgeSync) oDataPropertyBase(dataset string) string {
-	host := strings.TrimRight(s.cfg.Bridge.Host, "/")
-	prefix := strings.Trim(s.cfg.Bridge.PathPrefix, "/")
-	resoRoot := strings.Trim(s.cfg.Bridge.ResoRoot, "/")
-
-	var basePath string
-	switch {
-	case prefix != "":
-		basePath = prefix + "/OData/" + dataset
-	case resoRoot != "":
-		basePath = resoRoot + "/OData/" + dataset
-	default:
-		basePath = "OData/" + dataset
-	}
-	return host + "/" + basePath
+	return bridge.NewClient(s.cfg, dom.FeedDefinition{Provider: "bridge", Dataset: dataset}).ResoBase(dataset)
 }
 
 func (s *BridgeSync) propertyCollectionURL(dataset string) string {

@@ -41,9 +41,42 @@ func (c *Client) WebURL(path string, dataset string) string {
 	return fmt.Sprintf("%s/%s/%s", base, dataset, strings.TrimLeft(path, "/"))
 }
 
-func (c *Client) ResoURL(path string, dataset string) string {
+// PubURL builds Bridge public-records paths without a dataset segment.
+func (c *Client) PubURL(path string) string {
 	base := strings.TrimRight(c.cfg.Host, "/")
-	parts := []string{base}
+	if p := strings.Trim(c.cfg.PathPrefix, "/"); p != "" {
+		base += "/" + p
+	}
+	return base + "/" + strings.TrimLeft(path, "/")
+}
+
+// ResoBase returns the OData collection base for a dataset (matches replication sync URLs).
+func (c *Client) ResoBase(dataset string) string {
+	host := strings.TrimRight(c.cfg.Host, "/")
+	prefix := strings.Trim(c.cfg.PathPrefix, "/")
+	resoRoot := strings.Trim(c.cfg.ResoRoot, "/")
+
+	var basePath string
+	switch {
+	case prefix != "":
+		basePath = prefix + "/OData/" + dataset
+	case resoRoot != "":
+		basePath = resoRoot + "/OData/" + dataset
+	default:
+		basePath = "OData/" + dataset
+	}
+	return host + "/" + basePath
+}
+
+// ResoURL builds a RESO OData entity URL under ResoBase.
+func (c *Client) ResoURL(entity, dataset string) string {
+	return c.ResoBase(dataset) + "/" + strings.TrimLeft(entity, "/")
+}
+
+// LegacyResoURL builds the pre-P0 path shape for 404 fallback (prefix/resoRoot/dataset/entity).
+func (c *Client) LegacyResoURL(entity, dataset string) string {
+	host := strings.TrimRight(c.cfg.Host, "/")
+	parts := []string{host}
 	if p := strings.Trim(c.cfg.PathPrefix, "/"); p != "" {
 		parts = append(parts, p)
 	}
@@ -51,10 +84,20 @@ func (c *Client) ResoURL(path string, dataset string) string {
 		parts = append(parts, r)
 	}
 	parts = append(parts, dataset)
-	if path != "" {
-		parts = append(parts, strings.TrimLeft(path, "/"))
+	if entity != "" {
+		parts = append(parts, strings.TrimLeft(entity, "/"))
 	}
 	return strings.Join(parts, "/")
+}
+
+// BareResoURL builds OData paths without path prefix (no-prefix deployments).
+func (c *Client) BareResoURL(entity, dataset string) string {
+	host := strings.TrimRight(c.cfg.Host, "/")
+	url := host + "/OData/" + dataset
+	if entity != "" {
+		url += "/" + strings.TrimLeft(entity, "/")
+	}
+	return url
 }
 
 // Proxy forwards the incoming Fiber request to upstream and returns status + body.

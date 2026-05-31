@@ -34,14 +34,20 @@ func RunAll(t *testing.T, repoRoot string, cfg Config, cases []Case, dbFix DBFix
 	}
 
 	vars := templateVars{
-		ListingKey:    dbFix.ListingKey,
-		MLSListingID:  dbFix.MLSListingID,
-		PhotoID:       dbFix.PhotoID,
-		Dataset:       cfg.Dataset,
-		DomainSlug:    cfg.DomainSlug,
-		BBox:          cfg.BBox,
-		AdminEmail:    cfg.AdminEmail,
-		AdminPassword: cfg.AdminPassword,
+		ListingKey:       dbFix.ListingKey,
+		MLSListingID:     dbFix.MLSListingID,
+		PhotoID:          dbFix.PhotoID,
+		AgentID:          dbFix.AgentID,
+		OfficeID:         dbFix.OfficeID,
+		OpenHouseID:      dbFix.OpenHouseID,
+		MemberKey:        dbFix.MemberKey,
+		ResoOfficeKey:    dbFix.ResoOfficeKey,
+		ResoOpenHouseKey: dbFix.ResoOpenHouseKey,
+		Dataset:          cfg.Dataset,
+		DomainSlug:       cfg.DomainSlug,
+		BBox:             cfg.BBox,
+		AdminEmail:       cfg.AdminEmail,
+		AdminPassword:    cfg.AdminPassword,
 	}
 
 	examplesDir := filepath.Join(repoRoot, "docs", "client-examples")
@@ -98,10 +104,15 @@ func RunAll(t *testing.T, repoRoot string, cfg Config, cases []Case, dbFix DBFix
 			continue
 		}
 
+		if statusWarn(resp.StatusCode, c.WarnOnStatus) {
+			reporter.Warn()
+			t.Logf("WARN [%d] %s %s %s", resp.StatusCode, c.Method, c.Path, c.Name)
+		}
+
 		reporter.Pass()
 		t.Logf("PASS [%d] %s %s %s", resp.StatusCode, c.Method, c.Path, c.Name)
 
-		if c.ExportAs != "" {
+		if c.ExportAs != "" && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			if err := exportClientExample(examplesDir, c, resp, cfg, client); err != nil {
 				t.Logf("export %s: %v", c.ExportAs, err)
 			}
@@ -117,6 +128,15 @@ func RunAll(t *testing.T, repoRoot string, cfg Config, cases []Case, dbFix DBFix
 
 func statusAllowed(code int, allowed []int) bool {
 	for _, s := range allowed {
+		if code == s {
+			return true
+		}
+	}
+	return false
+}
+
+func statusWarn(code int, warn []int) bool {
+	for _, s := range warn {
 		if code == s {
 			return true
 		}
@@ -166,13 +186,14 @@ type clientExample struct {
 	Description string            `json:"description"`
 	Method      string            `json:"method"`
 	URL         string            `json:"url"`
+	Status      int               `json:"status"`
 	Headers     map[string]string `json:"headers"`
 	Body        json.RawMessage   `json:"body,omitempty"`
 	NextJS      nextJSExample     `json:"nextjs_fetch_example"`
 }
 
 type nextJSExample struct {
-	Note   string `json:"note"`
+	Note    string `json:"note"`
 	Snippet string `json:"snippet"`
 }
 
@@ -195,10 +216,11 @@ func exportClientExample(dir string, c Case, resp HTTPResponse, cfg Config, clie
 		Description: c.Name,
 		Method:      c.Method,
 		URL:         url,
+		Status:      resp.StatusCode,
 		Headers:     headers,
 		Body:        c.Body,
 		NextJS: nextJSExample{
-			Note: "Use in a Next.js Server Action or Route Handler; never expose the PAT to the browser.",
+			Note:    "Use in a Next.js Server Action or Route Handler; never expose the PAT to the browser.",
 			Snippet: buildNextJSSnippet(c.Method, url, headers, c.Body),
 		},
 	}

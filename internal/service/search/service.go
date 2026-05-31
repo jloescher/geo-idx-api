@@ -13,7 +13,6 @@ import (
 	"github.com/quantyralabs/idx-api/internal/service/audit"
 	"github.com/quantyralabs/idx-api/internal/service/cache"
 	"github.com/quantyralabs/idx-api/internal/service/mls"
-	"github.com/quantyralabs/idx-api/internal/service/sync"
 )
 
 // Service implements hybrid POST /api/v1/search.
@@ -30,7 +29,7 @@ func NewService(cfg config.Config, db *repository.DB, proxyCache *cache.ProxyCac
 		cfg:      cfg,
 		db:       db,
 		postgis:  NewPostgisSearch(db),
-		upstream: NewLiveSearch(cfg, proxyCache, sync.NewSparkClusterRateLimiter(db.Pool, cfg)),
+		upstream: NewLiveSearch(cfg, proxyCache),
 	}
 }
 
@@ -68,6 +67,16 @@ func (s *Service) Handle(c *fiber.Ctx) error {
 	return c.JSON(result)
 }
 
+// searchSplit handles RouteSplit: Active/Pending from the PostGIS mirror, Closed from live upstream.
+// Filters are applied symmetrically wherever OData equivalents exist (see buildODataFilter).
+//
+// Accepted asymmetries — these filters apply only to the Active/Pending (PostGIS) leg:
+//   - low_risk_floodzone: FEMA-enriched column, no MLS OData field.
+//   - min_monthly_fees / max_monthly_fees: computed from association data, no MLS OData field.
+//   - lat/lng/radius: geo.distance() OData has no reliable cross-feed support.
+//   - city/county_or_parish: PostGIS uses GIS autocomplete + LIKE; upstream uses exact equality.
+//
+// Closed results returned in a split query will not be filtered by the above criteria.
 func (s *Service) searchSplit(c *fiber.Ctx, feed string, req SearchRequest) (SearchResult, error) {
 	ap, err := s.postgis.Search(c.Context(), feed, req, s.cfg.MLS.LocalMirrorRollingMonths)
 	if err != nil {

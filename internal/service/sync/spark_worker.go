@@ -17,13 +17,13 @@ import (
 
 // SparkWorker handles Spark replication queue jobs (BeachesMLS).
 type SparkWorker struct {
-	cfg        config.Config
-	db         *repository.DB
-	queue      *queue.Client
-	store      *ReplicaPageStore
-	mirror     *ListingMirrorWriter
-	sync       *SparkSync
-	cursors    *CursorStore
+	cfg           config.Config
+	db            *repository.DB
+	queue         *queue.Client
+	store         *ReplicaPageStore
+	mirror        *ListingMirrorWriter
+	sync          *SparkSync
+	cursors       *CursorStore
 	femaEnrich    *fema.EnrichmentService
 	geocodeEnrich *geocode.EnrichmentService
 	logger        *slog.Logger

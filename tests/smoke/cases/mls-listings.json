@@ -5,9 +5,8 @@
       "method": "GET",
       "path": "/api/v1/listings",
       "query": { "dataset": "{{dataset}}", "limit": "2" },
-      "expect_status": [200, 404, 502],
+      "expect_status": [200],
       "expect_status_unauthed": [401],
-      "expect_json_when_status": [200],
       "expect_json": { "bundle": "array", "total": "number" },
       "export_as": "listings-collection.json",
       "nextjs_hint": "GET listings with ?dataset=stellar&limit=2 and Bearer + X-Domain-Slug headers."
@@ -17,7 +16,7 @@
       "method": "GET",
       "path": "/api/v1/listings/{{mls_listing_id}}",
       "query": { "dataset": "{{dataset}}" },
-      "expect_status": [200, 404, 502],
+      "expect_status": [200],
       "expect_status_unauthed": [401]
     },
     {
@@ -25,9 +24,8 @@
       "method": "GET",
       "path": "/api/v1/properties",
       "query": { "dataset": "{{dataset}}", "$top": "2" },
-      "expect_status": [200, 404, 502],
+      "expect_status": [200],
       "expect_status_unauthed": [401],
-      "expect_json_when_status": [200],
       "expect_json": { "value": "array" }
     },
     {
@@ -37,7 +35,7 @@
       "query": { "dataset": "{{dataset}}" },
       "headers": { "Content-Type": "application/json" },
       "body": { "city": "Largo", "limit": 2 },
-      "expect_status": [200, 404, 502],
+      "expect_status": [200],
       "expect_status_unauthed": [401],
       "export_as": "properties-post-search.json"
     },
@@ -46,7 +44,7 @@
       "method": "GET",
       "path": "/api/v1/properties/{{listing_key}}",
       "query": { "dataset": "{{dataset}}", "$select": "ListingKey,City" },
-      "expect_status": [200, 404, 502],
+      "expect_status": [200],
       "expect_status_unauthed": [401]
     },
     {
@@ -54,103 +52,109 @@
       "method": "GET",
       "path": "/api/v1/agents",
       "query": { "dataset": "{{dataset}}", "limit": "2" },
-      "expect_status": [200, 404, 502],
+      "expect_status": [200],
       "expect_status_unauthed": [401]
     },
     {
       "name": "agent_by_id",
       "method": "GET",
-      "path": "/api/v1/agents/1",
+      "path": "/api/v1/agents/{{agent_id}}",
       "query": { "dataset": "{{dataset}}" },
-      "expect_status": [200, 404, 502],
-      "expect_status_unauthed": [401]
+      "expect_status": [200, 404],
+      "expect_status_unauthed": [401],
+      "warn_on_status": [404]
     },
     {
       "name": "offices_collection",
       "method": "GET",
       "path": "/api/v1/offices",
       "query": { "dataset": "{{dataset}}", "limit": "2" },
-      "expect_status": [200, 404, 502],
+      "expect_status": [200],
       "expect_status_unauthed": [401]
     },
     {
       "name": "office_by_id",
       "method": "GET",
-      "path": "/api/v1/offices/1",
+      "path": "/api/v1/offices/{{office_id}}",
       "query": { "dataset": "{{dataset}}" },
-      "expect_status": [200, 404, 502],
-      "expect_status_unauthed": [401]
+      "expect_status": [200, 404],
+      "expect_status_unauthed": [401],
+      "warn_on_status": [404]
     },
     {
       "name": "reso_offices_collection",
       "method": "GET",
       "path": "/api/v1/reso-offices",
       "query": { "dataset": "{{dataset}}", "$top": "2" },
-      "expect_status": [200, 404, 502],
+      "expect_status": [200],
       "expect_status_unauthed": [401]
     },
     {
       "name": "reso_office_by_key",
       "method": "GET",
-      "path": "/api/v1/reso-offices/x",
+      "path": "/api/v1/reso-offices/{{reso_office_key}}",
       "query": { "dataset": "{{dataset}}" },
-      "expect_status": [200, 404, 502],
-      "expect_status_unauthed": [401]
+      "expect_status": [200, 404],
+      "expect_status_unauthed": [401],
+      "warn_on_status": [404]
     },
     {
       "name": "openhouses_collection",
       "method": "GET",
       "path": "/api/v1/openhouses",
       "query": { "dataset": "{{dataset}}", "limit": "2" },
-      "expect_status": [200, 404, 502],
+      "expect_status": [200],
       "expect_status_unauthed": [401]
     },
     {
       "name": "openhouse_by_id",
       "method": "GET",
-      "path": "/api/v1/openhouses/1",
+      "path": "/api/v1/openhouses/{{openhouse_id}}",
       "query": { "dataset": "{{dataset}}" },
-      "expect_status": [200, 404, 502],
-      "expect_status_unauthed": [401]
+      "expect_status": [200, 404],
+      "expect_status_unauthed": [401],
+      "warn_on_status": [404]
     },
     {
       "name": "reso_openhouses_collection",
       "method": "GET",
       "path": "/api/v1/reso-openhouses",
       "query": { "dataset": "{{dataset}}", "$top": "2" },
-      "expect_status": [200, 404, 502],
+      "expect_status": [200],
       "expect_status_unauthed": [401]
     },
     {
       "name": "reso_openhouse_by_key",
       "method": "GET",
-      "path": "/api/v1/reso-openhouses/x",
+      "path": "/api/v1/reso-openhouses/{{reso_openhouse_key}}",
       "query": { "dataset": "{{dataset}}" },
-      "expect_status": [200, 404, 502],
-      "expect_status_unauthed": [401]
+      "expect_status": [200, 404],
+      "expect_status_unauthed": [401],
+      "warn_on_status": [404]
     },
     {
       "name": "members_collection",
       "method": "GET",
       "path": "/api/v1/members",
       "query": { "dataset": "{{dataset}}", "$top": "2" },
-      "expect_status": [200, 404, 502],
+      "expect_status": [200],
       "expect_status_unauthed": [401]
     },
     {
       "name": "member_by_key",
       "method": "GET",
-      "path": "/api/v1/members/x",
+      "path": "/api/v1/members/{{member_key}}",
       "query": { "dataset": "{{dataset}}" },
-      "expect_status": [200, 404, 502],
-      "expect_status_unauthed": [401]
+      "expect_status": [200, 404],
+      "expect_status_unauthed": [401],
+      "warn_on_status": [404]
     },
     {
       "name": "lookup",
       "method": "GET",
       "path": "/api/v1/lookup",
       "query": { "dataset": "{{dataset}}" },
-      "expect_status": [200, 404, 502],
+      "expect_status": [200],
       "expect_status_unauthed": [401]
     }
   ]

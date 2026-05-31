@@ -24,6 +24,26 @@
       },
       "export_as": "search-active-listings.json",
       "nextjs_hint": "POST this body to /api/v1/search?dataset=stellar from a Next.js server action."
+    },
+    {
+      "name": "search_closed_largo",
+      "method": "POST",
+      "path": "/api/v1/search",
+      "query": { "dataset": "{{dataset}}" },
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "city": "Largo",
+        "statuses": ["Closed"],
+        "page": { "limit": 5, "skip": 0 }
+      },
+      "expect_status": [200],
+      "expect_status_unauthed": [401],
+      "expect_json": {
+        "results": "array",
+        "hasMore": "boolean",
+        "nextSkip": "number"
+      },
+      "nextjs_hint": "Closed inventory uses live RESO (Web fallback on 404); mirror leg is Active/Pending only."
     }
   ]
 }

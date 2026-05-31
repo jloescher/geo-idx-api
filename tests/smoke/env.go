@@ -9,12 +9,12 @@ import (
 
 // Config holds smoke test runtime settings from environment variables.
 type Config struct {
-	BaseURL     string
-	BearerToken string
-	DomainSlug  string
-	Dataset     string
-	BBox        string
-	DBDSN       string
+	BaseURL       string
+	BearerToken   string
+	DomainSlug    string
+	Dataset       string
+	BBox          string
+	DBDSN         string
 	SessionCookie string
 
 	AdminEmail    string

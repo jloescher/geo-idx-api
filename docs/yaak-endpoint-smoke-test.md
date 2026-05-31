@@ -84,7 +84,7 @@ If `idx-images.quantyralabs.cc/health` returns Cloudflare `error code: 502` (not
 | Verify locally | `curl -sS http://<coolify-host>:8080/health` → `OK` |
 | Verify through CF | `curl -sS https://idx-images.quantyralabs.cc/health` → `OK` |
 
-See [deployment-operations.md](deployment-operations.md#idx-images) and [coolify-deployment.md](coolify-deployment.md#4-idx-images) for the full matrix.
+See [deployment-operations.md](deployment-operations.md#idx-images) and [coolify-deployment.md](coolify-deployment.md#4-idx-images) for the full matrix. Run [`scripts/verify-idx-images-edge.sh`](../scripts/verify-idx-images-edge.sh) after deploy.
 
 ## Next.js client examples
 

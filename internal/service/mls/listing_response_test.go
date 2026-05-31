@@ -250,6 +250,229 @@ func mustJSON(t *testing.T, v any) []byte {
 	return b
 }
 
+// newTestMirrorRow returns a realistic MirrorListingRow with non-null typed columns.
+// Apply functional options to override specific fields for targeted test cases.
+func newTestMirrorRow(overrides ...func(*mls.MirrorListingRow)) mls.MirrorListingRow {
+	status := "Active"
+	city := "Clearwater"
+	county := "Pinellas"
+	postal := "33755"
+	state := "FL"
+	propType := "Residential"
+	propSub := "Single Family Residence"
+	unparsed := "123 Test St, Clearwater FL 33755"
+	remarks := "Great home with a pool."
+	listID := "SLR123456"
+	agentID := "AGT001"
+	officeID := "OFF001"
+	floatVal := func(f float64) *float64 { return &f }
+	intVal := func(n int16) *int16 { return &n }
+	boolVal := func(b bool) *bool { return &b }
+	lat := 27.965
+	lng := -82.801
+
+	r := mls.MirrorListingRow{
+		DatasetSlug:                    "stellar",
+		ListingKey:                     "stellar:TEST001",
+		MlsListingID:                   &listID,
+		StandardStatus:                 &status,
+		ListPrice:                      425000,
+		BedroomsTotal:                  intVal(3),
+		BathroomsTotalDecimal:          floatVal(2.5),
+		LivingArea:                     floatVal(1850),
+		LotSizeAcres:                   floatVal(0.18),
+		City:                           &city,
+		CountyOrParish:                 &county,
+		PostalCode:                     &postal,
+		StateOrProvince:                &state,
+		PropertyType:                   &propType,
+		PropertySubType:                &propSub,
+		UnparsedAddress:                &unparsed,
+		PublicRemarks:                  &remarks,
+		ListAgentMlsID:                 &agentID,
+		ListOfficeMlsID:                &officeID,
+		Latitude:                       &lat,
+		Longitude:                      &lng,
+		PoolPrivateYN:                  boolVal(true),
+		WaterfrontYN:                   boolVal(false),
+		GarageYN:                       boolVal(true),
+		AssociationYN:                  boolVal(true),
+		EstimatedTotalMonthlyFees:      floatVal(350),
+		LowRiskFloodZoneYN:             true,
+		InternetEntireListingDisplayYN: boolVal(true),
+		IDXParticipationYN:             boolVal(true),
+	}
+	for _, fn := range overrides {
+		fn(&r)
+	}
+	return r
+}
+
+// TestBuildPublicListingJSONForSearch_Smoke runs table-driven smoke tests over
+// BuildPublicListingJSONForSearch covering key output correctness cases.
+func TestBuildPublicListingJSONForSearch_Smoke(t *testing.T) {
+	t.Run("all typed columns present", func(t *testing.T) {
+		row := newTestMirrorRow()
+		out, ok := mls.BuildPublicListingJSONForSearch(row)
+		if !ok {
+			t.Fatal("expected visible listing")
+		}
+		var m map[string]any
+		if err := json.Unmarshal(out, &m); err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{
+			"ListingKey", "StandardStatus", "ListPrice",
+			"BedroomsTotal", "BathroomsTotalDecimal", "LivingArea",
+			"City", "PostalCode", "StateOrProvince",
+			"PropertyType", "PropertySubType",
+			"Latitude", "Longitude",
+			"PoolPrivateYN", "GarageYN",
+		} {
+			if _, has := m[key]; !has {
+				t.Errorf("expected key %q in search JSON", key)
+			}
+		}
+	})
+
+	t.Run("expanded JSONB omitted from search variant", func(t *testing.T) {
+		row := newTestMirrorRow(func(r *mls.MirrorListingRow) {
+			r.Media = mustJSON(t, []any{map[string]any{"MediaURL": "https://example.com/1.jpg"}})
+			r.Room = mustJSON(t, []any{map[string]any{"RoomType": "Primary Bedroom"}})
+			r.Unit = mustJSON(t, []any{map[string]any{"UnitNumber": "1A"}})
+			r.OpenHouse = mustJSON(t, []any{map[string]any{"OpenHouseDate": "2026-06-01"}})
+		})
+		out, ok := mls.BuildPublicListingJSONForSearch(row)
+		if !ok {
+			t.Fatal("expected visible listing")
+		}
+		var m map[string]any
+		if err := json.Unmarshal(out, &m); err != nil {
+			t.Fatal(err)
+		}
+		for _, absent := range []string{"Media", "Room", "Unit", "OpenHouse"} {
+			if _, has := m[absent]; has {
+				t.Errorf("search JSON must not include %q (search variant skips expanded JSONB)", absent)
+			}
+		}
+	})
+
+	t.Run("custom_fields not merged in search variant", func(t *testing.T) {
+		row := newTestMirrorRow(func(r *mls.MirrorListingRow) {
+			r.CustomFields = mustJSON(t, map[string]any{"STELLAR_Foo": "bar"})
+		})
+		out, ok := mls.BuildPublicListingJSONForSearch(row)
+		if !ok {
+			t.Fatal("expected visible listing")
+		}
+		var m map[string]any
+		if err := json.Unmarshal(out, &m); err != nil {
+			t.Fatal(err)
+		}
+		if _, has := m["STELLAR_Foo"]; has {
+			t.Error("search JSON must not flat-merge custom_fields")
+		}
+		if _, has := m["custom_fields"]; has {
+			t.Error("search JSON must not expose custom_fields envelope")
+		}
+	})
+
+	t.Run("InternetEntireListingDisplayYN false suppresses listing", func(t *testing.T) {
+		hidden := false
+		row := newTestMirrorRow(func(r *mls.MirrorListingRow) {
+			r.InternetEntireListingDisplayYN = &hidden
+		})
+		_, ok := mls.BuildPublicListingJSONForSearch(row)
+		if ok {
+			t.Error("listing with InternetEntireListingDisplayYN=false must be suppressed")
+		}
+	})
+
+	t.Run("IDXParticipationYN false suppresses stellar listing", func(t *testing.T) {
+		nope := false
+		row := newTestMirrorRow(func(r *mls.MirrorListingRow) {
+			r.DatasetSlug = "stellar"
+			r.IDXParticipationYN = &nope
+		})
+		_, ok := mls.BuildPublicListingJSONForSearch(row)
+		if ok {
+			t.Error("stellar listing with IDXParticipationYN=false must be suppressed")
+		}
+	})
+
+	t.Run("flood_zone block present and well-formed", func(t *testing.T) {
+		// FloodZoneResponse JSON tags: mls_code, fema_code, effective_code, sfha, low_risk.
+		floodCode := "AE"
+		sfha := "T"
+		row := newTestMirrorRow(func(r *mls.MirrorListingRow) {
+			r.FloodZoneCode = &floodCode
+			r.FEMAFloodZoneCode = &floodCode
+			r.FloodZoneSFHA_TF = &sfha
+			r.LowRiskFloodZoneYN = false
+		})
+		out, ok := mls.BuildPublicListingJSONForSearch(row)
+		if !ok {
+			t.Fatal("expected visible listing")
+		}
+		var m map[string]any
+		if err := json.Unmarshal(out, &m); err != nil {
+			t.Fatal(err)
+		}
+		fz, hasFZ := m["flood_zone"].(map[string]any)
+		if !hasFZ {
+			t.Fatalf("expected flood_zone object, got %T", m["flood_zone"])
+		}
+		// effective_code is mls_code when no FEMAAttemptedAt enrichment timestamp.
+		if fz["mls_code"] != "AE" {
+			t.Errorf("flood_zone.mls_code = %v, want AE", fz["mls_code"])
+		}
+		if fz["sfha"] != "T" {
+			t.Errorf("flood_zone.sfha = %v, want T", fz["sfha"])
+		}
+		if fz["low_risk"] != false {
+			t.Errorf("flood_zone.low_risk = %v, want false", fz["low_risk"])
+		}
+		// status and source must always be present.
+		if fz["status"] == nil || fz["status"] == "" {
+			t.Errorf("flood_zone.status missing or empty: %v", fz["status"])
+		}
+	})
+
+	t.Run("EstimatedTotalMonthlyFees null absent from output", func(t *testing.T) {
+		row := newTestMirrorRow(func(r *mls.MirrorListingRow) {
+			r.EstimatedTotalMonthlyFees = nil
+		})
+		out, ok := mls.BuildPublicListingJSONForSearch(row)
+		if !ok {
+			t.Fatal("expected visible listing")
+		}
+		var m map[string]any
+		if err := json.Unmarshal(out, &m); err != nil {
+			t.Fatal(err)
+		}
+		if _, has := m["EstimatedTotalMonthlyFees"]; has {
+			t.Error("null EstimatedTotalMonthlyFees must not appear in search JSON")
+		}
+	})
+
+	t.Run("internal and OData metadata keys absent", func(t *testing.T) {
+		row := newTestMirrorRow()
+		out, ok := mls.BuildPublicListingJSONForSearch(row)
+		if !ok {
+			t.Fatal("expected visible listing")
+		}
+		var m map[string]any
+		if err := json.Unmarshal(out, &m); err != nil {
+			t.Fatal(err)
+		}
+		for _, forbidden := range []string{"raw_data", "custom_fields", "@odata.context", "@odata.etag"} {
+			if _, has := m[forbidden]; has {
+				t.Errorf("forbidden key %q must not appear in search JSON output", forbidden)
+			}
+		}
+	})
+}
+
 func parseMirrorSelectColumns(sql string) []string {
 	sql = strings.ReplaceAll(sql, "\n", " ")
 	parts := strings.Split(sql, ",")

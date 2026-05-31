@@ -13,25 +13,26 @@ import (
 
 // Case defines one smoke test endpoint check.
 type Case struct {
-	Name                   string            `json:"name"`
-	Skip                   string            `json:"skip,omitempty"`
-	Method                 string            `json:"method"`
-	Path                   string            `json:"path"`
-	Query                  map[string]string `json:"query,omitempty"`
-	Headers                map[string]string `json:"headers,omitempty"`
-	Body                   json.RawMessage   `json:"body,omitempty"`
-	Auth                   *bool             `json:"auth,omitempty"`
-	ExpectStatus           []int             `json:"expect_status"`
-	ExpectStatusUnauthed   []int             `json:"expect_status_unauthed,omitempty"`
-	ExpectJSON             map[string]string `json:"expect_json,omitempty"`
-	ExpectJSONEquals       map[string]any    `json:"expect_json_equals,omitempty"`
-	ExpectJSONWhenStatus   []int             `json:"expect_json_when_status,omitempty"`
-	ExpectContentTypePrefix string           `json:"expect_content_type_prefix,omitempty"`
-	ExpectMinBodyBytes     int               `json:"expect_min_body_bytes,omitempty"`
-	ExpectJSONArray        bool              `json:"expect_json_array,omitempty"`
-	ExpectJSONObject       bool              `json:"expect_json_object,omitempty"`
-	ExportAs               string            `json:"export_as,omitempty"`
-	NextJSHint             string            `json:"nextjs_hint,omitempty"`
+	Name                    string            `json:"name"`
+	Skip                    string            `json:"skip,omitempty"`
+	Method                  string            `json:"method"`
+	Path                    string            `json:"path"`
+	Query                   map[string]string `json:"query,omitempty"`
+	Headers                 map[string]string `json:"headers,omitempty"`
+	Body                    json.RawMessage   `json:"body,omitempty"`
+	Auth                    *bool             `json:"auth,omitempty"`
+	ExpectStatus            []int             `json:"expect_status"`
+	ExpectStatusUnauthed    []int             `json:"expect_status_unauthed,omitempty"`
+	ExpectJSON              map[string]string `json:"expect_json,omitempty"`
+	ExpectJSONEquals        map[string]any    `json:"expect_json_equals,omitempty"`
+	ExpectJSONWhenStatus    []int             `json:"expect_json_when_status,omitempty"`
+	ExpectContentTypePrefix string            `json:"expect_content_type_prefix,omitempty"`
+	ExpectMinBodyBytes      int               `json:"expect_min_body_bytes,omitempty"`
+	WarnOnStatus            []int             `json:"warn_on_status,omitempty"`
+	ExpectJSONArray         bool              `json:"expect_json_array,omitempty"`
+	ExpectJSONObject        bool              `json:"expect_json_object,omitempty"`
+	ExportAs                string            `json:"export_as,omitempty"`
+	NextJSHint              string            `json:"nextjs_hint,omitempty"`
 }
 
 type caseFile struct {
@@ -68,14 +69,20 @@ func LoadCases(dir string) ([]Case, error) {
 }
 
 type templateVars struct {
-	ListingKey    string
-	MLSListingID  string
-	PhotoID       string
-	Dataset       string
-	DomainSlug    string
-	BBox          string
-	AdminEmail    string
-	AdminPassword string
+	ListingKey       string
+	MLSListingID     string
+	PhotoID          string
+	AgentID          string
+	OfficeID         string
+	OpenHouseID      string
+	MemberKey        string
+	ResoOfficeKey    string
+	ResoOpenHouseKey string
+	Dataset          string
+	DomainSlug       string
+	BBox             string
+	AdminEmail       string
+	AdminPassword    string
 }
 
 func (v templateVars) apply(s string) string {
@@ -83,6 +90,12 @@ func (v templateVars) apply(s string) string {
 		"{{listing_key}}", v.ListingKey,
 		"{{mls_listing_id}}", v.MLSListingID,
 		"{{photo_id}}", v.PhotoID,
+		"{{agent_id}}", v.AgentID,
+		"{{office_id}}", v.OfficeID,
+		"{{openhouse_id}}", v.OpenHouseID,
+		"{{member_key}}", v.MemberKey,
+		"{{reso_office_key}}", v.ResoOfficeKey,
+		"{{reso_openhouse_key}}", v.ResoOpenHouseKey,
 		"{{dataset}}", v.Dataset,
 		"{{domain_slug}}", v.DomainSlug,
 		"{{bbox}}", v.BBox,

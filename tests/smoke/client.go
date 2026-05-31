@@ -22,9 +22,9 @@ type HTTPResponse struct {
 
 // Client performs authenticated smoke requests against the API.
 type Client struct {
-	cfg    Config
-	http   *http.Client
-	token  string
+	cfg   Config
+	http  *http.Client
+	token string
 }
 
 func NewClient(cfg Config) *Client {

@@ -17,8 +17,8 @@ type ProxyClient interface {
 
 // Factory selects upstream MLS client by feed provider.
 type Factory struct {
-	cfg           config.Config
-	sparkLimiter  spark.RateLimiter
+	cfg          config.Config
+	sparkLimiter spark.RateLimiter
 }
 
 func NewFactory(cfg config.Config, sparkLimiter spark.RateLimiter) *Factory {

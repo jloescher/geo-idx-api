@@ -8,6 +8,21 @@ import (
 	"github.com/quantyralabs/idx-api/internal/service/mls"
 )
 
+// Mirror invariant: only Active and Pending listings are ever persisted in the listings table.
+// This is enforced at three independent layers — all must agree for the invariant to hold:
+//
+//  1. Replication fetch: activePendingStatusFilter is included in every OData $filter sent to
+//     Bridge and Spark, so upstream pages never contain Closed rows.
+//  2. Storage purge: PurgeClosed.Run() hard-deletes any Closed row that reaches the DB (daily).
+//     It also trims Active/Pending rows older than the rolling window by
+//     COALESCE(mirror_persisted_at, modification_timestamp), and any row whose close_date
+//     predates the cutoff regardless of status.
+//  3. Search router: DecideRoute (internal/service/search/route.go) routes Closed-only queries
+//     to the live upstream and never consults the mirror — results are always fresh.
+//
+// Rolling window (MLS_LOCAL_MIRROR_ROLLING_MONTHS): the cutoff is applied at persist time, not
+// MLS modification time alone. Bridge replication does not accept timestamp filters in $filter
+// (returns HTTP 400); the window is enforced post-persist via purge only.
 const activePendingStatusFilter = "(StandardStatus eq 'Active' or StandardStatus eq 'Pending')"
 
 // MirrorRollingCutoff returns the oldest modification time to include in the mirror, or nil for all-time.

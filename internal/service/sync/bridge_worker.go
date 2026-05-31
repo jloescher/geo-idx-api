@@ -17,13 +17,13 @@ import (
 
 // BridgeWorker handles Bridge replication queue jobs.
 type BridgeWorker struct {
-	cfg        config.Config
-	db         *repository.DB
-	queue      *queue.Client
-	store      *ReplicaPageStore
-	mirror     *ListingMirrorWriter
-	sync       *BridgeSync
-	cursors    *CursorStore
+	cfg           config.Config
+	db            *repository.DB
+	queue         *queue.Client
+	store         *ReplicaPageStore
+	mirror        *ListingMirrorWriter
+	sync          *BridgeSync
+	cursors       *CursorStore
 	femaEnrich    *fema.EnrichmentService
 	geocodeEnrich *geocode.EnrichmentService
 	logger        *slog.Logger

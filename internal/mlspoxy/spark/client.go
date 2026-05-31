@@ -54,6 +54,20 @@ func (c *Client) LiveResoURL(path, _ string) string {
 	return fmt.Sprintf("%s/%s/%s/%s", base, ver, root, strings.TrimLeft(path, "/"))
 }
 
+// WebURL builds the Spark native listings web API URL.
+func (c *Client) WebURL(path string) string {
+	base := strings.TrimRight(c.cfg.APIHost, "/")
+	ver := strings.Trim(c.cfg.APIVersion, "/")
+	return fmt.Sprintf("%s/%s/%s", base, ver, strings.TrimLeft(path, "/"))
+}
+
+// ResoV3URL is the Spark v3 RESO OData fallback when v1 returns 404.
+func (c *Client) ResoV3URL(path string) string {
+	base := strings.TrimRight(c.cfg.APIHost, "/")
+	ver := strings.Trim(c.cfg.APIVersion, "/")
+	return fmt.Sprintf("%s/%s/Version/3/Reso/OData/%s", base, ver, strings.TrimLeft(path, "/"))
+}
+
 func (c *Client) Proxy(fc *fiber.Ctx, upstream string) (int, []byte, http.Header, error) {
 	return c.proxy(fc, upstream, true)
 }

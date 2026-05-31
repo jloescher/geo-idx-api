@@ -351,14 +351,20 @@ Mirror leg orders by `modification_timestamp DESC` (no client `sort` yet). Defau
 | `remarks_query` | `to_tsvector` on `public_remarks` |
 | `lat` + `lng` + `radius_miles` | `ST_DWithin` on `coordinates` |
 
-**Live Bridge/Spark OData leg** (`LiveSearch` — Closed / fallback):
+**Live Bridge/Spark OData leg** (`LiveSearch` — Closed / split / `price_reduced_within_days`):
 
 | Request field | OData |
 |---------------|--------|
 | `min_price` / `max_price` | `ListPrice ge/le` |
 | `min_beds` / `max_beds` | `BedroomsTotal ge/le` |
+| `baths_min`, `living_area_*`, `lot_size_*`, `year_built` | matching RESO fields |
+| `property_type`, `property_sub_type`, `city`, `county_or_parish`, `postal_code` | equality filters |
+| `pool_private`, `waterfront`, `remarks_query` | `*YN` / `contains(PublicRemarks,…)` |
+| `price_reduced_within_days` | `PriceChangeTimestamp gt …` |
 | `statuses` | `StandardStatus in (...)` |
-| Other mirror fields | Partial — expand as needed |
+| `low_risk_floodzone`, monthly fees, geo radius | **mirror-only** (omitted on live leg) |
+
+Live search tries **RESO OData Property** first, then **Web listings API** on upstream **404** only (Bridge `bundle[]`, Spark `D.Success.Results[].StandardFields`). RESO proxy routes (`/properties`, `/members`, …) retry alternate **RESO URL shapes** on 404 (`X-IDX-Upstream-Leg` response header); they do not fall back to Web API.
 
 Normalized mirror columns (`flood_zone_code`, `estimated_total_monthly_fees`) are populated at replication persist by `ListingMirrorWriter` + `ListingResoFieldResolver` for **both** Stellar and Beaches. See [Spark integration](spark/idx-api-integration.md#normalized-mirror-columns-persist--replication-updates).
 
