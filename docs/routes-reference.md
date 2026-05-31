@@ -34,7 +34,7 @@ These endpoints are represented in `docs/yaak-api-collection.json`.
 | GET | `/api/v1/openhouses` | `DomainToken` + `MLSAccess` | `bridge.Handler.OpenHouses` | MLS open houses collection proxy. |
 | GET | `/api/v1/openhouses/:openhouseId` | `DomainToken` + `MLSAccess` | `bridge.Handler.OpenHouse` | MLS open house detail proxy. |
 | GET | `/api/v1/properties` | `DomainToken` + `MLSAccess` | `bridge.Handler.Properties` | RESO `Property` collection proxy. |
-| POST | `/api/v1/properties` | `DomainToken` + `MLSAccess` | `bridge.Handler.Properties` | JSON convenience entry for property search/proxy. |
+| POST | `/api/v1/properties` | `DomainToken` + `MLSAccess` | `bridge.Handler.PropertiesPost` | JSON convenience fields translated to OData `$filter`/`$top`, then RESO proxy. |
 | GET | `/api/v1/properties/:listingKey` | `DomainToken` + `MLSAccess` | `bridge.Handler.Property` | RESO `Property('<key>')` entity proxy. |
 | GET | `/api/v1/members` | `DomainToken` + `MLSAccess` | `bridge.Handler.Members` | RESO `Member` collection proxy. |
 | GET | `/api/v1/members/:memberKey` | `DomainToken` + `MLSAccess` | `bridge.Handler.Member` | RESO `Member('<key>')` entity proxy. |

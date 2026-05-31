@@ -2,6 +2,7 @@
   "description": "autocomplete_cities",
   "method": "GET",
   "url": "https://idx.quantyralabs.cc/api/v1/gis/autocomplete/cities?limit=5\u0026q=tam",
+  "status": 200,
   "headers": {
     "Authorization": "Bearer ${process.env.IDX_API_TOKEN}",
     "Content-Type": "application/json",

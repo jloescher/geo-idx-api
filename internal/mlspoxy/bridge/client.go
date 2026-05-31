@@ -41,12 +41,11 @@ func (c *Client) WebURL(path string, dataset string) string {
 	return fmt.Sprintf("%s/%s/%s", base, dataset, strings.TrimLeft(path, "/"))
 }
 
-// PubURL builds Bridge public-records paths without a dataset segment.
+// PubURL builds Bridge public-records paths.
+// Pub endpoints live at the host root (/pub/…) without any version prefix —
+// BRIDGE_PATH_PREFIX (e.g. "api/v2") applies only to the Web and RESO APIs.
 func (c *Client) PubURL(path string) string {
 	base := strings.TrimRight(c.cfg.Host, "/")
-	if p := strings.Trim(c.cfg.PathPrefix, "/"); p != "" {
-		base += "/" + p
-	}
 	return base + "/" + strings.TrimLeft(path, "/")
 }
 

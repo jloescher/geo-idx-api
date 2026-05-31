@@ -84,7 +84,7 @@ func (h *Handler) OpenHouse(c *fiber.Ctx) error {
 }
 
 func (h *Handler) Properties(c *fiber.Ctx) error {
-	return h.proxyReso(c, "properties.collection", "Property")
+	return h.proxyPropertiesCollection(c)
 }
 
 func (h *Handler) Property(c *fiber.Ctx) error {

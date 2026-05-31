@@ -2,6 +2,7 @@
   "description": "autocomplete_counties",
   "method": "GET",
   "url": "https://idx.quantyralabs.cc/api/v1/gis/autocomplete/counties?limit=5\u0026q=pin",
+  "status": 200,
   "headers": {
     "Authorization": "Bearer ${process.env.IDX_API_TOKEN}",
     "Content-Type": "application/json",

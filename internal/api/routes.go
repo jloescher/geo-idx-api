@@ -97,7 +97,7 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 
 	// RESO
 	v1.Get("/properties", bridgeH.Properties)
-	v1.Post("/properties", bridgeH.Properties)
+	v1.Post("/properties", bridgeH.PropertiesPost)
 	v1.Get("/properties/:listingKey", bridgeH.Property)
 	v1.Get("/members", bridgeH.Members)
 	v1.Get("/members/:memberKey", bridgeH.Member)

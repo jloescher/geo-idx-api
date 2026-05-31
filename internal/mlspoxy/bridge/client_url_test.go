@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/quantyralabs/idx-api/internal/config"
@@ -39,9 +40,19 @@ func TestResoURL_Property(t *testing.T) {
 func TestPubURL_parcels(t *testing.T) {
 	cli := testBridgeClient(t)
 	got := cli.PubURL("pub/parcels")
-	want := "https://api.bridgedataoutput.com/api/v2/pub/parcels"
+	// Pub endpoints are at the host root — no api/v2 prefix.
+	want := "https://api.bridgedataoutput.com/pub/parcels"
 	if got != want {
 		t.Fatalf("PubURL = %q want %q", got, want)
+	}
+}
+
+func TestPubURL_noPrefix_whenPrefixSet(t *testing.T) {
+	cli := testBridgeClient(t)
+	got := cli.PubURL("pub/assessments")
+	// PathPrefix must not appear in pub URLs.
+	if strings.Contains(got, "api/v2") {
+		t.Fatalf("PubURL must not include PathPrefix, got %q", got)
 	}
 }
 

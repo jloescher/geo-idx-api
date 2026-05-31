@@ -2,6 +2,7 @@
   "description": "listings_collection",
   "method": "GET",
   "url": "https://idx.quantyralabs.cc/api/v1/listings?dataset=stellar\u0026limit=2",
+  "status": 200,
   "headers": {
     "Authorization": "Bearer ${process.env.IDX_API_TOKEN}",
     "Content-Type": "application/json",

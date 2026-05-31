@@ -2,6 +2,7 @@
   "description": "gis_bbox",
   "method": "GET",
   "url": "https://idx.quantyralabs.cc/api/v1/gis?bbox=-82.8%2C27.9%2C-82.6%2C28.0",
+  "status": 200,
   "headers": {
     "Authorization": "Bearer ${process.env.IDX_API_TOKEN}",
     "Content-Type": "application/json",

@@ -2,6 +2,7 @@
   "description": "comps_run_radius_mode_a",
   "method": "POST",
   "url": "https://idx.quantyralabs.cc/api/v1/comps/run?dataset=stellar",
+  "status": 200,
   "headers": {
     "Authorization": "Bearer ${process.env.IDX_API_TOKEN}",
     "Content-Type": "application/json",
