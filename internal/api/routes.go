@@ -143,6 +143,17 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 	// Platform routes (host-checked in middleware or separate mount)
 	app.Get("/", mktH.Home)
 	dashH.Register(app)
+
+	// OAuth admin routes under /dashboard/api (matching the JS in OAuthClientsPage and ActiveOAuthTokensPage)
+	// These are the endpoints the new admin UI actually calls.
+	app.Get("/dashboard/api/oauth/clients", dashH.SessionAuthMiddleware, dashH.RequireAdmin, oauthH.ListClients)
+	app.Post("/dashboard/api/oauth/clients", dashH.SessionAuthMiddleware, dashH.RequireAdmin, oauthH.CreateClient)
+	app.Delete("/dashboard/api/oauth/clients/:id", dashH.SessionAuthMiddleware, dashH.RequireAdmin, oauthH.RevokeClient)
+
+	app.Get("/dashboard/api/oauth/access-tokens", dashH.SessionAuthMiddleware, dashH.RequireAdmin, oauthH.ListAccessTokens)
+	app.Get("/dashboard/api/oauth/access-tokens/all", dashH.SessionAuthMiddleware, dashH.RequireAdmin, oauthH.ListAllAccessTokens)
+	app.Delete("/dashboard/api/oauth/access-tokens/:token_hash", dashH.SessionAuthMiddleware, dashH.RequireAdmin, oauthH.RevokeAccessToken)
+	app.Delete("/dashboard/api/oauth/clients/:id/tokens", dashH.SessionAuthMiddleware, dashH.RequireAdmin, oauthH.RevokeAllTokensForClient)
 }
 
 func healthz(c *fiber.Ctx) error {
