@@ -109,8 +109,8 @@ func (r *Reporter) PrintAIFeedbackBlock() {
 		return
 	}
 	fmt.Println("")
-	fmt.Println("=== Cursor AI feedback block (copy below) ===")
-	fmt.Println("Production API smoke tests failed. Fix the API or client request using this evidence:")
+	fmt.Println("=== Smoke failure diagnostics (review + triage) ===")
+	fmt.Println("Production API smoke tests had failures. Evidence for debugging:")
 	for i, f := range r.failures {
 		fmt.Printf("\n--- Failure %d: %s ---\n", i+1, f.Case)
 		fmt.Printf("Endpoint: %s\n", f.Endpoint)
@@ -123,7 +123,7 @@ func (r *Reporter) PrintAIFeedbackBlock() {
 		fmt.Printf("Curl:\n%s\n", f.Request.Curl)
 		fmt.Printf("Body preview: %s\n", f.Actual.BodyPreview)
 	}
-	fmt.Println("=== end feedback block ===")
+	fmt.Println("=== end diagnostics ===")
 }
 
 func buildCurl(method, url string, headers map[string]string, body []byte) string {

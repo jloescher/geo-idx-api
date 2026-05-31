@@ -98,6 +98,12 @@ func mergePropertiesConvenience(c *fiber.Ctx, body propertiesConvenienceBody) {
 			}
 		}
 	}
+
+	// Strip convenience sugar params so they never reach the upstream RESO/OData endpoint
+	// (which rejects unknown parameters such as "city").
+	args.Del("city")
+	args.Del("limit")
+	args.Del("cursor")
 }
 
 func decodePropertiesCursor(raw string) (top, skip int, ok bool) {

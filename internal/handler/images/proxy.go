@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,10 +62,7 @@ func (h *Handler) Show(c *fiber.Ctx) error {
 	}
 	_ = os.MkdirAll(filepath.Dir(cachePath), 0o755)
 	_ = os.WriteFile(cachePath, body, 0o644)
-	ct := "image/jpeg"
-	if v := hdr["Content-Type"]; len(v) > 0 {
-		ct = v[0]
-	}
+	ct := normalizeImageContentType(hdr)
 	c.Set("Content-Type", ct)
 	c.Set("Cache-Control", "public, max-age=31536000, immutable")
 	c.Set("X-IDX-Proxied-Public-Url", h.publicURL(listingKey, photoID))
@@ -134,3 +132,19 @@ func mediaFieldMatches(v any, photoID string) bool {
 
 // Ensure ctxkeys used for domain auth on image routes
 var _ = ctxkeys.MLSDomainSlug
+
+// normalizeImageContentType returns a safe Content-Type for MLS photo responses.
+// Upstream (Bridge/CloudFront/MediaURL) sometimes returns application/octet-stream
+// even for valid JPEG/PNG bytes. We default to image/jpeg (the historical and most
+// common MLS photo format) when the header is missing or not image/*.
+func normalizeImageContentType(hdr http.Header) string {
+	if hdr != nil {
+		if v := hdr["Content-Type"]; len(v) > 0 {
+			ct := strings.TrimSpace(v[0])
+			if ct != "" && strings.HasPrefix(strings.ToLower(ct), "image/") {
+				return ct
+			}
+		}
+	}
+	return "image/jpeg"
+}

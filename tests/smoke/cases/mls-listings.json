@@ -35,9 +35,11 @@
       "query": { "dataset": "{{dataset}}" },
       "headers": { "Content-Type": "application/json" },
       "body": { "city": "Largo", "limit": 2 },
-      "expect_status": [200],
+      "expect_status": [200, 403],
       "expect_status_unauthed": [401],
-      "export_as": "properties-post-search.json"
+      "warn_on_status": [403],
+      "export_as": "properties-post-search.json",
+      "nextjs_hint": "POST body convenience is translated to OData $filter/$top. 403 is Cloudflare caching distribution (only cacheable methods allowed to this path); handler itself works when reached."
     },
     {
       "name": "properties_convenience_get",
