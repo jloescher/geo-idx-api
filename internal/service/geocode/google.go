@@ -11,6 +11,18 @@ import (
 	"time"
 )
 
+// ErrGeocodeStatus is returned when the Google Geocoding API responds with a
+// non-OK status. Callers can inspect Status to distinguish permanent failures
+// (ZERO_RESULTS, INVALID_REQUEST) from transient ones (UNKNOWN_ERROR) and
+// quota exhaustion (OVER_QUERY_LIMIT, OVER_DAILY_LIMIT).
+type ErrGeocodeStatus struct {
+	Status string
+}
+
+func (e ErrGeocodeStatus) Error() string {
+	return "geocoding API status: " + e.Status
+}
+
 // Geocoder resolves street addresses to coordinates.
 type Geocoder struct {
 	apiKey string
@@ -27,7 +39,14 @@ func NewGeocoder(apiKey string, timeout time.Duration) *Geocoder {
 	}
 }
 
+// IsConfigured reports whether an API key has been provided.
+func (g *Geocoder) IsConfigured() bool {
+	return g.apiKey != ""
+}
+
 // Geocode returns WGS84 lat/lng for a free-form address (Google Geocoding API).
+// Non-OK API statuses are returned as ErrGeocodeStatus so callers can branch
+// without string matching.
 func (g *Geocoder) Geocode(ctx context.Context, address string) (lat, lng float64, err error) {
 	if g.apiKey == "" {
 		return 0, 0, fmt.Errorf("GOOGLE_MAPS_GEOCODING_API_KEY is not configured")
@@ -75,7 +94,7 @@ func (g *Geocoder) Geocode(ctx context.Context, address string) (lat, lng float6
 		return 0, 0, err
 	}
 	if payload.Status != "OK" || len(payload.Results) == 0 {
-		return 0, 0, fmt.Errorf("geocoding failed: %s", payload.Status)
+		return 0, 0, ErrGeocodeStatus{Status: payload.Status}
 	}
 	loc := payload.Results[0].Geometry.Location
 	return loc.Lat, loc.Lng, nil

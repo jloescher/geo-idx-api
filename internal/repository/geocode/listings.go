@@ -27,15 +27,27 @@ type Repository struct {
 	pool *pgxpool.Pool
 }
 
+// requestErrorCooldownClause prevents request_error listings from being hot-looped
+// back into every batch immediately. A listing is re-eligible after 3 attempts only
+// if it has not been attempted in the last 6 hours. This keeps transient failures
+// retryable while avoiding retry storms caused by quota exhaustion, misconfigured
+// API keys, or permanently invalid addresses that escaped the bad-address flag.
+const requestErrorCooldownClause = `
+		  AND (
+		    geocode_failure_reason IS DISTINCT FROM 'request_error'
+		    OR geocode_attempt_count < 3
+		    OR geocode_attempted_at < NOW() - INTERVAL '6 hours'
+		  )`
+
 const selectPendingBaseSQL = `
 		SELECT id, dataset_slug, unparsed_address, city, state_or_province, postal_code,
 		       street_number, street_name,
-		       (fema_failure_reason = 'insufficient_coords') AS recovery
+		       COALESCE(fema_failure_reason = 'insufficient_coords', false) AS recovery
 		FROM listings
 		WHERE id > $1
 		  AND LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
 		  AND internet_address_display_yn IS TRUE
-		  AND geocode_bad_address_yn IS FALSE
+		  AND geocode_bad_address_yn IS FALSE` + requestErrorCooldownClause + `
 		  AND (
 		    (
 		      (latitude IS NULL OR longitude IS NULL)
@@ -60,7 +72,7 @@ const countPendingBaseSQL = `
 		FROM listings
 		WHERE LOWER(TRIM(COALESCE(standard_status, ''))) IN ('active', 'pending')
 		  AND internet_address_display_yn IS TRUE
-		  AND geocode_bad_address_yn IS FALSE
+		  AND geocode_bad_address_yn IS FALSE` + requestErrorCooldownClause + `
 		  AND (
 		    (
 		      (latitude IS NULL OR longitude IS NULL)

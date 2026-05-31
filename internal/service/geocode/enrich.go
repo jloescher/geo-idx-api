@@ -3,8 +3,8 @@ package geocode
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/quantyralabs/idx-api/internal/config"
@@ -106,6 +106,12 @@ func (s *EnrichmentService) Kickoff(ctx context.Context, args GeocodeKickoffArgs
 
 // RunBatch geocodes one batch and chains the next when full.
 func (s *EnrichmentService) RunBatch(ctx context.Context, args GeocodeBatchArgs) error {
+	// Fail fast so the job lands in failed_jobs and operators are alerted
+	// rather than silently burning attempt counts with no key configured.
+	if !s.client.IsConfigured() {
+		return errors.New("GOOGLE_MAPS_GEOCODING_API_KEY is not configured; geocode batch aborted")
+	}
+
 	limit := args.Limit
 	if limit <= 0 {
 		limit = s.cfg.Geocode.EnrichBatchSize
@@ -147,31 +153,58 @@ func (s *EnrichmentService) RunBatch(ctx context.Context, args GeocodeBatchArgs)
 		if !ok {
 			s.logger.Debug("geocode skip insufficient_address",
 				"listing_id", row.ID, "dataset", row.DatasetSlug)
-			if err := s.repo.MarkFailedAttempt(ctx, row.ID, geocodeFailureInsufficientAddress, query, true); err != nil {
-				s.logger.Warn("geocode failure mark failed", "listing_id", row.ID, "error", err)
+			if markErr := s.repo.MarkFailedAttempt(ctx, row.ID, geocodeFailureInsufficientAddress, query, true); markErr != nil {
+				s.logger.Warn("geocode failure mark failed", "listing_id", row.ID, "error", markErr)
 			}
 			continue
 		}
 
-		lat, lng, err := s.client.Geocode(ctx, query)
-		if err != nil {
-			if strings.Contains(err.Error(), "ZERO_RESULTS") {
-				s.logger.Debug("geocode zero results", "listing_id", row.ID, "query", query)
-				if markErr := s.repo.MarkFailedAttempt(ctx, row.ID, geocodeFailureZeroResults, query, true); markErr != nil {
-					s.logger.Warn("geocode zero results mark failed", "listing_id", row.ID, "error", markErr)
+		lat, lng, geocodeErr := s.client.Geocode(ctx, query)
+		if geocodeErr != nil {
+			var statusErr ErrGeocodeStatus
+			if errors.As(geocodeErr, &statusErr) {
+				switch statusErr.Status {
+				case "ZERO_RESULTS", "INVALID_REQUEST":
+					// Permanent address-level failure — mark bad so it is excluded
+					// from future batches.
+					s.logger.Debug("geocode bad address",
+						"listing_id", row.ID, "status", statusErr.Status, "query", query)
+					if markErr := s.repo.MarkFailedAttempt(ctx, row.ID, geocodeFailureZeroResults, query, true); markErr != nil {
+						s.logger.Warn("geocode bad address mark failed", "listing_id", row.ID, "error", markErr)
+					}
+				case "OVER_QUERY_LIMIT", "OVER_DAILY_LIMIT":
+					// Quota exhausted — abort the batch so the job is retried
+					// after the worker's retry delay rather than burning attempt
+					// counts on every remaining row.
+					s.logger.Warn("google geocoding quota exceeded; stopping batch",
+						"listing_id", row.ID, "status", statusErr.Status)
+					return geocodeErr
+				default:
+					// REQUEST_DENIED, UNKNOWN_ERROR, transient upstream errors.
+					s.logger.Warn("geocode request error",
+						"listing_id", row.ID, "status", statusErr.Status, "query", query)
+					if markErr := s.repo.MarkFailedAttempt(ctx, row.ID, geocodeFailureRequestError, query, false); markErr != nil {
+						s.logger.Warn("geocode request error mark failed", "listing_id", row.ID, "error", markErr)
+					}
 				}
 			} else {
-				s.logger.Warn("geocode failed", "listing_id", row.ID, "error", err)
+				// Network or HTTP-level failure (not a Google status error).
+				s.logger.Warn("geocode network error", "listing_id", row.ID, "error", geocodeErr)
 				if markErr := s.repo.MarkFailedAttempt(ctx, row.ID, geocodeFailureRequestError, query, false); markErr != nil {
-					s.logger.Warn("geocode request error mark failed", "listing_id", row.ID, "error", markErr)
+					s.logger.Warn("geocode network error mark failed", "listing_id", row.ID, "error", markErr)
 				}
 			}
 			time.Sleep(interval)
 			continue
 		}
 
-		if err := s.repo.ApplyCoords(ctx, row.ID, lat, lng, query); err != nil {
-			s.logger.Warn("geocode persist failed", "listing_id", row.ID, "error", err)
+		if coordErr := s.repo.ApplyCoords(ctx, row.ID, lat, lng, query); coordErr != nil {
+			s.logger.Warn("geocode persist failed", "listing_id", row.ID, "error", coordErr)
+			// Record the attempt so the listing is not hot-looped back through
+			// the pending queue with no state change.
+			if markErr := s.repo.MarkFailedAttempt(ctx, row.ID, geocodeFailureRequestError, query, false); markErr != nil {
+				s.logger.Warn("geocode persist mark failed", "listing_id", row.ID, "error", markErr)
+			}
 		} else {
 			updated++
 			if row.Recovery {

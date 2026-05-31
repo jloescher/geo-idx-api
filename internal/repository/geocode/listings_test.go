@@ -23,6 +23,12 @@ func TestPendingSelectionSkipsBadAddressFlaggedRows(t *testing.T) {
 	}
 }
 
+func TestPendingSelectionRecoveryColumnIsNeverSQLNull(t *testing.T) {
+	if !strings.Contains(selectPendingBaseSQL, "COALESCE(fema_failure_reason = 'insufficient_coords', false) AS recovery") {
+		t.Fatal("recovery must COALESCE to false when fema_failure_reason is NULL (pgx cannot scan NULL into bool)")
+	}
+}
+
 func TestPendingSelectionIncludesInsufficientCoordsRecovery(t *testing.T) {
 	if !strings.Contains(selectPendingBaseSQL, "fema_failure_reason = 'insufficient_coords'") {
 		t.Fatal("pending selection must include FEMA insufficient_coords recovery rows")
