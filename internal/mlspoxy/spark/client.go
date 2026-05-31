@@ -36,8 +36,8 @@ func NewClient(cfg config.Config, limiter RateLimiter) *Client {
 	}
 }
 
-func requestBody(c *fiber.Ctx) io.Reader {
-	if c.Method() == fiber.MethodGet || c.Method() == fiber.MethodHead {
+func requestBodyForMethod(c *fiber.Ctx, method string) io.Reader {
+	if method == http.MethodGet || method == http.MethodHead {
 		return nil
 	}
 	b := c.Body()
@@ -69,14 +69,21 @@ func (c *Client) ResoV3URL(path string) string {
 }
 
 func (c *Client) Proxy(fc *fiber.Ctx, upstream string) (int, []byte, http.Header, error) {
-	return c.proxy(fc, upstream, true)
+	return c.proxyWithMethod(fc, upstream, true, fc.Method())
+}
+
+func (c *Client) ProxyMethod(fc *fiber.Ctx, upstream, method string) (int, []byte, http.Header, error) {
+	if method == "" {
+		method = fc.Method()
+	}
+	return c.proxyWithMethod(fc, upstream, true, method)
 }
 
 func (c *Client) ProxyUpstream(fc *fiber.Ctx, upstream string) (int, []byte, http.Header, error) {
-	return c.proxy(fc, upstream, false)
+	return c.proxyWithMethod(fc, upstream, false, fc.Method())
 }
 
-func (c *Client) proxy(fc *fiber.Ctx, upstream string, mergeQuery bool) (int, []byte, http.Header, error) {
+func (c *Client) proxyWithMethod(fc *fiber.Ctx, upstream string, mergeQuery bool, method string) (int, []byte, http.Header, error) {
 	u, err := url.Parse(upstream)
 	if err != nil {
 		return 0, nil, nil, err
@@ -87,7 +94,7 @@ func (c *Client) proxy(fc *fiber.Ctx, upstream string, mergeQuery bool) (int, []
 		u.RawQuery = q.Encode()
 	}
 
-	req, err := http.NewRequestWithContext(fc.Context(), fc.Method(), u.String(), requestBody(fc))
+	req, err := http.NewRequestWithContext(fc.Context(), method, u.String(), requestBodyForMethod(fc, method))
 	if err != nil {
 		return 0, nil, nil, err
 	}

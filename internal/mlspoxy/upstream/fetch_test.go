@@ -23,6 +23,10 @@ func (s *seqClient) Proxy(_ *fiber.Ctx, _ string) (int, []byte, map[string][]str
 	return st, []byte(`{"value":[]}`), nil, nil
 }
 
+func (s *seqClient) ProxyMethod(c *fiber.Ctx, url, method string) (int, []byte, map[string][]string, error) {
+	return s.Proxy(c, url)
+}
+
 func (s *seqClient) ProxyUpstream(c *fiber.Ctx, url string) (int, []byte, map[string][]string, error) {
 	return s.Proxy(c, url)
 }

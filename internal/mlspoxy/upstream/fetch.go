@@ -18,6 +18,11 @@ type FetchResult struct {
 
 // FetchWithFallback tries candidates in order; retries only on HTTP 404.
 func FetchWithFallback(c *fiber.Ctx, cli mlspoxy.ProxyClient, candidates []Candidate) (FetchResult, error) {
+	return FetchWithFallbackMethod(c, cli, candidates, "")
+}
+
+// FetchWithFallbackMethod is like FetchWithFallback but uses an explicit upstream HTTP method when non-empty.
+func FetchWithFallbackMethod(c *fiber.Ctx, cli mlspoxy.ProxyClient, candidates []Candidate, upstreamMethod string) (FetchResult, error) {
 	if len(candidates) == 0 {
 		return FetchResult{}, fiber.NewError(fiber.StatusBadGateway, "no upstream candidates")
 	}
@@ -27,7 +32,17 @@ func FetchWithFallback(c *fiber.Ctx, cli mlspoxy.ProxyClient, candidates []Candi
 
 	var last FetchResult
 	for i, cand := range candidates {
-		status, body, hdr, err := cli.Proxy(c, cand.URL)
+		var (
+			status int
+			body   []byte
+			hdr    map[string][]string
+			err    error
+		)
+		if upstreamMethod != "" {
+			status, body, hdr, err = cli.ProxyMethod(c, cand.URL, upstreamMethod)
+		} else {
+			status, body, hdr, err = cli.Proxy(c, cand.URL)
+		}
 		if err != nil {
 			return FetchResult{}, err
 		}

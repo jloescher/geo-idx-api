@@ -4,10 +4,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/quantyralabs/idx-api/internal/mlspoxy"
+	"github.com/quantyralabs/idx-api/internal/mlspoxy/upstream"
+	"github.com/quantyralabs/idx-api/internal/service/cache"
 )
 
 type propertiesConvenienceBody struct {
@@ -31,10 +35,11 @@ func (h *Handler) PropertiesPost(c *fiber.Ctx) error {
 
 func (h *Handler) proxyPropertiesCollection(c *fiber.Ctx) error {
 	applyPropertiesConvenienceQuery(c)
-	orig := c.Method()
-	c.Request().Header.SetMethod(fiber.MethodGet)
-	defer c.Request().Header.SetMethod(orig)
-	return h.proxyReso(c, "properties.collection", "Property")
+	feed := mlspoxy.Feed(c)
+	cli := h.factory.ForRequest(c)
+	candidates := upstream.BuildResoCandidates(h.cfg, feed, "Property")
+	partition := cache.ResoPartition(h.domainSlug(c), h.feedCode(c), "Property")
+	return h.finishProxyMethod(c, "properties.collection", cli, candidates, "", partition, http.MethodGet)
 }
 
 func applyPropertiesConvenienceBody(c *fiber.Ctx) error {

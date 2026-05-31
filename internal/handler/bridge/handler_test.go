@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,6 +31,10 @@ func (s *stubMLSClient) Proxy(_ *fiber.Ctx, _ string) (int, []byte, map[string][
 		s.body = []byte(`{"value":[]}`)
 	}
 	return fiber.StatusOK, s.body, nil, nil
+}
+
+func (s *stubMLSClient) ProxyMethod(c *fiber.Ctx, url, method string) (int, []byte, map[string][]string, error) {
+	return s.Proxy(c, url)
 }
 
 func (s *stubMLSClient) ProxyUpstream(c *fiber.Ctx, url string) (int, []byte, map[string][]string, error) {
@@ -68,7 +73,7 @@ func (m *memProxyCache) Put(_ context.Context, partition, fingerprint string, bo
 	return nil
 }
 
-func testHandler(t *testing.T, cache proxyCacheStore, client *stubMLSClient) *Handler {
+func testHandler(t *testing.T, cache proxyCacheStore, client mlspoxy.ProxyClient) *Handler {
 	t.Helper()
 	cfg := config.Config{
 		Bridge: config.BridgeConfig{
@@ -174,6 +179,65 @@ func (s *seqMLSClient) Proxy(_ *fiber.Ctx, _ string) (int, []byte, map[string][]
 
 func (s *seqMLSClient) ProxyUpstream(c *fiber.Ctx, url string) (int, []byte, map[string][]string, error) {
 	return s.Proxy(c, url)
+}
+
+func (s *seqMLSClient) ProxyMethod(c *fiber.Ctx, url, method string) (int, []byte, map[string][]string, error) {
+	return s.Proxy(c, url)
+}
+
+type methodRecordingClient struct {
+	method string
+	filter string
+	top    string
+}
+
+func (m *methodRecordingClient) Proxy(_ *fiber.Ctx, _ string) (int, []byte, map[string][]string, error) {
+	return fiber.StatusOK, []byte(`{"value":[]}`), nil, nil
+}
+
+func (m *methodRecordingClient) ProxyMethod(c *fiber.Ctx, _ string, method string) (int, []byte, map[string][]string, error) {
+	m.method = method
+	m.filter = c.Query("$filter")
+	m.top = c.Query("$top")
+	return fiber.StatusOK, []byte(`{"value":[]}`), nil, nil
+}
+
+func (m *methodRecordingClient) ProxyUpstream(c *fiber.Ctx, url string) (int, []byte, map[string][]string, error) {
+	return m.Proxy(c, url)
+}
+
+func TestPropertiesPost_usesUpstreamGET(t *testing.T) {
+	rec := &methodRecordingClient{}
+	h := testHandler(t, &memProxyCache{}, rec)
+	app := fiber.New()
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals(ctxkeys.MLSDomainSlug, "example.com")
+		c.Locals(ctxkeys.MLSFeedCode, "bridge_stellar")
+		c.Locals(ctxkeys.MLSFeedDef, dom.FeedDefinition{
+			Code: "bridge_stellar", Provider: "bridge", Dataset: "stellar",
+		})
+		return c.Next()
+	})
+	app.Post("/properties", h.PropertiesPost)
+
+	req := httptest.NewRequest(http.MethodPost, "/properties?dataset=stellar", strings.NewReader(`{"city":"Largo","limit":2}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if rec.method != http.MethodGet {
+		t.Fatalf("upstream method %q want GET", rec.method)
+	}
+	if rec.filter != "City eq 'Largo'" {
+		t.Fatalf("$filter = %q", rec.filter)
+	}
+	if rec.top != "2" {
+		t.Fatalf("$top = %q", rec.top)
+	}
 }
 
 func TestListingsProxyCacheMissThenHit(t *testing.T) {

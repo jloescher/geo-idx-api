@@ -40,6 +40,16 @@
       "export_as": "properties-post-search.json"
     },
     {
+      "name": "properties_convenience_get",
+      "method": "GET",
+      "path": "/api/v1/properties",
+      "query": { "dataset": "{{dataset}}", "city": "Largo", "limit": "2" },
+      "expect_status": [200],
+      "expect_status_unauthed": [401],
+      "expect_json": { "value": "array" },
+      "export_as": "properties-get-search.json"
+    },
+    {
       "name": "property_by_key",
       "method": "GET",
       "path": "/api/v1/properties/{{listing_key}}",

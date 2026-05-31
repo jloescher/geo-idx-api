@@ -193,6 +193,10 @@ func (h *Handler) feedCode(c *fiber.Ctx) string {
 }
 
 func (h *Handler) finishProxy(c *fiber.Ctx, auditType string, cli mlspoxy.ProxyClient, candidates []upstream.Candidate, listingKey, partition string) error {
+	return h.finishProxyMethod(c, auditType, cli, candidates, listingKey, partition, "")
+}
+
+func (h *Handler) finishProxyMethod(c *fiber.Ctx, auditType string, cli mlspoxy.ProxyClient, candidates []upstream.Candidate, listingKey, partition, upstreamMethod string) error {
 	if len(candidates) == 0 {
 		return fiber.NewError(fiber.StatusBadGateway, "no upstream candidates")
 	}
@@ -214,7 +218,7 @@ func (h *Handler) finishProxy(c *fiber.Ctx, auditType string, cli mlspoxy.ProxyC
 		}
 	}
 
-	result, err := upstream.FetchWithFallback(c, cli, candidates)
+	result, err := upstream.FetchWithFallbackMethod(c, cli, candidates, upstreamMethod)
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadGateway, err.Error())
 	}

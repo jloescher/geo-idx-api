@@ -476,6 +476,24 @@
             "in": "query",
             "schema": { "type": "string" },
             "description": "Comma-separated RESO field list"
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "schema": { "type": "string" },
+            "description": "Convenience filter translated to `$filter=City eq '<city>'`"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 200 },
+            "description": "Convenience page size translated to `$top`"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": { "type": "string" },
+            "description": "Opaque pagination token (base64 JSON with top/skip) translated to `$top`/`$skip`"
           }
         ],
         "responses": {
