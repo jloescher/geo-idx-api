@@ -256,7 +256,7 @@ func (h *Handler) MCPKeysPage(c *fiber.Ctx) error {
 </script>`
 
 	body := b.String() + script
-	return c.SendString(renderDashboardPage("MCP Keys", NavMCPKeys, true, body, false))
+	return c.Type("html").SendString(renderDashboardPage("MCP Keys", NavMCPKeys, true, body, false))
 }
 
 // Add minimal client-side behavior for the MCP Keys page (create + revoke)
