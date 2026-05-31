@@ -7,7 +7,11 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/session"
 )
 
-func bindSessionUser(c *fiber.Ctx, store *session.Store) (int64, *session.Session, bool) {
+// BindSessionUser extracts the user_id from the dashboard session (if present)
+// and returns it. It is exported so other packages (e.g. the OAuth handler
+// registration) can bind the session for routes that need to know if the user
+// is logged in (consent screen, etc.).
+func BindSessionUser(c *fiber.Ctx, store *session.Store) (int64, *session.Session, bool) {
 	sess, err := store.Get(c)
 	if err != nil {
 		return 0, nil, false
@@ -18,6 +22,12 @@ func bindSessionUser(c *fiber.Ctx, store *session.Store) (int64, *session.Sessio
 	}
 	_ = sess.Save()
 	return uid, sess, true
+}
+
+// bindSessionUser is the internal unexported name kept for backward compat
+// inside the dashboard package.
+func bindSessionUser(c *fiber.Ctx, store *session.Store) (int64, *session.Session, bool) {
+	return BindSessionUser(c, store)
 }
 
 func parseSessionUserID(raw any) (int64, bool) {

@@ -58,7 +58,16 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 
 	// OAuth 2.1 handler (for Custom MCP connectors)
 	oauthH := oauth.NewHandler(cfg, db, mcpKeyRepo, logger)
-	oauthH.RegisterRoutes(app)   // mounts /oauth/authorize and /oauth/token (the actual AS endpoints Grok needs)
+
+	// Bind dashboard session for the public OAuth AS routes.
+	// This makes c.Locals("user_id") available inside the Authorize/Consent handlers
+	// so the consent screen can show the logged-in user's MCP keys.
+	app.Use("/oauth", func(c *fiber.Ctx) error {
+		dashH.BindUserFromSession(c)
+		return c.Next()
+	})
+
+	oauthH.RegisterRoutes(app) // mounts /oauth/authorize and /oauth/token
 
 	mktH := marketing.NewHandler(cfg)
 

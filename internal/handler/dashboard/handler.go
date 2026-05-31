@@ -190,6 +190,18 @@ func (h *Handler) RequireAdmin(c *fiber.Ctx) error {
 	return h.requireAdmin(c)
 }
 
+// BindUserFromSession binds the current dashboard session (if any) and sets
+// c.Locals("user_id"). It is intended for use by other route groups
+// (e.g. the OAuth authorization server routes) that need to know whether
+// the browser has an active dashboard session.
+func (h *Handler) BindUserFromSession(c *fiber.Ctx) (int64, bool) {
+	uid, _, ok := BindSessionUser(c, h.sessions)
+	if ok {
+		c.Locals("user_id", uid)
+	}
+	return uid, ok
+}
+
 func (h *Handler) requireAdmin(c *fiber.Ctx) error {
 	uid, _ := c.Locals("user_id").(int64)
 	pool, err := h.db.ReadPool(c.Context())
