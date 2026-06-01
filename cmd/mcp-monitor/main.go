@@ -88,22 +88,35 @@ func main() {
 		// - Else if Authorization: Bearer <oauth_access_token> → validate against oauth_access_tokens table
 		// - Otherwise → 401 with resource_metadata pointing to OAuth flow
 		authChallengeHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// HTTPS enforcement
+			// HTTPS enforcement (must happen before any auth decision)
 			if r.Header.Get("X-Forwarded-Proto") != "https" && os.Getenv("APP_ENV") == "production" {
+				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusBadRequest)
 				_, _ = w.Write([]byte(`{"error":"https_required","error_description":"This endpoint must be accessed over HTTPS"}`))
 				return
 			}
 
 			auth := r.Header.Get("Authorization")
+			hasSession := r.Header.Get("Mcp-Session-Id") != "" || r.Header.Get("mcp-session-id") != ""
 
-			// Path 1: Direct mcp_ key (existing behavior, unchanged)
+			// If this is a continuation of an established Streamable HTTP session, forward
+			// unconditionally. The inner streamable server owns session lifecycle and auth.
+			// This preserves pre-OAuth behavior for raw mcp_ key clients that rely on
+			// Mcp-Session-Id for follow-up messages (initialize + subsequent tool calls).
+			if hasSession {
+				mcpHandler.ServeHTTP(w, r)
+				return
+			}
+
+			// Path 1: Direct mcp_ key (existing behavior, completely unchanged and highest priority)
 			if strings.HasPrefix(auth, "Bearer mcp_") {
 				mcpHandler.ServeHTTP(w, r)
 				return
 			}
 
-			// Path 2: OAuth access token (new flow)
+			// Path 2: Any other Bearer token (OAuth access token path)
+			// Forward to the inner handler so it can validate or return a properly-typed
+			// MCP error response. Only completely unauthenticated requests get the RFC 9728 challenge.
 			if strings.HasPrefix(auth, "Bearer ") {
 				token := strings.TrimPrefix(auth, "Bearer ")
 				tokenHash := sha256.Sum256([]byte(token))
@@ -111,19 +124,11 @@ func main() {
 
 				accessToken, err := oauthRepo.FindAccessTokenByHash(r.Context(), tokenHashStr)
 				if err == nil && accessToken != nil && time.Now().Before(accessToken.ExpiresAt) {
-					// Valid OAuth access token.
-					// For a functional implementation, we map it to the granted mcp keys.
-					// If the token recorded specific mcp_key IDs, we can inject the first one
-					// so the existing `authenticated()` + `requireScope()` logic continues to work.
-
+					// Valid OAuth access token → enrich context for the existing mcpKey / scope logic
 					ctx := r.Context()
 					ctx = context.WithValue(ctx, monitor.OAuthAccessTokenContextKey, accessToken)
 
-					// If this token was issued with specific granted mcp keys, inject them
-					// into the context so the existing authenticated() + requireScope() logic works.
 					if len(accessToken.GrantedMCPKeyIDs) > 0 {
-						// For functional v1, inject the first granted key.
-						// A more advanced version could combine scopes from all granted keys.
 						key, err := mcpKeyRepo.FindByID(r.Context(), accessToken.GrantedMCPKeyIDs[0])
 						if err == nil && key != nil {
 							ctx = context.WithValue(ctx, monitor.MCPKeyContextKey, key)
@@ -134,20 +139,22 @@ func main() {
 					mcpHandler.ServeHTTP(w, r)
 					return
 				}
+				// Invalid OAuth token: fall through to forward the request so the streamable
+				// handler (or inner httpContextFunc) can produce a correct JSON-RPC error
+				// with proper Content-Type instead of a raw 401 challenge body.
 			}
 
-			// No valid credential → tell client to start OAuth flow
-			// Build the resource_metadata URL dynamically (never hardcode a placeholder)
+			// No Authorization header at all, and no established session → RFC 9728 challenge.
+			// This is the only path that should ever return the WWW-Authenticate challenge.
+			// Clients doing raw mcp_ key (pre-OAuth style) or holding a session will never hit this.
 			resourceMetaURL := os.Getenv("MCP_PUBLIC_URL")
 			if resourceMetaURL == "" {
-				// Fallback using the incoming request host (works for most Coolify setups)
 				scheme := "https"
 				if r.TLS == nil && os.Getenv("APP_ENV") != "production" {
 					scheme = "http"
 				}
 				resourceMetaURL = scheme + "://" + r.Host + "/.well-known/oauth-protected-resource"
 			} else {
-				// Convert e.g. https://mcp.quantyralabs.cc/mcp  →  https://mcp.quantyralabs.cc/.well-known/oauth-protected-resource
 				if idx := strings.Index(resourceMetaURL, "/mcp"); idx != -1 {
 					resourceMetaURL = resourceMetaURL[:idx] + "/.well-known/oauth-protected-resource"
 				} else if !strings.HasSuffix(resourceMetaURL, "/.well-known/oauth-protected-resource") {
@@ -159,6 +166,7 @@ func main() {
 				}
 			}
 
+			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+resourceMetaURL+`"`)
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = w.Write([]byte(`{"error":"unauthorized","error_description":"MCP key or OAuth access token required"}`))
