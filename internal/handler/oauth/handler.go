@@ -78,10 +78,12 @@ func (h *Handler) Authorize(c *fiber.Ctx) error {
 	}
 
 	if !redirectURIAllowed(redirectURI, client.RedirectURIs) {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error":             "invalid_request",
-			"error_description": "redirect_uri is not allowed for this client",
-		})
+		h.logger.Warn("oauth authorize rejected redirect_uri",
+			"client_id", clientID,
+			"redirect_uri", redirectURI,
+			"normalized", normalizeRedirectURI(redirectURI),
+		)
+		return c.Status(http.StatusBadRequest).JSON(redirectURIRejectedResponse(clientID, redirectURI))
 	}
 
 	if err := validatePKCEForAuthorize(codeChallenge, codeChallengeMethod); err != nil {
@@ -217,10 +219,12 @@ func (h *Handler) Consent(c *fiber.Ctx) error {
 		})
 	}
 	if !redirectURIAllowed(redirectURI, client.RedirectURIs) {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error":             "invalid_request",
-			"error_description": "redirect_uri is not allowed for this client",
-		})
+		h.logger.Warn("oauth consent rejected redirect_uri",
+			"client_id", clientID,
+			"redirect_uri", redirectURI,
+			"normalized", normalizeRedirectURI(redirectURI),
+		)
+		return c.Status(http.StatusBadRequest).JSON(redirectURIRejectedResponse(clientID, redirectURI))
 	}
 
 	if consent != "granted" {
@@ -368,6 +372,31 @@ func (h *Handler) ListClients(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(clients)
+}
+
+// UpdateClient replaces redirect URIs for an existing OAuth client (admin-only).
+func (h *Handler) UpdateClient(c *fiber.Ctx) error {
+	id, err := c.ParamsInt("id")
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid client id")
+	}
+
+	type req struct {
+		RedirectURIs []string `json:"redirect_uris"`
+	}
+	var body req
+	if err := c.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid json")
+	}
+	if len(body.RedirectURIs) == 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "redirect_uris is required")
+	}
+
+	uid := c.Locals("user_id").(int64)
+	if err := h.clientRepo.UpdateRedirectURIs(c.Context(), int64(id), uid, body.RedirectURIs); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(fiber.Map{"ok": true, "redirect_uris": body.RedirectURIs})
 }
 
 func (h *Handler) RevokeClient(c *fiber.Ctx) error {

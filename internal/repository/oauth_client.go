@@ -105,6 +105,16 @@ func (r *OAuthClientRepo) ListByCreator(ctx context.Context, userID int64) ([]OA
 	return clients, nil
 }
 
+// UpdateRedirectURIs replaces redirect URIs for a client owned by userID.
+func (r *OAuthClientRepo) UpdateRedirectURIs(ctx context.Context, id int64, userID int64, redirectURIs []string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE oauth_clients
+		SET redirect_uris = $3, updated_at = NOW()
+		WHERE id = $1 AND created_by_user_id = $2
+	`, id, userID, redirectURIs)
+	return err
+}
+
 // Delete removes a client (and cascades to codes/tokens via FKs if set up).
 func (r *OAuthClientRepo) Delete(ctx context.Context, id int64, userID int64) error {
 	_, err := r.pool.Exec(ctx, `

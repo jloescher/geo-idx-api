@@ -11,14 +11,44 @@ import (
 	"github.com/quantyralabs/idx-api/internal/repository"
 )
 
-// redirectURIAllowed returns true when redirectURI exactly matches a registered URI.
+// normalizeRedirectURI trims whitespace and removes a trailing slash on the path
+// (https://grok.com/api/mcp/auth_callback/ → …/auth_callback).
+func normalizeRedirectURI(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return raw
+	}
+	if u.Path != "/" && strings.HasSuffix(u.Path, "/") {
+		u.Path = strings.TrimSuffix(u.Path, "/")
+	}
+	u.Fragment = ""
+	return u.String()
+}
+
+// redirectURIAllowed returns true when redirectURI matches a registered URI (exact or normalized).
 func redirectURIAllowed(redirectURI string, allowedURIs []string) bool {
+	candidate := normalizeRedirectURI(redirectURI)
 	for _, allowed := range allowedURIs {
-		if redirectURI == allowed {
+		if redirectURI == allowed || candidate == allowed || candidate == normalizeRedirectURI(allowed) {
 			return true
 		}
 	}
 	return false
+}
+
+func redirectURIRejectedResponse(clientID, redirectURI string) map[string]any {
+	return map[string]any{
+		"error":                 "invalid_request",
+		"error_description":     "redirect_uri is not allowed for this client",
+		"client_id":             clientID,
+		"received_redirect_uri": redirectURI,
+		"normalized_redirect_uri": normalizeRedirectURI(redirectURI),
+		"hint":                  "Add received_redirect_uri exactly in Dashboard → MCP Monitoring → Registered Clients, or connect with only the MCP server URL and no manual OAuth fields.",
+	}
 }
 
 func validatePKCEForAuthorize(codeChallenge, codeChallengeMethod string) error {

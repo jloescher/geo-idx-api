@@ -97,6 +97,7 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 	// OAuth Clients admin management
 	adminAPI.Post("/oauth/clients", dashH.RequireAdmin, oauthH.CreateClient)
 	adminAPI.Get("/oauth/clients", dashH.RequireAdmin, oauthH.ListClients)
+	adminAPI.Patch("/oauth/clients/:id", dashH.RequireAdmin, oauthH.UpdateClient)
 	adminAPI.Delete("/oauth/clients/:id", dashH.RequireAdmin, oauthH.RevokeClient)
 
 	// Revocation of issued access tokens
@@ -159,6 +160,7 @@ func RegisterRoutes(app *fiber.App, cfg config.Config, db *repository.DB, logger
 	// These are the endpoints the new admin UI actually calls.
 	app.Get("/dashboard/api/oauth/clients", dashH.SessionAuthMiddleware, dashH.RequireAdmin, oauthH.ListClients)
 	app.Post("/dashboard/api/oauth/clients", dashH.SessionAuthMiddleware, dashH.RequireAdmin, oauthH.CreateClient)
+	app.Patch("/dashboard/api/oauth/clients/:id", dashH.SessionAuthMiddleware, dashH.RequireAdmin, oauthH.UpdateClient)
 	app.Delete("/dashboard/api/oauth/clients/:id", dashH.SessionAuthMiddleware, dashH.RequireAdmin, oauthH.RevokeClient)
 
 	app.Get("/dashboard/api/oauth/access-tokens", dashH.SessionAuthMiddleware, dashH.RequireAdmin, oauthH.ListAccessTokens)

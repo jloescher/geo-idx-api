@@ -20,6 +20,13 @@ func TestRedirectURIAllowedExactMatch(t *testing.T) {
 	}
 }
 
+func TestRedirectURIAllowedTrailingSlash(t *testing.T) {
+	allowed := []string{"https://grok.com/api/mcp/auth_callback"}
+	if !redirectURIAllowed("https://grok.com/api/mcp/auth_callback/", allowed) {
+		t.Fatal("expected trailing slash to normalize to registered URI")
+	}
+}
+
 func TestValidatePKCEForAuthorize(t *testing.T) {
 	if err := validatePKCEForAuthorize("", ""); err == nil {
 		t.Fatal("expected error for missing challenge")
