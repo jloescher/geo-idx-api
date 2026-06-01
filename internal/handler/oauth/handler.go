@@ -77,7 +77,7 @@ func (h *Handler) Authorize(c *fiber.Ctx) error {
 		})
 	}
 
-	if !redirectURIAllowed(redirectURI, client.RedirectURIs) {
+	if !redirectURIAllowedForClient(clientID, redirectURI, client.RedirectURIs) {
 		h.logger.Warn("oauth authorize rejected redirect_uri",
 			"client_id", clientID,
 			"redirect_uri", redirectURI,
@@ -218,7 +218,7 @@ func (h *Handler) Consent(c *fiber.Ctx) error {
 			"error_description": "Unknown or unregistered client_id",
 		})
 	}
-	if !redirectURIAllowed(redirectURI, client.RedirectURIs) {
+	if !redirectURIAllowedForClient(clientID, redirectURI, client.RedirectURIs) {
 		h.logger.Warn("oauth consent rejected redirect_uri",
 			"client_id", clientID,
 			"redirect_uri", redirectURI,

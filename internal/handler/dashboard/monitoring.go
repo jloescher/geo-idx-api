@@ -120,7 +120,7 @@ func (h *Handler) OAuthClientsPage(c *fiber.Ctx) error {
 	b.WriteString(`</div>`)
 	b.WriteString(`<div style="margin-top: 0.5rem;">`)
 	b.WriteString(`<label>Redirect URIs (one per line)</label>`)
-	b.WriteString(`<textarea name="redirect_uris" required placeholder="https://grok.com/api/mcp/auth_callback&#10;https://grok.com/connector/oauth-exchange-code" class="form-control" rows="6"></textarea>`)
+	b.WriteString(`<textarea name="redirect_uris" required placeholder="https://grok.com/api/mcp/auth_callback&#10;https://grok.com/connect/oauth-exchange-code&#10;https://grok.com/connector/oauth-exchange-code" class="form-control" rows="6"></textarea>`)
 	b.WriteString(`<div class="form-hint">One exact redirect URI per line (must match Grok’s callback exactly, including path).</div>`)
 	b.WriteString(`</div>`)
 	b.WriteString(`<div style="margin-top: 0.75rem;">`)

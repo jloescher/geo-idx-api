@@ -40,6 +40,57 @@ func redirectURIAllowed(redirectURI string, allowedURIs []string) bool {
 	return false
 }
 
+// grokWebKnownRedirectPaths are OAuth callback paths Grok Web has used for custom MCP connectors.
+var grokWebKnownRedirectPaths = map[string]struct{}{
+	"/":                              {},
+	"/api/mcp/auth_callback":         {},
+	"/oauth/callback":                {},
+	"/connect/oauth-exchange-code":   {},
+	"/connector/oauth-exchange-code": {},
+}
+
+var grokWebRedirectHosts = map[string]struct{}{
+	"grok.com":     {},
+	"www.grok.com": {},
+	"grok.x.ai":    {},
+	"www.grok.x.ai": {},
+}
+
+// grokWebRedirectURIAllowed permits HTTPS callbacks on Grok-owned hosts for the grok-web public client.
+// Grok has shipped both /connect/ and /connector/ oauth-exchange-code paths; exact DB allowlists alone
+// caused repeated production mismatches when the product changed paths.
+func grokWebRedirectURIAllowed(redirectURI string) bool {
+	normalized := normalizeRedirectURI(redirectURI)
+	u, err := url.Parse(normalized)
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return false
+	}
+	host := strings.ToLower(u.Host)
+	if _, ok := grokWebRedirectHosts[host]; !ok {
+		return false
+	}
+	if u.RawQuery != "" || u.User != nil {
+		return false
+	}
+	path := u.Path
+	if path == "" {
+		path = "/"
+	}
+	_, ok := grokWebKnownRedirectPaths[path]
+	return ok
+}
+
+// redirectURIAllowedForClient checks the registered list, then client-specific fallbacks.
+func redirectURIAllowedForClient(clientID, redirectURI string, allowedURIs []string) bool {
+	if redirectURIAllowed(redirectURI, allowedURIs) {
+		return true
+	}
+	if clientID == "grok-web" && grokWebRedirectURIAllowed(redirectURI) {
+		return true
+	}
+	return false
+}
+
 func redirectURIRejectedResponse(clientID, redirectURI string) map[string]any {
 	return map[string]any{
 		"error":                 "invalid_request",

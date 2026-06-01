@@ -27,6 +27,26 @@ func TestRedirectURIAllowedTrailingSlash(t *testing.T) {
 	}
 }
 
+func TestGrokWebRedirectURIAllowedConnectPath(t *testing.T) {
+	uri := "https://grok.com/connect/oauth-exchange-code/"
+	if !grokWebRedirectURIAllowed(uri) {
+		t.Fatal("expected /connect/oauth-exchange-code on grok.com")
+	}
+	if redirectURIAllowedForClient("grok-web", uri, nil) {
+		return
+	}
+	t.Fatal("expected grok-web fallback without DB entry")
+}
+
+func TestGrokWebRedirectURIRejectsUnknownPath(t *testing.T) {
+	if grokWebRedirectURIAllowed("https://grok.com/evil/oauth-exchange-code") {
+		t.Fatal("must not allow arbitrary paths")
+	}
+	if grokWebRedirectURIAllowed("https://evil.grok.com/connect/oauth-exchange-code") {
+		t.Fatal("must not allow subdomain tricks")
+	}
+}
+
 func TestValidatePKCEForAuthorize(t *testing.T) {
 	if err := validatePKCEForAuthorize("", ""); err == nil {
 		t.Fatal("expected error for missing challenge")
