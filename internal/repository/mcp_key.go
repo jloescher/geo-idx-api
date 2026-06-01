@@ -20,6 +20,7 @@ type MCPKey struct {
 	Name             string    `db:"name"`
 	KeyHash          string    `db:"key_hash"`
 	Scopes           []string  `db:"scopes"` // populated from JSONB
+	DomainID         *int64    `db:"domain_id"`
 	CreatedByUserID  int64     `db:"created_by_user_id"`
 	CreatedAt        time.Time `db:"created_at"`
 	LastUsedAt       *time.Time `db:"last_used_at"`

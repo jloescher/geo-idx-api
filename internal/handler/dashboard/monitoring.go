@@ -564,8 +564,9 @@ func (h *Handler) MCPKeysPage(c *fiber.Ctx) error {
 	b.WriteString(`<label class="checkbox-label"><input type="checkbox" name="scopes" value="monitor" checked> <span>monitor</span></label>`)
 	b.WriteString(`<label class="checkbox-label"><input type="checkbox" name="scopes" value="comps" checked> <span>comps</span></label>`)
 	b.WriteString(`<label class="checkbox-label"><input type="checkbox" name="scopes" value="content"> <span>content</span></label>`)
+	b.WriteString(`<label class="checkbox-label"><input type="checkbox" name="scopes" value="api"> <span>api</span></label>`)
 	b.WriteString(`</div>`)
-	b.WriteString(`<div class="form-hint">Choose the minimum scopes needed. "content" is for AI content generation tools.</div>`)
+	b.WriteString(`<div class="form-hint">Choose the minimum scopes needed. "api" enables search/listing/RESO proxy tools. "content" is for AI content generation.</div>`)
 	b.WriteString(`</div>`)
 
 	b.WriteString(`<div style="margin-top: 0.75rem;">`)

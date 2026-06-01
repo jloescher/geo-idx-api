@@ -28,8 +28,17 @@ GRANT SELECT ON
     gis_import_uploads,
     mls_proxy_audit_logs,
     sync_rate_budget,
-    fema_enrichment_audit
+    fema_enrichment_audit,
+    mcp_keys,
+    oauth_access_tokens,
+    oauth_clients,
+    oauth_consents,
+    mcp_tool_usage
 TO mcp_monitor;
+
+-- Rate limit writes: allow INSERT on usage audit only (no UPDATE/DELETE).
+GRANT INSERT ON mcp_tool_usage TO mcp_monitor;
+GRANT USAGE, SELECT ON SEQUENCE mcp_tool_usage_id_seq TO mcp_monitor;
 
 -- 4. (Optional but recommended) Create a read-only role and grant via the role
 -- This makes future grants easier.

@@ -52,7 +52,7 @@ Update the script with your actual database name, strong password, and any addit
 
 Admins can create and revoke keys from the dashboard at `/dashboard/mcp-keys`.
 
-- Keys support scopes: `monitor` and `content`.
+- Keys support scopes: `monitor`, `comps`, `content`, and `api`.
 - The plaintext secret is only shown once at creation time.
 - Keys can be revoked instantly.
 
@@ -60,24 +60,32 @@ The MCP server validates keys on every tool call and records last-used timestamp
 
 ## Available Tools (current)
 
-**Monitoring & Ops**
-- `ping`
-- `get_monitoring_snapshot`
+**Monitoring & Ops** (`monitor` scope)
+- `ping` — auth health check (OAuth or MCP key)
+- `get_monitoring_summary` — lightweight incidents + queue totals (prefer over snapshot in agent loops)
+- `get_monitoring_snapshot` — full operational snapshot
 - `get_queue_state`
 - `get_gis_source_health`
 - `inspect_job`
 
-**Comps / Valuation (for Grok Connectors)**
+**Comps / Valuation** (`comps` scope)
 - `run_comps` — Full access to the Quantyra IDX comps/BPO engine.
-- `get_comps_analysis_guide` — Rich guidance on how to best use `run_comps`.
-- `suggest_comps_subject` — Given an address + basic details, returns a ready-to-use SubjectInput object.
-- `validate_comps_subject`, `explain_comps_adjustments`, `estimate_value_range_from_subject`
+- `get_comps_analysis_guide`, `suggest_comps_subject`, `validate_comps_subject`, `explain_comps_adjustments`, `estimate_value_range_from_subject`
 
-**Content Generation Tools** (require `content` scope)
-- `search_listings_for_content` — Safe, limited-field search over listings for blogs/reports.
-- `query_gis_parcels_for_content` — Safe GIS data for neighborhood/market content.
+**Content** (`content` scope)
+- `search_listings_for_content` — PostGIS mirror search with public IDX visibility
+- `query_gis_parcels_for_content` — placeholder for content-safe GIS
 
-To use comps tools, the MCP key must have the `comps` scope. For content tools, use the `content` scope.
+**API parity** (`api` scope; requires `MCP_API_*` env for live/RESO routes)
+- `search_listings`, `search_listings_live`, `get_listing`, `get_property`
+- `query_gis`, `autocomplete_cities`, `autocomplete_counties`
+- RESO/stats proxy tools: `list_properties`, `list_listings`, `lookup`, `list_agents`, `get_agent`, `list_offices`, `list_openhouses`, `list_members`, `list_reso_offices`, `list_reso_openhouses`, `get_bridge_stats`, `list_pub_parcels`, `list_pub_assessments`, `list_pub_transactions`
+
+### OAuth clients: no `mcp_key` in tool arguments
+
+When connected via Grok Web OAuth, **do not pass `mcp_key`** in tool calls. Authorization comes from the `Authorization: Bearer <oauth_access_token>` header established at connect time. Scopes are enforced from the OAuth token (`monitor`, `comps`, `content`, `api`) and/or granted MCP keys selected on the consent screen.
+
+Stdio/local clients may still pass `mcp_key` per tool call or use `Bearer mcp_...` on HTTP.
 
 More tools will be added over time.
 
@@ -139,7 +147,7 @@ This allows you to add it as a **Custom MCP Connector** directly in Grok Web wit
    - Select which of your MCP keys you want to grant access to.
    - Approve the request.
 
-5. Grok will receive an access token and can now call the MCP tools.
+5. Grok will receive an access token and can now call MCP tools **without passing `mcp_key` in tool arguments**.
 
 This flow is powered by the dual-auth system in the MCP server: direct `mcp_...` bearer tokens continue to work for local/CLI use, while Grok Web uses short-lived OAuth access tokens.
 
@@ -225,6 +233,8 @@ All tools return a consistent envelope:
 {
   "generated_at": "...",
   "key_name": "Claude Content Agent",
+  "oauth_client_id": "grok-web",
+  "granted_scopes": ["comps", "content", "monitor"],
   "notes": "Human-readable explanation of what this data means and suggested next steps.",
   "data": { ... }
 }
@@ -275,7 +285,7 @@ See also: `docs/coolify-deployment.md` for patterns used by the main services.
 - [ ] Regular key rotation policy for long-lived agent keys
 
 ### Safety Guardrails Built Into the MCP Server
-- All tools enforce scope checks (`monitor`, `comps`, `content`).
+- All tools enforce scope checks (`monitor`, `comps`, `content`, `api`).
 - Content tools use strict field projection and are explicitly documented as "research only".
 - No write paths exist in the current tool set.
 - Timeouts and result limits are applied on queries.

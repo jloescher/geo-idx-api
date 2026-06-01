@@ -197,6 +197,18 @@ If `produced_resource_metadata_url` is still malformed, verify the app is runnin
 
 See `docs/mcp-monitoring.md` → "Production Gotchas & Live Debugging Tools" for full troubleshooting context.
 
+**API parity delegation (search live/RESO/GIS via idx-api-web):**
+
+```env
+MCP_API_INTERNAL_URL=https://idx.quantyralabs.cc
+MCP_API_DOMAIN_SLUG=your-verified-domain-slug
+MCP_API_SERVICE_TOKEN=<long-lived PAT with idx:full>
+```
+
+These enable `api`-scoped tools (`search_listings`, `get_property`, RESO proxy tools) to call idx-api-web with service PAT + domain header. PostGIS-only search works without them.
+
+**Database:** Run migration `00014_mcp_hardening.sql` before enabling rate limits (`mcp_tool_usage` table). Grant script: `docs/scripts/create_mcp_monitor_user.sql`.
+
 ---
 
 ## After updating Coolify env

@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -18,28 +16,26 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/quantyralabs/idx-api/internal/config"
+	"github.com/quantyralabs/idx-api/internal/mcp/apiclient"
+	"github.com/quantyralabs/idx-api/internal/mcp/auth"
+	"github.com/quantyralabs/idx-api/internal/mcp/idx"
 	"github.com/quantyralabs/idx-api/internal/mcp/monitor"
+	"github.com/quantyralabs/idx-api/internal/mcp/ratelimit"
 	"github.com/quantyralabs/idx-api/internal/repository"
 	"github.com/quantyralabs/idx-api/internal/service/comps"
 	"github.com/quantyralabs/idx-api/internal/service/dashboard"
+	"github.com/quantyralabs/idx-api/internal/service/search"
 )
 
 // buildResourceMetadataURL returns the absolute URL for RFC 9728 Protected Resource Metadata.
-// It prefers MCP_PUBLIC_URL (set in Coolify for the mcp app), then falls back using
-// X-Forwarded-* headers (important behind Cloudflare/Traefik) and finally r.Host.
 func buildResourceMetadataURL(r *http.Request) string {
 	if raw := os.Getenv("MCP_PUBLIC_URL"); raw != "" {
-		// Use net/url.Parse to reliably extract the origin (scheme + host).
-		// The previous strings.Index approach found "/mcp" inside "://mcp.hostname…"
-		// (position 7 of "https://mcp.quantyralabs.cc/mcp"), producing the broken
-		// "https://.well-known/…" URL.
 		if parsed, err := url.Parse(raw); err == nil && parsed.Host != "" {
 			origin := parsed.Scheme + "://" + parsed.Host
 			return origin + "/.well-known/oauth-protected-resource"
 		}
 	}
 
-	// Proxy-aware fallback
 	scheme := r.Header.Get("X-Forwarded-Proto")
 	if scheme == "" {
 		scheme = "https"
@@ -52,9 +48,6 @@ func buildResourceMetadataURL(r *http.Request) string {
 		host = r.Host
 	}
 
-	// Final safety net for production (prevents the "https://.well-known/..." bug
-	// when running behind Traefik/Cloudflare that sometimes doesn't forward the host headers
-	// in the way we expect for this specific service).
 	if host == "" {
 		return "https://mcp.quantyralabs.cc/.well-known/oauth-protected-resource"
 	}
@@ -80,28 +73,43 @@ func main() {
 
 	mcpKeyRepo := repository.NewMCPKeyRepo(db)
 	oauthRepo := repository.NewOAuthRepo(db)
+	mcpUsageRepo := repository.NewMCPUsageRepo(db)
 	monitoringService := dashboard.NewMonitoringService(cfg, db)
 	monitoringRepo := repository.NewMonitoringRepo(db)
 	compsEngine := comps.NewEngine(cfg, db)
+	postgisSearch := search.NewPostgisSearch(db)
 
-	if os.Getenv("MCP_KEY") != "" {
-		logger.Info("MCP_KEY detected in environment")
+	apiClientCfg := apiclient.LoadConfigFromEnv()
+	apiClient := apiclient.New(apiClientCfg)
+	domainSlug := apiClientCfg.DomainSlug
+
+	authInjector := &auth.Injector{
+		KeyRepo:   mcpKeyRepo,
+		OAuthRepo: oauthRepo,
 	}
+	rateLimiter := ratelimit.NewLimiter(mcpUsageRepo)
 
-	// Create the core monitoring + comps MCP server (shared by both transports)
-	monitorServer := monitor.NewServer(mcpKeyRepo, monitoringService, monitoringRepo, compsEngine)
+	monitorServer := monitor.NewServer(
+		mcpKeyRepo,
+		monitoringService,
+		monitoringRepo,
+		compsEngine,
+		cfg,
+		postgisSearch,
+		domainSlug,
+		authInjector,
+		rateLimiter,
+	)
+
+	idxServer := idx.NewServer(cfg, mcpKeyRepo, db, apiClient, domainSlug, rateLimiter)
+	idxServer.RegisterTools(monitorServer.GetMCPServer())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Graceful shutdown on SIGINT/SIGTERM
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Decide transport mode:
-	// - If MCP_HTTP_ADDR, PORT, or MCP_HTTP_PORT is set (or MCP_HTTP_ENABLED=true),
-	//   run the Streamable HTTP + SSE server (suitable for Coolify / remote agents).
-	// - Otherwise fall back to stdio (ideal for local Claude Desktop, Cursor, Grok connectors, etc.).
 	httpAddr := os.Getenv("MCP_HTTP_ADDR")
 	if httpAddr == "" {
 		if p := os.Getenv("PORT"); p != "" {
@@ -114,21 +122,13 @@ func main() {
 
 	if runHTTP {
 		if httpAddr == "" {
-			httpAddr = ":3000" // default matches historical Coolify app config for this service
+			httpAddr = ":3000"
 		}
 
-		// Build a small mux with the MCP handler + unauthenticated health endpoints.
-		// Health endpoints are critical for Coolify / container orchestrators.
 		mux := http.NewServeMux()
-
 		mcpHandler := monitorServer.HTTPHandler()
 
-		// Dual auth middleware (functional version):
-		// - If Authorization: Bearer mcp_... → use existing direct mcp_key path (unchanged, highest priority)
-		// - Else if Authorization: Bearer <oauth_access_token> → validate against oauth_access_tokens table
-		// - Otherwise → 401 with resource_metadata pointing to OAuth flow
 		authChallengeHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// HTTPS enforcement (must happen before any auth decision)
 			if r.Header.Get("X-Forwarded-Proto") != "https" && os.Getenv("APP_ENV") == "production" {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusBadRequest)
@@ -136,59 +136,19 @@ func main() {
 				return
 			}
 
-			auth := r.Header.Get("Authorization")
+			authHeader := r.Header.Get("Authorization")
 			hasSession := r.Header.Get("Mcp-Session-Id") != "" || r.Header.Get("mcp-session-id") != ""
 
-			// If this is a continuation of an established Streamable HTTP session, forward
-			// unconditionally. The inner streamable server owns session lifecycle and auth.
-			// This preserves pre-OAuth behavior for raw mcp_ key clients that rely on
-			// Mcp-Session-Id for follow-up messages (initialize + subsequent tool calls).
-			if hasSession {
+			// Always inject auth context (OAuth or mcp_ key) before forwarding.
+			ctx := authInjector.InjectFromHTTP(r.Context(), r)
+			r = r.WithContext(ctx)
+
+			if hasSession || strings.HasPrefix(authHeader, "Bearer ") {
 				mcpHandler.ServeHTTP(w, r)
 				return
 			}
 
-			// Path 1: Direct mcp_ key (existing behavior, completely unchanged and highest priority)
-			if strings.HasPrefix(auth, "Bearer mcp_") {
-				mcpHandler.ServeHTTP(w, r)
-				return
-			}
-
-			// Path 2: Any other Bearer token (OAuth access token path)
-			// Forward to the inner handler so it can validate or return a properly-typed
-			// MCP error response. Only completely unauthenticated requests get the RFC 9728 challenge.
-			if strings.HasPrefix(auth, "Bearer ") {
-				token := strings.TrimPrefix(auth, "Bearer ")
-				tokenHash := sha256.Sum256([]byte(token))
-				tokenHashStr := hex.EncodeToString(tokenHash[:])
-
-				accessToken, err := oauthRepo.FindAccessTokenByHash(r.Context(), tokenHashStr)
-				if err == nil && accessToken != nil && time.Now().Before(accessToken.ExpiresAt) {
-					// Valid OAuth access token → enrich context for the existing mcpKey / scope logic
-					ctx := r.Context()
-					ctx = context.WithValue(ctx, monitor.OAuthAccessTokenContextKey, accessToken)
-
-					if len(accessToken.GrantedMCPKeyIDs) > 0 {
-						key, err := mcpKeyRepo.FindByID(r.Context(), accessToken.GrantedMCPKeyIDs[0])
-						if err == nil && key != nil {
-							ctx = context.WithValue(ctx, monitor.MCPKeyContextKey, key)
-						}
-					}
-
-					r = r.WithContext(ctx)
-					mcpHandler.ServeHTTP(w, r)
-					return
-				}
-				// Invalid OAuth token: fall through to forward the request so the streamable
-				// handler (or inner httpContextFunc) can produce a correct JSON-RPC error
-				// with proper Content-Type instead of a raw 401 challenge body.
-			}
-
-			// No Authorization header at all, and no established session → RFC 9728 challenge.
-			// This is the only path that should ever return the WWW-Authenticate challenge.
-			// Clients doing raw mcp_ key (pre-OAuth style) or holding a session will never hit this.
 			resourceMetaURL := buildResourceMetadataURL(r)
-
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+resourceMetaURL+`"`)
 			w.WriteHeader(http.StatusUnauthorized)
@@ -209,60 +169,45 @@ func main() {
 			_, _ = w.Write([]byte(`{"status":"ok"}`))
 		})
 
-		// Tiny unauthenticated debug endpoint for OAuth / RFC 9728 discovery troubleshooting.
-		// Hit this directly (no auth) to see exactly what the process sees for the critical vars
-		// and what buildResourceMetadataURL would return right now.
 		mux.HandleFunc("/debug/oauth-config", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-
 			mcpURL := os.Getenv("MCP_PUBLIC_URL")
 			oauthServer := os.Getenv("OAUTH_AUTH_SERVER")
-
-			// Simulate a realistic request that would come through Traefik/Cloudflare
-			simReq := &http.Request{
-				Header: http.Header{
-					"X-Forwarded-Proto": []string{r.Header.Get("X-Forwarded-Proto")},
-					"X-Forwarded-Host":  []string{r.Header.Get("X-Forwarded-Host")},
-				},
-			}
+			simReq := &http.Request{Header: http.Header{
+				"X-Forwarded-Proto": []string{r.Header.Get("X-Forwarded-Proto")},
+				"X-Forwarded-Host":  []string{r.Header.Get("X-Forwarded-Host")},
+			}}
 			if simReq.Header.Get("X-Forwarded-Proto") == "" {
 				simReq.Header.Set("X-Forwarded-Proto", "https")
 			}
 			if simReq.Header.Get("X-Forwarded-Host") == "" {
 				simReq.Header.Set("X-Forwarded-Host", r.Host)
 			}
-
-			producedURL := buildResourceMetadataURL(simReq)
-
 			resp := map[string]any{
-				"process_mcp_public_url":        mcpURL,
-				"process_oauth_auth_server":     oauthServer,
-				"produced_resource_metadata_url": producedURL,
-				"note":                          "If produced_resource_metadata_url is wrong while process_mcp_public_url is set, the helper is hitting the fallback (header/env visibility issue in this environment).",
+				"process_mcp_public_url":         mcpURL,
+				"process_oauth_auth_server":      oauthServer,
+				"produced_resource_metadata_url": buildResourceMetadataURL(simReq),
 			}
 			_ = json.NewEncoder(w).Encode(resp)
 		})
 
-		// Protected Resource Metadata (RFC 9728) - required for proper OAuth discovery by clients like Grok
 		mux.HandleFunc("/.well-known/oauth-protected-resource", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 
 			resource := os.Getenv("MCP_PUBLIC_URL")
 			if resource == "" {
-				// Fallback (should be set in Coolify for the mcp app)
 				resource = "https://" + r.Host + "/mcp"
 			}
 			authServer := os.Getenv("OAUTH_AUTH_SERVER")
 			if authServer == "" {
-				// Fallback to same host (works only in single-binary dev setups)
 				authServer = "https://" + r.Host
 			}
 
 			_, _ = w.Write([]byte(fmt.Sprintf(`{
   "resource": "%s",
   "authorization_servers": ["%s"],
-  "scopes_supported": ["monitor", "comps", "content"]
+  "scopes_supported": ["monitor", "comps", "content", "api"]
 }`, resource, authServer)))
 		})
 
@@ -270,7 +215,7 @@ func main() {
 			Addr:         httpAddr,
 			Handler:      mux,
 			ReadTimeout:  30 * time.Second,
-			WriteTimeout: 60 * time.Second, // allow for long-running tool calls that stream
+			WriteTimeout: 60 * time.Second,
 			IdleTimeout:  120 * time.Second,
 		}
 
@@ -283,21 +228,12 @@ func main() {
 			cancel()
 		}()
 
-		// Diagnostic logging for OAuth / RFC 9728 discovery (helps debug proxy header + env injection issues)
-		mcpPublicURL := os.Getenv("MCP_PUBLIC_URL")
-		oauthAuthServer := os.Getenv("OAUTH_AUTH_SERVER")
-		exampleResourceMeta := buildResourceMetadataURL(&http.Request{})
-		logger.Info("MCP OAuth config at startup (for Grok Web / RFC 9728)",
-			"MCP_PUBLIC_URL", mcpPublicURL,
-			"OAUTH_AUTH_SERVER", oauthAuthServer,
-			"example_resource_metadata_url", exampleResourceMeta,
-		)
-
-		logger.Info("starting idx-api MCP monitor (HTTP + SSE streamable transport)",
+		logger.Info("starting idx-api MCP monitor (HTTP + SSE)",
 			"addr", httpAddr,
 			"mcp_endpoint", "/mcp",
-			"health", "/healthz",
-			"version", "0.2.0",
+			"api_client_enabled", apiClient.Enabled(),
+			"domain_slug", domainSlug,
+			"version", "0.3.0",
 		)
 
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -307,7 +243,6 @@ func main() {
 		return
 	}
 
-	// --- Stdio transport (original local / connector mode) ---
 	stdioServer := server.NewStdioServer(monitorServer.GetMCPServer())
 
 	go func() {
@@ -316,7 +251,7 @@ func main() {
 		cancel()
 	}()
 
-	logger.Info("starting idx-api MCP monitor (stdio)", "version", "0.2.0")
+	logger.Info("starting idx-api MCP monitor (stdio)", "version", "0.3.0")
 
 	if err := stdioServer.Listen(ctx, os.Stdin, os.Stdout); err != nil {
 		logger.Error("MCP server error", "error", err)
