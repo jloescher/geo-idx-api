@@ -52,6 +52,14 @@ func buildResourceMetadataURL(r *http.Request) string {
 	if host == "" {
 		host = r.Host
 	}
+
+	// Final safety net for production (prevents the "https://.well-known/..." bug
+	// when running behind Traefik/Cloudflare that sometimes doesn't forward the host headers
+	// in the way we expect for this specific service).
+	if host == "" {
+		return "https://mcp.quantyralabs.cc/.well-known/oauth-protected-resource"
+	}
+
 	return scheme + "://" + host + "/.well-known/oauth-protected-resource"
 }
 
@@ -241,6 +249,16 @@ func main() {
 			_ = srv.Shutdown(shutdownCtx)
 			cancel()
 		}()
+
+		// Diagnostic logging for OAuth / RFC 9728 discovery (helps debug proxy header + env injection issues)
+		mcpPublicURL := os.Getenv("MCP_PUBLIC_URL")
+		oauthAuthServer := os.Getenv("OAUTH_AUTH_SERVER")
+		exampleResourceMeta := buildResourceMetadataURL(&http.Request{})
+		logger.Info("MCP OAuth config at startup (for Grok Web / RFC 9728)",
+			"MCP_PUBLIC_URL", mcpPublicURL,
+			"OAUTH_AUTH_SERVER", oauthAuthServer,
+			"example_resource_metadata_url", exampleResourceMeta,
+		)
 
 		logger.Info("starting idx-api MCP monitor (HTTP + SSE streamable transport)",
 			"addr", httpAddr,
