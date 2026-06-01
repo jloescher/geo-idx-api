@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -208,6 +209,40 @@ func main() {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"status":"ok"}`))
+		})
+
+		// Tiny unauthenticated debug endpoint for OAuth / RFC 9728 discovery troubleshooting.
+		// Hit this directly (no auth) to see exactly what the process sees for the critical vars
+		// and what buildResourceMetadataURL would return right now.
+		mux.HandleFunc("/debug/oauth-config", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+
+			mcpURL := os.Getenv("MCP_PUBLIC_URL")
+			oauthServer := os.Getenv("OAUTH_AUTH_SERVER")
+
+			// Simulate a realistic request that would come through Traefik/Cloudflare
+			simReq := &http.Request{
+				Header: http.Header{
+					"X-Forwarded-Proto": []string{r.Header.Get("X-Forwarded-Proto")},
+					"X-Forwarded-Host":  []string{r.Header.Get("X-Forwarded-Host")},
+				},
+			}
+			if simReq.Header.Get("X-Forwarded-Proto") == "" {
+				simReq.Header.Set("X-Forwarded-Proto", "https")
+			}
+			if simReq.Header.Get("X-Forwarded-Host") == "" {
+				simReq.Header.Set("X-Forwarded-Host", r.Host)
+			}
+
+			producedURL := buildResourceMetadataURL(simReq)
+
+			resp := map[string]any{
+				"process_mcp_public_url":        mcpURL,
+				"process_oauth_auth_server":     oauthServer,
+				"produced_resource_metadata_url": producedURL,
+				"note":                          "If produced_resource_metadata_url is wrong while process_mcp_public_url is set, the helper is hitting the fallback (header/env visibility issue in this environment).",
+			}
+			_ = json.NewEncoder(w).Encode(resp)
 		})
 
 		// Protected Resource Metadata (RFC 9728) - required for proper OAuth discovery by clients like Grok
