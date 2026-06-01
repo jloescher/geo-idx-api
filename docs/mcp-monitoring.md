@@ -111,8 +111,12 @@ This allows you to add it as a **Custom MCP Connector** directly in Grok Web wit
      https://grok.x.ai
      https://grok.com/api/mcp/auth_callback
      https://grok.x.ai/api/mcp/auth_callback
+     https://grok.com/connector/oauth-exchange-code
+     https://grok.x.ai/connector/oauth-exchange-code
      ```
-     If you see `redirect_uri is not allowed for this client`, copy the `redirect_uri` query param from the failing browser URL and add that exact string here.
+     Grok Custom Connectors may also use `www.grok.com` / `www.grok.x.ai` and `/oauth/callback` paths — register each host variant you need.
+
+     If you see `redirect_uri is not allowed for this client`, use the JSON field **`received_redirect_uri`** (or add **`normalized_redirect_uri`** without a trailing slash). Trailing slashes on an already-registered URI are accepted after deploy `c93b6ee+`.
 
    You can manage all OAuth clients (list, create, revoke) from this admin page.
 
