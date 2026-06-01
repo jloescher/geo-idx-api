@@ -42,11 +42,12 @@ func redirectURIAllowed(redirectURI string, allowedURIs []string) bool {
 
 // grokWebKnownRedirectPaths are OAuth callback paths Grok Web has used for custom MCP connectors.
 var grokWebKnownRedirectPaths = map[string]struct{}{
-	"/":                              {},
-	"/api/mcp/auth_callback":         {},
-	"/oauth/callback":                {},
-	"/connect/oauth-exchange-code":   {},
-	"/connector/oauth-exchange-code": {},
+	"/":                               {},
+	"/api/mcp/auth_callback":          {},
+	"/oauth/callback":                 {},
+	"/connect/oauth-exchange-code":    {},
+	"/connector/oauth-exchange-code":  {},
+	"/connectors-oauth-exchange-code": {}, // hyphenated single segment (Grok Web 2026-06)
 }
 
 var grokWebRedirectHosts = map[string]struct{}{
@@ -76,8 +77,20 @@ func grokWebRedirectURIAllowed(redirectURI string) bool {
 	if path == "" {
 		path = "/"
 	}
-	_, ok := grokWebKnownRedirectPaths[path]
-	return ok
+	if _, ok := grokWebKnownRedirectPaths[path]; ok {
+		return true
+	}
+	// Grok has also used single-segment hyphenated callbacks (e.g. /connectors-oauth-exchange-code).
+	return grokWebHyphenatedOAuthExchangePath(path)
+}
+
+// grokWebHyphenatedOAuthExchangePath allows /{word}-oauth-exchange-code with no extra slashes.
+func grokWebHyphenatedOAuthExchangePath(path string) bool {
+	if !strings.HasPrefix(path, "/") || !strings.HasSuffix(path, "-oauth-exchange-code") {
+		return false
+	}
+	segment := strings.TrimPrefix(path, "/")
+	return segment != "" && !strings.Contains(segment, "/")
 }
 
 // redirectURIAllowedForClient checks the registered list, then client-specific fallbacks.

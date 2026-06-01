@@ -47,6 +47,16 @@ func TestGrokWebRedirectURIRejectsUnknownPath(t *testing.T) {
 	}
 }
 
+func TestGrokWebRedirectURIAllowedConnectorsHyphenPath(t *testing.T) {
+	uri := "https://grok.com/connectors-oauth-exchange-code/"
+	if !grokWebRedirectURIAllowed(uri) {
+		t.Fatal("expected /connectors-oauth-exchange-code")
+	}
+	if !redirectURIAllowedForClient("grok-web", uri, nil) {
+		t.Fatal("expected grok-web fallback")
+	}
+}
+
 func TestValidatePKCEForAuthorize(t *testing.T) {
 	if err := validatePKCEForAuthorize("", ""); err == nil {
 		t.Fatal("expected error for missing challenge")

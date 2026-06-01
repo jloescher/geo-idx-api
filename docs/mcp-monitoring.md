@@ -115,8 +115,10 @@ This allows you to add it as a **Custom MCP Connector** directly in Grok Web wit
      https://grok.x.ai/connector/oauth-exchange-code
      https://grok.com/connect/oauth-exchange-code
      https://grok.x.ai/connect/oauth-exchange-code
+     https://grok.com/connectors-oauth-exchange-code
+     https://grok.x.ai/connectors-oauth-exchange-code
      ```
-     Grok has used both `/connect/oauth-exchange-code` and `/connector/oauth-exchange-code` (not interchangeable). Register both plus `www` host variants if needed.
+     Grok has used **three different** callback shapes (not interchangeable): `/connect/…`, `/connector/…`, and hyphenated `/connectors-oauth-exchange-code`. Register each plus `www` host variants if needed.
 
      **idx-api-web** also accepts known Grok callback paths for `client_id=grok-web` on `grok.com` / `grok.x.ai` hosts (see `grokWebRedirectURIAllowed` in `internal/handler/oauth/helpers.go`) so minor path changes do not require an emergency DB edit.
 
