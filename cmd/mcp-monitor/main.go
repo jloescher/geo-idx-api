@@ -22,6 +22,39 @@ import (
 	"github.com/quantyralabs/idx-api/internal/service/dashboard"
 )
 
+// buildResourceMetadataURL returns the absolute URL for RFC 9728 Protected Resource Metadata.
+// It prefers MCP_PUBLIC_URL (set in Coolify for the mcp app), then falls back using
+// X-Forwarded-* headers (important behind Cloudflare/Traefik) and finally r.Host.
+func buildResourceMetadataURL(r *http.Request) string {
+	if u := os.Getenv("MCP_PUBLIC_URL"); u != "" {
+		// Strip any path after the host and append the well-known endpoint
+		if idx := strings.Index(u, "/mcp"); idx != -1 {
+			return u[:idx] + "/.well-known/oauth-protected-resource"
+		}
+		if strings.HasSuffix(u, "/") {
+			return u + ".well-known/oauth-protected-resource"
+		}
+		if !strings.HasSuffix(u, "/.well-known/oauth-protected-resource") {
+			return u + "/.well-known/oauth-protected-resource"
+		}
+		return u
+	}
+
+	// Proxy-aware fallback
+	scheme := r.Header.Get("X-Forwarded-Proto")
+	if scheme == "" {
+		scheme = "https"
+		if r.TLS == nil && os.Getenv("APP_ENV") != "production" {
+			scheme = "http"
+		}
+	}
+	host := r.Header.Get("X-Forwarded-Host")
+	if host == "" {
+		host = r.Host
+	}
+	return scheme + "://" + host + "/.well-known/oauth-protected-resource"
+}
+
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
@@ -147,24 +180,7 @@ func main() {
 			// No Authorization header at all, and no established session → RFC 9728 challenge.
 			// This is the only path that should ever return the WWW-Authenticate challenge.
 			// Clients doing raw mcp_ key (pre-OAuth style) or holding a session will never hit this.
-			resourceMetaURL := os.Getenv("MCP_PUBLIC_URL")
-			if resourceMetaURL == "" {
-				scheme := "https"
-				if r.TLS == nil && os.Getenv("APP_ENV") != "production" {
-					scheme = "http"
-				}
-				resourceMetaURL = scheme + "://" + r.Host + "/.well-known/oauth-protected-resource"
-			} else {
-				if idx := strings.Index(resourceMetaURL, "/mcp"); idx != -1 {
-					resourceMetaURL = resourceMetaURL[:idx] + "/.well-known/oauth-protected-resource"
-				} else if !strings.HasSuffix(resourceMetaURL, "/.well-known/oauth-protected-resource") {
-					if strings.HasSuffix(resourceMetaURL, "/") {
-						resourceMetaURL += ".well-known/oauth-protected-resource"
-					} else {
-						resourceMetaURL += "/.well-known/oauth-protected-resource"
-					}
-				}
-			}
+			resourceMetaURL := buildResourceMetadataURL(r)
 
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+resourceMetaURL+`"`)
