@@ -170,6 +170,21 @@ These must be present at **runtime** (not just build time). The dual-auth layer 
 
 See also the troubleshooting notes in the commit history around `df10eb9` and `8051a9f` for the earlier diagnosis timeline and follow-up fix.
 
+#### Post-consent failures (PRM OK, Grok still says “Unable to authorize app”)
+
+If `/debug/oauth-config` shows a correct `produced_resource_metadata_url` and Grok reaches the Quantyra consent screen, but authorization fails **after** you click **Authorize**, the problem is usually on **`idx.quantyralabs.cc`** (idx-api-web), not idx-api-mcp.
+
+**Symptom:** Grok rejects the redirect because `state` is missing or empty on the callback URL.
+
+**Check:**
+
+1. After consent, inspect the browser redirect to Grok’s `redirect_uri`. The query string must include **both** `code=...` and a **non-empty** `state=...` matching what Grok sent on the initial `/oauth/authorize` request.
+2. Grep idx-api-web logs for `POST /oauth/token` — look for `invalid_grant`, `client_id mismatch`, `redirect_uri mismatch`, or `failed to store access token` (JSONB insert issues on `granted_mcp_key_ids`).
+3. Confirm the OAuth client’s registered redirect URIs use an **exact** match (not prefix-only) for the `redirect_uri` Grok sends.
+4. Grok Web uses PKCE **S256**; `code_challenge` is required on authorize and `code_verifier` on token exchange.
+
+**OAuth routes:** `GET/POST /oauth/authorize`, `POST /oauth/token` on **idx-api-web** (`OAUTH_AUTH_SERVER` / `IDX_PLATFORM_URL`). Deploy idx-api-web NYC + ATL after OAuth handler changes; idx-api-mcp alone is not sufficient.
+
 ### Example System Prompt for Grok when using Comps
 
 ```

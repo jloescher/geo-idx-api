@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -111,16 +113,35 @@ func (r *OAuthRepo) ConsumeAuthorizationCode(ctx context.Context, code string) (
 	return &ac, nil
 }
 
+func encodeGrantedMCPKeyIDs(ids []int64) ([]byte, error) {
+	if ids == nil {
+		ids = []int64{}
+	}
+	return json.Marshal(ids)
+}
+
+func decodeGrantedMCPKeyIDs(raw []byte, dest *[]int64) error {
+	if len(raw) == 0 {
+		*dest = nil
+		return nil
+	}
+	return json.Unmarshal(raw, dest)
+}
+
 // CreateAccessToken stores a new access token (we store the hash).
 func (r *OAuthRepo) CreateAccessToken(ctx context.Context, token *OAuthAccessToken) error {
+	idsJSON, err := encodeGrantedMCPKeyIDs(token.GrantedMCPKeyIDs)
+	if err != nil {
+		return fmt.Errorf("marshal granted_mcp_key_ids: %w", err)
+	}
 	query := `
 		INSERT INTO oauth_access_tokens 
 		(token_hash, client_id, user_id, scope, granted_mcp_key_ids, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		VALUES ($1, $2, $3, $4, $5::jsonb, $6)
 	`
-	_, err := r.pool.Exec(ctx, query,
+	_, err = r.pool.Exec(ctx, query,
 		token.TokenHash, token.ClientID, token.UserID, token.Scope,
-		token.GrantedMCPKeyIDs, token.ExpiresAt,
+		string(idsJSON), token.ExpiresAt,
 	)
 	return err
 }
@@ -135,10 +156,16 @@ func (r *OAuthRepo) FindAccessTokenByHash(ctx context.Context, tokenHash string)
 	`
 
 	var t OAuthAccessToken
+	var idsJSON []byte
 	err := r.pool.QueryRow(ctx, query, tokenHash).Scan(
-		&t.TokenHash, &t.ClientID, &t.UserID, &t.Scope, &t.GrantedMCPKeyIDs,
+		&t.TokenHash, &t.ClientID, &t.UserID, &t.Scope, &idsJSON,
 		&t.ExpiresAt, &t.CreatedAt,
 	)
+	if err == nil {
+		if err := decodeGrantedMCPKeyIDs(idsJSON, &t.GrantedMCPKeyIDs); err != nil {
+			return nil, fmt.Errorf("decode granted_mcp_key_ids: %w", err)
+		}
+	}
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil
@@ -171,8 +198,7 @@ func (r *OAuthRepo) ListActiveAccessTokensByClient(ctx context.Context, clientID
 
 	var tokens []OAuthAccessToken
 	for rows.Next() {
-		var t OAuthAccessToken
-		err := rows.Scan(&t.TokenHash, &t.ClientID, &t.UserID, &t.Scope, &t.GrantedMCPKeyIDs, &t.ExpiresAt, &t.CreatedAt)
+		t, err := scanOAuthAccessToken(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -198,14 +224,25 @@ func (r *OAuthRepo) ListAllActiveAccessTokens(ctx context.Context) ([]OAuthAcces
 
 	var tokens []OAuthAccessToken
 	for rows.Next() {
-		var t OAuthAccessToken
-		err := rows.Scan(&t.TokenHash, &t.ClientID, &t.UserID, &t.Scope, &t.GrantedMCPKeyIDs, &t.ExpiresAt, &t.CreatedAt)
+		t, err := scanOAuthAccessToken(rows)
 		if err != nil {
 			return nil, err
 		}
 		tokens = append(tokens, t)
 	}
 	return tokens, nil
+}
+
+func scanOAuthAccessToken(rows pgx.Rows) (OAuthAccessToken, error) {
+	var t OAuthAccessToken
+	var idsJSON []byte
+	if err := rows.Scan(&t.TokenHash, &t.ClientID, &t.UserID, &t.Scope, &idsJSON, &t.ExpiresAt, &t.CreatedAt); err != nil {
+		return OAuthAccessToken{}, err
+	}
+	if err := decodeGrantedMCPKeyIDs(idsJSON, &t.GrantedMCPKeyIDs); err != nil {
+		return OAuthAccessToken{}, fmt.Errorf("decode granted_mcp_key_ids: %w", err)
+	}
+	return t, nil
 }
 
 // RevokeAllAccessTokensForClient deletes all active tokens for a client (bulk revoke).
@@ -219,11 +256,14 @@ func (r *OAuthRepo) RevokeAllAccessTokensForClient(ctx context.Context, clientID
 
 // CreateConsent records that a user granted consent to a client.
 func (r *OAuthRepo) CreateConsent(ctx context.Context, consent *OAuthConsent) error {
-	query := `
+	idsJSON, err := encodeGrantedMCPKeyIDs(consent.GrantedMCPKeyIDs)
+	if err != nil {
+		return fmt.Errorf("marshal granted_mcp_key_ids: %w", err)
+	}
+	_, err = r.pool.Exec(ctx, `
 		INSERT INTO oauth_consents (user_id, client_id, scope, granted_mcp_key_ids)
-		VALUES ($1, $2, $3, $4)
-	`
-	_, err := r.pool.Exec(ctx, query, consent.UserID, consent.ClientID, consent.Scope, consent.GrantedMCPKeyIDs)
+		VALUES ($1, $2, $3, $4::jsonb)
+	`, consent.UserID, consent.ClientID, consent.Scope, string(idsJSON))
 	return err
 }
 

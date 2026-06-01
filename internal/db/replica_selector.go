@@ -92,8 +92,10 @@ type ReplicaSelector struct {
 	lastDiscovery    time.Time
 	lastSelected     string
 	lastSelectedSrc  string
-	fallbackActive   atomic.Bool
-	probeInterval    time.Duration
+	fallbackActive    atomic.Bool
+	lastFallbackWarn  atomic.Int64 // unix nano; rate-limit fallback WARN logs
+	lastDiscoveryWarn atomic.Int64
+	probeInterval     time.Duration
 	failThreshold    int
 	recoverThreshold int
 	logger           *slog.Logger
@@ -187,7 +189,7 @@ func (s *ReplicaSelector) GetBestReplica(ctx context.Context) (*pgxpool.Pool, er
 	}
 
 	s.fallbackActive.Store(true)
-	s.logger.Warn("no healthy replicas; using HAProxy RW fallback for read")
+	s.logFallbackOnce()
 	s.recordSelection("fallback", "fallback")
 	if err := s.quickPing(ctx, s.fallbackPool); err != nil {
 		return nil, fmt.Errorf("fallback pool unreachable: %w", err)
@@ -314,8 +316,11 @@ func (s *ReplicaSelector) runProbeCycle() {
 	members, err := s.discoverReplicas()
 	if err != nil {
 		incDiscoveryErrors()
-		s.logger.Warn("patroni discovery failed", "error", err)
+		s.logDiscoveryIssueOnce("patroni discovery failed", err)
 		return
+	}
+	if len(members) == 0 {
+		s.logDiscoveryIssueOnce("patroni discovery returned no running replicas", nil)
 	}
 
 	s.syncReplicaPools(members)
@@ -365,10 +370,19 @@ func (s *ReplicaSelector) fetchPatroniCluster(host string) ([]patroniMember, err
 	return cluster.Members, nil
 }
 
+func patroniReplicaStateHealthy(state string) bool {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case "running", "streaming", "synced":
+		return true
+	default:
+		return false
+	}
+}
+
 func filterRunningReplicas(members []patroniMember) []patroniMember {
 	out := make([]patroniMember, 0, len(members))
 	for _, m := range members {
-		if strings.EqualFold(m.Role, "replica") && strings.EqualFold(m.State, "running") && m.Host != "" {
+		if strings.EqualFold(m.Role, "replica") && patroniReplicaStateHealthy(m.State) && m.Host != "" {
 			out = append(out, m)
 		}
 	}
@@ -475,6 +489,60 @@ func (s *ReplicaSelector) quickPing(ctx context.Context, pool *pgxpool.Pool) err
 }
 
 // updateCircuitBreaker applies probe result to circuit breaker state (exported for tests).
+const replicaWarnInterval = 60 * time.Second
+
+func (s *ReplicaSelector) logFallbackOnce() {
+	now := time.Now().UnixNano()
+	last := s.lastFallbackWarn.Load()
+	if now-last < int64(replicaWarnInterval) {
+		return
+	}
+	if !s.lastFallbackWarn.CompareAndSwap(last, now) {
+		return
+	}
+
+	replicaCount, healthyCount := s.replicaHealthSummary()
+	s.logger.Warn("no healthy replicas; using HAProxy RW fallback for read",
+		"replica_count", replicaCount,
+		"healthy_count", healthyCount,
+		"patroni_endpoints", len(s.patroniHosts),
+	)
+}
+
+func (s *ReplicaSelector) logDiscoveryIssueOnce(msg string, err error) {
+	now := time.Now().UnixNano()
+	last := s.lastDiscoveryWarn.Load()
+	if now-last < int64(replicaWarnInterval) {
+		return
+	}
+	if !s.lastDiscoveryWarn.CompareAndSwap(last, now) {
+		return
+	}
+
+	replicaCount, healthyCount := s.replicaHealthSummary()
+	args := []any{
+		"replica_count", replicaCount,
+		"healthy_count", healthyCount,
+		"patroni_endpoints", len(s.patroniHosts),
+	}
+	if err != nil {
+		args = append(args, "error", err)
+	}
+	s.logger.Warn(msg, args...)
+}
+
+func (s *ReplicaSelector) replicaHealthSummary() (replicaCount, healthyCount int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	replicaCount = len(s.replicas)
+	for _, entry := range s.replicas {
+		if entry.healthy.Load() {
+			healthyCount++
+		}
+	}
+	return replicaCount, healthyCount
+}
+
 func updateCircuitBreaker(entry *replicaEntry, success bool, failThreshold, recoverThreshold int) {
 	if success {
 		entry.failures.Store(0)

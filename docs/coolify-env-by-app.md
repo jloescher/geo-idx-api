@@ -51,6 +51,23 @@ Set on **web**, **scheduler**, and **every worker** unless noted.
 
 ### Web (`api`)
 
+**Read replicas (phase 2):** When `DB_READONLY_BASE_DSN` is set, the API discovers Patroni replicas and routes read-only queries to the lowest-latency healthy pool. If all probes fail, logs show `no healthy replicas; using HAProxy RW fallback for read` (reads still work via `DB_RW_DSN` — no outage, but no read offload).
+
+| Variable | Notes |
+|----------|--------|
+| `DB_READONLY_BASE_DSN` | libpq fragment **without** `host=` (host comes from Patroni member `host`) |
+| `PATRONI_ENDPOINTS` | Comma-separated Tailscale IPs for Patroni REST (`:8008/cluster`) |
+| `DB_RW_DSN` | HAProxy RW pool used as fallback when no replica is healthy |
+
+**Replica diagnostic checklist (read-only):**
+
+1. `GET https://idx.quantyralabs.cc/health/replicas` — each member should show `healthy: true` when direct `:5432` works; `fallback_active: true` means all replica probes failed.
+2. From an API container network: `curl -s http://<patroni-host>:8008/cluster | jq '.members[] | {name,role,state,host,port}'` — expect at least one `role=replica` with `state` in `running`, `streaming`, or `synced` (Patroni often reports in-sync replicas as `streaming`, not `running`).
+3. `psql "host=<replica-host> $DB_READONLY_BASE_DSN" -c "SELECT 1"` — must succeed from Coolify host / API network.
+4. Compare `psql "$DB_RW_DSN" -c "SELECT pg_is_in_recovery()"` — fallback primary returns `f`; replica returns `t`.
+
+**Common causes:** firewall or Tailscale ACL blocking direct `:5432` to Patroni `member.host` while HAProxy `:5000` works; `idx_reader` / `sslmode` mismatch in `DB_READONLY_BASE_DSN`; Patroni advertising unroutable hostnames; no running replicas in cluster.
+
 - `BRIDGE_LISTING_PHOTO_PATH` (image URL rewrite)
 - `SPARK_SYNC_MAX_REQUESTS_PER_SECOND`, `SPARK_SYNC_MAX_REQUESTS_PER_5MIN` (live Spark proxy throttling)
 - `MLS_SYNC_RATE_LIMIT_RETRY_SECONDS`, `MLS_SYNC_TIMEOUT_RETRY_SECONDS`, `MLS_SYNC_RATE_LIMIT_MAX_ATTEMPTS`

@@ -59,6 +59,7 @@ func (h *Handler) Authorize(c *fiber.Ctx) error {
 	codeChallenge := c.Query("code_challenge")
 	codeChallengeMethod := c.Query("code_challenge_method")
 	scope := c.Query("scope", "monitor comps content")
+	state := c.Query("state")
 
 	if clientID == "" || redirectURI == "" || responseType != "code" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
@@ -76,21 +77,19 @@ func (h *Handler) Authorize(c *fiber.Ctx) error {
 		})
 	}
 
-	// Basic redirect_uri validation (must start with one of the registered URIs)
-	allowed := false
-	for _, allowedURI := range client.RedirectURIs {
-		if strings.HasPrefix(redirectURI, allowedURI) {
-			allowed = true
-			break
-		}
-	}
-	if !allowed {
+	if !redirectURIAllowed(redirectURI, client.RedirectURIs) {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
 			"error":             "invalid_request",
 			"error_description": "redirect_uri is not allowed for this client",
 		})
 	}
-	_ = redirectURI // used above
+
+	if err := validatePKCEForAuthorize(codeChallenge, codeChallengeMethod); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+			"error":             "invalid_request",
+			"error_description": err.Error(),
+		})
+	}
 
 	// Check if user is logged in via dashboard session
 	userID, ok := c.Locals("user_id").(int64)
@@ -162,6 +161,7 @@ func (h *Handler) Authorize(c *fiber.Ctx) error {
           <input type="hidden" name="code_challenge" value="%s">
           <input type="hidden" name="code_challenge_method" value="%s">
           <input type="hidden" name="scope" value="%s">
+          <input type="hidden" name="state" value="%s">
 
           %s
 
@@ -186,7 +186,9 @@ func (h *Handler) Authorize(c *fiber.Ctx) error {
   </div>
 </body>
 </html>
-`, clientID, redirectURI, codeChallenge, codeChallengeMethod, scope, keyCheckboxes, redirectURI)
+`, escapeFormValue(clientID), escapeFormValue(redirectURI), escapeFormValue(codeChallenge),
+		escapeFormValue(codeChallengeMethod), escapeFormValue(scope), escapeFormValue(state),
+		keyCheckboxes, escapeFormValue(redirectURI))
 
 	c.Set("Content-Type", "text/html")
 	return c.SendString(html)
@@ -204,14 +206,32 @@ func (h *Handler) Consent(c *fiber.Ctx) error {
 	codeChallenge := c.FormValue("code_challenge")
 	codeChallengeMethod := c.FormValue("code_challenge_method")
 	scope := c.FormValue("scope", "monitor comps content")
+	state := c.FormValue("state")
 	consent := c.FormValue("consent")
+
+	client, err := h.clientRepo.FindByClientID(c.Context(), clientID)
+	if err != nil || client == nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+			"error":             "invalid_client",
+			"error_description": "Unknown or unregistered client_id",
+		})
+	}
+	if !redirectURIAllowed(redirectURI, client.RedirectURIs) {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+			"error":             "invalid_request",
+			"error_description": "redirect_uri is not allowed for this client",
+		})
+	}
 
 	if consent != "granted" {
 		u, _ := url.Parse(redirectURI)
 		q := u.Query()
 		q.Set("error", "access_denied")
+		if state != "" {
+			q.Set("state", state)
+		}
 		u.RawQuery = q.Encode()
-		return c.Redirect(u.String())
+		return c.Redirect(u.String(), fiber.StatusSeeOther)
 	}
 
 	// Parse which keys the user selected on the consent form
@@ -224,14 +244,37 @@ func (h *Handler) Consent(c *fiber.Ctx) error {
 		}
 	}
 
+	userKeys, _ := h.mcpKeyRepo.ListByCreator(c.Context(), userID)
+	ownedActive := make(map[int64]struct{})
+	for _, k := range userKeys {
+		if k.RevokedAt == nil {
+			ownedActive[k.ID] = struct{}{}
+		}
+	}
+
 	// If the user didn't select any, fall back to all their active keys (functional behavior)
 	if len(grantedMCPKeyIDs) == 0 {
-		userKeys, _ := h.mcpKeyRepo.ListByCreator(c.Context(), userID)
-		for _, k := range userKeys {
-			if k.RevokedAt == nil {
-				grantedMCPKeyIDs = append(grantedMCPKeyIDs, k.ID)
+		for id := range ownedActive {
+			grantedMCPKeyIDs = append(grantedMCPKeyIDs, id)
+		}
+	} else {
+		filtered := grantedMCPKeyIDs[:0]
+		for _, id := range grantedMCPKeyIDs {
+			if _, ok := ownedActive[id]; ok {
+				filtered = append(filtered, id)
 			}
 		}
+		grantedMCPKeyIDs = filtered
+		if len(grantedMCPKeyIDs) == 0 {
+			return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+				"error":             "invalid_request",
+				"error_description": "no valid MCP keys selected",
+			})
+		}
+	}
+
+	if strings.TrimSpace(codeChallengeMethod) == "" {
+		codeChallengeMethod = "S256"
 	}
 
 	// Generate authorization code
@@ -264,14 +307,15 @@ func (h *Handler) Consent(c *fiber.Ctx) error {
 		return c.Status(http.StatusInternalServerError).SendString("Internal error")
 	}
 
-	// Redirect back with code
-	u, _ := url.Parse(redirectURI)
-	q := u.Query()
-	q.Set("code", code)
-	q.Set("state", c.Query("state"))
-	u.RawQuery = q.Encode()
+	redirectURL, err := buildAuthorizationRedirectURL(redirectURI, code, state)
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+			"error":             "invalid_request",
+			"error_description": "invalid redirect_uri",
+		})
+	}
 
-	return c.Redirect(u.String())
+	return c.Redirect(redirectURL, fiber.StatusSeeOther)
 }
 
 // CreateClient is an admin-only endpoint to register new OAuth clients.
@@ -442,6 +486,7 @@ func (h *Handler) Token(c *fiber.Ctx) error {
 
 	code := c.FormValue("code")
 	clientID := c.FormValue("client_id")
+	redirectURI := c.FormValue("redirect_uri")
 	codeVerifier := c.FormValue("code_verifier")
 
 	if code == "" || clientID == "" {
@@ -454,16 +499,15 @@ func (h *Handler) Token(c *fiber.Ctx) error {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid_grant"})
 	}
 
-	// Basic PKCE validation (S256)
-	if authCode.CodeChallenge != nil && *authCode.CodeChallenge != "" {
-		if codeVerifier == "" {
-			return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid_request", "error_description": "code_verifier required"})
+	if err := validateTokenExchange(authCode, clientID, redirectURI, codeVerifier); err != nil {
+		errName := "invalid_grant"
+		if strings.Contains(err.Error(), "code_verifier required") {
+			errName = "invalid_request"
 		}
-		hash := sha256.Sum256([]byte(codeVerifier))
-		encoded := base64.RawURLEncoding.EncodeToString(hash[:])
-		if encoded != *authCode.CodeChallenge {
-			return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid_grant", "error_description": "PKCE verification failed"})
-		}
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+			"error":             errName,
+			"error_description": err.Error(),
+		})
 	}
 
 	// Parse granted key IDs that were selected during consent and stored on the auth code
@@ -496,7 +540,7 @@ func (h *Handler) Token(c *fiber.Ctx) error {
 
 	access := &repository.OAuthAccessToken{
 		TokenHash:        tokenHash,
-		ClientID:         clientID,
+		ClientID:         authCode.ClientID,
 		UserID:           authCode.UserID,
 		Scope:            authCode.Scope,
 		GrantedMCPKeyIDs: grantedKeyIDs,
@@ -529,5 +573,3 @@ func hashToken(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// Note: In a real implementation we would also validate that the client_id + redirect_uri match
-// a registered client, and we would store which specific mcp_key_ids were granted during consent.

@@ -17,12 +17,12 @@ func TestFilterRunningReplicas(t *testing.T) {
 	members := []patroniMember{
 		{Name: "re-node-04", Role: "leader", State: "running", Host: "100.115.75.119"},
 		{Name: "re-node-01", Role: "replica", State: "running", Host: "100.126.103.51"},
-		{Name: "re-node-03", Role: "replica", State: "stopped", Host: "100.114.117.46"},
-		{Name: "re-node-02", Role: "replica", State: "running", Host: "100.114.117.46"},
+		{Name: "re-node-03", Role: "replica", State: "streaming", Host: "100.114.117.46"},
+		{Name: "re-node-02", Role: "replica", State: "stopped", Host: "100.114.117.46"},
 	}
 	got := filterRunningReplicas(members)
 	if len(got) != 2 {
-		t.Fatalf("expected 2 replicas, got %d", len(got))
+		t.Fatalf("expected 2 replicas (running + streaming), got %d", len(got))
 	}
 	if got[0].Host != "100.126.103.51" && got[1].Host != "100.126.103.51" {
 		t.Fatalf("expected re-node-01 host in results: %+v", got)
