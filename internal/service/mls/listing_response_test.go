@@ -486,6 +486,73 @@ func parseMirrorSelectColumns(sql string) []string {
 	return cols
 }
 
+// TestMirrorListingColumns_alignsWithScanOrder guards comps and full mirror reads.
+func TestMirrorListingColumns_alignsWithScanOrder(t *testing.T) {
+	cols := parseMirrorSelectColumns(mls.MirrorListingColumns)
+	floodIdx := -1
+	for i, c := range cols {
+		if c == "flood_zone_code" {
+			floodIdx = i
+			break
+		}
+	}
+	if floodIdx < 0 || floodIdx+4 >= len(cols) {
+		t.Fatalf("flood block not found in columns: %v", cols)
+	}
+	if cols[floodIdx+1] != "estimated_total_monthly_fees" {
+		t.Fatalf("expected estimated_total_monthly_fees after flood_zone_code, got %q", cols[floodIdx+1])
+	}
+	if cols[floodIdx+2] != "fema_flood_zone_code" {
+		t.Fatalf("expected fema_flood_zone_code, got %q", cols[floodIdx+2])
+	}
+	if cols[floodIdx+3] != "flood_zone_sfha_tf" {
+		t.Fatalf("expected flood_zone_sfha_tf, got %q", cols[floodIdx+3])
+	}
+	if cols[floodIdx+4] != "low_risk_flood_zone_yn" {
+		t.Fatalf("expected low_risk_flood_zone_yn, got %q", cols[floodIdx+4])
+	}
+}
+
+func TestScanMirrorListingRow_readsFloodAndFeesColumns(t *testing.T) {
+	wantFees := 425.0
+	sfha := "T"
+	cols := parseMirrorSelectColumns(mls.MirrorListingColumns)
+	row, err := mls.ScanMirrorListingRow(func(dest ...any) error {
+		if len(dest) != len(cols) {
+			t.Fatalf("scan dest count %d != column count %d", len(dest), len(cols))
+		}
+		for i, name := range cols {
+			switch name {
+			case "dataset_slug":
+				*(dest[i].(*string)) = "stellar"
+			case "listing_key":
+				*(dest[i].(*string)) = "k"
+			case "list_price":
+				*(dest[i].(*float64)) = 1
+			case "estimated_total_monthly_fees":
+				*(dest[i].(**float64)) = &wantFees
+			case "flood_zone_sfha_tf":
+				*(dest[i].(**string)) = &sfha
+			case "low_risk_flood_zone_yn":
+				*(dest[i].(*bool)) = false
+			case "special_listing_conditions", "media", "unit", "room", "open_house", "custom_fields":
+				*(dest[i].(*[]byte)) = []byte("[]")
+			default:
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.EstimatedTotalMonthlyFees == nil || *row.EstimatedTotalMonthlyFees != wantFees {
+		t.Fatalf("EstimatedTotalMonthlyFees = %v, want %v", row.EstimatedTotalMonthlyFees, wantFees)
+	}
+	if row.FloodZoneSFHA_TF == nil || *row.FloodZoneSFHA_TF != sfha {
+		t.Fatalf("FloodZoneSFHA_TF = %v, want %q", row.FloodZoneSFHA_TF, sfha)
+	}
+}
+
 // TestMirrorListingSearchColumns_alignsWithScanOrder guards POST /search: ScanMirrorListingSearchRow
 // must bind the same columns as MirrorListingSearchColumns (misalignment caused pgx 502s).
 func TestMirrorListingSearchColumns_alignsWithScanOrder(t *testing.T) {
