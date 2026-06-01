@@ -66,7 +66,15 @@ func renderDashboardNav(active NavPage, isAdmin bool) string {
 		if item.id == active {
 			aria = ` aria-current="page"`
 		}
-		b.WriteString(`<li><a class="` + cls + `" href="` + item.href + `"` + aria + `>` + web.Esc(item.label) + `</a></li>`)
+		b.WriteString(`<li><a class="`)
+		b.WriteString(cls)
+		b.WriteString(`" href="`)
+		b.WriteString(item.href)
+		b.WriteString(`"`)
+		b.WriteString(aria)
+		b.WriteString(`>`)
+		b.WriteString(web.Esc(item.label))
+		b.WriteString(`</a></li>`)
 	}
 	b.WriteString(`</ul></nav>`)
 	return b.String()

@@ -163,13 +163,19 @@ func renderDomainsBody(data PageData) string {
 	b.WriteString(`<p>Add a domain, publish TXT records, and manage API keys per hostname.</p>`)
 
 	if data.VerifySuccess != "" {
-		b.WriteString(`<div class="alert-success" role="status">` + web.Esc(data.VerifySuccess) + `</div>`)
+		b.WriteString(`<div class="alert-success" role="status">`)
+		b.WriteString(web.Esc(data.VerifySuccess))
+		b.WriteString(`</div>`)
 	}
 	if data.VerifyError != "" {
-		b.WriteString(`<div class="form-error" role="alert">` + web.Esc(data.VerifyError) + `</div>`)
+		b.WriteString(`<div class="form-error" role="alert">`)
+		b.WriteString(web.Esc(data.VerifyError))
+		b.WriteString(`</div>`)
 	}
 	if data.DomainError != "" {
-		b.WriteString(`<div class="form-error" role="alert">` + web.Esc(data.DomainError) + `</div>`)
+		b.WriteString(`<div class="form-error" role="alert">`)
+		b.WriteString(web.Esc(data.DomainError))
+		b.WriteString(`</div>`)
 	}
 	if data.ProvisionFlash != nil {
 		b.WriteString(renderProvisionVerifyPanel(data.ProvisionFlash, data.TokenReveals))
@@ -199,8 +205,12 @@ func renderDomainsBody(data PageData) string {
 		previewHost = "your-domain.com"
 	}
 	b.WriteString(`<form method="post" action="/dashboard/domains" class="add-domain-form" id="add-domain-form">
-<label>Hostname <input name="domain_slug" id="domain-hostname" type="text" placeholder="clearwaterflhouses.com" required value="` + hostVal + `"></label>
-<p class="staging-preview" id="staging-preview">Staging hostname will be <code>staging.` + previewHost + `</code></p>
+<label>Hostname <input name="domain_slug" id="domain-hostname" type="text" placeholder="clearwaterflhouses.com" required value="`)
+	b.WriteString(hostVal)
+	b.WriteString(`"></label>
+<p class="staging-preview" id="staging-preview">Staging hostname will be <code>staging.`)
+	b.WriteString(previewHost)
+	b.WriteString(`</code></p>
 <fieldset class="dataset-checkboxes">
 <legend>MLS datasets</legend>`)
 	for i, f := range data.Feeds {
@@ -221,14 +231,18 @@ func renderDomainsBody(data PageData) string {
 
 func renderDomainBundle(bundle DomainBundle, reveals map[int64]string) string {
 	var b strings.Builder
-	b.WriteString(`<li class="domain-bundle" id="domain-bundle-` + strconv.FormatInt(bundle.Production.ID, 10) + `">`)
+	b.WriteString(`<li class="domain-bundle" id="domain-bundle-`)
+	b.WriteString(strconv.FormatInt(bundle.Production.ID, 10))
+	b.WriteString(`">`)
 	b.WriteString(renderDomainHostSection(bundle.Production, reveals, true, bundle.Production.ID))
 	if bundle.Staging != nil {
 		b.WriteString(`<div class="domain-bundle-staging">`)
 		b.WriteString(renderDomainHostSection(*bundle.Staging, reveals, false, bundle.Production.ID))
 		b.WriteString(`</div>`)
 	}
-	b.WriteString(`<form method="post" action="/dashboard/domains/` + strconv.FormatInt(bundle.Production.ID, 10) + `/delete" class="delete-bundle-form" onsubmit="return confirm('Delete this domain and its staging hostname? API keys will stop working immediately.');">
+	b.WriteString(`<form method="post" action="/dashboard/domains/`)
+	b.WriteString(strconv.FormatInt(bundle.Production.ID, 10))
+	b.WriteString(`/delete" class="delete-bundle-form" onsubmit="return confirm('Delete this domain and its staging hostname? API keys will stop working immediately.');">
 <button type="submit" class="btn btn-sm btn-secondary">Delete domain bundle</button>
 </form>`)
 	b.WriteString(`</li>`)
@@ -246,8 +260,20 @@ func renderDomainHostSection(d DomainRow, reveals map[int64]string, isProduction
 		roleLabel = "Staging"
 	}
 	var b strings.Builder
-	b.WriteString(`<article class="domain-host-section` + stagingSectionClass(d.IsStaging) + `" id="` + anchor + `">`)
-	b.WriteString(`<div class="domain-row-main"><strong>` + web.Esc(d.Slug) + `</strong> <span class="badge ` + badge + `">` + web.Esc(d.Status) + `</span> <span class="badge badge-pending">` + web.Esc(roleLabel) + `</span></div>`)
+	b.WriteString(`<article class="domain-host-section`)
+	b.WriteString(stagingSectionClass(d.IsStaging))
+	b.WriteString(`" id="`)
+	b.WriteString(anchor)
+	b.WriteString(`">`)
+	b.WriteString(`<div class="domain-row-main"><strong>`)
+	b.WriteString(web.Esc(d.Slug))
+	b.WriteString(`</strong> <span class="badge `)
+	b.WriteString(badge)
+	b.WriteString(`">`)
+	b.WriteString(web.Esc(d.Status))
+	b.WriteString(`</span> <span class="badge badge-pending">`)
+	b.WriteString(web.Esc(roleLabel))
+	b.WriteString(`</span></div>`)
 
 	plain := ""
 	if reveals != nil {
@@ -258,12 +284,20 @@ func renderDomainHostSection(d DomainRow, reveals map[int64]string, isProduction
 	b.WriteString(`</div>`)
 
 	if d.Status != "verified" && d.Status != "verified_ghl" && d.TXTName != "" {
-		b.WriteString(`<div class="txt-block"><span class="txt-label">Host</span> <code class="txt-value">` + web.Esc(d.TXTName) + `</code></div>
-<div class="txt-block"><span class="txt-label">Value</span> <code class="txt-value">` + web.Esc(d.TXTValue) + `</code></div>`)
+		b.WriteString(`<div class="txt-block"><span class="txt-label">Host</span> <code class="txt-value">`)
+		b.WriteString(web.Esc(d.TXTName))
+		b.WriteString(`</code></div>
+<div class="txt-block"><span class="txt-label">Value</span> <code class="txt-value">`)
+		b.WriteString(web.Esc(d.TXTValue))
+		b.WriteString(`</code></div>`)
 	}
 	if d.Status != "verified" && d.Status != "verified_ghl" {
-		b.WriteString(`<form method="post" action="/dashboard/domains/` + strconv.FormatInt(d.ID, 10) + `/verify-txt" class="verify-form">
-<button type="submit" class="btn btn-sm btn-primary" aria-label="Verify TXT for ` + web.Esc(d.Slug) + `">Verify TXT</button></form>`)
+		b.WriteString(`<form method="post" action="/dashboard/domains/`)
+		b.WriteString(strconv.FormatInt(d.ID, 10))
+		b.WriteString(`/verify-txt" class="verify-form">
+<button type="submit" class="btn btn-sm btn-primary" aria-label="Verify TXT for `)
+		b.WriteString(web.Esc(d.Slug))
+		b.WriteString(`">Verify TXT</button></form>`)
 	}
 	_ = isProduction
 	_ = bundleProdID
@@ -283,22 +317,42 @@ func renderTokenField(domainID int64, plain string, meta *TokenMeta) string {
 	var b strings.Builder
 	if plain != "" {
 		b.WriteString(`<div class="token-field">`)
-		b.WriteString(`<div class="token-box token-masked" id="` + boxID + `" data-token-secret="` + web.Esc(plain) + `" data-masked="` + tokenMask + `">` + tokenMask + `</div>`)
+		b.WriteString(`<div class="token-box token-masked" id="`)
+		b.WriteString(boxID)
+		b.WriteString(`" data-token-secret="`)
+		b.WriteString(web.Esc(plain))
+		b.WriteString(`" data-masked="`)
+		b.WriteString(tokenMask)
+		b.WriteString(`">`)
+		b.WriteString(tokenMask)
+		b.WriteString(`</div>`)
 		b.WriteString(`<div class="token-actions">`)
-		b.WriteString(`<button type="button" class="btn btn-secondary btn-sm" data-token-toggle="#` + boxID + `" aria-pressed="false">Show</button>`)
-		b.WriteString(`<button type="button" class="btn btn-secondary btn-sm" data-copy="#` + boxID + `">Copy</button>`)
+		b.WriteString(`<button type="button" class="btn btn-secondary btn-sm" data-token-toggle="#`)
+		b.WriteString(boxID)
+		b.WriteString(`" aria-pressed="false">Show</button>`)
+		b.WriteString(`<button type="button" class="btn btn-secondary btn-sm" data-copy="#`)
+		b.WriteString(boxID)
+		b.WriteString(`">Copy</button>`)
 		b.WriteString(`</div><p class="token-hint save-warning">Save this key now — it will not be shown again after you leave this page.</p></div>`)
 	} else if meta != nil {
 		b.WriteString(`<div class="token-field">`)
-		b.WriteString(`<div class="token-box token-masked" id="` + boxID + `">` + tokenMask + `</div>`)
+		b.WriteString(`<div class="token-box token-masked" id="`)
+		b.WriteString(boxID)
+		b.WriteString(`">`)
+		b.WriteString(tokenMask)
+		b.WriteString(`</div>`)
 		b.WriteString(`<div class="token-actions">`)
 		b.WriteString(`<button type="button" class="btn btn-secondary btn-sm" disabled title="Regenerate to view a new key">Show</button>`)
 		b.WriteString(`<button type="button" class="btn btn-secondary btn-sm" disabled>Copy</button>`)
-		b.WriteString(`</div><p class="token-hint">Regenerate to issue a new key you can copy. Last used: ` + tokenLastUsed(meta) + `</p></div>`)
+		b.WriteString(`</div><p class="token-hint">Regenerate to issue a new key you can copy. Last used: `)
+		b.WriteString(tokenLastUsed(meta))
+		b.WriteString(`</p></div>`)
 	} else {
 		b.WriteString(`<p class="token-hint">No API key for this domain yet.</p>`)
 	}
-	b.WriteString(`<form method="post" action="/dashboard/domains/` + strconv.FormatInt(domainID, 10) + `/regenerate-token" class="inline-form inline-form-compact regenerate-form" onsubmit="return confirm('Regenerate API key? The current key stops working immediately.');">
+	b.WriteString(`<form method="post" action="/dashboard/domains/`)
+	b.WriteString(strconv.FormatInt(domainID, 10))
+	b.WriteString(`/regenerate-token" class="inline-form inline-form-compact regenerate-form" onsubmit="return confirm('Regenerate API key? The current key stops working immediately.');">
 <button type="submit" class="btn btn-sm btn-secondary">Regenerate API key</button></form>`)
 	return b.String()
 }
@@ -332,20 +386,36 @@ func renderProvisionVerifyPanel(result *dashsvc.ProvisionResult, reveals map[int
 <li>Publish both TXT records at your DNS host</li>
 <li>Click <strong>Verify TXT</strong> for each hostname</li>
 </ol>`)
-	b.WriteString(`<h3>Production (` + web.Esc(result.ProdDomain.DomainSlug) + `)</h3>`)
+	b.WriteString(`<h3>Production (`)
+	b.WriteString(web.Esc(result.ProdDomain.DomainSlug))
+	b.WriteString(`)</h3>`)
 	b.WriteString(renderTokenField(result.ProdDomain.ID, revealProd, nil))
 	b.WriteString(`<h3>Production DNS</h3>
-<div class="txt-block"><span class="txt-label">Host</span> <code class="txt-value">` + web.Esc(result.ProdDomain.TXTVerificationName) + `</code></div>
-<div class="txt-block"><span class="txt-label">Value</span> <code class="txt-value">` + web.Esc(result.ProdDomain.TXTVerificationValue) + `</code></div>
-<form method="post" action="/dashboard/domains/` + strconv.FormatInt(result.ProdDomain.ID, 10) + `/verify-txt" class="verify-form">
+<div class="txt-block"><span class="txt-label">Host</span> <code class="txt-value">`)
+	b.WriteString(web.Esc(result.ProdDomain.TXTVerificationName))
+	b.WriteString(`</code></div>
+<div class="txt-block"><span class="txt-label">Value</span> <code class="txt-value">`)
+	b.WriteString(web.Esc(result.ProdDomain.TXTVerificationValue))
+	b.WriteString(`</code></div>
+<form method="post" action="/dashboard/domains/`)
+	b.WriteString(strconv.FormatInt(result.ProdDomain.ID, 10))
+	b.WriteString(`/verify-txt" class="verify-form">
 <button type="submit" class="btn btn-primary btn-sm">Verify production TXT</button>
 </form>`)
-	b.WriteString(`<h3>Staging (` + web.Esc(result.StagingDomain.DomainSlug) + `)</h3>`)
+	b.WriteString(`<h3>Staging (`)
+	b.WriteString(web.Esc(result.StagingDomain.DomainSlug))
+	b.WriteString(`)</h3>`)
 	b.WriteString(renderTokenField(result.StagingDomain.ID, revealStaging, nil))
 	b.WriteString(`<h3>Staging DNS</h3>
-<div class="txt-block"><span class="txt-label">Host</span> <code class="txt-value">` + web.Esc(result.StagingDomain.TXTVerificationName) + `</code></div>
-<div class="txt-block"><span class="txt-label">Value</span> <code class="txt-value">` + web.Esc(result.StagingDomain.TXTVerificationValue) + `</code></div>
-<form method="post" action="/dashboard/domains/` + strconv.FormatInt(result.StagingDomain.ID, 10) + `/verify-txt" class="verify-form">
+<div class="txt-block"><span class="txt-label">Host</span> <code class="txt-value">`)
+	b.WriteString(web.Esc(result.StagingDomain.TXTVerificationName))
+	b.WriteString(`</code></div>
+<div class="txt-block"><span class="txt-label">Value</span> <code class="txt-value">`)
+	b.WriteString(web.Esc(result.StagingDomain.TXTVerificationValue))
+	b.WriteString(`</code></div>
+<form method="post" action="/dashboard/domains/`)
+	b.WriteString(strconv.FormatInt(result.StagingDomain.ID, 10))
+	b.WriteString(`/verify-txt" class="verify-form">
 <button type="submit" class="btn btn-primary btn-sm">Verify staging TXT</button>
 </form>
 </section>`)
