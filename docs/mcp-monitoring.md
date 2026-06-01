@@ -105,7 +105,14 @@ This allows you to add it as a **Custom MCP Connector** directly in Grok Web wit
 1. As an admin, register a client at **`/dashboard/oauth-clients`**:
    - Name: `Grok Web`
    - Client ID: `grok-web`
-   - Redirect URIs: `https://grok.x.ai` (or the exact redirect URI Grok provides)
+   - Redirect URIs (one per line, **exact** match — include every URI Grok may send):
+     ```
+     https://grok.com
+     https://grok.x.ai
+     https://grok.com/api/mcp/auth_callback
+     https://grok.x.ai/api/mcp/auth_callback
+     ```
+     If you see `redirect_uri is not allowed for this client`, copy the `redirect_uri` query param from the failing browser URL and add that exact string here.
 
    You can manage all OAuth clients (list, create, revoke) from this admin page.
 
