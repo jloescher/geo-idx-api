@@ -137,7 +137,29 @@ func main() {
 			}
 
 			// No valid credential → tell client to start OAuth flow
-			w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="https://your-mcp-domain/.well-known/oauth-protected-resource"`)
+			// Build the resource_metadata URL dynamically (never hardcode a placeholder)
+			resourceMetaURL := os.Getenv("MCP_PUBLIC_URL")
+			if resourceMetaURL == "" {
+				// Fallback using the incoming request host (works for most Coolify setups)
+				scheme := "https"
+				if r.TLS == nil && os.Getenv("APP_ENV") != "production" {
+					scheme = "http"
+				}
+				resourceMetaURL = scheme + "://" + r.Host + "/.well-known/oauth-protected-resource"
+			} else {
+				// Convert e.g. https://mcp.quantyralabs.cc/mcp  →  https://mcp.quantyralabs.cc/.well-known/oauth-protected-resource
+				if idx := strings.Index(resourceMetaURL, "/mcp"); idx != -1 {
+					resourceMetaURL = resourceMetaURL[:idx] + "/.well-known/oauth-protected-resource"
+				} else if !strings.HasSuffix(resourceMetaURL, "/.well-known/oauth-protected-resource") {
+					if strings.HasSuffix(resourceMetaURL, "/") {
+						resourceMetaURL += ".well-known/oauth-protected-resource"
+					} else {
+						resourceMetaURL += "/.well-known/oauth-protected-resource"
+					}
+				}
+			}
+
+			w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+resourceMetaURL+`"`)
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = w.Write([]byte(`{"error":"unauthorized","error_description":"MCP key or OAuth access token required"}`))
 		})
