@@ -27,7 +27,8 @@ Central index for **idx-api** (Go 1.25+). Implementation lives in `cmd/` and `in
 | [Deployment & operations](deployment-operations.md) | Docker, queues, scheduler leader lock, worker reservations, migrations |
 | [Admin dashboard](admin-dashboard.md) | Invite-only ops UI: domains, monitoring tabs, GIS probe/sync, incidents |
 | [Coolify deployment](coolify-deployment.md) | Single-host and **multi-DC (NYC + ATL)** runbooks |
-| [Coolify env by app](coolify-env-by-app.md) | Production worker split, shared vs role-specific variables |
+| [Coolify env by app](coolify-env-by-app.md) | Production worker split, shared vs role-specific variables (includes `idx-api-mcp`) |
+| [MCP Monitor for AI agents](mcp-monitoring.md) | Tools, Grok integration (stdio + OAuth), production gotchas & live debug endpoint |
 | [README](../README.md) | Local dev, `make` targets, build & test |
 
 ---

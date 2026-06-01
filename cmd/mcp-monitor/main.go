@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -27,18 +28,15 @@ import (
 // It prefers MCP_PUBLIC_URL (set in Coolify for the mcp app), then falls back using
 // X-Forwarded-* headers (important behind Cloudflare/Traefik) and finally r.Host.
 func buildResourceMetadataURL(r *http.Request) string {
-	if u := os.Getenv("MCP_PUBLIC_URL"); u != "" {
-		// Strip any path after the host and append the well-known endpoint
-		if idx := strings.Index(u, "/mcp"); idx != -1 {
-			return u[:idx] + "/.well-known/oauth-protected-resource"
+	if raw := os.Getenv("MCP_PUBLIC_URL"); raw != "" {
+		// Use net/url.Parse to reliably extract the origin (scheme + host).
+		// The previous strings.Index approach found "/mcp" inside "://mcp.hostname…"
+		// (position 7 of "https://mcp.quantyralabs.cc/mcp"), producing the broken
+		// "https://.well-known/…" URL.
+		if parsed, err := url.Parse(raw); err == nil && parsed.Host != "" {
+			origin := parsed.Scheme + "://" + parsed.Host
+			return origin + "/.well-known/oauth-protected-resource"
 		}
-		if strings.HasSuffix(u, "/") {
-			return u + ".well-known/oauth-protected-resource"
-		}
-		if !strings.HasSuffix(u, "/.well-known/oauth-protected-resource") {
-			return u + "/.well-known/oauth-protected-resource"
-		}
-		return u
 	}
 
 	// Proxy-aware fallback

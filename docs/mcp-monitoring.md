@@ -128,6 +128,48 @@ This flow is powered by the dual-auth system in the MCP server: direct `mcp_...`
 
 **Important**: The remote MCP endpoint must be publicly reachable over HTTPS. Plain HTTP is rejected for the OAuth flow.
 
+#### Production Gotchas & Live Debugging Tools (Coolify + Traefik)
+
+When running the remote MCP behind Coolify + Traefik + Cloudflare, several subtle issues can break RFC 9728 Protected Resource Metadata (PRM) discovery that Grok Web (and other OAuth clients) rely on:
+
+- The 401 challenge response from `/mcp` must include a valid `WWW-Authenticate: Bearer resource_metadata="..."` header pointing at a working `/.well-known/oauth-protected-resource` document.
+- Early versions of the dual-auth layer emitted a broken link (`https://.well-known/...`) even when `MCP_PUBLIC_URL` was correctly set. This completely blocked Grok Web Custom Connector flows while raw `mcp_...` keys continued to work.
+
+**What we implemented to make the OAuth path reliable:**
+
+- `buildResourceMetadataURL()` helper in `cmd/mcp-monitor/main.go` that strongly prefers `MCP_PUBLIC_URL`, normalizes it correctly, and respects `X-Forwarded-Proto` / `X-Forwarded-Host`.
+- A production safety net: when all header/env sources produce an empty host, it falls back to the known public URL for this service so the broken link can never appear again.
+- Startup diagnostic logging (visible in container logs) that prints the exact `MCP_PUBLIC_URL` / `OAUTH_AUTH_SERVER` values the Go process sees at HTTP startup, plus an example of what the helper currently produces.
+- Live unauthenticated debug endpoint:
+
+  ```
+  GET https://mcp.quantyralabs.cc/debug/oauth-config
+  ```
+
+  Returns JSON showing:
+  - `process_mcp_public_url` and `process_oauth_auth_server` as seen by `os.Getenv`
+  - `produced_resource_metadata_url` (what `buildResourceMetadataURL` actually returns right now)
+  - A note explaining what a mismatch means
+
+**Observed gotcha (June 2026):** The broken URL (`https://.well-known/oauth-protected-resource`) was traced to a helper bug in `buildResourceMetadataURL()`: it used `strings.Index("/mcp")`, which matched the host segment in `https://mcp...` and truncated the base to `https:/`. The fix now uses `net/url.Parse` and derives `scheme://host` safely.
+
+**What to expect now:** If `MCP_PUBLIC_URL=https://mcp.quantyralabs.cc/mcp`, then `/debug/oauth-config` should report:
+- `produced_resource_metadata_url=https://mcp.quantyralabs.cc/.well-known/oauth-protected-resource`
+
+If it does not, the running container likely has an old image or stale deployment, not just a header/env mismatch.
+
+**Required environment variables for the `idx-api-mcp` Coolify app (OAuth flow):**
+
+```env
+MCP_PUBLIC_URL=https://mcp.quantyralabs.cc/mcp
+OAUTH_AUTH_SERVER=https://idx.quantyralabs.cc
+MCP_HTTP_ENABLED=true
+```
+
+These must be present at **runtime** (not just build time). The dual-auth layer uses them to construct correct PRM links and to route unauthenticated requests to the OAuth consent flow.
+
+See also the troubleshooting notes in the commit history around `df10eb9` and `8051a9f` for the earlier diagnosis timeline and follow-up fix.
+
 ### Example System Prompt for Grok when using Comps
 
 ```

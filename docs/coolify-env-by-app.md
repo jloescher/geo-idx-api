@@ -22,6 +22,8 @@ Multi-DC: replicate the same four worker roles per datacenter (NYC + ATL). All p
 
 **idx-images:** separate Dockerfile; no MLS/FEMA/geocode vars.
 
+**idx-api-mcp:** dedicated Coolify app for the remote MCP (Streamable HTTP). Uses Dockerfile target `mcp-monitor`. Exposes port 3000. Supports both raw `mcp_...` keys (for Cursor / local) and OAuth 2.1 + PKCE (for Grok Web Custom Connectors). See `docs/mcp-monitoring.md`.
+
 ---
 
 ## Shared environment (all six apps)
@@ -141,6 +143,42 @@ WORKER_QUEUES=default,sync-kickoff,bridge-sync-fetch,bridge-sync-persist,spark-s
 ```
 
 Include FEMA, geocode, and CoinGecko vars on that same worker.
+
+### idx-api-mcp (remote MCP for AI agents / Grok Web)
+
+This is a separate Coolify application using Dockerfile target `mcp-monitor`.
+
+**Core runtime variables (required for both raw keys and OAuth flow):**
+
+```env
+MCP_HTTP_ENABLED=true
+MCP_PUBLIC_URL=https://mcp.quantyralabs.cc/mcp
+OAUTH_AUTH_SERVER=https://idx.quantyralabs.cc
+```
+
+These power:
+- Correct RFC 9728 Protected Resource Metadata (`/.well-known/oauth-protected-resource`)
+- The `WWW-Authenticate: Bearer resource_metadata="..."` header on 401 challenges
+- Routing unauthenticated clients into the OAuth 2.1 + PKCE consent flow on the main web app
+
+**Important production note (June 2026):** A malformed PRM URL (`https://.well-known/oauth-protected-resource`) was caused by a string-splitting bug in `buildResourceMetadataURL()`, not by the `MCP_PUBLIC_URL` value itself. The helper now uses `net/url.Parse` to derive `scheme://host` safely. Use the live debug endpoint after deploy:
+
+```
+GET https://mcp.quantyralabs.cc/debug/oauth-config
+```
+
+Expected value with production env:
+
+```json
+{
+  "process_mcp_public_url": "https://mcp.quantyralabs.cc/mcp",
+  "produced_resource_metadata_url": "https://mcp.quantyralabs.cc/.well-known/oauth-protected-resource"
+}
+```
+
+If `produced_resource_metadata_url` is still malformed, verify the app is running the latest image/revision and fully redeployed.
+
+See `docs/mcp-monitoring.md` → "Production Gotchas & Live Debugging Tools" for full troubleshooting context.
 
 ---
 
