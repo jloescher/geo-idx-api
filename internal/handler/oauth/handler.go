@@ -58,7 +58,7 @@ func (h *Handler) Authorize(c *fiber.Ctx) error {
 	responseType := c.Query("response_type", "code")
 	codeChallenge := c.Query("code_challenge")
 	codeChallengeMethod := c.Query("code_challenge_method")
-	scope := c.Query("scope", "monitor comps content")
+	scope := c.Query("scope", defaultScopeString)
 	state := c.Query("state")
 
 	if clientID == "" || redirectURI == "" || responseType != "code" {
@@ -93,105 +93,24 @@ func (h *Handler) Authorize(c *fiber.Ctx) error {
 		})
 	}
 
+	validatedScopes, err := ParseAndValidateScopes(scope)
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+			"error":             "invalid_scope",
+			"error_description": err.Error(),
+		})
+	}
+	scope = ScopeString(validatedScopes)
+
 	// Check if user is logged in via dashboard session
-	userID, ok := c.Locals("user_id").(int64)
-	if !ok || userID == 0 {
+	if uid, ok := c.Locals("user_id").(int64); !ok || uid == 0 {
 		// Not logged in → redirect to dashboard login with return url
 		returnURI := c.OriginalURL()
 		loginURL := fmt.Sprintf("/login?return_to=%s", url.QueryEscape(returnURI))
 		return c.Redirect(loginURL)
 	}
 
-	// For a functional version, show the user's existing MCP keys so they can choose which to grant.
-	userKeys, _ := h.mcpKeyRepo.ListByCreator(c.Context(), userID)
-
-	// Build checkboxes for the keys
-	var keyCheckboxes string
-	for _, k := range userKeys {
-		if k.RevokedAt != nil {
-			continue
-		}
-		keyCheckboxes += fmt.Sprintf(
-			`<label style="display:block; margin-bottom:0.25rem;">
-				<input type="checkbox" name="granted_key_ids" value="%d" checked>
-				%s <small>(scopes: %s)</small>
-			</label>`,
-			k.ID, k.Name, strings.Join(k.Scopes, ", "),
-		)
-	}
-
-	if keyCheckboxes == "" {
-		keyCheckboxes = `<p><em>You don't have any active MCP keys yet. Create some in the dashboard first.</em></p>`
-	}
-
-	// Polished consent screen using consistent dashboard patterns
-	html := fmt.Sprintf(`
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Authorize Grok Web — Quantyra IDX</title>
-  <link rel="stylesheet" href="/static/css/app.css">
-  <style>
-    body { background: #f8fafc; }
-    .consent-container { max-width: 620px; margin: 4rem auto; padding: 0 1rem; }
-    .consent-card { background: white; border-radius: 12px; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); padding: 2rem; }
-  </style>
-</head>
-<body>
-  <div class="consent-container">
-    <div class="consent-card">
-      <h1 style="margin-bottom: 0.25rem;">Authorize Grok Web</h1>
-      <p class="text-muted" style="margin-bottom: 1.5rem;">Grok Web is requesting access to your Quantyra IDX MCP tools.</p>
-
-      <div class="setup-section">
-        <h2 style="font-size: 1.1rem; margin-bottom: 0.5rem;">Requested Scopes</h2>
-        <ul style="margin: 0 0 1rem 1rem; padding: 0;">
-          <li><strong>monitor</strong> — View system monitoring, queues, GIS health, etc.</li>
-          <li><strong>comps</strong> — Run comparable sales / BPO analysis</li>
-          <li><strong>content</strong> — Safe content generation queries over listings and GIS</li>
-        </ul>
-      </div>
-
-      <div class="setup-section">
-        <h2 style="font-size: 1.1rem; margin-bottom: 0.5rem;">Select which MCP Keys to grant</h2>
-        
-        <form method="POST" action="/oauth/authorize">
-          <input type="hidden" name="client_id" value="%s">
-          <input type="hidden" name="redirect_uri" value="%s">
-          <input type="hidden" name="code_challenge" value="%s">
-          <input type="hidden" name="code_challenge_method" value="%s">
-          <input type="hidden" name="scope" value="%s">
-          <input type="hidden" name="state" value="%s">
-
-          %s
-
-          <div style="margin: 1.25rem 0;">
-            <label class="checkbox-label" style="font-weight: 500;">
-              <input type="checkbox" name="consent" value="granted" required>
-              <span>I authorize Grok Web to use the selected MCP keys with the scopes above.</span>
-            </label>
-          </div>
-
-          <div style="display: flex; gap: 0.75rem; margin-top: 1rem;">
-            <button type="submit" class="btn btn-primary">Authorize</button>
-            <a href="%s" class="btn btn-secondary">Cancel</a>
-          </div>
-        </form>
-      </div>
-    </div>
-    
-    <p style="text-align: center; margin-top: 1.5rem; font-size: 0.8rem; color: #64748b;">
-      You are authorizing access via the Quantyra IDX OAuth server.
-    </p>
-  </div>
-</body>
-</html>
-`, escapeFormValue(clientID), escapeFormValue(redirectURI), escapeFormValue(codeChallenge),
-		escapeFormValue(codeChallengeMethod), escapeFormValue(scope), escapeFormValue(state),
-		keyCheckboxes, escapeFormValue(redirectURI))
-
+	html := renderConsentPage(client.Name, clientID, redirectURI, codeChallenge, codeChallengeMethod, scope, state)
 	c.Set("Content-Type", "text/html")
 	return c.SendString(html)
 }
@@ -207,7 +126,7 @@ func (h *Handler) Consent(c *fiber.Ctx) error {
 	redirectURI := c.FormValue("redirect_uri")
 	codeChallenge := c.FormValue("code_challenge")
 	codeChallengeMethod := c.FormValue("code_challenge_method")
-	scope := c.FormValue("scope", "monitor comps content")
+	scope := c.FormValue("scope", defaultScopeString)
 	state := c.FormValue("state")
 	consent := c.FormValue("consent")
 
@@ -238,44 +157,14 @@ func (h *Handler) Consent(c *fiber.Ctx) error {
 		return c.Redirect(u.String(), fiber.StatusSeeOther)
 	}
 
-	// Parse which keys the user selected on the consent form
-	var grantedMCPKeyIDs []int64
-	for _, v := range c.Context().PostArgs().PeekMulti("granted_key_ids") {
-		var id int64
-		fmt.Sscanf(string(v), "%d", &id)
-		if id > 0 {
-			grantedMCPKeyIDs = append(grantedMCPKeyIDs, id)
-		}
+	validatedScopes, err := ParseAndValidateScopes(scope)
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+			"error":             "invalid_scope",
+			"error_description": err.Error(),
+		})
 	}
-
-	userKeys, _ := h.mcpKeyRepo.ListByCreator(c.Context(), userID)
-	ownedActive := make(map[int64]struct{})
-	for _, k := range userKeys {
-		if k.RevokedAt == nil {
-			ownedActive[k.ID] = struct{}{}
-		}
-	}
-
-	// If the user didn't select any, fall back to all their active keys (functional behavior)
-	if len(grantedMCPKeyIDs) == 0 {
-		for id := range ownedActive {
-			grantedMCPKeyIDs = append(grantedMCPKeyIDs, id)
-		}
-	} else {
-		filtered := grantedMCPKeyIDs[:0]
-		for _, id := range grantedMCPKeyIDs {
-			if _, ok := ownedActive[id]; ok {
-				filtered = append(filtered, id)
-			}
-		}
-		grantedMCPKeyIDs = filtered
-		if len(grantedMCPKeyIDs) == 0 {
-			return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-				"error":             "invalid_request",
-				"error_description": "no valid MCP keys selected",
-			})
-		}
-	}
+	scope = ScopeString(validatedScopes)
 
 	if strings.TrimSpace(codeChallengeMethod) == "" {
 		codeChallengeMethod = "S256"
@@ -293,17 +182,6 @@ func (h *Handler) Consent(c *fiber.Ctx) error {
 		CodeChallenge:       &codeChallenge,
 		CodeChallengeMethod: &codeChallengeMethod,
 		ExpiresAt:           time.Now().Add(10 * time.Minute),
-	}
-
-	// For the functional version we store the granted key IDs by serializing them into the scope field
-	// temporarily (a proper implementation would add a dedicated column or JSONB field).
-	// When we exchange the code we will parse them back out.
-	if len(grantedMCPKeyIDs) > 0 {
-		ids := make([]string, len(grantedMCPKeyIDs))
-		for i, id := range grantedMCPKeyIDs {
-			ids[i] = fmt.Sprintf("%d", id)
-		}
-		authCode.Scope = scope + " granted_keys:" + strings.Join(ids, ",")
 	}
 
 	if err := h.oauthRepo.CreateAuthorizationCode(c.Context(), authCode); err != nil {
@@ -506,15 +384,23 @@ func (h *Handler) RevokeAllTokensForClient(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"ok": true})
 }
 
-// Token handles POST /oauth/token (Authorization Code + PKCE exchange)
+// Token handles POST /oauth/token (authorization_code + refresh_token grants).
 func (h *Handler) Token(c *fiber.Ctx) error {
 	grantType := c.FormValue("grant_type")
-	if grantType != "authorization_code" {
+	clientID := c.FormValue("client_id")
+
+	switch grantType {
+	case "authorization_code":
+		return h.tokenAuthorizationCode(c, clientID)
+	case "refresh_token":
+		return h.tokenRefresh(c, clientID)
+	default:
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "unsupported_grant_type"})
 	}
+}
 
+func (h *Handler) tokenAuthorizationCode(c *fiber.Ctx, clientID string) error {
 	code := c.FormValue("code")
-	clientID := c.FormValue("client_id")
 	redirectURI := c.FormValue("redirect_uri")
 	codeVerifier := c.FormValue("code_verifier")
 
@@ -522,7 +408,6 @@ func (h *Handler) Token(c *fiber.Ctx) error {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid_request"})
 	}
 
-	// Consume the code (one-time use)
 	authCode, err := h.oauthRepo.ConsumeAuthorizationCode(c.Context(), code)
 	if err != nil || authCode == nil {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid_grant"})
@@ -539,53 +424,96 @@ func (h *Handler) Token(c *fiber.Ctx) error {
 		})
 	}
 
-	// Parse granted key IDs that were selected during consent and stored on the auth code
-	var grantedKeyIDs []int64
-	if idx := strings.Index(authCode.Scope, "granted_keys:"); idx != -1 {
-		keysPart := authCode.Scope[idx+len("granted_keys:"):]
-		for _, part := range strings.Split(keysPart, ",") {
-			var id int64
-			fmt.Sscanf(strings.TrimSpace(part), "%d", &id)
-			if id > 0 {
-				grantedKeyIDs = append(grantedKeyIDs, id)
-			}
-		}
-		// Clean the scope for the final token
-		authCode.Scope = strings.TrimSpace(authCode.Scope[:idx])
+	return h.issueTokens(c, authCode.ClientID, authCode.UserID, authCode.Scope)
+}
+
+func (h *Handler) tokenRefresh(c *fiber.Ctx, clientID string) error {
+	refreshToken := c.FormValue("refresh_token")
+	if refreshToken == "" || clientID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid_request"})
 	}
 
-	// Fallback: if nothing was recorded, grant all user's active keys
-	if len(grantedKeyIDs) == 0 {
-		userKeys, _ := h.mcpKeyRepo.ListByCreator(c.Context(), authCode.UserID)
-		for _, k := range userKeys {
-			if k.RevokedAt == nil {
-				grantedKeyIDs = append(grantedKeyIDs, k.ID)
-			}
-		}
+	refresh, err := h.oauthRepo.ConsumeRefreshToken(c.Context(), hashToken(refreshToken), clientID)
+	if err != nil || refresh == nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid_grant"})
+	}
+
+	return h.issueTokens(c, refresh.ClientID, refresh.UserID, refresh.Scope)
+}
+
+func (h *Handler) issueTokens(c *fiber.Ctx, clientID string, userID int64, scope string) error {
+	validatedScopes, err := ParseAndValidateScopes(scope)
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+			"error":             "invalid_scope",
+			"error_description": err.Error(),
+		})
+	}
+	scope = ScopeString(validatedScopes)
+
+	client, err := h.clientRepo.FindByClientID(c.Context(), clientID)
+	if err != nil || client == nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid_client"})
+	}
+
+	keyID, err := h.mcpKeyRepo.FindOrCreateOAuthKey(c.Context(), userID, clientID, client.Name, validatedScopes)
+	if err != nil {
+		h.logger.Error("failed to provision oauth mcp key", "error", err, "client_id", clientID, "user_id", userID)
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "server_error"})
+	}
+
+	accessTTL := h.cfg.OAuth.AccessTokenTTL
+	if accessTTL <= 0 {
+		accessTTL = 24 * time.Hour
+	}
+	refreshTTL := h.cfg.OAuth.RefreshTokenTTL
+	if refreshTTL <= 0 {
+		refreshTTL = 30 * 24 * time.Hour
 	}
 
 	accessToken := generateRandomString(48)
-	tokenHash := hashToken(accessToken)
+	refreshToken := generateRandomString(48)
 
 	access := &repository.OAuthAccessToken{
-		TokenHash:        tokenHash,
-		ClientID:         authCode.ClientID,
-		UserID:           authCode.UserID,
-		Scope:            authCode.Scope,
-		GrantedMCPKeyIDs: grantedKeyIDs,
-		ExpiresAt:        time.Now().Add(1 * time.Hour),
+		TokenHash:        hashToken(accessToken),
+		ClientID:         clientID,
+		UserID:           userID,
+		Scope:            scope,
+		GrantedMCPKeyIDs: []int64{keyID},
+		ExpiresAt:        time.Now().Add(accessTTL),
 	}
-
 	if err := h.oauthRepo.CreateAccessToken(c.Context(), access); err != nil {
 		h.logger.Error("failed to store access token", "error", err)
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "server_error"})
 	}
 
+	refresh := &repository.OAuthRefreshToken{
+		TokenHash:        hashToken(refreshToken),
+		ClientID:         clientID,
+		UserID:           userID,
+		Scope:            scope,
+		GrantedMCPKeyIDs: []int64{keyID},
+		ExpiresAt:        time.Now().Add(refreshTTL),
+	}
+	if err := h.oauthRepo.CreateRefreshToken(c.Context(), refresh); err != nil {
+		h.logger.Error("failed to store refresh token", "error", err)
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "server_error"})
+	}
+
+	_ = h.oauthRepo.CreateConsent(c.Context(), &repository.OAuthConsent{
+		UserID:           userID,
+		ClientID:         clientID,
+		Scope:            scope,
+		GrantedMCPKeyIDs: []int64{keyID},
+	})
+
+	expiresIn := int(accessTTL.Seconds())
 	return c.JSON(fiber.Map{
-		"access_token": accessToken,
-		"token_type":   "Bearer",
-		"expires_in":   3600,
-		"scope":        authCode.Scope,
+		"access_token":  accessToken,
+		"token_type":    "Bearer",
+		"expires_in":    expiresIn,
+		"refresh_token": refreshToken,
+		"scope":         scope,
 	})
 }
 

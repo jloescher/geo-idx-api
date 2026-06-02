@@ -83,7 +83,18 @@ The MCP server validates keys on every tool call and records last-used timestamp
 
 ### OAuth clients: no `mcp_key` in tool arguments
 
-When connected via Grok Web OAuth, **do not pass `mcp_key`** in tool calls. Authorization comes from the `Authorization: Bearer <oauth_access_token>` header established at connect time. Scopes are enforced from the OAuth token (`monitor`, `comps`, `content`, `api`) and/or granted MCP keys selected on the consent screen.
+When connected via Grok Web OAuth, **do not pass `mcp_key`** in tool calls. Authorization comes from the `Authorization: Bearer <oauth_access_token>` header established at connect time. Scopes are enforced from the OAuth token and the auto-provisioned MCP key created at token exchange.
+
+### Scope tiers
+
+| Scope | Tools |
+|-------|-------|
+| `monitor` | Monitoring snapshot, queue, GIS health, inspect |
+| `comps` | `run_comps` and comps helpers |
+| `content` | `search_listings`, `search_listings_for_content`, `get_listing` (non-expanded mirror JSON only) |
+| `api` | All content tools plus live search, expanded listing, RESO/GIS proxy (requires `MCP_API_*` env) |
+
+Tool responses include `effective_scopes` (union of OAuth token scopes and granted key scopes).
 
 Stdio/local clients may still pass `mcp_key` per tool call or use `Bearer mcp_...` on HTTP.
 
@@ -144,12 +155,15 @@ This allows you to add it as a **Custom MCP Connector** directly in Grok Web wit
 
 4. Grok will redirect you to our `/oauth/authorize` endpoint.
    - Log in with your Quantyra dashboard account.
-   - Select which of your MCP keys you want to grant access to.
-   - Approve the request.
+   - Review requested scopes and approve (an MCP key is created automatically for this OAuth client).
 
-5. Grok will receive an access token and can now call MCP tools **without passing `mcp_key` in tool arguments**.
+5. Grok receives access + refresh tokens and can call MCP tools **without passing `mcp_key` in tool arguments**.
 
-This flow is powered by the dual-auth system in the MCP server: direct `mcp_...` bearer tokens continue to work for local/CLI use, while Grok Web uses short-lived OAuth access tokens.
+   - Access tokens default to **24h** (`OAUTH_ACCESS_TOKEN_TTL`).
+   - Refresh tokens default to **30 days** (`OAUTH_REFRESH_TOKEN_TTL`) with rotation on use.
+   - Re-authorize only when refresh fails or you need scope changes.
+
+This flow is powered by the dual-auth system in the MCP server: direct `mcp_...` bearer tokens continue to work for local/CLI use, while Grok Web uses OAuth access tokens.
 
 **Important**: The remote MCP endpoint must be publicly reachable over HTTPS. Plain HTTP is rejected for the OAuth flow.
 
@@ -189,9 +203,41 @@ If it does not, the running container likely has an old image or stale deploymen
 MCP_PUBLIC_URL=https://mcp.quantyralabs.cc/mcp
 OAUTH_AUTH_SERVER=https://idx.quantyralabs.cc
 MCP_HTTP_ENABLED=true
+MCP_API_INTERNAL_URL=https://idx.quantyralabs.cc
+MCP_API_DOMAIN_SLUG=your-domain-slug
+MCP_API_SERVICE_TOKEN=<idx:full PAT plaintext>
+OAUTH_ACCESS_TOKEN_TTL=24h
+OAUTH_REFRESH_TOKEN_TTL=720h
 ```
 
+Interim note: until you deploy auto-key OAuth, you can manually add `api` to an existing MCP key and select it on the legacy consent flow. After deploy, re-authorize Grok once; keys are provisioned automatically.
+
 These must be present at **runtime** (not just build time). The dual-auth layer uses them to construct correct PRM links and to route unauthenticated requests to the OAuth consent flow.
+
+#### MCP session stickiness (multi-origin)
+
+Streamable HTTP MCP sessions are **in-memory per process**. If `initialize` hits server A and `tools/call` hits server B, Grok sees `Invalid session ID`.
+
+**Cloudflare session affinity (`__cflb`) requires a paid Load Balancer** (Traffic → Load Balancing, proxied orange-cloud pool). It does **not** apply to:
+
+- DNS-only (gray-cloud) records
+- Multiple **A records** on one hostname without Load Balancing (Cloudflare or client DNS round-robin between origins)
+
+**Recommended without Cloudflare Load Balancing (two servers, two A records):**
+
+| Approach | Setup |
+|----------|--------|
+| **Single MCP origin (simplest)** | Run **one** idx-api-mcp container (one Coolify app, replica count 1). Point `mcp.quantyralabs.cc` to **one** A record / one server IP. Keep two A records for `idx.quantyralabs.cc` API if you want — MCP does not need the same multi-origin layout. |
+| **One hostname per server** | e.g. `mcp-nyc.quantyralabs.cc` → NYC IP only, `mcp-atl.quantyralabs.cc` → ATL IP only. Set `MCP_PUBLIC_URL` to the hostname Grok actually uses (single URL). Do not round-robin two IPs on the same MCP hostname. |
+| **Paid option later** | Cloudflare Load Balancer with Session Affinity on `/mcp*` if you need one hostname and multiple MCP replicas. |
+
+Traefik on each Coolify host only sticks sessions **within that host**. Two public IPs mean two independent Traefiks — DNS must send a client to the **same** IP for the whole Grok session (fragile with round-robin A records).
+
+Smoke test after connect:
+
+1. `initialize` → capture `Mcp-Session-Id` response header
+2. `tools/call` with the same session header and Bearer token
+3. Expect tool results, not session errors
 
 See also the troubleshooting notes in the commit history around `df10eb9` and `8051a9f` for the earlier diagnosis timeline and follow-up fix.
 

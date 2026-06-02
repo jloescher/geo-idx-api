@@ -295,6 +295,17 @@ Use **Cloudflare Load Balancer** or **Geo Steering** on public hostnames:
 |----------|----------|----------|--------------|
 | `idx.quantyralabs.cc` | re-db → `idx-api-nyc` :8000 | re-node-02 → `idx-api-atl` :8000 | `GET /healthz` |
 | `idx-images.quantyralabs.cc` | re-db → `idx-images-nyc` :8080 | re-node-02 → `idx-images-atl` :8080 | `GET /health` |
+| `mcp.quantyralabs.cc` | re-db → `idx-api-mcp-nyc` | re-node-02 → `idx-api-mcp-atl` | `GET /healthz` |
+
+**MCP session stickiness:** Streamable HTTP MCP keeps sessions in process memory. Cloudflare **Session Affinity** (`__cflb`) only works on **paid Load Balancers** (proxied), not on DNS-only or plain multiple-A-record setups.
+
+If you use **two A records / two IPs without Cloudflare Load Balancing** (no extra LB fee):
+
+- **Do not** run idx-api-mcp on both servers behind the same hostname with round-robin DNS — Grok can hit different IPs on `initialize` vs `tools/call` and get `Invalid session ID`.
+- **Do** run **one** idx-api-mcp instance and point `mcp.quantyralabs.cc` at **one** origin IP, **or** use separate hostnames per DC (`mcp-nyc…`, `mcp-atl…`) with a single `MCP_PUBLIC_URL` in Grok.
+- API (`idx.quantyralabs.cc`) can still use two A records; MCP is stateful and should stay single-origin unless you add CF Load Balancing with session affinity.
+
+If you later enable Cloudflare Load Balancing, turn on Session Affinity (By Cloudflare cookie) for the MCP pool on `/mcp*`.
 
 Terminate TLS at Cloudflare or Coolify/Traefik; health checks must reach the app port through the proxy.
 

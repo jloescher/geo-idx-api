@@ -27,6 +27,7 @@ type Config struct {
 	FEMA      FEMAConfig
 	Comps     CompsConfig
 	Scheduler SchedulerConfig
+	OAuth     OAuthConfig
 }
 
 // CompsConfig controls comparables engine behavior.
@@ -52,6 +53,12 @@ type FEMAConfig struct {
 type SchedulerConfig struct {
 	LeaderLockKey       int64
 	StandbyPollInterval time.Duration
+}
+
+// OAuthConfig controls MCP OAuth token lifetimes.
+type OAuthConfig struct {
+	AccessTokenTTL  time.Duration
+	RefreshTokenTTL time.Duration
 }
 
 type AppConfig struct {
@@ -423,6 +430,10 @@ func Load() (Config, error) {
 		Scheduler: SchedulerConfig{
 			LeaderLockKey:       envSchedulerLeaderLockKey(),
 			StandbyPollInterval: time.Duration(envInt("SCHEDULER_STANDBY_POLL_SECONDS", 15)) * time.Second,
+		},
+		OAuth: OAuthConfig{
+			AccessTokenTTL:  envDuration("OAUTH_ACCESS_TOKEN_TTL", 24*time.Hour),
+			RefreshTokenTTL: envDuration("OAUTH_REFRESH_TOKEN_TTL", 30*24*time.Hour),
 		},
 	}
 

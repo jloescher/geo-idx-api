@@ -595,18 +595,22 @@ func (h *Handler) MCPKeysPage(c *fiber.Ctx) error {
 		b.WriteString(`<div class="empty-state"><p>No MCP keys yet.</p><p class="empty-hint">Create one above to give AI agents and tools access.</p></div>`)
 	} else {
 		b.WriteString(`<table class="table" style="width:100%;">`)
-		b.WriteString(`<thead><tr><th>Name</th><th>Scopes</th><th>Created</th><th>Last Used</th><th style="width:80px;"></th></tr></thead>`)
+		b.WriteString(`<thead><tr><th>Name</th><th>Scopes</th><th>OAuth</th><th>Created</th><th>Last Used</th><th style="width:80px;"></th></tr></thead>`)
 		b.WriteString(`<tbody>`)
 		for _, k := range keys {
 			scopes := strings.Join(k.Scopes, ", ")
+			oauthBadge := "—"
+			if k.OAuthClientID != nil && *k.OAuthClientID != "" {
+				oauthBadge = fmt.Sprintf(`<code>%s</code>`, web.Esc(*k.OAuthClientID))
+			}
 			created := k.CreatedAt.Format("2006-01-02")
 			lastUsed := "never"
 			if k.LastUsedAt != nil {
 				lastUsed = k.LastUsedAt.Format("2006-01-02 15:04")
 			}
 			b.WriteString(fmt.Sprintf(
-				`<tr data-key-id="%d"><td>%s</td><td><code>%s</code></td><td>%s</td><td>%s</td><td style="text-align:right;"><button class="btn btn-danger btn-sm revoke-btn">Revoke</button></td></tr>`,
-				k.ID, web.Esc(k.Name), scopes, created, lastUsed,
+				`<tr data-key-id="%d"><td>%s</td><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td style="text-align:right;"><button class="btn btn-danger btn-sm revoke-btn">Revoke</button></td></tr>`,
+				k.ID, web.Esc(k.Name), scopes, oauthBadge, created, lastUsed,
 			))
 		}
 		b.WriteString(`</tbody></table>`)

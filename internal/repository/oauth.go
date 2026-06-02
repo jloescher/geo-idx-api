@@ -35,7 +35,18 @@ type OAuthAccessToken struct {
 	CreatedAt         time.Time `db:"created_at"`
 }
 
-// OAuthConsent represents a recorded user consent.
+// OAuthRefreshToken represents a long-lived refresh token.
+type OAuthRefreshToken struct {
+	TokenHash        string    `db:"token_hash"`
+	ClientID         string    `db:"client_id"`
+	UserID           int64     `db:"user_id"`
+	Scope            string    `db:"scope"`
+	GrantedMCPKeyIDs []int64   `db:"granted_mcp_key_ids"`
+	ExpiresAt        time.Time `db:"expires_at"`
+	RevokedAt        *time.Time `db:"revoked_at"`
+	CreatedAt        time.Time `db:"created_at"`
+}
+
 type OAuthConsent struct {
 	ID               int64     `db:"id"`
 	UserID           int64     `db:"user_id"`
@@ -250,6 +261,77 @@ func (r *OAuthRepo) RevokeAllAccessTokensForClient(ctx context.Context, clientID
 	_, err := r.pool.Exec(ctx, `
 		DELETE FROM oauth_access_tokens 
 		WHERE client_id = $1 AND expires_at > NOW()
+	`, clientID)
+	if err != nil {
+		return err
+	}
+	return r.RevokeRefreshTokensForClient(ctx, clientID)
+}
+
+// CreateRefreshToken stores a new refresh token hash.
+func (r *OAuthRepo) CreateRefreshToken(ctx context.Context, token *OAuthRefreshToken) error {
+	idsJSON, err := encodeGrantedMCPKeyIDs(token.GrantedMCPKeyIDs)
+	if err != nil {
+		return fmt.Errorf("marshal granted_mcp_key_ids: %w", err)
+	}
+	_, err = r.pool.Exec(ctx, `
+		INSERT INTO oauth_refresh_tokens
+		(token_hash, client_id, user_id, scope, granted_mcp_key_ids, expires_at)
+		VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+	`, token.TokenHash, token.ClientID, token.UserID, token.Scope, string(idsJSON), token.ExpiresAt)
+	return err
+}
+
+// ConsumeRefreshToken validates, revokes, and returns a refresh token (one-time use).
+func (r *OAuthRepo) ConsumeRefreshToken(ctx context.Context, tokenHash, clientID string) (*OAuthRefreshToken, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	query := `
+		SELECT token_hash, client_id, user_id, scope, granted_mcp_key_ids, expires_at, revoked_at, created_at
+		FROM oauth_refresh_tokens
+		WHERE token_hash = $1 AND client_id = $2
+		FOR UPDATE
+	`
+	var t OAuthRefreshToken
+	var idsJSON []byte
+	var revokedAt *time.Time
+	err = tx.QueryRow(ctx, query, tokenHash, clientID).Scan(
+		&t.TokenHash, &t.ClientID, &t.UserID, &t.Scope, &idsJSON,
+		&t.ExpiresAt, &revokedAt, &t.CreatedAt,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if revokedAt != nil || time.Now().After(t.ExpiresAt) {
+		return nil, nil
+	}
+	if err := decodeGrantedMCPKeyIDs(idsJSON, &t.GrantedMCPKeyIDs); err != nil {
+		return nil, err
+	}
+
+	_, err = tx.Exec(ctx, `UPDATE oauth_refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1`, tokenHash)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// RevokeRefreshTokensForClient soft-revokes all active refresh tokens for a client.
+func (r *OAuthRepo) RevokeRefreshTokensForClient(ctx context.Context, clientID string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE oauth_refresh_tokens
+		SET revoked_at = NOW()
+		WHERE client_id = $1 AND revoked_at IS NULL AND expires_at > NOW()
 	`, clientID)
 	return err
 }

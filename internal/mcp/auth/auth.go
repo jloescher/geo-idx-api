@@ -183,6 +183,51 @@ func (s AuthSession) HasScope(scope string) bool {
 	return false
 }
 
+// RequireAnyScope resolves auth and verifies at least one of the requested scopes.
+func RequireAnyScope(ctx context.Context, req mcp.CallToolRequest, keyRepo *repository.MCPKeyRepo, scopes ...string) (AuthSession, error) {
+	s, err := Resolve(ctx, req, keyRepo)
+	if err != nil {
+		return AuthSession{}, err
+	}
+	for _, scope := range scopes {
+		if s.HasScope(scope) {
+			return s, nil
+		}
+	}
+	if len(scopes) == 1 {
+		return AuthSession{}, fmt.Errorf("insufficient permissions: '%s' scope is required", scopes[0])
+	}
+	return AuthSession{}, fmt.Errorf("insufficient permissions: one of %v scopes is required", scopes)
+}
+
+// EffectiveScopesList returns the union of OAuth token scopes and granted MCP key scopes.
+func (s AuthSession) EffectiveScopesList() []string {
+	seen := map[string]struct{}{}
+	var out []string
+	add := func(scope string) {
+		if scope == "" {
+			return
+		}
+		if _, ok := seen[scope]; ok {
+			return
+		}
+		seen[scope] = struct{}{}
+		out = append(out, scope)
+	}
+	for scope := range s.oauthScopes {
+		add(scope)
+	}
+	for scope := range s.grantedScopes {
+		add(scope)
+	}
+	if s.MCPKey != nil {
+		for _, scope := range s.MCPKey.Scopes {
+			add(scope)
+		}
+	}
+	return out
+}
+
 // RequireScope resolves auth and verifies the requested scope.
 func RequireScope(ctx context.Context, req mcp.CallToolRequest, keyRepo *repository.MCPKeyRepo, scope string) (AuthSession, error) {
 	s, err := Resolve(ctx, req, keyRepo)

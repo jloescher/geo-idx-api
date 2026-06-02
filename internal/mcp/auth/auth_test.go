@@ -47,6 +47,20 @@ func TestAuthSession_HasScope_MCPKey(t *testing.T) {
 	}
 }
 
+func TestAuthSession_EffectiveScopesList(t *testing.T) {
+	s := AuthSession{
+		OAuthToken: &repository.OAuthAccessToken{Scope: "monitor"},
+		oauthScopes: parseScopeSet("monitor"),
+		grantedScopes: map[string]struct{}{
+			"api": {},
+		},
+	}
+	scopes := s.EffectiveScopesList()
+	if len(scopes) != 2 {
+		t.Fatalf("got %v", scopes)
+	}
+}
+
 func TestParseScopeSet_SkipsGrantedKeys(t *testing.T) {
 	set := parseScopeSet("monitor comps granted_keys:1,2")
 	if _, ok := set["granted_keys:1,2"]; ok {

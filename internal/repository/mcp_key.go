@@ -21,6 +21,7 @@ type MCPKey struct {
 	KeyHash          string    `db:"key_hash"`
 	Scopes           []string  `db:"scopes"` // populated from JSONB
 	DomainID         *int64    `db:"domain_id"`
+	OAuthClientID    *string   `db:"oauth_client_id"`
 	CreatedByUserID  int64     `db:"created_by_user_id"`
 	CreatedAt        time.Time `db:"created_at"`
 	LastUsedAt       *time.Time `db:"last_used_at"`
@@ -210,7 +211,7 @@ func (r *MCPKeyRepo) ListByCreator(ctx context.Context, userID int64) ([]MCPKey,
 	}
 
 	rows, err := pool.Query(ctx, `
-		SELECT id, name, key_hash, scopes, created_by_user_id, created_at, last_used_at, revoked_at, notes
+		SELECT id, name, key_hash, scopes, oauth_client_id, created_by_user_id, created_at, last_used_at, revoked_at, notes
 		FROM mcp_keys
 		WHERE created_by_user_id = $1
 		  AND revoked_at IS NULL
@@ -225,7 +226,7 @@ func (r *MCPKeyRepo) ListByCreator(ctx context.Context, userID int64) ([]MCPKey,
 	for rows.Next() {
 		var k MCPKey
 		var scopesJSON []byte
-		if err := rows.Scan(&k.ID, &k.Name, &k.KeyHash, &scopesJSON, &k.CreatedByUserID, &k.CreatedAt, &k.LastUsedAt, &k.RevokedAt, &k.Notes); err != nil {
+		if err := rows.Scan(&k.ID, &k.Name, &k.KeyHash, &scopesJSON, &k.OAuthClientID, &k.CreatedByUserID, &k.CreatedAt, &k.LastUsedAt, &k.RevokedAt, &k.Notes); err != nil {
 			return nil, err
 		}
 		if len(scopesJSON) > 0 {
@@ -278,4 +279,63 @@ func (k *MCPKey) HasScope(scope string) bool {
 		}
 	}
 	return false
+}
+
+// FindOrCreateOAuthKey returns an active MCP key for the user+OAuth client, creating or updating scopes in place.
+func (r *MCPKeyRepo) FindOrCreateOAuthKey(ctx context.Context, userID int64, clientID, clientName string, scopes []string) (int64, error) {
+	pool := r.db.Pool
+	if pool == nil {
+		return 0, fmt.Errorf("primary database pool not available")
+	}
+	if clientID == "" {
+		return 0, fmt.Errorf("oauth client_id is required")
+	}
+	if len(scopes) == 0 {
+		return 0, fmt.Errorf("at least one scope is required")
+	}
+
+	scopesJSON, err := json.Marshal(scopes)
+	if err != nil {
+		return 0, fmt.Errorf("marshal scopes: %w", err)
+	}
+
+	var existingID int64
+	err = pool.QueryRow(ctx, `
+		SELECT id FROM mcp_keys
+		WHERE created_by_user_id = $1
+		  AND oauth_client_id = $2
+		  AND revoked_at IS NULL
+		LIMIT 1
+	`, userID, clientID).Scan(&existingID)
+	if err == nil {
+		_, err = pool.Exec(ctx, `UPDATE mcp_keys SET scopes = $1::jsonb WHERE id = $2`, scopesJSON, existingID)
+		if err != nil {
+			return 0, fmt.Errorf("update oauth mcp_key scopes: %w", err)
+		}
+		return existingID, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return 0, fmt.Errorf("find oauth mcp_key: %w", err)
+	}
+
+	_, hash, err := GenerateMCPKey()
+	if err != nil {
+		return 0, err
+	}
+
+	name := fmt.Sprintf("OAuth: %s", strings.TrimSpace(clientName))
+	if name == "OAuth:" {
+		name = "OAuth: " + clientID
+	}
+
+	var id int64
+	err = pool.QueryRow(ctx, `
+		INSERT INTO mcp_keys (name, key_hash, scopes, created_by_user_id, oauth_client_id)
+		VALUES ($1, $2, $3::jsonb, $4, $5)
+		RETURNING id
+	`, name, hash, scopesJSON, userID, clientID).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("insert oauth mcp_key: %w", err)
+	}
+	return id, nil
 }

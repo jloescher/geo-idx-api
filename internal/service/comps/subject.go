@@ -27,6 +27,9 @@ func (e *Engine) resolveSubject(ctx context.Context, dataset string, in SubjectI
 }
 
 func mergeSubjectAliases(in SubjectInput) SubjectInput {
+	if strings.EqualFold(strings.TrimSpace(in.Type), "listing") {
+		in.Type = "mls"
+	}
 	if in.FloodZoneCode == nil && in.StellarFloodZoneCode != nil {
 		in.FloodZoneCode = in.StellarFloodZoneCode
 	}

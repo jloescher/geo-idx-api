@@ -46,12 +46,9 @@ func (s *Server) registerSearchTools(mcpServer *server.MCPServer) {
 }
 
 func (s *Server) handleSearchListings(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	session, err := auth.RequireScope(ctx, req, s.keyRepo, "api")
+	session, err := auth.RequireAnyScope(ctx, req, s.keyRepo, "api", "content")
 	if err != nil {
-		session, err = auth.RequireScope(ctx, req, s.keyRepo, "content")
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 	if s.rateLimiter != nil {
 		if err := s.rateLimiter.Allow(ctx, session, "search_listings", ratelimit.TierExpensive); err != nil {

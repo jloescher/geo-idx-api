@@ -18,7 +18,7 @@ import (
 
 func (s *Server) registerListingTools(mcpServer *server.MCPServer) {
 	mcpServer.AddTool(mcp.NewTool("get_listing",
-		mcp.WithDescription("Fetch a single mirrored listing by mls_listing_id or listing_key. Requires 'api' scope."),
+		mcp.WithDescription("Fetch a single mirrored listing by mls_listing_id or listing_key. Requires 'api' or 'content' scope (content returns non-expanded JSON only)."),
 		optionalMCPKey(),
 		mcp.WithString("dataset", mcp.Required(), mcp.Description("Dataset slug, e.g. stellar")),
 		mcp.WithString("listing_id", mcp.Description("MLS listing id (e.g. TB8459085)")),
@@ -35,10 +35,11 @@ func (s *Server) registerListingTools(mcpServer *server.MCPServer) {
 }
 
 func (s *Server) handleGetListing(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	session, err := auth.RequireScope(ctx, req, s.keyRepo, "api")
+	session, err := auth.RequireAnyScope(ctx, req, s.keyRepo, "api", "content")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	hasAPI := session.HasScope("api")
 
 	dataset := req.GetString("dataset", "")
 	if dataset == "" {
@@ -75,6 +76,9 @@ func (s *Server) handleGetListing(ctx context.Context, req mcp.CallToolRequest) 
 	}
 
 	includeExpanded := req.GetBool("include_expanded", false)
+	if !hasAPI {
+		includeExpanded = false
+	}
 	var body json.RawMessage
 	if includeExpanded {
 		body = mls.BuildPublicListingJSON(mirrorRow)

@@ -14,8 +14,9 @@ type ToolResponse struct {
 	GeneratedAt     time.Time `json:"generated_at"`
 	KeyName         string    `json:"key_name,omitempty"`
 	OAuthClientID   string    `json:"oauth_client_id,omitempty"`
-	GrantedScopes   []string  `json:"granted_scopes,omitempty"`
-	GrantedKeyNames []string  `json:"granted_key_names,omitempty"`
+	GrantedScopes    []string  `json:"granted_scopes,omitempty"`
+	EffectiveScopes  []string  `json:"effective_scopes,omitempty"`
+	GrantedKeyNames  []string  `json:"granted_key_names,omitempty"`
 	Notes           string    `json:"notes,omitempty"`
 	Data            any       `json:"data"`
 }
@@ -52,6 +53,7 @@ func NewToolResponseFromSession(session auth.AuthSession, data any, notes string
 			resp.GrantedKeyNames = append(resp.GrantedKeyNames, k.Name)
 		}
 	}
+	resp.EffectiveScopes = session.EffectiveScopesList()
 	return resp
 }
 

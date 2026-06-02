@@ -148,7 +148,7 @@ func (s *Server) registerTools() {
 	// Comps tool for Grok connectors
 	if s.compsEngine != nil {
 		s.mcpServer.AddTool(mcp.NewTool("run_comps",
-			mcp.WithDescription("Run a comparable sales (comps) or BPO analysis using the Quantyra IDX comps engine. This is the primary tool for generating valuation comps. Supports subject property by lat/lng or listing, different modes (A/B/C), and radius or market scope. Use this when you need accurate, data-driven comps for a property."),
+			mcp.WithDescription("Run a comparable sales (comps) or BPO analysis using the Quantyra IDX comps engine. Subject type: mls or off_market (alias listing accepted). Supports lat/lng or listing_id, modes A/B/C, radius or market scope."),
 			optionalMCPKeyParam(),
 			mcp.WithObject("request",
 				mcp.Required(),
@@ -431,7 +431,7 @@ func (s *Server) handleValidateCompsSubject(ctx context.Context, req mcp.CallToo
 
 	issues := []string{}
 	if subjectType == "" {
-		issues = append(issues, "type is required (off_market or listing)")
+		issues = append(issues, "type is required (mls or off_market; alias listing accepted)")
 	}
 	if lat == 0 || lng == 0 {
 		issues = append(issues, "lat and lng are strongly recommended for best results")
